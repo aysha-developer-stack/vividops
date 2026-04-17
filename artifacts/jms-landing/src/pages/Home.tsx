@@ -217,17 +217,19 @@ export default function Home() {
           </nav>
 
           <div className="hidden md:flex items-center">
-            <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
-              <Button className="relative bg-primary hover:bg-primary/90 text-white rounded-full px-6 shadow-md overflow-hidden group">
-                <span className="relative z-10">Login</span>
-                <motion.div
-                  className="absolute inset-0 bg-white/20 rounded-full"
-                  initial={{ scale: 0, opacity: 0 }}
-                  whileHover={{ scale: 1.5, opacity: 1 }}
-                  transition={{ duration: 0.4 }}
-                />
-              </Button>
-            </motion.div>
+            <Link href="/login">
+              <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
+                <Button className="relative bg-primary hover:bg-primary/90 text-white rounded-full px-6 shadow-md overflow-hidden group cursor-pointer">
+                  <span className="relative z-10">Login</span>
+                  <motion.div
+                    className="absolute inset-0 bg-white/20 rounded-full"
+                    initial={{ scale: 0, opacity: 0 }}
+                    whileHover={{ scale: 1.5, opacity: 1 }}
+                    transition={{ duration: 0.4 }}
+                  />
+                </Button>
+              </motion.div>
+            </Link>
           </div>
 
           <motion.button
@@ -267,7 +269,9 @@ export default function Home() {
                   </motion.a>
                 ))}
                 <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.18 }}>
-                  <Button className="w-full bg-primary hover:bg-primary/90 text-white mt-2">Login</Button>
+                  <Link href="/login">
+                    <Button className="w-full bg-primary hover:bg-primary/90 text-white mt-2 cursor-pointer">Login</Button>
+                  </Link>
                 </motion.div>
               </div>
             </motion.div>
@@ -341,10 +345,11 @@ export default function Home() {
                   variants={fadeUp}
                   className="flex flex-col sm:flex-row gap-4"
                 >
+                  <Link href="/login">
                   <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}>
                     <Button
                       size="lg"
-                      className="relative bg-primary hover:bg-primary/90 text-white rounded-full px-8 h-14 text-base font-medium shadow-lg shadow-primary/30 overflow-hidden w-full sm:w-auto flex items-center justify-center gap-2 group"
+                      className="relative bg-primary hover:bg-primary/90 text-white rounded-full px-8 h-14 text-base font-medium shadow-lg shadow-primary/30 overflow-hidden w-full sm:w-auto flex items-center justify-center gap-2 group cursor-pointer"
                     >
                       <span className="relative z-10 flex items-center gap-2">
                         Login
@@ -363,6 +368,7 @@ export default function Home() {
                       />
                     </Button>
                   </motion.div>
+                  </Link>
                   <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}>
                     <Button
                       size="lg"
