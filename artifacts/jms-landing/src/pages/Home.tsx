@@ -11,11 +11,11 @@ import {
   ArrowRight,
   Menu,
   X,
-  Play,
   Briefcase,
   Users
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import logoImg from "@assets/www.vividengineering.com.au__1776407417497.png";
 
 const fadeIn = {
   hidden: { opacity: 0, y: 20 },
@@ -53,11 +53,8 @@ export default function Home() {
         }`}
       >
         <div className="container mx-auto px-6 md:px-12 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
-              <Briefcase size={18} />
-            </div>
-            <span className="text-xl font-bold tracking-tight text-gray-900">JobFlow</span>
+          <Link href="/" className="flex items-center group">
+            <img src={logoImg} alt="Vivid Engineering" className="h-10 w-auto object-contain group-hover:opacity-90 transition-opacity" />
           </Link>
           
           <nav className="hidden md:flex items-center gap-8">
@@ -110,7 +107,7 @@ export default function Home() {
                   The Command Center for Ops Teams
                 </motion.div>
                 <motion.h1 variants={fadeIn} className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-gray-900 leading-[1.1] mb-6">
-                  Manage Jobs Efficiently in <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-500">One Place</span>
+                  Manage Jobs Efficiently in <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-sky-400">One Place</span>
                 </motion.h1>
                 <motion.p variants={fadeIn} className="text-lg md:text-xl text-gray-600 mb-8 leading-relaxed max-w-xl">
                   Track progress, assign tasks, manage teams, and improve productivity without the chaos of spreadsheets and chat apps.
@@ -295,8 +292,8 @@ export default function Home() {
         </section>
 
         {/* Benefits Section */}
-        <section className="py-24 bg-gray-900 text-white overflow-hidden relative">
-          <div className="absolute top-0 right-0 w-[800px] h-[800px] rounded-full bg-primary/20 blur-3xl pointer-events-none -mr-40 -mt-40" />
+        <section className="py-24 bg-black text-white overflow-hidden relative">
+          <div className="absolute top-0 right-0 w-[800px] h-[800px] rounded-full bg-primary/25 blur-3xl pointer-events-none -mr-40 -mt-40" />
           
           <div className="container mx-auto px-6 md:px-12 relative z-10">
             <div className="grid lg:grid-cols-2 gap-16 items-center">
@@ -339,8 +336,8 @@ export default function Home() {
                   <div className="absolute inset-0 rounded-full border border-gray-700 scale-110"></div>
                   <div className="absolute inset-0 rounded-full border border-gray-800 scale-125"></div>
                   
-                  <div className="w-full h-full bg-gray-800 rounded-full flex flex-col items-center justify-center p-8 text-center border border-gray-700 shadow-2xl relative z-10">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center mb-6 shadow-lg shadow-primary/20">
+                  <div className="w-full h-full bg-zinc-900 rounded-full flex flex-col items-center justify-center p-8 text-center border border-zinc-800 shadow-2xl relative z-10">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-sky-400 flex items-center justify-center mb-6 shadow-lg shadow-primary/20">
                       <BarChart3 size={32} className="text-white" />
                     </div>
                     <div className="text-4xl font-bold text-white mb-2">34%</div>
@@ -357,11 +354,8 @@ export default function Home() {
       <footer className="bg-white border-t border-gray-100 pt-16 pb-8">
         <div className="container mx-auto px-6 md:px-12">
           <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-12">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded bg-primary text-white flex items-center justify-center">
-                <Briefcase size={14} />
-              </div>
-              <span className="text-lg font-bold text-gray-900">JobFlow</span>
+            <div className="flex items-center">
+              <img src={logoImg} alt="Vivid Engineering" className="h-8 w-auto object-contain" />
             </div>
             
             <div className="flex gap-8">
