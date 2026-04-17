@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Job Management System"
+version = "1.0.0"
+id = "artifacts/jms-landing"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19402
+
+[services.development]
+run = "pnpm --filter @workspace/jms-landing run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/jms-landing", "run", "build" ]
+publicDir = "artifacts/jms-landing/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19402"
+BASE_PATH = "/"
