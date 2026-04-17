@@ -840,12 +840,12 @@ export default function Home() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="relative z-10 border-b border-white/10 py-14"
+          className="relative z-10 border-b border-gray-200 py-14 bg-white"
         >
           <div className="container mx-auto px-6 md:px-12 flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
-              <h3 className="text-2xl md:text-3xl font-bold mb-2">Ready to streamline your operations?</h3>
-              <p className="text-gray-400">Join thousands of teams already using JobFlow to manage their work.</p>
+              <h3 className="text-2xl md:text-3xl font-bold mb-2 text-gray-900">Ready to streamline your operations?</h3>
+              <p className="text-gray-500">Join thousands of teams already using JobFlow to manage their work.</p>
             </div>
             <motion.div whileHover={{ scale: 1.05, y: -2 }} whileTap={{ scale: 0.97 }} className="shrink-0">
               <Button
@@ -957,9 +957,9 @@ export default function Home() {
         </div>
 
         {/* Bottom bar */}
-        <div className="relative z-10 border-t border-white/10">
-          <div className="container mx-auto px-6 md:px-12 py-6 flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-gray-500">
+        <div className="relative z-10 bg-primary">
+          <div className="container mx-auto px-6 md:px-12 py-5 flex flex-col md:flex-row items-center justify-between gap-4">
+            <p className="text-xs text-white/90 font-medium">
               &copy; {new Date().getFullYear()} Vivid Engineering Pty Ltd. All rights reserved.
             </p>
             <div className="flex items-center gap-6">
@@ -967,7 +967,7 @@ export default function Home() {
                 <motion.a
                   key={link}
                   href="#"
-                  className="text-xs text-gray-500 hover:text-primary transition-colors"
+                  className="text-xs text-white/80 hover:text-white transition-colors font-medium"
                   whileHover={{ y: -1 }}
                 >
                   {link}
