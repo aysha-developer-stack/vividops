@@ -840,12 +840,12 @@ export default function Home() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="relative z-10 border-b border-gray-200 py-14 bg-white"
+          className="relative z-10 border-b border-white/10 py-14"
         >
           <div className="container mx-auto px-6 md:px-12 flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
-              <h3 className="text-2xl md:text-3xl font-bold mb-2 text-gray-900">Ready to streamline your operations?</h3>
-              <p className="text-gray-500">Join thousands of teams already using JobFlow to manage their work.</p>
+              <h3 className="text-2xl md:text-3xl font-bold mb-2">Ready to streamline your operations?</h3>
+              <p className="text-gray-400">Join thousands of teams already using JobFlow to manage their work.</p>
             </div>
             <motion.div whileHover={{ scale: 1.05, y: -2 }} whileTap={{ scale: 0.97 }} className="shrink-0">
               <Button
