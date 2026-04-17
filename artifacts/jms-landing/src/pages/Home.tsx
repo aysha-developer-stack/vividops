@@ -183,7 +183,7 @@ export default function Home() {
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 border-b ${
-          isScrolled ? "bg-white/90 backdrop-blur-md border-gray-200 shadow-sm py-3" : "bg-white/80 backdrop-blur-sm border-transparent py-5"
+          isScrolled ? "bg-black/95 backdrop-blur-md border-white/10 shadow-lg shadow-black/30 py-3" : "bg-black border-white/5 py-5"
         }`}
       >
         <div className="container mx-auto px-6 md:px-12 flex items-center justify-between">
@@ -202,7 +202,7 @@ export default function Home() {
               <motion.a
                 key={item}
                 href={item === "Home" ? "/" : `#${item.toLowerCase()}`}
-                className="text-sm font-medium text-gray-600 hover:text-primary transition-colors relative group"
+                className="text-sm font-medium text-gray-300 hover:text-white transition-colors relative group"
                 whileHover={{ y: -1 }}
               >
                 {item}
@@ -231,7 +231,7 @@ export default function Home() {
           </div>
 
           <motion.button
-            className="md:hidden text-gray-600 p-2"
+            className="md:hidden text-gray-300 p-2"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             whileTap={{ scale: 0.9 }}
           >
@@ -251,7 +251,7 @@ export default function Home() {
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="md:hidden overflow-hidden bg-white border-b border-gray-100 shadow-lg"
+              className="md:hidden overflow-hidden bg-black border-b border-white/10 shadow-xl"
             >
               <div className="p-4 flex flex-col gap-2">
                 {["Home", "Features", "About"].map((item, i) => (
@@ -261,7 +261,7 @@ export default function Home() {
                     initial={{ x: -20, opacity: 0 }}
                     animate={{ x: 0, opacity: 1 }}
                     transition={{ delay: i * 0.06 }}
-                    className="block p-3 text-gray-800 font-medium hover:bg-gray-50 hover:text-primary rounded-md transition-colors"
+                    className="block p-3 text-gray-300 font-medium hover:bg-white/10 hover:text-white rounded-md transition-colors"
                   >
                     {item}
                   </motion.a>
@@ -824,42 +824,159 @@ export default function Home() {
       </main>
 
       {/* ── FOOTER ── */}
-      <motion.footer
-        initial={{ opacity: 0 }}
-        whileInView={{ opacity: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.6 }}
-        className="bg-white border-t border-gray-100 pt-12 pb-8"
-      >
-        <div className="container mx-auto px-6 md:px-12">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-8">
-            <motion.div whileHover={{ scale: 1.04 }} transition={{ type: "spring", stiffness: 400 }}>
-              <img src={logoImg} alt="Vivid Engineering" className="h-8 w-auto object-contain" />
+      <footer className="bg-black text-white relative overflow-hidden">
+        {/* Subtle animated background glow */}
+        <motion.div
+          className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[300px] rounded-full bg-primary/10 blur-3xl pointer-events-none"
+          animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.8, 0.5] }}
+          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+        />
+        {/* Top gradient line */}
+        <div className="h-px bg-gradient-to-r from-transparent via-primary to-transparent" />
+
+        {/* CTA Banner */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="relative z-10 border-b border-white/10 py-14"
+        >
+          <div className="container mx-auto px-6 md:px-12 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div>
+              <h3 className="text-2xl md:text-3xl font-bold mb-2">Ready to streamline your operations?</h3>
+              <p className="text-gray-400">Join thousands of teams already using JobFlow to manage their work.</p>
+            </div>
+            <motion.div whileHover={{ scale: 1.05, y: -2 }} whileTap={{ scale: 0.97 }} className="shrink-0">
+              <Button
+                size="lg"
+                className="relative bg-primary hover:bg-primary/90 text-white rounded-full px-8 font-semibold shadow-lg shadow-primary/30 overflow-hidden group"
+              >
+                <span className="relative z-10 flex items-center gap-2">
+                  Get Started Free
+                  <motion.span animate={{ x: [0, 4, 0] }} transition={{ duration: 1.5, repeat: Infinity }}>
+                    <ArrowRight size={18} />
+                  </motion.span>
+                </span>
+                <motion.div
+                  className="absolute inset-0 bg-gradient-to-r from-sky-400/30 to-transparent"
+                  initial={{ x: "-100%" }}
+                  whileHover={{ x: "100%" }}
+                  transition={{ duration: 0.5 }}
+                />
+              </Button>
             </motion.div>
-            <div className="flex gap-8">
-              {["Privacy Policy", "Terms of Service", "Contact Support"].map((link) => (
+          </div>
+        </motion.div>
+
+        {/* Main Footer Grid */}
+        <div className="relative z-10 container mx-auto px-6 md:px-12 py-14">
+          <div className="grid md:grid-cols-4 gap-10">
+            {/* Brand column */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+              className="md:col-span-2"
+            >
+              <motion.img
+                src={logoImg}
+                alt="Vivid Engineering"
+                className="h-10 w-auto object-contain mb-5"
+                whileHover={{ scale: 1.04 }}
+                transition={{ type: "spring", stiffness: 400 }}
+              />
+              <p className="text-gray-400 text-sm leading-relaxed max-w-sm mb-6">
+                JobFlow is the command center for operations teams — helping you assign jobs, track time, manage files, and report performance all in one place.
+              </p>
+              <div className="flex items-center gap-2">
+                <motion.div
+                  className="w-2 h-2 rounded-full bg-green-400"
+                  animate={{ scale: [1, 1.4, 1], opacity: [1, 0.5, 1] }}
+                  transition={{ duration: 1.8, repeat: Infinity }}
+                />
+                <span className="text-xs text-gray-400 font-medium">All systems operational</span>
+              </div>
+            </motion.div>
+
+            {/* Quick Links */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+            >
+              <h4 className="text-sm font-semibold text-white uppercase tracking-widest mb-5">Product</h4>
+              <ul className="space-y-3">
+                {["Features", "How It Works", "Pricing", "Changelog", "Roadmap"].map((item) => (
+                  <li key={item}>
+                    <motion.a
+                      href="#"
+                      className="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1.5 group"
+                      whileHover={{ x: 4 }}
+                      transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                    >
+                      <motion.span
+                        className="w-1 h-1 rounded-full bg-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                      />
+                      {item}
+                    </motion.a>
+                  </li>
+                ))}
+              </ul>
+            </motion.div>
+
+            {/* Contact */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+            >
+              <h4 className="text-sm font-semibold text-white uppercase tracking-widest mb-5">Company</h4>
+              <ul className="space-y-3">
+                {["About Us", "Privacy Policy", "Terms of Service", "Contact Support", "Security"].map((item) => (
+                  <li key={item}>
+                    <motion.a
+                      href="#"
+                      className="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1.5 group"
+                      whileHover={{ x: 4 }}
+                      transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                    >
+                      <motion.span
+                        className="w-1 h-1 rounded-full bg-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                      />
+                      {item}
+                    </motion.a>
+                  </li>
+                ))}
+              </ul>
+            </motion.div>
+          </div>
+        </div>
+
+        {/* Bottom bar */}
+        <div className="relative z-10 border-t border-white/10">
+          <div className="container mx-auto px-6 md:px-12 py-6 flex flex-col md:flex-row items-center justify-between gap-4">
+            <p className="text-xs text-gray-500">
+              &copy; {new Date().getFullYear()} Vivid Engineering Pty Ltd. All rights reserved.
+            </p>
+            <div className="flex items-center gap-6">
+              {["Privacy", "Terms", "Contact"].map((link) => (
                 <motion.a
                   key={link}
                   href="#"
-                  className="text-sm font-medium text-gray-500 hover:text-primary transition-colors relative group"
+                  className="text-xs text-gray-500 hover:text-primary transition-colors"
                   whileHover={{ y: -1 }}
                 >
                   {link}
-                  <motion.span
-                    className="absolute -bottom-0.5 left-0 h-px bg-primary"
-                    initial={{ width: 0 }}
-                    whileHover={{ width: "100%" }}
-                    transition={{ duration: 0.2 }}
-                  />
                 </motion.a>
               ))}
             </div>
           </div>
-          <div className="text-center text-gray-400 text-sm">
-            &copy; {new Date().getFullYear()} Vivid Engineering. All rights reserved.
-          </div>
         </div>
-      </motion.footer>
+      </footer>
     </div>
   );
 }
