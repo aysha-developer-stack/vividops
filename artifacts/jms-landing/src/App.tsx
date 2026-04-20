@@ -19,6 +19,7 @@ import UserMonitoring from "@/pages/admin/UserMonitoring";
 import UserDashboard from "@/pages/admin/UserDashboard";
 import MyJobs from "@/pages/admin/MyJobs";
 import JobDetail from "@/pages/admin/JobDetail";
+import Notifications from "@/pages/admin/Notifications";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,7 @@ function Router() {
       <Route path="/super-admin/timer"><Timer /></Route>
       <Route path="/super-admin/training"><Training /></Route>
       <Route path="/super-admin/settings"><Settings /></Route>
+      <Route path="/super-admin/notifications"><Notifications role="super-admin" /></Route>
 
       {/* Admin */}
       <Route path="/admin" component={AdminDashboard} />
@@ -46,6 +48,7 @@ function Router() {
       <Route path="/admin/reports"><Reports role="admin" /></Route>
       <Route path="/admin/communication"><Communication role="admin" /></Route>
       <Route path="/admin/settings"><Settings role="admin" /></Route>
+      <Route path="/admin/notifications"><Notifications role="admin" /></Route>
 
       {/* Supervisor */}
       <Route path="/supervisor" component={SupervisorDashboard} />
@@ -55,6 +58,7 @@ function Router() {
       <Route path="/supervisor/communication"><Communication role="supervisor" /></Route>
       <Route path="/supervisor/reports"><Reports role="supervisor" /></Route>
       <Route path="/supervisor/settings"><Settings role="supervisor" /></Route>
+      <Route path="/supervisor/notifications"><Notifications role="supervisor" /></Route>
 
       {/* User */}
       <Route path="/user" component={UserDashboard} />
@@ -65,6 +69,7 @@ function Router() {
       <Route path="/user/communication"><Communication role="user" /></Route>
       <Route path="/user/reports"><Reports role="user" /></Route>
       <Route path="/user/settings"><Settings role="user" /></Route>
+      <Route path="/user/notifications"><Notifications role="user" /></Route>
 
       <Route component={NotFound} />
     </Switch>
