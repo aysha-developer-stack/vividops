@@ -12,6 +12,13 @@ import Communication from "@/pages/admin/Communication";
 import Timer from "@/pages/admin/Timer";
 import Training from "@/pages/admin/Training";
 import Settings from "@/pages/admin/Settings";
+import AdminDashboard from "@/pages/admin/AdminDashboard";
+import SupervisorMonitoring from "@/pages/admin/SupervisorMonitoring";
+import SupervisorDashboard from "@/pages/admin/SupervisorDashboard";
+import UserMonitoring from "@/pages/admin/UserMonitoring";
+import UserDashboard from "@/pages/admin/UserDashboard";
+import MyJobs from "@/pages/admin/MyJobs";
+import JobDetail from "@/pages/admin/JobDetail";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -22,13 +29,43 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/login" component={Login} />
       <Route path="/super-admin" component={SuperAdminDashboard} />
-      <Route path="/super-admin/users" component={UserManagement} />
-      <Route path="/super-admin/jobs" component={JobManagement} />
-      <Route path="/super-admin/reports" component={Reports} />
-      <Route path="/super-admin/communication" component={Communication} />
-      <Route path="/super-admin/timer" component={Timer} />
-      <Route path="/super-admin/training" component={Training} />
-      <Route path="/super-admin/settings" component={Settings} />
+      <Route path="/super-admin/users"><UserManagement /></Route>
+      <Route path="/super-admin/jobs"><JobManagement /></Route>
+      <Route path="/super-admin/reports"><Reports /></Route>
+      <Route path="/super-admin/communication"><Communication /></Route>
+      <Route path="/super-admin/timer"><Timer /></Route>
+      <Route path="/super-admin/training"><Training /></Route>
+      <Route path="/super-admin/settings"><Settings /></Route>
+
+      {/* Admin */}
+      <Route path="/admin" component={AdminDashboard} />
+      <Route path="/admin/users"><UserManagement role="admin" /></Route>
+      <Route path="/admin/jobs"><JobManagement role="admin" /></Route>
+      <Route path="/admin/jobs/:id"><JobDetail role="admin" /></Route>
+      <Route path="/admin/supervisors" component={SupervisorMonitoring} />
+      <Route path="/admin/reports"><Reports role="admin" /></Route>
+      <Route path="/admin/communication"><Communication role="admin" /></Route>
+      <Route path="/admin/settings"><Settings role="admin" /></Route>
+
+      {/* Supervisor */}
+      <Route path="/supervisor" component={SupervisorDashboard} />
+      <Route path="/supervisor/jobs"><JobManagement role="supervisor" /></Route>
+      <Route path="/supervisor/jobs/:id"><JobDetail role="supervisor" /></Route>
+      <Route path="/supervisor/users" component={UserMonitoring} />
+      <Route path="/supervisor/communication"><Communication role="supervisor" /></Route>
+      <Route path="/supervisor/reports"><Reports role="supervisor" /></Route>
+      <Route path="/supervisor/settings"><Settings role="supervisor" /></Route>
+
+      {/* User */}
+      <Route path="/user" component={UserDashboard} />
+      <Route path="/user/jobs" component={MyJobs} />
+      <Route path="/user/jobs/:id"><JobDetail role="user" /></Route>
+      <Route path="/user/timer"><Timer role="user" /></Route>
+      <Route path="/user/training"><Training role="user" /></Route>
+      <Route path="/user/communication"><Communication role="user" /></Route>
+      <Route path="/user/reports"><Reports role="user" /></Route>
+      <Route path="/user/settings"><Settings role="user" /></Route>
+
       <Route component={NotFound} />
     </Switch>
   );

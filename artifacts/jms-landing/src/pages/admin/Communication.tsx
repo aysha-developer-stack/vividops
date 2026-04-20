@@ -5,6 +5,7 @@ import {
   Phone, Video, MoreHorizontal, ExternalLink, Settings, Check,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import type { Role } from "@/lib/roles";
 
 const CHANNELS = [
   { id: "general", name: "general", icon: Hash, unread: 3, type: "channel" },
@@ -34,7 +35,7 @@ const STATUS_DOT: Record<string, string> = {
   offline: "bg-gray-400",
 };
 
-export default function Communication() {
+export default function Communication({ role = "super-admin" as Role }: { role?: Role } = {}) {
   const [activeChannel, setActiveChannel] = useState("general");
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState(MESSAGES);
@@ -52,7 +53,7 @@ export default function Communication() {
   };
 
   return (
-    <DashboardLayout title="Communication">
+    <DashboardLayout title="Communication" role={role}>
       {/* Zoho Cliq integration banner */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}

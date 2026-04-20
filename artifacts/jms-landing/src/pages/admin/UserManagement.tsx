@@ -5,21 +5,22 @@ import {
   Crown, UserCog, User as UserIcon, X, Check,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import type { Role } from "@/lib/roles";
 
-type Role = "Admin" | "Supervisor" | "User";
+type UserRole = "Admin" | "Supervisor" | "User";
 type Status = "Active" | "Inactive";
 
 interface User {
   id: number;
   name: string;
   email: string;
-  role: Role;
+  role: UserRole;
   status: Status;
   joined: string;
   avatar: string;
 }
 
-const ROLE_CONFIG: Record<Role, { color: string; bg: string; icon: any }> = {
+const ROLE_CONFIG: Record<UserRole, { color: string; bg: string; icon: any }> = {
   Admin: { color: "text-red-700", bg: "bg-red-50 border-red-200", icon: Shield },
   Supervisor: { color: "text-amber-700", bg: "bg-amber-50 border-amber-200", icon: UserCog },
   User: { color: "text-primary", bg: "bg-primary/10 border-primary/20", icon: UserIcon },
@@ -35,13 +36,13 @@ const SEED: User[] = [
   { id: 7, name: "Olivia Carter", email: "olivia.c@jobflow.io", role: "User", status: "Active", joined: "Apr 11, 2025", avatar: "OC" },
 ];
 
-export default function UserManagement() {
+export default function UserManagement({ role = "super-admin" as Role }: { role?: Role } = {}) {
   const [users, setUsers] = useState<User[]>(SEED);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"All" | Role>("All");
+  const [filter, setFilter] = useState<"All" | UserRole>("All");
   const [openId, setOpenId] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", role: "User" as Role });
+  const [form, setForm] = useState({ name: "", email: "", role: "User" as UserRole });
 
   const filtered = users.filter((u) =>
     (filter === "All" || u.role === filter) &&
@@ -68,7 +69,7 @@ export default function UserManagement() {
   };
 
   return (
-    <DashboardLayout title="User Management">
+    <DashboardLayout title="User Management" role={role}>
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
         {/* Toolbar */}
         <div className="p-5 border-b border-gray-100 flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
@@ -238,7 +239,7 @@ export default function UserManagement() {
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assign Role</label>
                   <div className="grid grid-cols-3 gap-2">
-                    {(["Admin", "Supervisor", "User"] as Role[]).map((r) => {
+                    {(["Admin", "Supervisor", "User"] as UserRole[]).map((r) => {
                       const cfg = ROLE_CONFIG[r];
                       const Icon = cfg.icon;
                       const selected = form.role === r;

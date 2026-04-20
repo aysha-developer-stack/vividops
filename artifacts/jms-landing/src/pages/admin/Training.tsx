@@ -5,6 +5,7 @@ import {
   Search, Filter, GraduationCap,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import type { Role } from "@/lib/roles";
 
 const CATEGORIES = ["All", "Onboarding", "Safety", "Technical", "Leadership"];
 
@@ -23,7 +24,7 @@ const LEVEL_COLOR: Record<string, string> = {
   Advanced: "bg-red-50 text-red-700",
 };
 
-export default function Training() {
+export default function Training({ role = "super-admin" as Role }: { role?: Role } = {}) {
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
 
@@ -40,7 +41,7 @@ export default function Training() {
   }, 0);
 
   return (
-    <DashboardLayout title="Training & Learning">
+    <DashboardLayout title="Training & Learning" role={role}>
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         {[

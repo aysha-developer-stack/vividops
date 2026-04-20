@@ -5,6 +5,7 @@ import { Eye, EyeOff, ArrowRight, ArrowLeft, Mail, Lock, CheckCircle2 } from "lu
 import { Button } from "@/components/ui/button";
 import logoImg from "@assets/www.vividengineering.com.au__1776407417497.png";
 import { setSession } from "@/lib/auth";
+import { ROLES, Role } from "@/lib/roles";
 
 const floatingOrbs = [
   { size: 320, x: "-20%", y: "-10%", delay: 0, color: "bg-primary/20" },
@@ -26,6 +27,7 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [role, setRole] = useState<Role>("super-admin");
   const [, setLocation] = useLocation();
 
   const validate = () => {
@@ -49,8 +51,14 @@ export default function Login() {
     await new Promise((r) => setTimeout(r, 1500));
     setIsLoading(false);
     setIsSuccess(true);
-    setSession(email, "Alex Morgan");
-    setTimeout(() => setLocation("/super-admin"), 1600);
+    const names: Record<Role, string> = {
+      "super-admin": "Alex Morgan",
+      admin: "Jamie Rivera",
+      supervisor: "Sam Carter",
+      user: "Jordan Reed",
+    };
+    setSession(email, names[role], role);
+    setTimeout(() => setLocation(ROLES[role].base), 1600);
   };
 
   return (
@@ -286,6 +294,43 @@ export default function Login() {
                 </motion.div>
 
                 <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+                  {/* Role selector */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.22 }}
+                  >
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Sign in as</label>
+                    <div className="grid grid-cols-4 gap-1.5 bg-gray-100 p-1 rounded-xl">
+                      {(Object.keys(ROLES) as Role[]).map((r) => {
+                        const cfg = ROLES[r];
+                        const RIcon = cfg.icon;
+                        const active = role === r;
+                        return (
+                          <motion.button
+                            key={r}
+                            type="button"
+                            onClick={() => setRole(r)}
+                            whileTap={{ scale: 0.95 }}
+                            className={`relative flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] font-semibold transition-colors ${active ? "text-white" : "text-gray-600 hover:text-gray-900"}`}
+                          >
+                            {active && (
+                              <motion.div
+                                layoutId="loginRole"
+                                className="absolute inset-0 bg-primary rounded-lg -z-10"
+                                transition={{ type: "spring", stiffness: 350, damping: 28 }}
+                              />
+                            )}
+                            <RIcon size={14} />
+                            <span className="leading-none whitespace-nowrap">
+                              {r === "super-admin" ? "Super" : r === "admin" ? "Admin" : r === "supervisor" ? "Super." : "User"}
+                            </span>
+                          </motion.button>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+
                   {/* Email field */}
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}

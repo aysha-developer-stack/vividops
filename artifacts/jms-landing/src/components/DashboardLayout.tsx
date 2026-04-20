@@ -2,23 +2,11 @@ import { useState, useEffect, useRef, ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  LayoutDashboard, Briefcase, Users, BarChart3, MessageCircle,
-  Timer, GraduationCap, Settings, Bell, ChevronLeft, LogOut,
-  Search, Menu, X, Crown,
+  Settings, Bell, ChevronLeft, LogOut, Search, Menu,
 } from "lucide-react";
 import logoImg from "@assets/www.vividengineering.com.au__1776407417497.png";
 import { getName, getEmail, clearSession } from "@/lib/auth";
-
-const NAV_ITEMS = [
-  { label: "Dashboard", icon: LayoutDashboard, path: "/super-admin" },
-  { label: "Jobs", icon: Briefcase, path: "/super-admin/jobs" },
-  { label: "Users", icon: Users, path: "/super-admin/users" },
-  { label: "Reports", icon: BarChart3, path: "/super-admin/reports" },
-  { label: "Communication", icon: MessageCircle, path: "/super-admin/communication" },
-  { label: "Timer", icon: Timer, path: "/super-admin/timer" },
-  { label: "Training", icon: GraduationCap, path: "/super-admin/training" },
-  { label: "Settings", icon: Settings, path: "/super-admin/settings" },
-];
+import { ROLES, Role } from "@/lib/roles";
 
 const NOTIFICATIONS = [
   { id: 1, title: "New job assigned", desc: "Server Maintenance #482", time: "2m ago", unread: true },
@@ -27,7 +15,18 @@ const NOTIFICATIONS = [
   { id: 4, title: "Report ready", desc: "Q1 performance report generated", time: "Yesterday", unread: false },
 ];
 
-export default function DashboardLayout({ title, children }: { title: string; children: ReactNode }) {
+export default function DashboardLayout({
+  title,
+  children,
+  role = "super-admin",
+}: {
+  title: string;
+  children: ReactNode;
+  role?: Role;
+}) {
+  const config = ROLES[role];
+  const NAV_ITEMS = config.nav;
+  const RoleIcon = config.icon;
   const [location, setLocation] = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -97,7 +96,7 @@ export default function DashboardLayout({ title, children }: { title: string; ch
                   className="overflow-hidden"
                 >
                   <div className="font-bold text-sm leading-tight">JobFlow</div>
-                  <div className="text-[10px] text-gray-400 uppercase tracking-wider">Admin Portal</div>
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wider">{config.portal}</div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -181,8 +180,8 @@ export default function DashboardLayout({ title, children }: { title: string; ch
             </button>
             <div>
               <div className="flex items-center gap-2">
-                <Crown size={14} className="text-primary" />
-                <span className="text-xs font-semibold text-primary uppercase tracking-wider">Super Admin</span>
+                <RoleIcon size={14} className="text-primary" />
+                <span className="text-xs font-semibold text-primary uppercase tracking-wider">{config.label}</span>
               </div>
               <h1 className="text-xl font-bold text-gray-900">{title}</h1>
             </div>
@@ -276,7 +275,7 @@ export default function DashboardLayout({ title, children }: { title: string; ch
                 </div>
                 <div className="hidden md:block text-left">
                   <div className="text-sm font-semibold text-gray-900 leading-tight">{name}</div>
-                  <div className="text-[10px] text-gray-500">Super Admin</div>
+                  <div className="text-[10px] text-gray-500">{config.label}</div>
                 </div>
               </motion.button>
               <AnimatePresence>

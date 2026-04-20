@@ -5,6 +5,7 @@ import {
   Calendar, Clock, AlertCircle,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import type { Role } from "@/lib/roles";
 
 type Status = "Pending" | "In Progress" | "Completed" | "Overdue";
 type Priority = "Low" | "Medium" | "High";
@@ -42,7 +43,7 @@ const SEED: Job[] = [
   { id: 477, title: "Annual Safety Audit", client: "MetroWorks", assignee: "James Bennett", status: "Pending", priority: "Medium", due: "May 02", progress: 0 },
 ];
 
-export default function JobManagement() {
+export default function JobManagement({ role = "super-admin" as Role }: { role?: Role } = {}) {
   const [jobs, setJobs] = useState<Job[]>(SEED);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"All" | Status>("All");
@@ -76,7 +77,7 @@ export default function JobManagement() {
   };
 
   return (
-    <DashboardLayout title="Job Management">
+    <DashboardLayout title="Job Management" role={role}>
       {/* Status pills */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         {(["All", "Pending", "In Progress", "Completed", "Overdue"] as const).map((s, i) => (

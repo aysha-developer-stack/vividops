@@ -1,0 +1,205 @@
+import { motion } from "framer-motion";
+import { Link } from "wouter";
+import {
+  Briefcase, Users, AlertCircle, CheckCircle2, ArrowUpRight,
+  Calendar, Clock, TrendingUp, Plus,
+} from "lucide-react";
+import DashboardLayout from "@/components/DashboardLayout";
+
+const ASSIGNED = [
+  { id: "JOB-2148", title: "Server Maintenance", client: "BrightSpark Industries", due: "Today", priority: "High", progress: 72 },
+  { id: "JOB-2150", title: "Site Inspection", client: "North Bay Logistics", due: "Tomorrow", priority: "Medium", progress: 35 },
+  { id: "JOB-2151", title: "Equipment Calibration", client: "Greenfield Co.", due: "Apr 24", priority: "Medium", progress: 10 },
+  { id: "JOB-2155", title: "Emergency Repair", client: "Blue Ocean Ltd.", due: "Apr 25", priority: "High", progress: 0 },
+];
+
+const TEAM = [
+  { name: "Riley Adams", avatar: "RA", jobsToday: 3, hoursToday: 6.5, status: "online" },
+  { name: "Olivia Carter", avatar: "OC", jobsToday: 2, hoursToday: 5.2, status: "online" },
+  { name: "Lisa Martinez", avatar: "LM", jobsToday: 4, hoursToday: 7.8, status: "away" },
+  { name: "James Bennett", avatar: "JB", jobsToday: 1, hoursToday: 3.1, status: "online" },
+];
+
+const OVERDUE = [
+  { id: "JOB-2120", title: "Network Setup", days: 2, assignee: "Riley Adams" },
+  { id: "JOB-2118", title: "Quarterly Audit", days: 3, assignee: "Olivia Carter" },
+];
+
+const PRIORITY_COLOR: Record<string, string> = {
+  High: "bg-red-50 text-red-700 border-red-200",
+  Medium: "bg-amber-50 text-amber-700 border-amber-200",
+  Low: "bg-emerald-50 text-emerald-700 border-emerald-200",
+};
+
+export default function SupervisorDashboard() {
+  return (
+    <DashboardLayout title="Supervisor Dashboard" role="supervisor">
+      {/* Banner */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative bg-gradient-to-br from-black via-gray-900 to-black rounded-2xl p-6 md:p-8 mb-6 overflow-hidden border border-gray-800"
+      >
+        <motion.div
+          className="absolute -top-16 -right-10 w-72 h-72 rounded-full bg-primary/30 blur-3xl"
+          animate={{ scale: [1, 1.1, 1], opacity: [0.4, 0.7, 0.4] }}
+          transition={{ duration: 5, repeat: Infinity }}
+        />
+        <div className="relative z-10 flex items-start justify-between flex-wrap gap-4">
+          <div>
+            <h2 className="text-2xl md:text-3xl font-bold text-white">Hey Sam, ready to lead today? 💪</h2>
+            <p className="text-sm text-gray-400 mt-1">You have 4 active jobs and a team of 8 reporting to you.</p>
+          </div>
+          <Link href="/supervisor/jobs">
+            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-primary/30">
+              <Plus size={16} /> Create Job
+            </motion.button>
+          </Link>
+        </div>
+      </motion.div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {[
+          { label: "My Active Jobs", value: 12, icon: Briefcase, color: "from-primary to-sky-700", bg: "bg-primary/10", text: "text-primary" },
+          { label: "Team Size", value: 8, icon: Users, color: "from-emerald-500 to-emerald-700", bg: "bg-emerald-50", text: "text-emerald-600" },
+          { label: "Completed Today", value: 5, icon: CheckCircle2, color: "from-purple-500 to-purple-700", bg: "bg-purple-50", text: "text-purple-600" },
+          { label: "Overdue", value: 2, icon: AlertCircle, color: "from-red-500 to-rose-700", bg: "bg-red-50", text: "text-red-600" },
+        ].map((s, i) => {
+          const Icon = s.icon;
+          return (
+            <motion.div
+              key={s.label}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 + i * 0.06 }}
+              whileHover={{ y: -4, boxShadow: "0 14px 28px rgba(0,0,0,0.07)" }}
+              className="relative bg-white rounded-2xl p-5 border border-gray-100 overflow-hidden"
+            >
+              <div className={`absolute top-0 right-0 w-32 h-32 rounded-full bg-gradient-to-br ${s.color} opacity-5 blur-2xl`} />
+              <div className="relative z-10 flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-gray-500 font-medium uppercase tracking-wider">{s.label}</div>
+                  <div className="text-3xl font-bold text-gray-900 mt-1">{s.value}</div>
+                </div>
+                <div className={`w-11 h-11 rounded-xl ${s.bg} ${s.text} flex items-center justify-center`}>
+                  <Icon size={20} />
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Assigned jobs */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 overflow-hidden"
+        >
+          <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-gray-900">My Active Jobs</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Jobs assigned to your team</p>
+            </div>
+            <Link href="/supervisor/jobs"><span className="text-xs text-primary font-semibold hover:underline cursor-pointer">View all</span></Link>
+          </div>
+          {ASSIGNED.map((j, i) => (
+            <Link key={j.id} href={`/supervisor/jobs/${j.id}`}>
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.35 + i * 0.05 }}
+                whileHover={{ backgroundColor: "rgb(249, 250, 251)", x: 4 }}
+                className="px-5 py-4 border-b border-gray-50 last:border-0 cursor-pointer block"
+              >
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-semibold text-sm text-gray-900">{j.title}</span>
+                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${PRIORITY_COLOR[j.priority]}`}>{j.priority}</span>
+                    </div>
+                    <div className="text-xs text-gray-500">{j.id} · {j.client}</div>
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-gray-500 shrink-0">
+                    <Calendar size={12} /> {j.due}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${j.progress}%` }} transition={{ duration: 0.7, delay: 0.5 + i * 0.04 }} className="h-full bg-primary rounded-full" />
+                  </div>
+                  <span className="text-xs font-bold text-gray-900 w-10 text-right">{j.progress}%</span>
+                </div>
+              </motion.div>
+            </Link>
+          ))}
+        </motion.div>
+
+        {/* Team & overdue */}
+        <div className="space-y-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
+          >
+            <div className="p-5 border-b border-gray-100">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2"><TrendingUp size={16} className="text-primary" /> My Team Today</h3>
+            </div>
+            <div className="p-3">
+              {TEAM.map((t, i) => (
+                <motion.div
+                  key={t.name}
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.5 + i * 0.05 }}
+                  whileHover={{ x: 3 }}
+                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
+                >
+                  <div className="relative">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-xs font-bold flex items-center justify-center">{t.avatar}</div>
+                    <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-white ${t.status === "online" ? "bg-emerald-400" : "bg-amber-400"}`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-gray-900 truncate">{t.name}</div>
+                    <div className="text-[11px] text-gray-500">{t.jobsToday} jobs · {t.hoursToday}h today</div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="bg-gradient-to-br from-red-50 to-rose-50 border border-red-100 rounded-2xl p-5"
+          >
+            <h3 className="font-bold text-red-900 flex items-center gap-2 mb-3"><AlertCircle size={16} /> Overdue Jobs</h3>
+            {OVERDUE.map((o, i) => (
+              <motion.div
+                key={o.id}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.6 + i * 0.05 }}
+                whileHover={{ x: 3 }}
+                className="bg-white rounded-xl p-3 mb-2 last:mb-0 cursor-pointer"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-gray-900 truncate">{o.title}</div>
+                    <div className="text-[11px] text-gray-500">{o.id} · {o.assignee}</div>
+                  </div>
+                  <div className="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">{o.days}d late</div>
+                </div>
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+}

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, Square, Plus, Clock, Trash2, Briefcase } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import type { Role } from "@/lib/roles";
 
 interface Entry {
   id: number;
@@ -33,7 +34,7 @@ function formatShort(s: number) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-export default function Timer() {
+export default function Timer({ role = "super-admin" as Role }: { role?: Role } = {}) {
   const [running, setRunning] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [task, setTask] = useState("");
@@ -65,7 +66,7 @@ export default function Timer() {
   const weekTotal = entries.reduce((acc, e) => acc + e.duration, 0);
 
   return (
-    <DashboardLayout title="Time Tracker">
+    <DashboardLayout title="Time Tracker" role={role}>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         {/* Timer card */}
         <motion.div

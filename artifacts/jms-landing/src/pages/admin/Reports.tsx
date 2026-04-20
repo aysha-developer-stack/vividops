@@ -5,6 +5,7 @@ import {
   ChevronRight, Filter,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import type { Role } from "@/lib/roles";
 
 const TABS = [
   { id: "system", label: "System-wide", icon: TrendingUp },
@@ -48,12 +49,12 @@ const SEV_COLOR: Record<string, string> = {
   low: "bg-gray-50 text-gray-700 border-gray-200",
 };
 
-export default function Reports() {
+export default function Reports({ role = "super-admin" as Role }: { role?: Role } = {}) {
   const [activeTab, setActiveTab] = useState("system");
   const [period, setPeriod] = useState("30d");
 
   return (
-    <DashboardLayout title="Reports">
+    <DashboardLayout title="Reports" role={role}>
       {/* Header actions */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between mb-6">
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">

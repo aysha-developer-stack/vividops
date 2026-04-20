@@ -4,6 +4,7 @@ import {
   User, Bell, Shield, Palette, Globe, Database, Check, Camera, Save,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import type { Role } from "@/lib/roles";
 
 const TABS = [
   { id: "profile", label: "Profile", icon: User },
@@ -43,7 +44,7 @@ function Row({ title, desc, children }: { title: string; desc?: string; children
   );
 }
 
-export default function Settings() {
+export default function Settings({ role = "super-admin" as Role }: { role?: Role } = {}) {
   const [tab, setTab] = useState<TabId>("profile");
   const [saved, setSaved] = useState(false);
   const [profile, setProfile] = useState({
@@ -63,7 +64,7 @@ export default function Settings() {
   };
 
   return (
-    <DashboardLayout title="Settings">
+    <DashboardLayout title="Settings" role={role}>
       <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6">
         {/* Sidebar tabs */}
         <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="bg-white border border-gray-100 rounded-2xl p-2 h-fit lg:sticky lg:top-6">
