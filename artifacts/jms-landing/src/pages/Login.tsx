@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, ArrowRight, ArrowLeft, Mail, Lock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import logoImg from "@assets/www.vividengineering.com.au__1776407417497.png";
+import { setSession } from "@/lib/auth";
 
 const floatingOrbs = [
   { size: 320, x: "-20%", y: "-10%", delay: 0, color: "bg-primary/20" },
@@ -25,6 +26,7 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [, setLocation] = useLocation();
 
   const validate = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -44,9 +46,11 @@ export default function Login() {
     }
     setErrors({});
     setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 1800));
+    await new Promise((r) => setTimeout(r, 1500));
     setIsLoading(false);
     setIsSuccess(true);
+    setSession(email, "Alex Morgan");
+    setTimeout(() => setLocation("/super-admin"), 1600);
   };
 
   return (
