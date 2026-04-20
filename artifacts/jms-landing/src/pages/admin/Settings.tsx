@@ -79,9 +79,8 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                 whileTap={{ scale: 0.98 }}
                 className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${active ? "text-white" : "text-gray-600 hover:text-gray-900"}`}
               >
-                {active && <motion.div layoutId="settingsTab" className="absolute inset-0 bg-primary rounded-xl -z-10" transition={{ type: "spring", stiffness: 300, damping: 25 }} />}
-                <Icon size={16} />
-                {t.label}
+                {active && <motion.div layoutId="settingsTab" className="absolute inset-0 bg-primary rounded-xl pointer-events-none" transition={{ type: "spring", stiffness: 300, damping: 25 }} />}
+                <span className="relative flex items-center gap-3"><Icon size={16} />{t.label}</span>
               </motion.button>
             );
           })}

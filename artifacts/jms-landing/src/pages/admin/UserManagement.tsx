@@ -92,9 +92,9 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                   className={`relative px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${filter === r ? "text-white" : "text-gray-600 hover:text-gray-900"}`}
                 >
                   {filter === r && (
-                    <motion.div layoutId="filterBg" className="absolute inset-0 bg-primary rounded-lg -z-10" transition={{ type: "spring", stiffness: 300, damping: 25 }} />
+                    <motion.div layoutId="filterBg" className="absolute inset-0 bg-primary rounded-lg pointer-events-none" transition={{ type: "spring", stiffness: 300, damping: 25 }} />
                   )}
-                  {r}
+                  <span className="relative">{r}</span>
                 </motion.button>
               ))}
             </div>

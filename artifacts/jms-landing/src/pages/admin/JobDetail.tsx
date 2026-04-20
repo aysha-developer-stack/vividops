@@ -299,8 +299,8 @@ export default function JobDetail({ role = "user" }: Props) {
               onClick={() => setTab(t.id)}
               className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${active ? "text-white" : "text-gray-600 hover:text-gray-900"}`}
             >
-              {active && <motion.div layoutId="jobTab" className="absolute inset-0 bg-primary rounded-lg -z-10" transition={{ type: "spring", stiffness: 300, damping: 25 }} />}
-              <Icon size={14} /> {t.label}
+              {active && <motion.div layoutId="jobTab" className="absolute inset-0 bg-primary rounded-lg pointer-events-none" transition={{ type: "spring", stiffness: 300, damping: 25 }} />}
+              <span className="relative flex items-center gap-2"><Icon size={14} /> {t.label}</span>
             </motion.button>
           );
         })}

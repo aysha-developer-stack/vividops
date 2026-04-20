@@ -88,8 +88,8 @@ export default function MyJobs() {
               onClick={() => setFilter(f)}
               className={`relative px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors ${filter === f ? "text-white" : "text-gray-600 hover:text-gray-900"}`}
             >
-              {filter === f && <motion.div layoutId="myJobsFilter" className="absolute inset-0 bg-primary rounded-lg -z-10" transition={{ type: "spring", stiffness: 350, damping: 28 }} />}
-              {f}
+              {filter === f && <motion.div layoutId="myJobsFilter" className="absolute inset-0 bg-primary rounded-lg pointer-events-none" transition={{ type: "spring", stiffness: 350, damping: 28 }} />}
+              <span className="relative">{f}</span>
             </motion.button>
           ))}
         </div>

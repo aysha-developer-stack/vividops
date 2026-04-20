@@ -60,8 +60,8 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
           {(["7d", "30d", "90d", "All"] as const).map((p) => (
             <motion.button key={p} whileTap={{ scale: 0.96 }} onClick={() => setPeriod(p)} className={`relative px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${period === p ? "text-white" : "text-gray-600 hover:text-gray-900"}`}>
-              {period === p && <motion.div layoutId="periodBg" className="absolute inset-0 bg-primary rounded-lg -z-10" transition={{ type: "spring", stiffness: 300, damping: 25 }} />}
-              {p === "All" ? "All time" : `Last ${p}`}
+              {period === p && <motion.div layoutId="periodBg" className="absolute inset-0 bg-primary rounded-lg pointer-events-none" transition={{ type: "spring", stiffness: 300, damping: 25 }} />}
+              <span className="relative">{p === "All" ? "All time" : `Last ${p}`}</span>
             </motion.button>
           ))}
         </div>

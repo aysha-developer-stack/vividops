@@ -167,7 +167,7 @@ export default function DashboardLayout({
                   {isActive && (
                     <motion.div
                       layoutId="activeNavBg"
-                      className="absolute inset-0 bg-primary rounded-xl -z-10"
+                      className="absolute inset-0 bg-primary rounded-xl pointer-events-none"
                       transition={{ type: "spring", stiffness: 300, damping: 25 }}
                     />
                   )}

@@ -317,13 +317,15 @@ export default function Login() {
                             {active && (
                               <motion.div
                                 layoutId="loginRole"
-                                className="absolute inset-0 bg-primary rounded-lg -z-10"
+                                className="absolute inset-0 bg-primary rounded-lg pointer-events-none"
                                 transition={{ type: "spring", stiffness: 350, damping: 28 }}
                               />
                             )}
-                            <RIcon size={14} />
-                            <span className="leading-none whitespace-nowrap">
-                              {r === "super-admin" ? "Super" : r === "admin" ? "Admin" : r === "supervisor" ? "Super." : "User"}
+                            <span className="relative flex flex-col items-center gap-1">
+                              <RIcon size={14} />
+                              <span className="leading-none whitespace-nowrap">
+                                {r === "super-admin" ? "Super" : r === "admin" ? "Admin" : r === "supervisor" ? "Super." : "User"}
+                              </span>
                             </span>
                           </motion.button>
                         );

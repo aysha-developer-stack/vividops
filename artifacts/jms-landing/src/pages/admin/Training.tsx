@@ -85,8 +85,8 @@ export default function Training({ role = "super-admin" as Role }: { role?: Role
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto">
           {CATEGORIES.map((c) => (
             <motion.button key={c} whileTap={{ scale: 0.96 }} onClick={() => setFilter(c)} className={`relative px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${filter === c ? "text-white" : "text-gray-600 hover:text-gray-900"}`}>
-              {filter === c && <motion.div layoutId="trainingFilter" className="absolute inset-0 bg-primary rounded-lg -z-10" transition={{ type: "spring", stiffness: 300, damping: 25 }} />}
-              {c}
+              {filter === c && <motion.div layoutId="trainingFilter" className="absolute inset-0 bg-primary rounded-lg pointer-events-none" transition={{ type: "spring", stiffness: 300, damping: 25 }} />}
+              <span className="relative">{c}</span>
             </motion.button>
           ))}
         </div>
