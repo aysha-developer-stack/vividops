@@ -9,6 +9,9 @@ import UserManagement from "@/pages/admin/UserManagement";
 import JobManagement from "@/pages/admin/JobManagement";
 import Reports from "@/pages/admin/Reports";
 import Communication from "@/pages/admin/Communication";
+import Timer from "@/pages/admin/Timer";
+import Training from "@/pages/admin/Training";
+import Settings from "@/pages/admin/Settings";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -23,6 +26,9 @@ function Router() {
       <Route path="/super-admin/jobs" component={JobManagement} />
       <Route path="/super-admin/reports" component={Reports} />
       <Route path="/super-admin/communication" component={Communication} />
+      <Route path="/super-admin/timer" component={Timer} />
+      <Route path="/super-admin/training" component={Training} />
+      <Route path="/super-admin/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>
   );
