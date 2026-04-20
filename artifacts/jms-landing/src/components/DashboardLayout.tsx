@@ -171,7 +171,7 @@ export default function DashboardLayout({
                       transition={{ type: "spring", stiffness: 300, damping: 25 }}
                     />
                   )}
-                  <Icon size={18} className="shrink-0" />
+                  <Icon size={18} className="shrink-0 relative" />
                   <AnimatePresence>
                     {!collapsed && (
                       <motion.span
@@ -179,7 +179,7 @@ export default function DashboardLayout({
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -8 }}
                         transition={{ duration: 0.15 }}
-                        className="text-sm font-medium overflow-hidden whitespace-nowrap"
+                        className="relative text-sm font-medium overflow-hidden whitespace-nowrap"
                       >
                         {item.label}
                       </motion.span>
