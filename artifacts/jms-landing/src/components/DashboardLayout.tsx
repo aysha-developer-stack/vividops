@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Settings, Bell, ChevronLeft, LogOut, Search, Menu,
+  Settings, Bell, ChevronLeft, LogOut, Search, Menu, Check,
   Briefcase, Edit3, AlertTriangle, Clock, RefreshCw,
 } from "lucide-react";
 import logoImg from "@assets/www.vividengineering.com.au__1776407417497.png";
@@ -99,11 +99,28 @@ export default function DashboardLayout({
     setLocation("/");
   };
 
-  const notifications = NOTIFICATIONS_BY_ROLE[role];
+  const [notifications, setNotifications] = useState<Notif[]>(NOTIFICATIONS_BY_ROLE[role]);
+  useEffect(() => { setNotifications(NOTIFICATIONS_BY_ROLE[role]); }, [role]);
   const unreadCount = notifications.filter((n) => n.unread).length;
+  const markAllRead = () => setNotifications((ns) => ns.map((n) => ({ ...n, unread: false })));
+  const markOneRead = (id: number) => setNotifications((ns) => ns.map((n) => n.id === id ? { ...n, unread: false } : n));
+  const [showAllToast, setShowAllToast] = useState(false);
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
+      <AnimatePresence>
+        {showAllToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-gray-900 text-white text-sm px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2"
+          >
+            <Check size={16} className="text-green-400" />
+            All notifications marked as read
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Mobile overlay */}
       <AnimatePresence>
         {mobileOpen && (
@@ -278,7 +295,14 @@ export default function DashboardLayout({
                   >
                     <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
                       <h3 className="font-semibold text-gray-900">Notifications</h3>
-                      <span className="text-xs text-primary font-medium cursor-pointer hover:underline">Mark all read</span>
+                      <button
+                        type="button"
+                        onClick={markAllRead}
+                        disabled={unreadCount === 0}
+                        className="text-xs text-primary font-medium hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+                      >
+                        Mark all read
+                      </button>
                     </div>
                     <div className="max-h-96 overflow-y-auto">
                       {notifications.map((n, i) => {
@@ -291,6 +315,7 @@ export default function DashboardLayout({
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: i * 0.04 }}
                             whileHover={{ x: 3 }}
+                            onClick={() => markOneRead(n.id)}
                             className={`px-5 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer flex gap-3 relative ${n.unread ? "bg-primary/[0.02]" : ""}`}
                           >
                             {n.unread && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
@@ -312,9 +337,18 @@ export default function DashboardLayout({
                         <div className="px-5 py-12 text-center text-xs text-gray-400">You're all caught up 🎉</div>
                       )}
                     </div>
-                    <div className="px-5 py-3 text-center text-xs text-primary font-medium hover:bg-gray-50 cursor-pointer">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        markAllRead();
+                        setNotifOpen(false);
+                        setShowAllToast(true);
+                        window.setTimeout(() => setShowAllToast(false), 2400);
+                      }}
+                      className="block w-full px-5 py-3 text-center text-xs text-primary font-medium hover:bg-gray-50"
+                    >
                       View all notifications
-                    </div>
+                    </button>
                   </motion.div>
                 )}
               </AnimatePresence>
