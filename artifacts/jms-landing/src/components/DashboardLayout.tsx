@@ -3,17 +3,60 @@ import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Settings, Bell, ChevronLeft, LogOut, Search, Menu,
+  Briefcase, Edit3, AlertTriangle, Clock, RefreshCw,
 } from "lucide-react";
 import logoImg from "@assets/www.vividengineering.com.au__1776407417497.png";
 import { getName, getEmail, clearSession } from "@/lib/auth";
 import { ROLES, Role } from "@/lib/roles";
 
-const NOTIFICATIONS = [
-  { id: 1, title: "New job assigned", desc: "Server Maintenance #482", time: "2m ago", unread: true },
-  { id: 2, title: "User registered", desc: "Sarah Johnson joined as Supervisor", time: "1h ago", unread: true },
-  { id: 3, title: "Overdue job", desc: "Site Inspection - North is overdue", time: "3h ago", unread: true },
-  { id: 4, title: "Report ready", desc: "Q1 performance report generated", time: "Yesterday", unread: false },
-];
+type NotifType = "assigned" | "updated" | "overdue" | "timer" | "rework";
+
+interface Notif {
+  id: number;
+  type: NotifType;
+  title: string;
+  desc: string;
+  time: string;
+  unread: boolean;
+}
+
+const NOTIF_STYLE: Record<NotifType, { icon: any; color: string }> = {
+  assigned: { icon: Briefcase, color: "bg-primary/10 text-primary" },
+  updated: { icon: Edit3, color: "bg-purple-50 text-purple-600" },
+  overdue: { icon: AlertTriangle, color: "bg-red-50 text-red-600" },
+  timer: { icon: Clock, color: "bg-amber-50 text-amber-600" },
+  rework: { icon: RefreshCw, color: "bg-orange-50 text-orange-600" },
+};
+
+const NOTIFICATIONS_BY_ROLE: Record<Role, Notif[]> = {
+  "super-admin": [
+    { id: 1, type: "overdue", title: "3 jobs overdue across teams", desc: "JOB-2120, JOB-2118, JOB-2099 need attention", time: "5m ago", unread: true },
+    { id: 2, type: "rework", title: "Rework requested", desc: "JOB-2147 flagged by Lisa Martinez", time: "1h ago", unread: true },
+    { id: 3, type: "updated", title: "Settings changed", desc: "Jamie Rivera updated billing preferences", time: "2h ago", unread: true },
+    { id: 4, type: "assigned", title: "New job created", desc: "JOB-2155 assigned to Riley Adams", time: "3h ago", unread: false },
+    { id: 5, type: "timer", title: "Timer auto-stopped", desc: "Olivia Carter — JOB-2150 (no activity)", time: "Yesterday", unread: false },
+  ],
+  admin: [
+    { id: 1, type: "overdue", title: "Overdue alert", desc: "Quarterly Audit (JOB-2118) is 3 days late", time: "10m ago", unread: true },
+    { id: 2, type: "assigned", title: "New job created", desc: "Sam Carter assigned JOB-2155 to Jordan Reed", time: "1h ago", unread: true },
+    { id: 3, type: "rework", title: "Rework on JOB-2147", desc: "Reason: equipment misconfigured during inspection", time: "2h ago", unread: true },
+    { id: 4, type: "updated", title: "Job priority changed", desc: "JOB-2148 raised to High priority", time: "Yesterday", unread: false },
+  ],
+  supervisor: [
+    { id: 1, type: "rework", title: "Rework requested by Jordan Reed", desc: "JOB-2148 — needs inspection redo on rack B", time: "3m ago", unread: true },
+    { id: 2, type: "overdue", title: "Your team has 2 overdue jobs", desc: "JOB-2120 (Riley) and JOB-2118 (Olivia)", time: "1h ago", unread: true },
+    { id: 3, type: "timer", title: "Long timer session", desc: "Lisa Martinez has been working 5+ hours on JOB-2147", time: "2h ago", unread: true },
+    { id: 4, type: "assigned", title: "New job assigned to your team", desc: "JOB-2155 — Emergency Repair from Admin", time: "Yesterday", unread: false },
+    { id: 5, type: "updated", title: "Job updated", desc: "Client added new files to JOB-2150", time: "Yesterday", unread: false },
+  ],
+  user: [
+    { id: 1, type: "assigned", title: "New job assigned", desc: "JOB-2151 — Equipment Calibration by Sam Carter", time: "5m ago", unread: true },
+    { id: 2, type: "timer", title: "Still working?", desc: "Your timer on JOB-2148 has been running 1 hour", time: "12m ago", unread: true },
+    { id: 3, type: "updated", title: "Job details updated", desc: "Sam added new checklist items to JOB-2150", time: "1h ago", unread: true },
+    { id: 4, type: "overdue", title: "Job due today", desc: "JOB-2148 deadline is at 5:00 PM", time: "2h ago", unread: false },
+    { id: 5, type: "rework", title: "Rework cleared", desc: "Sam approved your fix on JOB-2147", time: "Yesterday", unread: false },
+  ],
+};
 
 export default function DashboardLayout({
   title,
@@ -56,7 +99,8 @@ export default function DashboardLayout({
     setLocation("/");
   };
 
-  const unreadCount = NOTIFICATIONS.filter((n) => n.unread).length;
+  const notifications = NOTIFICATIONS_BY_ROLE[role];
+  const unreadCount = notifications.filter((n) => n.unread).length;
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -237,22 +281,36 @@ export default function DashboardLayout({
                       <span className="text-xs text-primary font-medium cursor-pointer hover:underline">Mark all read</span>
                     </div>
                     <div className="max-h-96 overflow-y-auto">
-                      {NOTIFICATIONS.map((n, i) => (
-                        <motion.div
-                          key={n.id}
-                          initial={{ opacity: 0, x: 10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.04 }}
-                          className="px-5 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer flex gap-3"
-                        >
-                          {n.unread && <div className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0" />}
-                          <div className={n.unread ? "" : "ml-5"}>
-                            <div className="text-sm font-medium text-gray-900">{n.title}</div>
-                            <div className="text-xs text-gray-500 mt-0.5">{n.desc}</div>
-                            <div className="text-[10px] text-gray-400 mt-1">{n.time}</div>
-                          </div>
-                        </motion.div>
-                      ))}
+                      {notifications.map((n, i) => {
+                        const style = NOTIF_STYLE[n.type];
+                        const NIcon = style.icon;
+                        return (
+                          <motion.div
+                            key={n.id}
+                            initial={{ opacity: 0, x: 10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.04 }}
+                            whileHover={{ x: 3 }}
+                            className={`px-5 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer flex gap-3 relative ${n.unread ? "bg-primary/[0.02]" : ""}`}
+                          >
+                            {n.unread && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
+                            <div className={`w-9 h-9 rounded-xl ${style.color} flex items-center justify-center shrink-0`}>
+                              <NIcon size={15} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-sm font-semibold text-gray-900 truncate">{n.title}</span>
+                                {n.unread && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+                              </div>
+                              <div className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.desc}</div>
+                              <div className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider font-medium">{n.type} · {n.time}</div>
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+                      {notifications.length === 0 && (
+                        <div className="px-5 py-12 text-center text-xs text-gray-400">You're all caught up 🎉</div>
+                      )}
                     </div>
                     <div className="px-5 py-3 text-center text-xs text-primary font-medium hover:bg-gray-50 cursor-pointer">
                       View all notifications

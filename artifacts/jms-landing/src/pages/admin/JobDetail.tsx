@@ -96,14 +96,54 @@ export default function JobDetail({ role = "user" }: Props) {
   const [reworkOpen, setReworkOpen] = useState(false);
   const [reworkReason, setReworkReason] = useState("");
   const [showActivityPing, setShowActivityPing] = useState(false);
+  const [autoStopCountdown, setAutoStopCountdown] = useState(30);
+  const [savedLogs, setSavedLogs] = useState(INITIAL_TIMER_LOGS);
   const intervalRef = useRef<number | null>(null);
+  const pingTimerRef = useRef<number | null>(null);
+  const autoStopRef = useRef<number | null>(null);
+  // Demo timing: 30s instead of 1hr; auto-stop after 30s of no response (real: 5 min)
+  const PING_INTERVAL_S = 30;
+  const AUTO_STOP_S = 30;
 
-  // Hourly check-in popup (simplified - shows after 8 seconds for demo)
+  // Trigger hourly check-in: every PING_INTERVAL_S of running time, show popup
   useEffect(() => {
-    if (!running) return;
-    const t = setTimeout(() => setShowActivityPing(true), 8000);
-    return () => clearTimeout(t);
-  }, [running, seconds === 0]);
+    if (!running) {
+      if (pingTimerRef.current) clearTimeout(pingTimerRef.current);
+      return;
+    }
+    pingTimerRef.current = window.setTimeout(() => {
+      setShowActivityPing(true);
+      setAutoStopCountdown(AUTO_STOP_S);
+    }, PING_INTERVAL_S * 1000);
+    return () => { if (pingTimerRef.current) clearTimeout(pingTimerRef.current); };
+  }, [running, Math.floor(seconds / PING_INTERVAL_S)]);
+
+  // Auto-stop countdown when popup is open
+  useEffect(() => {
+    if (!showActivityPing) {
+      if (autoStopRef.current) clearInterval(autoStopRef.current);
+      return;
+    }
+    autoStopRef.current = window.setInterval(() => {
+      setAutoStopCountdown((c) => {
+        if (c <= 1) {
+          // Auto-stop and save log
+          setRunning(false);
+          setShowActivityPing(false);
+          setSavedLogs((logs) => [{
+            id: Date.now(),
+            user: "Jordan Reed",
+            duration: formatTime(seconds),
+            task: "Auto-stopped (no response)",
+            date: "Just now",
+          }, ...logs]);
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => { if (autoStopRef.current) clearInterval(autoStopRef.current); };
+  }, [showActivityPing, seconds]);
 
   useEffect(() => {
     if (running) intervalRef.current = window.setInterval(() => setSeconds((s) => s + 1), 1000);
@@ -438,7 +478,7 @@ export default function JobDetail({ role = "user" }: Props) {
                 <div className="text-[10px] text-gray-500 uppercase tracking-wide">Total</div>
               </div>
             </div>
-            {INITIAL_TIMER_LOGS.map((l, i) => (
+            {savedLogs.map((l, i) => (
               <motion.div
                 key={l.id}
                 initial={{ opacity: 0, x: -10 }}
@@ -477,8 +517,20 @@ export default function JobDetail({ role = "user" }: Props) {
                 <Clock size={18} />
               </div>
               <div className="flex-1">
-                <div className="font-bold text-gray-900 text-sm">Still working?</div>
-                <p className="text-xs text-gray-500 mt-1">We'll auto-pause your timer in 5 min if there's no activity.</p>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="font-bold text-gray-900 text-sm">Still working?</div>
+                  <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Auto-stop in {autoStopCountdown}s</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">We'll auto-stop your timer and save the log if you don't respond.</p>
+                <div className="h-1 bg-gray-100 rounded-full overflow-hidden mt-2">
+                  <motion.div
+                    key={autoStopCountdown}
+                    className="h-full bg-red-500"
+                    initial={{ width: "100%" }}
+                    animate={{ width: `${(autoStopCountdown / AUTO_STOP_S) * 100}%` }}
+                    transition={{ duration: 1, ease: "linear" }}
+                  />
+                </div>
                 <div className="flex gap-2 mt-3">
                   <button
                     onClick={() => setShowActivityPing(false)}
@@ -487,10 +539,14 @@ export default function JobDetail({ role = "user" }: Props) {
                     Yes, continue
                   </button>
                   <button
-                    onClick={() => { setShowActivityPing(false); setRunning(false); }}
+                    onClick={() => {
+                      setShowActivityPing(false);
+                      setRunning(false);
+                      setSavedLogs((logs) => [{ id: Date.now(), user: "Jordan Reed", duration: formatTime(seconds), task: "Manually stopped", date: "Just now" }, ...logs]);
+                    }}
                     className="flex-1 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-bold hover:bg-gray-200"
                   >
-                    Stop
+                    Stop & save
                   </button>
                 </div>
               </div>
