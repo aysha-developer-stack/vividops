@@ -689,48 +689,164 @@ export default function JobDetail({ role = "user" }: Props) {
           );
         })()}
 
-        {tab === "communication" && (
-          <motion.div key="cm" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="bg-white rounded-2xl border border-gray-100 flex flex-col overflow-hidden" style={{ height: 540 }}>
-            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-sm font-semibold text-gray-900">Job team chat</span>
-                <span className="text-xs text-gray-500">· {WORKERS.length} members · Synced with Zoho Cliq</span>
+        {tab === "communication" && (() => {
+          const channelName = `job-${JOB.number.toLowerCase().replace(/[^a-z0-9]/g, "-")}-${JOB.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+          const cliqUrl = `https://cliq.zoho.com/company/vivid-engineering/channels/${channelName}`;
+          const openCliq = () => window.open(cliqUrl, "_blank", "noopener,noreferrer");
+          return (
+          <motion.div key="cm" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-5">
+            {/* Channel hero card */}
+            <div className="bg-gradient-to-br from-primary via-sky-700 to-indigo-900 rounded-2xl overflow-hidden text-white shadow-xl">
+              <div className="p-6 flex flex-col md:flex-row md:items-center gap-5">
+                <div className="w-16 h-16 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center shrink-0 border border-white/20">
+                  <MessageCircle size={28} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-400/25 text-emerald-50 border border-emerald-300/40 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" /> Channel active
+                    </span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/15 text-white/90">Zoho Cliq</span>
+                  </div>
+                  <h3 className="text-xl font-bold flex items-center gap-2 truncate">
+                    <span className="opacity-70">#</span>{channelName}
+                  </h3>
+                  <p className="text-xs text-white/70 mt-1">Dedicated job channel · {WORKERS.length + 1} members · Created when job was assigned</p>
+                </div>
+                <div className="flex flex-col gap-2 shrink-0">
+                  <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={openCliq} className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white text-primary rounded-xl font-bold text-sm shadow-lg">
+                    <MessageCircle size={14} /> Open in Zoho Cliq
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7M7 7h10v10"/></svg>
+                  </motion.button>
+                  <button onClick={() => navigator.clipboard?.writeText(cliqUrl)} className="text-[11px] text-white/80 hover:text-white text-center underline-offset-2 hover:underline">
+                    Copy channel link
+                  </button>
+                </div>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {messages.map((m, i) => (
-                <motion.div
-                  key={m.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.04 }}
-                  className={`flex gap-3 ${m.isMe ? "flex-row-reverse" : ""}`}
-                >
-                  <div className={`w-8 h-8 rounded-full text-white text-xs font-bold flex items-center justify-center shrink-0 ${m.isMe ? "bg-gradient-to-br from-primary to-sky-700" : "bg-gradient-to-br from-gray-700 to-gray-900"}`}>{m.avatar}</div>
-                  <div className={`max-w-[75%] ${m.isMe ? "items-end" : ""} flex flex-col`}>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-bold text-gray-900">{m.user}</span>
-                      <span className="text-[10px] text-gray-400">{m.time}</span>
+
+            <div className="grid lg:grid-cols-3 gap-5">
+              {/* LEFT — Channel info / how it works */}
+              <div className="lg:col-span-2 space-y-5">
+                {/* Members */}
+                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                  <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-gray-900 flex items-center gap-2"><Users size={16} className="text-primary" /> Channel Members</h3>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Auto-added when assigned to the job. They see all messages in Cliq.</p>
                     </div>
-                    <div className={`px-3.5 py-2 rounded-2xl text-sm ${m.isMe ? "bg-primary text-white rounded-br-sm" : "bg-gray-100 text-gray-900 rounded-bl-sm"}`}>{m.text}</div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-primary/10 text-primary">{WORKERS.length + 1}</span>
                   </div>
-                </motion.div>
-              ))}
+                  <div className="divide-y divide-gray-50">
+                    {[{ name: "Sam Carter", avatar: "SC", role: "Supervisor", status: "online" as const, hours: 0 }, ...WORKERS].map((w, i) => (
+                      <motion.div key={w.name} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} className="flex items-center gap-3 px-5 py-3">
+                        <div className="relative">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-xs font-bold flex items-center justify-center">{w.avatar}</div>
+                          <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${w.status === "online" ? "bg-emerald-500" : "bg-amber-400"}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold text-gray-900 truncate">{w.name}</div>
+                          <div className="text-[11px] text-gray-500">{w.role} · {w.status === "online" ? "Active in Cliq" : "Away"}</div>
+                        </div>
+                        {w.role === "Supervisor" && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Owner</span>}
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Recent messages preview (read-only mirror) */}
+                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                  <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-gray-900 flex items-center gap-2"><MessageCircle size={16} className="text-primary" /> Recent Activity</h3>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Read-only preview · Reply inside Zoho Cliq</p>
+                    </div>
+                    <span className="text-[10px] font-medium text-gray-500 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
+                    </span>
+                  </div>
+                  <div className="p-4 space-y-3 max-h-[340px] overflow-y-auto bg-gray-50/40">
+                    {messages.slice(-6).map((m, i) => (
+                      <motion.div key={m.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="flex gap-3 bg-white px-3 py-2.5 rounded-xl border border-gray-100">
+                        <div className={`w-8 h-8 rounded-full text-white text-[11px] font-bold flex items-center justify-center shrink-0 ${m.isMe ? "bg-gradient-to-br from-primary to-sky-700" : "bg-gradient-to-br from-gray-700 to-gray-900"}`}>{m.avatar}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-xs font-bold text-gray-900">{m.user}</span>
+                            <span className="text-[10px] text-gray-400">{m.time}</span>
+                          </div>
+                          <div className="text-sm text-gray-700 break-words">{m.text}</div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                  <div className="p-4 border-t border-gray-100 bg-blue-50/40 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-[11px] text-gray-600">
+                      <Lock size={11} className="text-gray-400" />
+                      <span>Replying happens inside Zoho Cliq — keeps message history, search and notifications in one place.</span>
+                    </div>
+                    <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={openCliq} className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white rounded-lg text-[11px] font-bold shadow-md shadow-primary/30">
+                      <Send size={11} /> Reply in Cliq
+                    </motion.button>
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT — How it works + actions */}
+              <div className="space-y-5">
+                <div className="bg-white rounded-2xl border border-gray-100 p-5">
+                  <h3 className="font-bold text-gray-900 text-sm mb-3 flex items-center gap-2"><AlertTriangle size={14} className="text-primary" /> How job channels work</h3>
+                  <ol className="space-y-3">
+                    {[
+                      "When a job is created, JobFlow auto-creates a dedicated Cliq channel.",
+                      "All assigned workers + the supervisor are added as members automatically.",
+                      "Conversation, files and @mentions live inside Zoho Cliq.",
+                      "When the job is completed, the channel is archived (kept for audit).",
+                    ].map((step, i) => (
+                      <li key={i} className="flex gap-3 text-xs text-gray-700">
+                        <span className="w-5 h-5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                        <span className="leading-relaxed">{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-gray-100 p-5 space-y-2">
+                  <h3 className="font-bold text-gray-900 text-sm mb-2">Quick actions</h3>
+                  <button onClick={openCliq} className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 hover:border-primary hover:bg-primary/5 text-xs font-semibold text-gray-700 hover:text-primary transition-colors group">
+                    <span className="flex items-center gap-2"><MessageCircle size={13} /> Open channel</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-50 group-hover:opacity-100"><path d="M7 17L17 7M7 7h10v10"/></svg>
+                  </button>
+                  <button onClick={openCliq} className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 hover:border-primary hover:bg-primary/5 text-xs font-semibold text-gray-700 hover:text-primary transition-colors group">
+                    <span className="flex items-center gap-2"><Users size={13} /> Manage members</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="opacity-50 group-hover:opacity-100"><path d="M7 17L17 7M7 7h10v10"/></svg>
+                  </button>
+                  <button onClick={() => navigator.clipboard?.writeText(cliqUrl)} className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-gray-200 hover:border-primary hover:bg-primary/5 text-xs font-semibold text-gray-700 hover:text-primary transition-colors">
+                    <span className="flex items-center gap-2"><FileText size={13} /> Copy invite link</span>
+                  </button>
+                </div>
+
+                {/* Quick-send fallback inline (optional) */}
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-200 p-4">
+                  <h4 className="text-xs font-bold text-amber-900 mb-1">Quick message</h4>
+                  <p className="text-[11px] text-amber-800/80 mb-3">Send a one-off note to the channel without leaving JobFlow.</p>
+                  <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="space-y-2">
+                    <textarea
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      placeholder="Type a quick update..."
+                      rows={2}
+                      className="w-full bg-white rounded-xl px-3 py-2 text-xs border border-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300 resize-none"
+                    />
+                    <motion.button type="submit" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600">
+                      <Send size={11} /> Post to channel
+                    </motion.button>
+                  </form>
+                </div>
+              </div>
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="p-4 border-t border-gray-100 flex items-center gap-2">
-              <input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="Type a message…"
-                className="flex-1 bg-gray-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:bg-white transition-all"
-              />
-              <motion.button type="submit" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.92 }} className="p-2.5 bg-primary text-white rounded-xl hover:bg-primary/90 shadow-md shadow-primary/30">
-                <Send size={16} />
-              </motion.button>
-            </form>
           </motion.div>
-        )}
+          );
+        })()}
 
         {tab === "logs" && (
           <motion.div key="lg" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
