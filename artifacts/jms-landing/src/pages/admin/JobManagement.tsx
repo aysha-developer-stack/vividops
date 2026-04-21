@@ -49,7 +49,7 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
   const [filter, setFilter] = useState<"All" | Status>("All");
   const [openId, setOpenId] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [form, setForm] = useState({ title: "", client: "", assignee: "Sarah Johnson", priority: "Medium" as Priority, due: "" });
+  const [form, setForm] = useState({ title: "", client: "", address: "", description: "", assignee: "Sarah Johnson", priority: "Medium" as Priority, due: "" });
 
   const filtered = jobs.filter((j) =>
     (filter === "All" || j.status === filter) &&
@@ -64,7 +64,7 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
       title: form.title, client: form.client, assignee: form.assignee,
       status: "Pending", priority: form.priority, due: form.due || "TBD", progress: 0,
     }, ...jobs]);
-    setForm({ title: "", client: "", assignee: "Sarah Johnson", priority: "Medium", due: "" });
+    setForm({ title: "", client: "", address: "", description: "", assignee: "Sarah Johnson", priority: "Medium", due: "" });
     setModalOpen(false);
   };
 
@@ -232,6 +232,14 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                   <label className="block text-xs font-semibold text-gray-700 mb-1.5">Client</label>
                   <input value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} placeholder="e.g. TechCorp Ltd" className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Address</label>
+                  <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="e.g. 120 Park Avenue, Sydney NSW 2000" className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Description</label>
+                  <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief job scope..." rows={2} className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assignee</label>
@@ -240,7 +248,7 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Due Date</label>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Estimated Completion</label>
                     <input type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} className="w-full px-3 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                   </div>
                 </div>

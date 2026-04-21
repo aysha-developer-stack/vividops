@@ -18,6 +18,7 @@ const JOB = {
   address: "120 Park Avenue, Sydney NSW 2000",
   startDate: "Apr 18, 2026",
   dueDate: "Apr 20, 2026, 5:00 PM",
+  completedDate: "—",
   status: "In Progress",
   priority: "High",
   description: "Quarterly server maintenance including firmware updates, hardware inspection, and performance benchmarking across all production server racks.",
@@ -213,7 +214,7 @@ export default function JobDetail({ role = "user" }: Props) {
           </div>
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t border-gray-100">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 pt-4 border-t border-gray-100">
           <div className="flex items-start gap-2.5"><MapPin size={14} className="text-gray-400 mt-0.5" />
             <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Location</div><div className="text-sm text-gray-900 font-medium">{JOB.address}</div></div>
           </div>
@@ -221,7 +222,10 @@ export default function JobDetail({ role = "user" }: Props) {
             <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Start</div><div className="text-sm text-gray-900 font-medium">{JOB.startDate}</div></div>
           </div>
           <div className="flex items-start gap-2.5"><Clock size={14} className="text-amber-500 mt-0.5" />
-            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Due</div><div className="text-sm text-gray-900 font-medium">{JOB.dueDate}</div></div>
+            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Est. Completion</div><div className="text-sm text-gray-900 font-medium">{JOB.dueDate}</div></div>
+          </div>
+          <div className="flex items-start gap-2.5"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5" />
+            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Completed</div><div className="text-sm text-gray-900 font-medium">{JOB.completedDate}</div></div>
           </div>
           <div className="flex items-start gap-2.5"><User size={14} className="text-gray-400 mt-0.5" />
             <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Lead</div><div className="text-sm text-gray-900 font-medium">Jordan Reed</div></div>
