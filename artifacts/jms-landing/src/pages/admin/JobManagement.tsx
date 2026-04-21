@@ -217,87 +217,99 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
         {modalOpen && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setModalOpen(false)} className="fixed inset-0 bg-black/50 z-40" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} transition={{ type: "spring", stiffness: 300, damping: 28 }} className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md bg-white rounded-2xl shadow-2xl">
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} transition={{ type: "spring", stiffness: 300, damping: 28 }} className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[95vw] max-w-4xl max-h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-primary/5 to-sky-50">
                 <div>
-                  <h3 className="font-bold text-gray-900">Create New Job</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">Assign a new job to a team member</p>
+                  <h3 className="font-bold text-gray-900 text-base">Create New Job</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Assign a new job to a team member and attach reference files</p>
                 </div>
                 <button onClick={() => setModalOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
               </div>
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Title</label>
-                  <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Server Maintenance" className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Client</label>
-                  <input value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} placeholder="e.g. TechCorp Ltd" className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Address</label>
-                  <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="e.g. 120 Park Avenue, Sydney NSW 2000" className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Description</label>
-                  <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief job scope..." rows={2} className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
+              <div className="px-6 py-5 grid md:grid-cols-2 gap-x-6 gap-y-4 flex-1 overflow-y-auto">
+                {/* LEFT COLUMN — Job details */}
+                <div className="space-y-4">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Job Details</div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assignee</label>
-                    <select value={form.assignee} onChange={(e) => setForm({ ...form, assignee: e.target.value })} className="w-full px-3 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors">
-                      {["Sarah Johnson", "Mike Chen", "Emma Wilson", "David Park", "Lisa Martinez"].map((n) => <option key={n}>{n}</option>)}
-                    </select>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Title</label>
+                    <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Server Maintenance" className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Client</label>
+                      <input value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} placeholder="e.g. TechCorp Ltd" className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assignee</label>
+                      <select value={form.assignee} onChange={(e) => setForm({ ...form, assignee: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors">
+                        {["Sarah Johnson", "Mike Chen", "Emma Wilson", "David Park", "Lisa Martinez"].map((n) => <option key={n}>{n}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Address</label>
+                    <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="e.g. 120 Park Avenue, Sydney NSW 2000" className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Description</label>
+                    <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief job scope..." rows={3} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Estimated Completion</label>
-                    <input type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} className="w-full px-3 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                    <input type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Priority</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["Low", "Medium", "High"] as Priority[]).map((p) => {
+                        const cfg = PRIORITY_CONFIG[p];
+                        const sel = form.priority === p;
+                        return (
+                          <motion.button key={p} whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }} onClick={() => setForm({ ...form, priority: p })} className={`p-2.5 rounded-xl border-2 flex items-center justify-center gap-1.5 transition-colors ${sel ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300"}`}>
+                            <div className={`w-2 h-2 rounded-full ${cfg.dot}`} />
+                            <span className={`text-xs font-semibold ${sel ? "text-primary" : "text-gray-700"}`}>{p}</span>
+                          </motion.button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5 flex items-center gap-2">
-                    Job Files (Input)
-                    <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">Optional</span>
-                  </label>
-                  <div className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-4 text-center hover-elevate active-elevate-2 cursor-pointer" onClick={() => {
+
+                {/* RIGHT COLUMN — Job Files */}
+                <div className="space-y-4 md:border-l md:border-gray-100 md:pl-6">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1 flex items-center gap-2">
+                    Job Files <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[9px]">Input</span>
+                  </div>
+                  <div className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center hover-elevate active-elevate-2 cursor-pointer transition-colors hover:bg-blue-50/40 hover:border-primary/40" onClick={() => {
                     const id = Date.now();
                     setJobFiles([...jobFiles, { name: `brief_${id}.pdf`, size: "1.0 MB" }]);
                   }}>
-                    <div className="flex items-center justify-center gap-2 text-xs font-semibold text-gray-600">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-                      Click to attach design brief, client docs, reference images
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-2">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
                     </div>
-                    <div className="text-[10px] text-gray-400 mt-1">Files visible to assigned user</div>
+                    <div className="text-xs font-semibold text-gray-700">Click to attach files</div>
+                    <div className="text-[10px] text-gray-500 mt-1">Design briefs · client docs · reference images</div>
+                    <div className="text-[10px] text-gray-400 mt-2">Files become visible to the assigned user</div>
                   </div>
-                  {jobFiles.length > 0 && (
-                    <div className="mt-2 space-y-1.5">
+                  {jobFiles.length > 0 ? (
+                    <div className="space-y-1.5 max-h-[280px] overflow-y-auto pr-1">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{jobFiles.length} file{jobFiles.length > 1 ? "s" : ""} attached</div>
                       {jobFiles.map((f, i) => (
-                        <div key={i} className="flex items-center gap-2 px-3 py-2 bg-blue-50/60 border border-blue-100 rounded-lg text-xs">
+                        <motion.div key={i} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-2 px-3 py-2 bg-blue-50/60 border border-blue-100 rounded-lg text-xs">
+                          <div className="w-7 h-7 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 font-bold text-[10px]">PDF</div>
                           <span className="font-semibold text-gray-700 truncate flex-1">{f.name}</span>
-                          <span className="text-gray-500">{f.size}</span>
-                          <button type="button" onClick={(e) => { e.stopPropagation(); setJobFiles(jobFiles.filter((_, x) => x !== i)); }} className="text-gray-400 hover:text-red-500 font-bold px-1">×</button>
-                        </div>
+                          <span className="text-gray-500 shrink-0">{f.size}</span>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); setJobFiles(jobFiles.filter((_, x) => x !== i)); }} className="text-gray-400 hover:text-red-500 font-bold px-1 shrink-0">×</button>
+                        </motion.div>
                       ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 text-[11px] text-gray-400 border border-dashed border-gray-200 rounded-xl bg-gray-50/40">
+                      No files attached yet — this is optional.
                     </div>
                   )}
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Priority</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(["Low", "Medium", "High"] as Priority[]).map((p) => {
-                      const cfg = PRIORITY_CONFIG[p];
-                      const sel = form.priority === p;
-                      return (
-                        <motion.button key={p} whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }} onClick={() => setForm({ ...form, priority: p })} className={`p-3 rounded-xl border-2 flex items-center justify-center gap-1.5 transition-colors ${sel ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300"}`}>
-                          <div className={`w-2 h-2 rounded-full ${cfg.dot}`} />
-                          <span className={`text-xs font-semibold ${sel ? "text-primary" : "text-gray-700"}`}>{p}</span>
-                        </motion.button>
-                      );
-                    })}
-                  </div>
-                </div>
               </div>
-              <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
+              <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/40">
                 <button onClick={() => setModalOpen(false)} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl">Cancel</button>
                 <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={create} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30">
                   <Check size={16} /> Create Job
