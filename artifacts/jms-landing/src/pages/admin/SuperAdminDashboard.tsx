@@ -146,9 +146,9 @@ export default function SuperAdminDashboard() {
               </div>
             </div>
           </div>
-          <div className="flex items-end justify-between gap-3 h-56">
+          <div className="flex items-stretch justify-between gap-3 h-56">
             {PERFORMANCE.map((d, i) => (
-              <div key={d.day} className="flex-1 flex flex-col items-center gap-2 group">
+              <div key={d.day} className="flex-1 flex flex-col items-center gap-2 group h-full">
                 <div className="w-full flex items-end justify-center gap-1 flex-1">
                   <motion.div
                     initial={{ height: 0 }}
