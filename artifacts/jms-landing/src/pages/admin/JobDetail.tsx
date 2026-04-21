@@ -391,39 +391,94 @@ export default function JobDetail({ role = "user" }: Props) {
               ))}
             </div>
 
-            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-              <div className="p-5 border-b border-gray-100">
-                <h3 className="font-bold text-gray-900">Files ({files.length})</h3>
-              </div>
-              <AnimatePresence>
-                {files.map((f, i) => (
-                  <motion.div
-                    key={f.id}
-                    layout
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    transition={{ delay: i * 0.04 }}
-                    whileHover={{ backgroundColor: "rgb(249,250,251)" }}
-                    className="flex items-center gap-4 px-5 py-3.5 border-b border-gray-50 last:border-0 group"
-                  >
-                    <div className={`w-10 h-10 rounded-xl ${FILE_ICON[f.type]} flex items-center justify-center shrink-0`}>
-                      <FileText size={18} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-gray-900 truncate">{f.name}</div>
-                      <div className="text-[11px] text-gray-500 mt-0.5">
-                        {f.size} · {f.uploadedBy} · {f.uploadedAt}
+            {(["working", "completed"] as const).map((bucket) => {
+              const list = files.filter((f) => f.tag === bucket);
+              const isCompleted = bucket === "completed";
+              return (
+                <div key={bucket} className="bg-white rounded-2xl border border-gray-100 overflow-hidden mb-5">
+                  <div className={`p-5 border-b border-gray-100 flex items-center justify-between ${isCompleted ? "bg-emerald-50/40" : "bg-blue-50/40"}`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isCompleted ? "bg-emerald-500 text-white" : "bg-primary text-white"}`}>
+                        {isCompleted ? <CheckCircle2 size={18} /> : <FileText size={18} />}
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-gray-900">{isCompleted ? "Completed Files" : "Working Files"} ({list.length})</h3>
+                        <p className="text-[11px] text-gray-500 mt-0.5">
+                          {isCompleted
+                            ? "Final deliverables submitted at job completion (reports, signed checklists, after-photos)"
+                            : "Reference material, in-progress notes and on-site photos uploaded during the job"}
+                        </p>
                       </div>
                     </div>
-                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${f.tag === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>{f.tag}</span>
-                    <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="p-2 rounded-lg text-gray-400 hover:text-primary hover:bg-primary/5 transition-colors opacity-0 group-hover:opacity-100">
-                      <Download size={14} />
+                    <motion.button
+                      whileHover={{ scale: 1.04 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => {
+                        const id = (files.at(-1)?.id ?? 0) + 1;
+                        setFiles([
+                          ...files,
+                          {
+                            id,
+                            name: isCompleted ? `completion_doc_${id}.pdf` : `working_note_${id}.docx`,
+                            size: isCompleted ? "412 KB" : "186 KB",
+                            type: isCompleted ? "pdf" : "doc",
+                            uploadedBy: "Jordan Reed",
+                            uploadedAt: "Just now",
+                            tag: bucket,
+                          },
+                        ]);
+                      }}
+                      className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold shadow-md ${isCompleted ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/30" : "bg-primary hover:bg-primary/90 text-white shadow-primary/30"}`}
+                    >
+                      <Upload size={12} /> Upload {isCompleted ? "Completed" : "Working"}
                     </motion.button>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
+                  </div>
+                  <AnimatePresence>
+                    {list.length === 0 && (
+                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="px-5 py-10 text-center text-xs text-gray-400">
+                        No {isCompleted ? "completion files yet — upload them when the job is done." : "working files uploaded yet."}
+                      </motion.div>
+                    )}
+                    {list.map((f, i) => (
+                      <motion.div
+                        key={f.id}
+                        layout
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        transition={{ delay: i * 0.04 }}
+                        whileHover={{ backgroundColor: "rgb(249,250,251)" }}
+                        className="flex items-center gap-4 px-5 py-3.5 border-b border-gray-50 last:border-0 group"
+                      >
+                        <div className={`w-10 h-10 rounded-xl ${FILE_ICON[f.type]} flex items-center justify-center shrink-0`}>
+                          <FileText size={18} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold text-gray-900 truncate">{f.name}</div>
+                          <div className="text-[11px] text-gray-500 mt-0.5">
+                            {f.size} · {f.uploadedBy} · {f.uploadedAt}
+                          </div>
+                        </div>
+                        {!isCompleted && role === "user" && (
+                          <motion.button
+                            whileHover={{ scale: 1.04 }}
+                            whileTap={{ scale: 0.96 }}
+                            onClick={() => setFiles(files.map((x) => (x.id === f.id ? { ...x, tag: "completed" } : x)))}
+                            className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors"
+                            title="Mark as completion file"
+                          >
+                            Mark complete
+                          </motion.button>
+                        )}
+                        <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="p-2 rounded-lg text-gray-400 hover:text-primary hover:bg-primary/5 transition-colors opacity-0 group-hover:opacity-100">
+                          <Download size={14} />
+                        </motion.button>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
           </motion.div>
         )}
 
