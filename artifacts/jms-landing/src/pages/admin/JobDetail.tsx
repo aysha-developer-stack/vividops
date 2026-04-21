@@ -180,23 +180,61 @@ export default function JobDetail({ role = "user" }: Props) {
     setMessages([...messages, { id: Date.now(), user: "You", avatar: "JR", text: draft, time: "now", isMe: true }]);
     setDraft("");
   };
+  const inputPickerRef = useRef<HTMLInputElement>(null);
+  const outputPickerRef = useRef<HTMLInputElement>(null);
+  const reuploadPickerRef = useRef<HTMLInputElement>(null);
+  const reuploadGroupRef = useRef<string | null>(null);
+  const formatSize = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  const detectType = (name: string): FileItem["type"] => {
+    const ext = name.split(".").pop()?.toLowerCase() ?? "";
+    if (["png", "jpg", "jpeg", "gif", "svg", "webp"].includes(ext)) return "image";
+    if (["doc", "docx", "xls", "xlsx", "csv", "txt"].includes(ext)) return "doc";
+    return "pdf";
+  };
   const handleUpload = (tag: FileItem["tag"]) => {
-    const id = Date.now();
+    if (tag === "input") inputPickerRef.current?.click();
+    else outputPickerRef.current?.click();
+  };
+  const onPickerChange = (tag: FileItem["tag"]) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (picked.length === 0) return;
     const me = role === "user" ? "Jordan Reed" : role === "supervisor" ? "Sam Carter" : "Admin";
-    if (tag === "output") {
-      const group = `deliverable_${id}`;
-      const lastVer = files.filter((f) => f.tag === "output" && f.group === group).reduce((m, f) => Math.max(m, f.version ?? 0), 0);
-      setFiles([...files, { id, name: `deliverable_${id}.pdf`, size: "1.0 MB", type: "pdf", uploadedBy: me, uploadedAt: "Just now", tag, version: lastVer + 1, group }]);
-    } else {
-      setFiles([{ id, name: `input_${id}.pdf`, size: "1.0 MB", type: "pdf", uploadedBy: me, uploadedAt: "Just now", tag }, ...files]);
-    }
+    const newItems: FileItem[] = picked.map((f) => {
+      const id = Date.now() + Math.random();
+      if (tag === "output") {
+        const group = `deliverable_${Math.floor(id)}`;
+        return { id, name: f.name, size: formatSize(f.size), type: detectType(f.name), uploadedBy: me, uploadedAt: "Just now", tag, version: 1, group };
+      }
+      return { id, name: f.name, size: formatSize(f.size), type: detectType(f.name), uploadedBy: me, uploadedAt: "Just now", tag };
+    });
+    setFiles(tag === "input" ? [...newItems, ...files] : [...files, ...newItems]);
   };
   const reuploadVersion = (group: string) => {
-    const id = Date.now();
+    reuploadGroupRef.current = group;
+    reuploadPickerRef.current?.click();
+  };
+  const onReuploadChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    const group = reuploadGroupRef.current;
+    if (picked.length === 0 || !group) return;
     const lastVer = files.filter((f) => f.group === group).reduce((m, f) => Math.max(m, f.version ?? 0), 0);
+    const me = role === "user" ? "Jordan Reed" : role === "supervisor" ? "Sam Carter" : "Admin";
     const sample = files.find((f) => f.group === group);
-    if (!sample) return;
-    setFiles([...files, { id, name: sample.name, size: "1.1 MB", type: sample.type, uploadedBy: "Jordan Reed", uploadedAt: "Just now", tag: "output", version: lastVer + 1, group }]);
+    const newVersions: FileItem[] = picked.map((f, idx) => ({
+      id: Date.now() + idx,
+      name: sample?.name ?? f.name,
+      size: formatSize(f.size),
+      type: sample?.type ?? detectType(f.name),
+      uploadedBy: me,
+      uploadedAt: "Just now",
+      tag: "output",
+      version: lastVer + 1 + idx,
+      group,
+    }));
+    setFiles([...files, ...newVersions]);
+    reuploadGroupRef.current = null;
   };
 
   return (
@@ -444,6 +482,11 @@ export default function JobDetail({ role = "user" }: Props) {
 
           return (
           <motion.div key="fl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}>
+            {/* Hidden file inputs — open native OS picker */}
+            <input ref={inputPickerRef} type="file" multiple className="hidden" onChange={onPickerChange("input")} accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.svg,.zip,.dwg,.dxf" />
+            <input ref={outputPickerRef} type="file" multiple className="hidden" onChange={onPickerChange("output")} accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.svg,.zip,.dwg,.dxf" />
+            <input ref={reuploadPickerRef} type="file" className="hidden" onChange={onReuploadChange} accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.svg,.zip,.dwg,.dxf" />
+
             {/* Sub-tab pills */}
             <div className="bg-white rounded-2xl border border-gray-100 p-2 mb-5 inline-flex gap-1 relative">
               {SUB_TABS.map((s) => {

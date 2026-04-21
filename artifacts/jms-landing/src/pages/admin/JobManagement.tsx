@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, MoreVertical, Edit2, Trash2, UserPlus, X, Check,
@@ -51,6 +51,14 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({ title: "", client: "", address: "", description: "", assignee: "Sarah Johnson", priority: "Medium" as Priority, due: "" });
   const [jobFiles, setJobFiles] = useState<{ name: string; size: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const formatSize = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  const onFilesPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? []);
+    if (picked.length === 0) return;
+    setJobFiles([...jobFiles, ...picked.map((f) => ({ name: f.name, size: formatSize(f.size) }))]);
+    e.target.value = "";
+  };
 
   const filtered = jobs.filter((j) =>
     (filter === "All" || j.status === filter) &&
@@ -279,16 +287,34 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1 flex items-center gap-2">
                     Job Files <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[9px]">Input</span>
                   </div>
-                  <div className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center hover-elevate active-elevate-2 cursor-pointer transition-colors hover:bg-blue-50/40 hover:border-primary/40" onClick={() => {
-                    const id = Date.now();
-                    setJobFiles([...jobFiles, { name: `brief_${id}.pdf`, size: "1.0 MB" }]);
-                  }}>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={onFilesPicked}
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.svg,.zip,.dwg,.dxf"
+                  />
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => fileInputRef.current?.click()}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click(); }}
+                    onDragOver={(e) => { e.preventDefault(); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const dropped = Array.from(e.dataTransfer.files ?? []);
+                      if (dropped.length === 0) return;
+                      setJobFiles([...jobFiles, ...dropped.map((f) => ({ name: f.name, size: formatSize(f.size) }))]);
+                    }}
+                    className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center hover-elevate active-elevate-2 cursor-pointer transition-colors hover:bg-blue-50/40 hover:border-primary/40"
+                  >
                     <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-2">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
                     </div>
-                    <div className="text-xs font-semibold text-gray-700">Click to attach files</div>
+                    <div className="text-xs font-semibold text-gray-700">Click to browse, or drag files here</div>
                     <div className="text-[10px] text-gray-500 mt-1">Design briefs · client docs · reference images</div>
-                    <div className="text-[10px] text-gray-400 mt-2">Files become visible to the assigned user</div>
+                    <div className="text-[10px] text-gray-400 mt-2">PDF, DOC, XLS, images, DWG · max 25 MB each</div>
                   </div>
                   {jobFiles.length > 0 ? (
                     <div className="space-y-1.5 max-h-[280px] overflow-y-auto pr-1">
