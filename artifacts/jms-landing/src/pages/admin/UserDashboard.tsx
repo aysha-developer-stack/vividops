@@ -11,17 +11,25 @@ const ASSIGNED = [
   { id: "JOB-2148", title: "Server Maintenance", client: "BrightSpark Industries", due: "Today, 5pm", priority: "High" },
   { id: "JOB-2150", title: "Site Inspection", client: "North Bay Logistics", due: "Tomorrow", priority: "Medium" },
   { id: "JOB-2151", title: "Equipment Calibration", client: "Greenfield Co.", due: "Apr 24", priority: "Medium" },
+  { id: "JOB-2155", title: "Emergency Repair", client: "Blue Ocean Ltd.", due: "Apr 25", priority: "High" },
+  { id: "JOB-2156", title: "HVAC Quarterly Service", client: "Pacific Engineering", due: "Apr 26", priority: "Low" },
+  { id: "JOB-2160", title: "Solar Panel Inspection", client: "Vivid Construction", due: "Apr 28", priority: "Medium" },
 ];
 
 const NOTIFS = [
   { title: "New job assigned", desc: "JOB-2151 by Sam Carter", time: "5m ago", icon: Briefcase, color: "text-primary bg-primary/10" },
   { title: "Training due today", desc: "Workplace Safety Module 4", time: "1h ago", icon: GraduationCap, color: "text-amber-600 bg-amber-50" },
   { title: "Job marked complete", desc: "Great work on JOB-2147!", time: "2h ago", icon: CheckCircle2, color: "text-emerald-600 bg-emerald-50" },
+  { title: "Still working?", desc: "Timer running on JOB-2148 for 1h", time: "3h ago", icon: Clock, color: "text-amber-600 bg-amber-50" },
+  { title: "Rework cleared", desc: "Sam approved your fix on JOB-2147", time: "Yesterday", icon: CheckCircle2, color: "text-emerald-600 bg-emerald-50" },
+  { title: "Schedule updated", desc: "JOB-2150 moved to tomorrow 9am", time: "Yesterday", icon: Calendar, color: "text-purple-600 bg-purple-50" },
 ];
 
 const TRAINING = [
   { title: "Daily safety briefing", desc: "Always inspect ladders before climbing", color: "bg-amber-100 text-amber-700" },
   { title: "New procedure update", desc: "Updated checklist for site inspections", color: "bg-blue-100 text-blue-700" },
+  { title: "Tool maintenance reminder", desc: "Calibrate torque wrenches every 90 days", color: "bg-purple-100 text-purple-700" },
+  { title: "Heat stress advisory", desc: "Take 10-min breaks every hour above 35°C", color: "bg-red-100 text-red-700" },
 ];
 
 export default function UserDashboard() {

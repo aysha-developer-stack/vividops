@@ -17,6 +17,12 @@ const RECENT_JOBS = [
   { id: "JOB-2147", client: "North Bay Logistics", supervisor: "Mia Wong", status: "Pending", color: "bg-amber-50 text-amber-700" },
   { id: "JOB-2146", client: "Greenfield Co.", supervisor: "Chris Park", status: "Completed", color: "bg-emerald-50 text-emerald-700" },
   { id: "JOB-2145", client: "Blue Ocean Ltd.", supervisor: "Sam Carter", status: "Overdue", color: "bg-red-50 text-red-700" },
+  { id: "JOB-2144", client: "Pacific Engineering", supervisor: "Mia Wong", status: "In Progress", color: "bg-primary/10 text-primary" },
+  { id: "JOB-2143", client: "Sterling Manufacturing", supervisor: "Chris Park", status: "Completed", color: "bg-emerald-50 text-emerald-700" },
+  { id: "JOB-2142", client: "Vivid Construction", supervisor: "Sam Carter", status: "Rework", color: "bg-orange-50 text-orange-700" },
+  { id: "JOB-2141", client: "Apex Holdings", supervisor: "Mia Wong", status: "In Progress", color: "bg-primary/10 text-primary" },
+  { id: "JOB-2140", client: "Northern Mining Co.", supervisor: "Chris Park", status: "Pending", color: "bg-amber-50 text-amber-700" },
+  { id: "JOB-2139", client: "Coastal Utilities", supervisor: "Sam Carter", status: "Completed", color: "bg-emerald-50 text-emerald-700" },
 ];
 
 const TEAM = [
@@ -24,6 +30,10 @@ const TEAM = [
   { name: "Mia Wong", role: "Supervisor", jobs: 8, completed: 7 },
   { name: "Chris Park", role: "Supervisor", jobs: 10, completed: 6 },
   { name: "Riley Adams", role: "Field User", jobs: 14, completed: 11 },
+  { name: "Olivia Carter", role: "Field User", jobs: 9, completed: 8 },
+  { name: "James Bennett", role: "Field User", jobs: 7, completed: 5 },
+  { name: "Lisa Martinez", role: "Field User", jobs: 11, completed: 10 },
+  { name: "Jordan Reed", role: "Field User", jobs: 13, completed: 9 },
 ];
 
 export default function AdminDashboard() {

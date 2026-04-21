@@ -11,6 +11,10 @@ const ASSIGNED = [
   { id: "JOB-2150", title: "Site Inspection", client: "North Bay Logistics", due: "Tomorrow", priority: "Medium", progress: 35 },
   { id: "JOB-2151", title: "Equipment Calibration", client: "Greenfield Co.", due: "Apr 24", priority: "Medium", progress: 10 },
   { id: "JOB-2155", title: "Emergency Repair", client: "Blue Ocean Ltd.", due: "Apr 25", priority: "High", progress: 0 },
+  { id: "JOB-2156", title: "HVAC Quarterly Service", client: "Pacific Engineering", due: "Apr 26", priority: "Low", progress: 5 },
+  { id: "JOB-2158", title: "Fire Alarm Testing", client: "Sterling Manufacturing", due: "Apr 27", priority: "High", progress: 0 },
+  { id: "JOB-2160", title: "Solar Panel Inspection", client: "Vivid Construction", due: "Apr 28", priority: "Medium", progress: 22 },
+  { id: "JOB-2162", title: "Generator Load Test", client: "Apex Holdings", due: "Apr 29", priority: "Low", progress: 0 },
 ];
 
 const TEAM = [
@@ -18,11 +22,17 @@ const TEAM = [
   { name: "Olivia Carter", avatar: "OC", jobsToday: 2, hoursToday: 5.2, status: "online" },
   { name: "Lisa Martinez", avatar: "LM", jobsToday: 4, hoursToday: 7.8, status: "away" },
   { name: "James Bennett", avatar: "JB", jobsToday: 1, hoursToday: 3.1, status: "online" },
+  { name: "Jordan Reed", avatar: "JR", jobsToday: 3, hoursToday: 5.9, status: "online" },
+  { name: "Sarah Johnson", avatar: "SJ", jobsToday: 2, hoursToday: 4.4, status: "offline" },
+  { name: "Mike Chen", avatar: "MC", jobsToday: 5, hoursToday: 8.2, status: "online" },
+  { name: "Emma Wilson", avatar: "EW", jobsToday: 1, hoursToday: 2.8, status: "away" },
 ];
 
 const OVERDUE = [
   { id: "JOB-2120", title: "Network Setup", days: 2, assignee: "Riley Adams" },
   { id: "JOB-2118", title: "Quarterly Audit", days: 3, assignee: "Olivia Carter" },
+  { id: "JOB-2099", title: "Cooling Tower Service", days: 5, assignee: "Lisa Martinez" },
+  { id: "JOB-2087", title: "Emergency Lighting Check", days: 7, assignee: "James Bennett" },
 ];
 
 const PRIORITY_COLOR: Record<string, string> = {
