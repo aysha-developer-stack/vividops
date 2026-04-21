@@ -1,0 +1,147 @@
+1. Types of Files in Your System
+
+You actually have 2 main file types:
+
+1. 📥 Job Files (Input Files)
+Uploaded at job creation
+Given to users to work on
+
+👉 Example:
+
+Design brief
+Client documents
+Reference images
+2. 📤 Completed Files (Output Files)
+Uploaded by user after finishing task
+
+👉 Example:
+
+Final design
+Report
+Processed files
+🔁 2. Complete File Flow (End-to-End)
+Step 1: Job Creation (Admin / Supervisor)
+
+When creating a job:
+
+Fill job details
+Upload Job Files
+Job {
+  jobNumber,
+  clientName,
+  files: [inputFiles]
+}
+
+👉 These files are visible to assigned users
+
+Step 2: User Starts Work
+
+User opens job → sees:
+
+Job details
+📥 Download section (job files)
+Checklist
+
+👉 User downloads files and starts working
+
+Step 3: During Work (Optional Uploads)
+
+User can upload:
+
+Work-in-progress files (optional)
+Step 4: Task Completion (Important)
+
+When user finishes:
+
+Required Actions:
+✅ Complete checklist
+📤 Upload completed files
+CompletedFile {
+  jobId,
+  uploadedBy,
+  fileUrl,
+  uploadedAt
+}
+Step 5: Supervisor Review
+
+Supervisor checks:
+
+Completed files
+Checklist
+Time spent
+Step 6: Rework (If Needed)
+
+If work is not correct:
+
+Supervisor clicks Rework
+Adds comment
+User is notified
+
+👉 User uploads new files again
+
+Step 7: Final Approval
+Supervisor approves
+Job marked completed
+📂 3. UI Design (Job Detail Page)
+
+Inside each job → create File Section with tabs
+
+Tabs:
+📥 Input Files
+Uploaded by admin/supervisor
+Read-only for user
+📤 Completed Files
+Uploaded by users
+Version history (important)
+📝 Comments / Notes
+For rework feedback
+👥 4. Who Can Do What
+Role	File Permissions
+Super Admin	Full access
+Admin	Upload + view
+Supervisor	Upload + review + rework
+User	Download + upload completed files
+🔄 5. Version Control (Important Feature)
+
+Each time user uploads:
+
+files: [
+  { version: 1, fileUrl: "..." },
+  { version: 2, fileUrl: "..." }
+]
+
+👉 Helps track rework changes
+
+⏱ 6. File + Timer Connection
+
+Flow:
+
+User starts timer
+Works on files
+Uploads completed file
+Stops timer
+
+👉 This connects work proof + time tracking
+
+🧠 7. Storage (Backend)
+
+Use:
+
+Cloud storage (recommended):
+AWS S3 / Cloudinary / Firebase Storage
+🚀 8. Simple Flow Summary
+Admin uploads job files
+User downloads files
+User works + timer runs
+User uploads completed files
+Supervisor reviews
+Rework (if needed)
+Final approval
+💡 UX Tip (Very Important)
+
+In UI, clearly separate:
+
+“Files Provided” (Input)
+“Your Uploads” (Output)
+
+👉 This removes confusion completely

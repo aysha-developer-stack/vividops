@@ -5,6 +5,7 @@ import {
   ArrowLeft, MapPin, Calendar, User, Briefcase, CheckCircle2, Circle,
   Play, Pause, Square, Upload, FileText, Download, MessageCircle, Send,
   RefreshCw, AlertTriangle, Clock, Users, X, Edit2,
+  Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import type { Role } from "@/lib/roles";
@@ -43,12 +44,24 @@ const INITIAL_CHECKLIST: ChecklistItem[] = [
   { id: 8, text: "Document changes in log", done: false },
 ];
 
-interface FileItem { id: number; name: string; size: string; type: "doc" | "image" | "pdf"; uploadedBy: string; uploadedAt: string; tag: "working" | "completed" }
+interface FileItem { id: number; name: string; size: string; type: "doc" | "image" | "pdf"; uploadedBy: string; uploadedAt: string; tag: "input" | "output"; version?: number; group?: string }
 
 const INITIAL_FILES: FileItem[] = [
-  { id: 1, name: "site_diagram_v2.pdf", size: "2.4 MB", type: "pdf", uploadedBy: "Sam Carter", uploadedAt: "Yesterday", tag: "working" },
-  { id: 2, name: "rack_photo_before.jpg", size: "1.1 MB", type: "image", uploadedBy: "Jordan Reed", uploadedAt: "Today, 9:14am", tag: "working" },
-  { id: 3, name: "diagnostics_report.docx", size: "318 KB", type: "doc", uploadedBy: "Jordan Reed", uploadedAt: "Today, 11:02am", tag: "working" },
+  // INPUT — provided by supervisor at job creation
+  { id: 1, name: "site_diagram_v2.pdf", size: "2.4 MB", type: "pdf", uploadedBy: "Sam Carter", uploadedAt: "Yesterday", tag: "input" },
+  { id: 2, name: "client_brief.docx", size: "186 KB", type: "doc", uploadedBy: "Sam Carter", uploadedAt: "Yesterday", tag: "input" },
+  { id: 3, name: "equipment_manual.pdf", size: "5.8 MB", type: "pdf", uploadedBy: "Sam Carter", uploadedAt: "2 days ago", tag: "input" },
+  // OUTPUT — uploaded by user, with version history
+  { id: 4, name: "diagnostics_report.docx", size: "298 KB", type: "doc", uploadedBy: "Jordan Reed", uploadedAt: "Today, 10:14am", tag: "output", version: 1, group: "diagnostics_report" },
+  { id: 5, name: "diagnostics_report.docx", size: "318 KB", type: "doc", uploadedBy: "Jordan Reed", uploadedAt: "Today, 11:02am", tag: "output", version: 2, group: "diagnostics_report" },
+  { id: 6, name: "rack_photo_after.jpg", size: "1.4 MB", type: "image", uploadedBy: "Jordan Reed", uploadedAt: "Today, 11:08am", tag: "output", version: 1, group: "rack_photo_after" },
+];
+
+interface FileNote { id: number; author: string; avatar: string; text: string; time: string; kind: "rework" | "comment" }
+
+const INITIAL_NOTES: FileNote[] = [
+  { id: 1, author: "Sam Carter", avatar: "SC", kind: "rework", text: "diagnostics_report.docx v1 — please add the firmware version table at the bottom and re-upload.", time: "Today, 10:42am" },
+  { id: 2, author: "Jordan Reed", avatar: "JR", kind: "comment", text: "Re-uploaded as v2 with the firmware table added.", time: "Today, 11:02am" },
 ];
 
 const INITIAL_MESSAGES = [
@@ -99,6 +112,10 @@ export default function JobDetail({ role = "user" }: Props) {
   const [showActivityPing, setShowActivityPing] = useState(false);
   const [autoStopCountdown, setAutoStopCountdown] = useState(30);
   const [savedLogs, setSavedLogs] = useState(INITIAL_TIMER_LOGS);
+  const [fileSubTab, setFileSubTab] = useState<"input" | "output" | "notes">("input");
+  const [notes, setNotes] = useState(INITIAL_NOTES);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const intervalRef = useRef<number | null>(null);
   const pingTimerRef = useRef<number | null>(null);
   const autoStopRef = useRef<number | null>(null);
@@ -163,7 +180,21 @@ export default function JobDetail({ role = "user" }: Props) {
   };
   const handleUpload = (tag: FileItem["tag"]) => {
     const id = Date.now();
-    setFiles([{ id, name: `upload_${id}.pdf`, size: "1.0 MB", type: "pdf", uploadedBy: "You", uploadedAt: "Just now", tag }, ...files]);
+    const me = role === "user" ? "Jordan Reed" : role === "supervisor" ? "Sam Carter" : "Admin";
+    if (tag === "output") {
+      const group = `deliverable_${id}`;
+      const lastVer = files.filter((f) => f.tag === "output" && f.group === group).reduce((m, f) => Math.max(m, f.version ?? 0), 0);
+      setFiles([...files, { id, name: `deliverable_${id}.pdf`, size: "1.0 MB", type: "pdf", uploadedBy: me, uploadedAt: "Just now", tag, version: lastVer + 1, group }]);
+    } else {
+      setFiles([{ id, name: `input_${id}.pdf`, size: "1.0 MB", type: "pdf", uploadedBy: me, uploadedAt: "Just now", tag }, ...files]);
+    }
+  };
+  const reuploadVersion = (group: string) => {
+    const id = Date.now();
+    const lastVer = files.filter((f) => f.group === group).reduce((m, f) => Math.max(m, f.version ?? 0), 0);
+    const sample = files.find((f) => f.group === group);
+    if (!sample) return;
+    setFiles([...files, { id, name: sample.name, size: "1.1 MB", type: sample.type, uploadedBy: "Jordan Reed", uploadedAt: "Just now", tag: "output", version: lastVer + 1, group }]);
   };
 
   return (
@@ -203,14 +234,16 @@ export default function JobDetail({ role = "user" }: Props) {
                 <Users size={12} /> Reassign
               </motion.button>
             )}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setReworkOpen(true)}
-              className="flex items-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-semibold"
-            >
-              <RefreshCw size={12} /> Mark for Rework
-            </motion.button>
+            {(role === "supervisor" || role === "admin" || role === "super-admin") && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setReworkOpen(true)}
+                className="flex items-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-semibold"
+              >
+                <RefreshCw size={12} /> Mark for Rework
+              </motion.button>
+            )}
           </div>
         </div>
 
@@ -371,116 +404,224 @@ export default function JobDetail({ role = "user" }: Props) {
           </motion.div>
         )}
 
-        {tab === "files" && (
+        {tab === "files" && (() => {
+          const inputFiles = files.filter((f) => f.tag === "input");
+          const outputFiles = files.filter((f) => f.tag === "output");
+          // Group output files by `group` for version history
+          const groups = Array.from(new Set(outputFiles.map((f) => f.group ?? `single-${f.id}`)));
+          const canUploadInput = role === "super-admin" || role === "admin" || role === "supervisor";
+          const canUploadOutput = role === "user" || role === "super-admin";
+          const canRework = role === "supervisor" || role === "admin" || role === "super-admin";
+
+          const SUB_TABS = [
+            { id: "input" as const, label: "Files Provided", icon: Inbox, count: inputFiles.length, color: "text-primary" },
+            { id: "output" as const, label: role === "user" ? "Your Uploads" : "Completed Files", icon: FolderOpen, count: outputFiles.length, color: "text-emerald-600" },
+            { id: "notes" as const, label: "Comments / Notes", icon: MessageSquare, count: notes.length, color: "text-amber-600" },
+          ];
+
+          return (
           <motion.div key="fl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}>
-            {/* Upload row */}
-            <div className="grid sm:grid-cols-2 gap-3 mb-5">
-              {[
-                { tag: "working" as const, label: "Upload working file", color: "bg-primary" },
-                { tag: "completed" as const, label: "Upload completed file", color: "bg-emerald-500" },
-              ].map((b) => (
-                <motion.button
-                  key={b.tag}
-                  whileHover={{ y: -3, scale: 1.01 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => handleUpload(b.tag)}
-                  className={`flex items-center justify-center gap-2 px-5 py-4 ${b.color} text-white rounded-2xl text-sm font-semibold shadow-lg shadow-primary/20 border-2 border-dashed border-white/20`}
-                >
-                  <Upload size={16} /> {b.label}
-                </motion.button>
-              ))}
+            {/* Sub-tab pills */}
+            <div className="bg-white rounded-2xl border border-gray-100 p-2 mb-5 inline-flex gap-1 relative">
+              {SUB_TABS.map((s) => {
+                const active = fileSubTab === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setFileSubTab(s.id)}
+                    className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${active ? "text-white" : "text-gray-600 hover:text-gray-900"}`}
+                  >
+                    {active && (
+                      <motion.div layoutId="fileSubTabPill" className="absolute inset-0 bg-gradient-to-r from-primary to-sky-700 rounded-xl pointer-events-none" transition={{ type: "spring", stiffness: 300, damping: 28 }} />
+                    )}
+                    <span className="relative flex items-center gap-2">
+                      <s.icon size={14} /> {s.label}
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${active ? "bg-white/25" : "bg-gray-100 text-gray-600"}`}>{s.count}</span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
-            {(["working", "completed"] as const).map((bucket) => {
-              const list = files.filter((f) => f.tag === bucket);
-              const isCompleted = bucket === "completed";
-              return (
-                <div key={bucket} className="bg-white rounded-2xl border border-gray-100 overflow-hidden mb-5">
-                  <div className={`p-5 border-b border-gray-100 flex items-center justify-between ${isCompleted ? "bg-emerald-50/40" : "bg-blue-50/40"}`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isCompleted ? "bg-emerald-500 text-white" : "bg-primary text-white"}`}>
-                        {isCompleted ? <CheckCircle2 size={18} /> : <FileText size={18} />}
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-gray-900">{isCompleted ? "Completed Files" : "Working Files"} ({list.length})</h3>
-                        <p className="text-[11px] text-gray-500 mt-0.5">
-                          {isCompleted
-                            ? "Final deliverables submitted at job completion (reports, signed checklists, after-photos)"
-                            : "Reference material, in-progress notes and on-site photos uploaded during the job"}
-                        </p>
-                      </div>
+            {/* INPUT FILES — provided by admin/supervisor at job creation */}
+            {fileSubTab === "input" && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                <div className="p-5 border-b border-gray-100 bg-blue-50/40 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center"><Inbox size={18} /></div>
+                    <div>
+                      <h3 className="font-bold text-gray-900 flex items-center gap-2">Files Provided <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Input</span></h3>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Reference material from supervisor / admin — design briefs, client docs, equipment manuals.</p>
                     </div>
+                  </div>
+                  {canUploadInput ? (
+                    <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={() => handleUpload("input")} className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/30 shrink-0">
+                      <Upload size={12} /> Upload Input
+                    </motion.button>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-[11px] text-gray-500 font-medium px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200 shrink-0"><Lock size={11} /> Read-only</span>
+                  )}
+                </div>
+                <AnimatePresence>
+                  {inputFiles.length === 0 && (
+                    <div className="px-5 py-10 text-center text-xs text-gray-400">No input files yet.</div>
+                  )}
+                  {inputFiles.map((f, i) => (
+                    <motion.div key={f.id} layout initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ delay: i * 0.04 }} whileHover={{ backgroundColor: "rgb(249,250,251)" }} className="flex items-center gap-4 px-5 py-3.5 border-b border-gray-50 last:border-0 group">
+                      <div className={`w-10 h-10 rounded-xl ${FILE_ICON[f.type]} flex items-center justify-center shrink-0`}><FileText size={18} /></div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-gray-900 truncate">{f.name}</div>
+                        <div className="text-[11px] text-gray-500 mt-0.5">{f.size} · {f.uploadedBy} · {f.uploadedAt}</div>
+                      </div>
+                      <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-primary bg-primary/5 hover:bg-primary/10 border border-primary/20">
+                        <Download size={12} /> Download
+                      </motion.button>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+            )}
+
+            {/* OUTPUT FILES — uploaded by user, grouped by version history */}
+            {fileSubTab === "output" && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                <div className="p-5 border-b border-gray-100 bg-emerald-50/40 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center"><FolderOpen size={18} /></div>
+                    <div>
+                      <h3 className="font-bold text-gray-900 flex items-center gap-2">{role === "user" ? "Your Uploads" : "Completed Files"} <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Output</span></h3>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Final deliverables uploaded by the field user. Each file keeps a full version history for rework tracking.</p>
+                    </div>
+                  </div>
+                  {canUploadOutput && (
+                    <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={() => handleUpload("output")} className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/30 shrink-0">
+                      <Upload size={12} /> Upload Completed
+                    </motion.button>
+                  )}
+                </div>
+                <AnimatePresence>
+                  {groups.length === 0 && (
+                    <div className="px-5 py-10 text-center text-xs text-gray-400">No completed files uploaded yet — submit them when the job is done.</div>
+                  )}
+                  {groups.map((g, gi) => {
+                    const versions = outputFiles.filter((f) => (f.group ?? `single-${f.id}`) === g).sort((a, b) => (b.version ?? 1) - (a.version ?? 1));
+                    const latest = versions[0];
+                    const isOpen = expandedGroup === g;
+                    return (
+                      <motion.div key={g} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: gi * 0.05 }} className="border-b border-gray-50 last:border-0">
+                        <div className="flex items-center gap-4 px-5 py-3.5 group hover:bg-gray-50/50">
+                          <div className={`w-10 h-10 rounded-xl ${FILE_ICON[latest.type]} flex items-center justify-center shrink-0`}><FileText size={18} /></div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-semibold text-gray-900 truncate flex items-center gap-2">
+                              {latest.name}
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">v{latest.version ?? 1}</span>
+                            </div>
+                            <div className="text-[11px] text-gray-500 mt-0.5">{latest.size} · {latest.uploadedBy} · {latest.uploadedAt} · {versions.length} version{versions.length > 1 ? "s" : ""}</div>
+                          </div>
+                          {versions.length > 1 && (
+                            <button onClick={() => setExpandedGroup(isOpen ? null : g)} className="flex items-center gap-1 text-[11px] text-gray-600 hover:text-primary font-semibold px-2.5 py-1.5 rounded-lg hover:bg-primary/5">
+                              <History size={12} /> History
+                              <motion.span animate={{ rotate: isOpen ? 180 : 0 }}><ChevronDown size={12} /></motion.span>
+                            </button>
+                          )}
+                          {canUploadOutput && (
+                            <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} onClick={() => reuploadVersion(g)} className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200" title="Upload a new version">
+                              + Re-upload
+                            </motion.button>
+                          )}
+                          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200">
+                            <Download size={12} /> Download
+                          </motion.button>
+                        </div>
+                        <AnimatePresence>
+                          {isOpen && versions.length > 1 && (
+                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden bg-gray-50/60">
+                              <div className="px-5 py-3 border-t border-gray-100">
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Version history</div>
+                                {versions.slice(1).map((v) => (
+                                  <div key={v.id} className="flex items-center gap-3 py-2 text-xs">
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-200 text-gray-700">v{v.version}</span>
+                                    <span className="text-gray-700">{v.size}</span>
+                                    <span className="text-gray-500">· {v.uploadedBy} · {v.uploadedAt}</span>
+                                    <button className="ml-auto flex items-center gap-1 text-primary hover:underline"><Download size={11} /> Download</button>
+                                  </div>
+                                ))}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </motion.div>
+                    );
+                  })}
+                </AnimatePresence>
+              </motion.div>
+            )}
+
+            {/* COMMENTS / NOTES — for rework feedback between supervisor + user */}
+            {fileSubTab === "notes" && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                <div className="p-5 border-b border-gray-100 bg-amber-50/40 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center"><MessageSquare size={18} /></div>
+                  <div>
+                    <h3 className="font-bold text-gray-900">Comments / Notes</h3>
+                    <p className="text-[11px] text-gray-500 mt-0.5">Rework feedback and review notes on the deliverable files.</p>
+                  </div>
+                </div>
+                <div className="p-5 space-y-3 max-h-[440px] overflow-y-auto">
+                  {notes.length === 0 && <div className="text-center text-xs text-gray-400 py-10">No notes yet.</div>}
+                  {notes.map((n, i) => (
+                    <motion.div key={n.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className={`flex gap-3 p-3 rounded-xl border ${n.kind === "rework" ? "bg-amber-50/60 border-amber-200" : "bg-gray-50 border-gray-200"}`}>
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 text-white text-[11px] font-bold flex items-center justify-center shrink-0">{n.avatar}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-xs font-bold text-gray-900">{n.author}</span>
+                          {n.kind === "rework" && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">Rework</span>}
+                          <span className="text-[10px] text-gray-500">· {n.time}</span>
+                        </div>
+                        <div className="text-sm text-gray-700">{n.text}</div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+                <div className="p-4 border-t border-gray-100 bg-gray-50/60">
+                  <div className="flex gap-2">
+                    <input
+                      value={noteDraft}
+                      onChange={(e) => setNoteDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && noteDraft.trim()) {
+                          setNotes([...notes, { id: Date.now(), author: role === "user" ? "Jordan Reed" : "Sam Carter", avatar: role === "user" ? "JR" : "SC", text: noteDraft, time: "Just now", kind: canRework ? "rework" : "comment" }]);
+                          setNoteDraft("");
+                        }
+                      }}
+                      placeholder={canRework ? "Add a rework comment for the user..." : "Reply to the supervisor..."}
+                      className="flex-1 px-4 py-2.5 bg-white border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary"
+                    />
                     <motion.button
                       whileHover={{ scale: 1.04 }}
                       whileTap={{ scale: 0.97 }}
                       onClick={() => {
-                        const id = (files.at(-1)?.id ?? 0) + 1;
-                        setFiles([
-                          ...files,
-                          {
-                            id,
-                            name: isCompleted ? `completion_doc_${id}.pdf` : `working_note_${id}.docx`,
-                            size: isCompleted ? "412 KB" : "186 KB",
-                            type: isCompleted ? "pdf" : "doc",
-                            uploadedBy: "Jordan Reed",
-                            uploadedAt: "Just now",
-                            tag: bucket,
-                          },
-                        ]);
+                        if (!noteDraft.trim()) return;
+                        setNotes([...notes, { id: Date.now(), author: role === "user" ? "Jordan Reed" : "Sam Carter", avatar: role === "user" ? "JR" : "SC", text: noteDraft, time: "Just now", kind: canRework ? "rework" : "comment" }]);
+                        setNoteDraft("");
                       }}
-                      className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold shadow-md ${isCompleted ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/30" : "bg-primary hover:bg-primary/90 text-white shadow-primary/30"}`}
+                      className="px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold flex items-center gap-2 shadow-md shadow-primary/30"
                     >
-                      <Upload size={12} /> Upload {isCompleted ? "Completed" : "Working"}
+                      <Send size={14} /> Post
                     </motion.button>
                   </div>
-                  <AnimatePresence>
-                    {list.length === 0 && (
-                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="px-5 py-10 text-center text-xs text-gray-400">
-                        No {isCompleted ? "completion files yet — upload them when the job is done." : "working files uploaded yet."}
-                      </motion.div>
-                    )}
-                    {list.map((f, i) => (
-                      <motion.div
-                        key={f.id}
-                        layout
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 20 }}
-                        transition={{ delay: i * 0.04 }}
-                        whileHover={{ backgroundColor: "rgb(249,250,251)" }}
-                        className="flex items-center gap-4 px-5 py-3.5 border-b border-gray-50 last:border-0 group"
-                      >
-                        <div className={`w-10 h-10 rounded-xl ${FILE_ICON[f.type]} flex items-center justify-center shrink-0`}>
-                          <FileText size={18} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold text-gray-900 truncate">{f.name}</div>
-                          <div className="text-[11px] text-gray-500 mt-0.5">
-                            {f.size} · {f.uploadedBy} · {f.uploadedAt}
-                          </div>
-                        </div>
-                        {!isCompleted && role === "user" && (
-                          <motion.button
-                            whileHover={{ scale: 1.04 }}
-                            whileTap={{ scale: 0.96 }}
-                            onClick={() => setFiles(files.map((x) => (x.id === f.id ? { ...x, tag: "completed" } : x)))}
-                            className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors"
-                            title="Mark as completion file"
-                          >
-                            Mark complete
-                          </motion.button>
-                        )}
-                        <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="p-2 rounded-lg text-gray-400 hover:text-primary hover:bg-primary/5 transition-colors opacity-0 group-hover:opacity-100">
-                          <Download size={14} />
-                        </motion.button>
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
                 </div>
-              );
-            })}
+              </motion.div>
+            )}
+
+            {/* Permissions footer */}
+            <div className="mt-4 px-4 py-3 bg-white rounded-xl border border-gray-100 flex items-center gap-2 text-[11px] text-gray-500">
+              <Lock size={11} className="text-gray-400" />
+              <span><b className="text-gray-700">Your permissions:</b> {role === "user" ? "Download input files · Upload completed files · Reply to comments" : role === "supervisor" ? "Upload input · Review completed · Add rework comments · Approve" : role === "admin" ? "Upload + view all files · Add comments" : "Full access to all files and history"}</span>
+            </div>
           </motion.div>
-        )}
+          );
+        })()}
 
         {tab === "communication" && (
           <motion.div key="cm" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="bg-white rounded-2xl border border-gray-100 flex flex-col overflow-hidden" style={{ height: 540 }}>
