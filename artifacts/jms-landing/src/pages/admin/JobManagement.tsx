@@ -50,6 +50,7 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
   const [openId, setOpenId] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({ title: "", client: "", address: "", description: "", assignee: "Sarah Johnson", priority: "Medium" as Priority, due: "" });
+  const [jobFiles, setJobFiles] = useState<{ name: string; size: string }[]>([]);
 
   const filtered = jobs.filter((j) =>
     (filter === "All" || j.status === filter) &&
@@ -65,6 +66,7 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
       status: "Pending", priority: form.priority, due: form.due || "TBD", progress: 0,
     }, ...jobs]);
     setForm({ title: "", client: "", address: "", description: "", assignee: "Sarah Johnson", priority: "Medium", due: "" });
+    setJobFiles([]);
     setModalOpen(false);
   };
 
@@ -251,6 +253,33 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Estimated Completion</label>
                     <input type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} className="w-full px-3 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                   </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5 flex items-center gap-2">
+                    Job Files (Input)
+                    <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">Optional</span>
+                  </label>
+                  <div className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-4 text-center hover-elevate active-elevate-2 cursor-pointer" onClick={() => {
+                    const id = Date.now();
+                    setJobFiles([...jobFiles, { name: `brief_${id}.pdf`, size: "1.0 MB" }]);
+                  }}>
+                    <div className="flex items-center justify-center gap-2 text-xs font-semibold text-gray-600">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                      Click to attach design brief, client docs, reference images
+                    </div>
+                    <div className="text-[10px] text-gray-400 mt-1">Files visible to assigned user</div>
+                  </div>
+                  {jobFiles.length > 0 && (
+                    <div className="mt-2 space-y-1.5">
+                      {jobFiles.map((f, i) => (
+                        <div key={i} className="flex items-center gap-2 px-3 py-2 bg-blue-50/60 border border-blue-100 rounded-lg text-xs">
+                          <span className="font-semibold text-gray-700 truncate flex-1">{f.name}</span>
+                          <span className="text-gray-500">{f.size}</span>
+                          <button type="button" onClick={(e) => { e.stopPropagation(); setJobFiles(jobFiles.filter((_, x) => x !== i)); }} className="text-gray-400 hover:text-red-500 font-bold px-1">×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1.5">Priority</label>

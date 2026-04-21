@@ -109,6 +109,8 @@ export default function JobDetail({ role = "user" }: Props) {
   const [seconds, setSeconds] = useState(0);
   const [reworkOpen, setReworkOpen] = useState(false);
   const [reworkReason, setReworkReason] = useState("");
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [jobApproved, setJobApproved] = useState(false);
   const [showActivityPing, setShowActivityPing] = useState(false);
   const [autoStopCountdown, setAutoStopCountdown] = useState(30);
   const [savedLogs, setSavedLogs] = useState(INITIAL_TIMER_LOGS);
@@ -235,13 +237,34 @@ export default function JobDetail({ role = "user" }: Props) {
               </motion.button>
             )}
             {(role === "supervisor" || role === "admin" || role === "super-admin") && (
+              <>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setReworkOpen(true)}
+                  className="flex items-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-semibold"
+                >
+                  <RefreshCw size={12} /> Mark for Rework
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setApproveOpen(true)}
+                  className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
+                >
+                  <CheckCircle2 size={12} /> Approve &amp; Complete
+                </motion.button>
+              </>
+            )}
+            {role === "user" && (
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => setReworkOpen(true)}
-                className="flex items-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-semibold"
+                onClick={() => { setFileSubTab("output"); setTab("files"); }}
+                className="flex items-center gap-2 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-semibold"
+                title="Submit your completed deliverables for supervisor review"
               >
-                <RefreshCw size={12} /> Mark for Rework
+                <Upload size={12} /> Submit for Review
               </motion.button>
             )}
           </div>
@@ -797,6 +820,41 @@ export default function JobDetail({ role = "user" }: Props) {
                   <RefreshCw size={14} /> Submit
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+        {approveOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setApproveOpen(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center"><CheckCircle2 size={18} /></div>
+                  <h3 className="text-lg font-bold text-gray-900">Approve &amp; Complete Job</h3>
+                </div>
+                <button onClick={() => setApproveOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              </div>
+              {jobApproved ? (
+                <div className="py-6 text-center">
+                  <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3"><CheckCircle2 size={28} /></div>
+                  <div className="text-base font-bold text-gray-900">Job approved &amp; marked complete</div>
+                  <div className="text-xs text-gray-500 mt-1">The user has been notified.</div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-600 mb-4">Confirm that the deliverables, checklist and time logs all look good. The job will be marked <b>Completed</b> and the user notified.</p>
+                  <div className="space-y-2 mb-5 text-xs">
+                    <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> Checklist reviewed ({checklist.filter((c) => c.done).length}/{checklist.length} done)</div>
+                    <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> {files.filter((f) => f.tag === "output").length} completed file(s) submitted</div>
+                    <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> Time logs verified</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setApproveOpen(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200">Cancel</button>
+                    <button onClick={() => { setJobApproved(true); setTimeout(() => { setApproveOpen(false); }, 1400); }} className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2">
+                      <CheckCircle2 size={14} /> Approve
+                    </button>
+                  </div>
+                </>
+              )}
             </motion.div>
           </motion.div>
         )}
