@@ -10,7 +10,7 @@ import type { Role } from "@/lib/roles";
 const CATEGORIES = ["All", "Onboarding", "Safety", "Technical", "Leadership"];
 
 const COURSES = [
-  { id: 1, title: "JobFlow Platform Onboarding", category: "Onboarding", lessons: 8, duration: "1h 24m", progress: 100, level: "Beginner", thumb: "from-primary to-sky-700" },
+  { id: 1, title: "Vivid Engineering Platform Onboarding", category: "Onboarding", lessons: 8, duration: "1h 24m", progress: 100, level: "Beginner", thumb: "from-primary to-sky-700" },
   { id: 2, title: "Workplace Safety Fundamentals", category: "Safety", lessons: 12, duration: "2h 10m", progress: 75, level: "Beginner", thumb: "from-amber-500 to-orange-600" },
   { id: 3, title: "Advanced Job Scheduling", category: "Technical", lessons: 15, duration: "3h 45m", progress: 40, level: "Advanced", thumb: "from-emerald-500 to-emerald-700" },
   { id: 4, title: "Team Leadership Essentials", category: "Leadership", lessons: 10, duration: "2h 30m", progress: 0, level: "Intermediate", thumb: "from-purple-500 to-indigo-700" },

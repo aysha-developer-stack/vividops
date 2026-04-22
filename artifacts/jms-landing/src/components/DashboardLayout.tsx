@@ -27,7 +27,7 @@ export default function DashboardLayout({
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [name, setName] = useState("Alex Morgan");
-  const [email, setEmail] = useState("admin@jobflow.io");
+  const [email, setEmail] = useState("admin@vividengineering.com.au");
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 

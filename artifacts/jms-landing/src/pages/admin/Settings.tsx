@@ -49,10 +49,10 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
   const [saved, setSaved] = useState(false);
   const [profile, setProfile] = useState({
     name: "Alex Morgan",
-    email: "alex@jobflow.io",
+    email: "alex@vividengineering.com.au",
     role: "Super Admin",
     phone: "+1 (555) 123-4567",
-    bio: "Operations lead at Vivid Engineering, overseeing the JobFlow platform.",
+    bio: "Operations lead at Vivid Engineering, overseeing the Vivid Engineering platform.",
   });
   const [notif, setNotif] = useState({ email: true, push: true, sms: false, weekly: true, mentions: true });
   const [appearance, setAppearance] = useState({ theme: "light", accent: "#0B7EB9", compact: false });
@@ -176,7 +176,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
               {tab === "appearance" && (
                 <>
                   <h3 className="text-lg font-bold text-gray-900 mb-1">Appearance</h3>
-                  <p className="text-sm text-gray-500 mb-6">Customize how JobFlow looks to you.</p>
+                  <p className="text-sm text-gray-500 mb-6">Customize how Vivid Engineering looks to you.</p>
 
                   <div className="mb-6">
                     <div className="text-sm font-semibold text-gray-900 mb-3">Theme</div>

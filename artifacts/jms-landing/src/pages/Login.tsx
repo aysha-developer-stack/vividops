@@ -123,7 +123,7 @@ export default function Login() {
               <div className="w-3 h-3 rounded-full bg-red-400/80" />
               <div className="w-3 h-3 rounded-full bg-yellow-400/80" />
               <div className="w-3 h-3 rounded-full bg-green-400/80" />
-              <div className="ml-auto text-xs text-gray-500 font-mono">app.jobflow.io</div>
+              <div className="ml-auto text-xs text-gray-500 font-mono">app.vividengineering.com.au</div>
             </div>
             {[
               { label: "Electrical Inspection #481", status: "In Progress", pct: 72, color: "bg-primary" },
@@ -593,7 +593,7 @@ export default function Login() {
               whileHover={{ x: -3 }}
             >
               <ArrowLeft size={14} />
-              Back to JobFlow
+              Back to Vivid Engineering
             </motion.span>
           </Link>
         </motion.div>

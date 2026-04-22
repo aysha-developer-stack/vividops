@@ -424,7 +424,7 @@ export default function Home() {
                       ))}
                     </div>
                     <div className="mx-auto bg-white border border-gray-200 rounded-md px-24 py-1 text-xs text-gray-400">
-                      app.jobflow.io
+                      app.vividengineering.com.au
                     </div>
                   </div>
 
@@ -694,7 +694,7 @@ export default function Home() {
                   custom={0}
                   className="text-primary font-semibold text-sm uppercase tracking-widest mb-4"
                 >
-                  Why JobFlow
+                  Why Vivid Engineering
                 </motion.p>
                 <motion.h2
                   initial="hidden"
@@ -704,7 +704,7 @@ export default function Home() {
                   custom={0.1}
                   className="text-3xl md:text-4xl font-bold mb-6 leading-tight"
                 >
-                  Why operations teams choose JobFlow
+                  Why operations teams choose Vivid Engineering
                 </motion.h2>
                 <motion.p
                   initial="hidden"
@@ -714,7 +714,7 @@ export default function Home() {
                   custom={0.2}
                   className="text-gray-400 text-lg mb-10 leading-relaxed"
                 >
-                  Stop losing critical information in email threads and messy spreadsheets. JobFlow brings order to operations.
+                  Stop losing critical information in email threads and messy spreadsheets. Vivid Engineering brings order to operations.
                 </motion.p>
 
                 <div className="space-y-5">
@@ -851,7 +851,7 @@ export default function Home() {
           <div className="container mx-auto px-6 md:px-12 flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
               <h3 className="text-2xl md:text-3xl font-bold mb-2">Ready to streamline your operations?</h3>
-              <p className="text-gray-400">Join thousands of teams already using JobFlow to manage their work.</p>
+              <p className="text-gray-400">Join thousands of teams already using Vivid Engineering to manage their work.</p>
             </div>
             <motion.div whileHover={{ scale: 1.05, y: -2 }} whileTap={{ scale: 0.97 }} className="shrink-0">
               <Button
@@ -894,7 +894,7 @@ export default function Home() {
                 transition={{ type: "spring", stiffness: 400 }}
               />
               <p className="text-gray-400 text-sm leading-relaxed max-w-sm mb-6">
-                JobFlow is the command center for operations teams — helping you assign jobs, track time, manage files, and report performance all in one place.
+                Vivid Engineering is the command center for operations teams — helping you assign jobs, track time, manage files, and report performance all in one place.
               </p>
               <div className="flex items-center gap-2">
                 <motion.div
