@@ -191,7 +191,7 @@ export default function Home() {
             <motion.img
               src={logoImg}
               alt="Vivid Engineering"
-              className="h-10 w-auto object-contain"
+              className="h-16 w-auto object-contain"
               whileHover={{ scale: 1.05 }}
               transition={{ type: "spring", stiffness: 400, damping: 20 }}
             />
@@ -889,7 +889,7 @@ export default function Home() {
               <motion.img
                 src={logoImg}
                 alt="Vivid Engineering"
-                className="h-10 w-auto object-contain mb-5"
+                className="h-16 w-auto object-contain mb-5"
                 whileHover={{ scale: 1.04 }}
                 transition={{ type: "spring", stiffness: 400 }}
               />
