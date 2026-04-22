@@ -81,20 +81,19 @@ export default function DashboardLayout({
         } transition-[left] duration-300`}
       >
         {/* Logo */}
-        <div className="h-24 flex items-center px-4 border-b border-white/10 shrink-0">
-          <Link href="/" className="flex items-center gap-3 overflow-hidden">
-            <img src={logoImg} alt="VE" className="h-16 w-16 object-contain shrink-0" />
+        <div className={`${collapsed ? "h-24" : "h-36"} flex items-center justify-center px-3 border-b border-white/10 shrink-0`}>
+          <Link href="/" className="flex flex-col items-center justify-center gap-2 overflow-hidden">
+            <img src={logoImg} alt="Vivid Engineering" className={`${collapsed ? "h-14" : "h-24"} w-auto object-contain transition-all`} />
             <AnimatePresence>
               {!collapsed && (
                 <motion.div
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
                   transition={{ duration: 0.15 }}
-                  className="overflow-hidden"
+                  className="overflow-hidden text-center"
                 >
-                  <div className="font-bold text-sm leading-tight">JobFlow</div>
-                  <div className="text-[10px] text-gray-400 uppercase tracking-wider">{config.portal}</div>
+                  <div className="text-[11px] font-bold text-gray-300 uppercase tracking-[0.18em]">{config.portal}</div>
                 </motion.div>
               )}
             </AnimatePresence>
