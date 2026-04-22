@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, ArrowRight, ArrowLeft, Mail, Lock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import logoImg from "@assets/www.vividengineering.com.au__1776407417497.png";
+import logoImg from "@assets/www.vividengineering.com.au__1776838856355.png";
 import { setSession } from "@/lib/auth";
 import { ROLES, Role } from "@/lib/roles";
 

@@ -27,7 +27,7 @@ import {
   Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import logoImg from "@assets/www.vividengineering.com.au__1776407417497.png";
+import logoImg from "@assets/www.vividengineering.com.au__1776838856355.png";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
