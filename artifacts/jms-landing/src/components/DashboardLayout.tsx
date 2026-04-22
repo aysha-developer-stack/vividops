@@ -81,9 +81,9 @@ export default function DashboardLayout({
         } transition-[left] duration-300`}
       >
         {/* Logo */}
-        <div className="h-20 flex items-center px-5 border-b border-white/10 shrink-0">
+        <div className="h-24 flex items-center px-4 border-b border-white/10 shrink-0">
           <Link href="/" className="flex items-center gap-3 overflow-hidden">
-            <img src={logoImg} alt="VE" className="h-10 w-10 object-contain shrink-0" />
+            <img src={logoImg} alt="VE" className="h-16 w-16 object-contain shrink-0" />
             <AnimatePresence>
               {!collapsed && (
                 <motion.div
