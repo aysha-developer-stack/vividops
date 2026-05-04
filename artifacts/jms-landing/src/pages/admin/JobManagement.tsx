@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, MoreVertical, Edit2, Trash2, UserPlus, X, Check,
-  Calendar, Clock, AlertCircle, ExternalLink,
+  Calendar, Clock, AlertCircle, ExternalLink, CheckCircle2,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import type { Role } from "@/lib/roles";
@@ -21,7 +21,9 @@ interface Job {
   assignee: string;
   status: Status;
   priority: Priority;
+  created: string;
   due: string;
+  completed?: string;
   progress: number;
 }
 
@@ -39,12 +41,12 @@ const PRIORITY_CONFIG: Record<Priority, { color: string; dot: string }> = {
 };
 
 const SEED: Job[] = [
-  { id: 482, title: "Server Maintenance", client: "TechCorp Ltd", assignee: "Sarah Johnson", status: "In Progress", priority: "High", due: "Apr 22", progress: 72 },
-  { id: 481, title: "Site Inspection - North", client: "BuildRight Co", assignee: "Mike Chen", status: "Pending", priority: "Medium", due: "Apr 25", progress: 0 },
-  { id: 480, title: "Quarterly Audit", client: "FinSecure", assignee: "Emma Wilson", status: "Completed", priority: "High", due: "Apr 18", progress: 100 },
-  { id: 479, title: "Plumbing Overhaul - Site B", client: "City Council", assignee: "David Park", status: "Overdue", priority: "High", due: "Apr 15", progress: 45 },
-  { id: 478, title: "Electrical Inspection", client: "GreenEnergy", assignee: "Lisa Martinez", status: "In Progress", priority: "Low", due: "Apr 28", progress: 30 },
-  { id: 477, title: "Annual Safety Audit", client: "MetroWorks", assignee: "James Bennett", status: "Pending", priority: "Medium", due: "May 02", progress: 0 },
+  { id: 482, title: "Server Maintenance", client: "TechCorp Ltd", assignee: "Sarah Johnson", status: "In Progress", priority: "High", created: "Apr 18", due: "Apr 22", progress: 72 },
+  { id: 481, title: "Site Inspection - North", client: "BuildRight Co", assignee: "Mike Chen", status: "Pending", priority: "Medium", created: "Apr 20", due: "Apr 25", progress: 0 },
+  { id: 480, title: "Quarterly Audit", client: "FinSecure", assignee: "Emma Wilson", status: "Completed", priority: "High", created: "Apr 10", due: "Apr 18", completed: "Apr 17", progress: 100 },
+  { id: 479, title: "Plumbing Overhaul - Site B", client: "City Council", assignee: "David Park", status: "Overdue", priority: "High", created: "Apr 08", due: "Apr 15", progress: 45 },
+  { id: 478, title: "Electrical Inspection", client: "GreenEnergy", assignee: "Lisa Martinez", status: "In Progress", priority: "Low", created: "Apr 22", due: "Apr 28", progress: 30 },
+  { id: 477, title: "Annual Safety Audit", client: "MetroWorks", assignee: "James Bennett", status: "Pending", priority: "Medium", created: "Apr 24", due: "May 02", progress: 0 },
 ];
 
 export default function JobManagement({ role = "super-admin" as Role }: { role?: Role } = {}) {
@@ -100,7 +102,9 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
       setJobs([{
         id: Math.max(...jobs.map((j) => j.id)) + 1,
         title: form.title, client: form.client, assignee: form.assignee,
-        status: "Pending", priority: form.priority, due: form.due || "TBD", progress: 0,
+        status: "Pending", priority: form.priority,
+        created: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit" }),
+        due: form.due || "TBD", progress: 0,
       }, ...jobs]);
     }
     setForm({ title: "", client: "", address: "", description: "", assignee: "Sarah Johnson", priority: "Medium", due: "" });
@@ -158,7 +162,7 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {["Job", "Assignee", "Priority", "Status", "Progress", "Due", ""].map((h) => (
+                {["Job", "Assignee", "Priority", "Status", "Progress", "Timeline", ""].map((h) => (
                   <th key={h} className="text-left px-6 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -181,7 +185,7 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                     >
                       <td className="px-6 py-4 cursor-pointer" onClick={() => setLocation(`${basePath}/${j.id}`)}>
                         <div className="font-medium text-gray-900 text-sm flex items-center gap-1.5 group-hover:text-primary">{j.title} <ExternalLink size={11} className="text-gray-300" /></div>
-                        <div className="text-xs text-gray-500 mt-0.5">#{j.id} · {j.client}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">#{j.id} · {j.client} · <span className="text-gray-400">Created {j.created}</span></div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
@@ -216,10 +220,17 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                          <Calendar size={12} className="text-gray-400" />
-                          {j.due}
-                        </div>
+                        {j.status === "Completed" && j.completed ? (
+                          <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+                            <CheckCircle2 size={12} className="text-emerald-500" />
+                            Done {j.completed}
+                          </div>
+                        ) : (
+                          <div className={`flex items-center gap-1.5 text-xs ${j.status === "Overdue" ? "text-red-600 font-semibold" : "text-gray-600"}`}>
+                            <Calendar size={12} className={j.status === "Overdue" ? "text-red-500" : "text-gray-400"} />
+                            {j.status === "Overdue" ? "Was due " : "Due "}{j.due}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-right relative">
                         <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setOpenId(openId === j.id ? null : j.id)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700">
