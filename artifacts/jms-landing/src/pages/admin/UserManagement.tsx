@@ -7,7 +7,7 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import type { Role } from "@/lib/roles";
 
-type UserRole = "Admin" | "Supervisor" | "User";
+type UserRole = "Super Admin" | "Admin" | "Supervisor" | "User";
 type Status = "Active" | "Inactive";
 
 interface User {
@@ -21,12 +21,14 @@ interface User {
 }
 
 const ROLE_CONFIG: Record<UserRole, { color: string; bg: string; icon: any }> = {
+  "Super Admin": { color: "text-purple-700", bg: "bg-purple-50 border-purple-200", icon: Crown },
   Admin: { color: "text-red-700", bg: "bg-red-50 border-red-200", icon: Shield },
   Supervisor: { color: "text-amber-700", bg: "bg-amber-50 border-amber-200", icon: UserCog },
   User: { color: "text-primary", bg: "bg-primary/10 border-primary/20", icon: UserIcon },
 };
 
 const SEED: User[] = [
+  { id: 0, name: "Alex Morgan", email: "alex@vividengineering.com.au", role: "Super Admin", status: "Active", joined: "Jan 02, 2025", avatar: "AM" },
   { id: 1, name: "Sarah Johnson", email: "sarah.j@vividengineering.com.au", role: "Admin", status: "Active", joined: "Jan 12, 2025", avatar: "SJ" },
   { id: 2, name: "Mike Chen", email: "mike.c@vividengineering.com.au", role: "Supervisor", status: "Active", joined: "Feb 03, 2025", avatar: "MC" },
   { id: 3, name: "Emma Wilson", email: "emma.w@vividengineering.com.au", role: "Supervisor", status: "Active", joined: "Feb 14, 2025", avatar: "EW" },
@@ -42,7 +44,15 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
   const [filter, setFilter] = useState<"All" | UserRole>("All");
   const [openId, setOpenId] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ name: "", email: "", role: "User" as UserRole });
+
+  const isSuperAdmin = role === "super-admin";
+  // Super Admin can manage every role; Admin can manage Supervisor & User only.
+  const ROLES_TO_SHOW: UserRole[] = isSuperAdmin
+    ? ["Super Admin", "Admin", "Supervisor", "User"]
+    : ["Supervisor", "User"];
+  const FILTER_TABS = ["All", ...ROLES_TO_SHOW] as const;
 
   const filtered = users.filter((u) =>
     (filter === "All" || u.role === filter) &&
@@ -57,13 +67,30 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
     setUsers(users.filter((u) => u.id !== id));
     setOpenId(null);
   };
-  const create = () => {
+  const startCreate = () => {
+    setEditingId(null);
+    setForm({ name: "", email: "", role: "User" });
+    setModalOpen(true);
+  };
+  const startEdit = (u: User) => {
+    setEditingId(u.id);
+    setForm({ name: u.name, email: u.email, role: u.role });
+    setModalOpen(true);
+    setOpenId(null);
+  };
+  const save = () => {
     if (!form.name || !form.email) return;
-    setUsers([{
-      id: Date.now(), name: form.name, email: form.email, role: form.role,
-      status: "Active", joined: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
-      avatar: form.name.split(" ").map((s) => s[0]).join("").slice(0, 2).toUpperCase(),
-    }, ...users]);
+    if (editingId !== null) {
+      setUsers(users.map((u) => (u.id === editingId ? { ...u, name: form.name, email: form.email, role: form.role,
+        avatar: form.name.split(" ").map((s) => s[0]).join("").slice(0, 2).toUpperCase() } : u)));
+    } else {
+      setUsers([{
+        id: Date.now(), name: form.name, email: form.email, role: form.role,
+        status: "Active", joined: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
+        avatar: form.name.split(" ").map((s) => s[0]).join("").slice(0, 2).toUpperCase(),
+      }, ...users]);
+    }
+    setEditingId(null);
     setForm({ name: "", email: "", role: "User" });
     setModalOpen(false);
   };
@@ -83,12 +110,12 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                 className="bg-transparent text-sm flex-1 focus:outline-none"
               />
             </div>
-            <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
-              {(["All", "Admin", "Supervisor", "User"] as const).map((r) => (
+            <div className="flex gap-1 bg-gray-100 p-1 rounded-xl flex-wrap">
+              {FILTER_TABS.map((r) => (
                 <motion.button
                   key={r}
                   whileTap={{ scale: 0.96 }}
-                  onClick={() => setFilter(r)}
+                  onClick={() => setFilter(r as "All" | UserRole)}
                   className={`relative px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${filter === r ? "text-white" : "text-gray-600 hover:text-gray-900"}`}
                 >
                   {filter === r && (
@@ -102,7 +129,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
           <motion.button
             whileHover={{ scale: 1.04, y: -1 }}
             whileTap={{ scale: 0.97 }}
-            onClick={() => setModalOpen(true)}
+            onClick={startCreate}
             className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30 transition-colors"
           >
             <Plus size={16} />
@@ -182,7 +209,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                               transition={{ duration: 0.12 }}
                               className="absolute right-6 top-12 w-44 bg-white rounded-xl shadow-xl border border-gray-100 z-10 py-1 text-left"
                             >
-                              <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                              <button onClick={() => startEdit(u)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                 <Edit2 size={14} className="text-gray-400" /> Edit
                               </button>
                               <button onClick={() => toggleStatus(u.id)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
@@ -222,10 +249,10 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
             >
               <div className="p-6 border-b border-gray-100 flex items-center justify-between">
                 <div>
-                  <h3 className="font-bold text-gray-900">Create New User</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">Add a new team member to the platform</p>
+                  <h3 className="font-bold text-gray-900">{editingId !== null ? "Edit User" : "Create New User"}</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">{editingId !== null ? "Update this team member's details and role" : "Add a new team member to the platform"}</p>
                 </div>
-                <button onClick={() => setModalOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
+                <button onClick={() => { setModalOpen(false); setEditingId(null); }} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
               </div>
               <div className="p-6 space-y-4">
                 <div>

@@ -20,6 +20,7 @@ import UserDashboard from "@/pages/admin/UserDashboard";
 import MyJobs from "@/pages/admin/MyJobs";
 import JobDetail from "@/pages/admin/JobDetail";
 import Notifications from "@/pages/admin/Notifications";
+import SystemMonitoring from "@/pages/admin/SystemMonitoring";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,8 @@ function Router() {
       <Route path="/super-admin" component={SuperAdminDashboard} />
       <Route path="/super-admin/users"><UserManagement /></Route>
       <Route path="/super-admin/jobs"><JobManagement /></Route>
+      <Route path="/super-admin/jobs/:id"><JobDetail role="super-admin" /></Route>
+      <Route path="/super-admin/monitoring"><SystemMonitoring /></Route>
       <Route path="/super-admin/reports"><Reports /></Route>
       <Route path="/super-admin/communication"><Communication /></Route>
       <Route path="/super-admin/timer"><Timer /></Route>
