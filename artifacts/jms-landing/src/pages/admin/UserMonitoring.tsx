@@ -26,7 +26,8 @@ const WORKERS: Worker[] = [
   { id: 5, name: "David Wilson", avatar: "DW", hoursToday: 0, hoursWeek: 18.4, jobsCompleted: 6, errors: 3, efficiency: 71, status: "offline", lastJob: "JOB-2144" },
 ];
 
-const ERRORS = [
+interface ErrorReport { id: number; user: string; job: string; desc: string; severity: string; date: string; }
+const SEED_ERRORS: ErrorReport[] = [
   { id: 1, user: "Lisa Martinez", job: "JOB-2147", desc: "Equipment misconfigured during inspection", severity: "Medium", date: "Today" },
   { id: 2, user: "David Wilson", job: "JOB-2144", desc: "Missed checklist step #4", severity: "Low", date: "Yesterday" },
   { id: 3, user: "Olivia Carter", job: "JOB-2150", desc: "Late arrival to client site", severity: "Low", date: "2d ago" },
@@ -42,7 +43,17 @@ export default function UserMonitoring() {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"performance" | "errors">("performance");
   const [errorModal, setErrorModal] = useState(false);
+  const [errors, setErrors] = useState<ErrorReport[]>(SEED_ERRORS);
+  const [draft, setDraft] = useState<{ user: string; job: string; severity: string; desc: string }>({ user: WORKERS[0].name, job: "", severity: "Medium", desc: "" });
   const filtered = WORKERS.filter((w) => w.name.toLowerCase().includes(search.toLowerCase()));
+
+  const submitError = () => {
+    if (!draft.job.trim() || !draft.desc.trim()) return;
+    setErrors([{ id: Date.now(), user: draft.user, job: draft.job, desc: draft.desc, severity: draft.severity, date: "Just now" }, ...errors]);
+    setDraft({ user: WORKERS[0].name, job: "", severity: "Medium", desc: "" });
+    setErrorModal(false);
+    setTab("errors");
+  };
 
   return (
     <DashboardLayout title="User Monitoring" role="supervisor">
@@ -161,9 +172,9 @@ export default function UserMonitoring() {
           >
             <div className="px-5 py-4 border-b border-gray-100">
               <h3 className="font-bold text-gray-900">Error Reports</h3>
-              <p className="text-xs text-gray-500 mt-0.5">{ERRORS.length} reports filed by you this month</p>
+              <p className="text-xs text-gray-500 mt-0.5">{errors.length} reports filed by you this month</p>
             </div>
-            {ERRORS.map((e, i) => (
+            {errors.map((e, i) => (
               <motion.div
                 key={e.id}
                 initial={{ opacity: 0, x: -10 }}
@@ -218,27 +229,27 @@ export default function UserMonitoring() {
               <div className="space-y-3">
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Worker</label>
-                  <select className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary">
+                  <select value={draft.user} onChange={(e) => setDraft({ ...draft, user: e.target.value })} className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary">
                     {WORKERS.map((w) => <option key={w.id}>{w.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Job ID</label>
-                  <input className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary" placeholder="JOB-2148" />
+                  <input value={draft.job} onChange={(e) => setDraft({ ...draft, job: e.target.value })} className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary" placeholder="JOB-2148" />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Severity</label>
                   <div className="grid grid-cols-3 gap-2">
                     {["Low", "Medium", "High"].map((s) => (
-                      <button key={s} className={`py-2 rounded-lg text-xs font-bold border-2 ${SEVERITY[s]}`}>{s}</button>
+                      <button key={s} onClick={() => setDraft({ ...draft, severity: s })} className={`py-2 rounded-lg text-xs font-bold border-2 ${SEVERITY[s]} ${draft.severity === s ? "ring-2 ring-primary ring-offset-1" : "opacity-60"}`}>{s}</button>
                     ))}
                   </div>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Description</label>
-                  <textarea rows={3} className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary resize-none" placeholder="Describe the error…" />
+                  <textarea value={draft.desc} onChange={(e) => setDraft({ ...draft, desc: e.target.value })} rows={3} className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary resize-none" placeholder="Describe the error…" />
                 </div>
-                <button onClick={() => setErrorModal(false)} className="w-full mt-2 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90">Submit Report</button>
+                <button onClick={submitError} disabled={!draft.job.trim() || !draft.desc.trim()} className="w-full mt-2 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">Submit Report</button>
               </div>
             </motion.div>
           </motion.div>
