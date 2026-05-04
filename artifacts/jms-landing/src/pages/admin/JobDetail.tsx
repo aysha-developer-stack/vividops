@@ -317,13 +317,13 @@ export default function JobDetail({ role = "user" }: Props) {
             <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Location</div><div className="text-sm text-gray-900 font-medium">{JOB.address}</div></div>
           </div>
           <div className="flex items-start gap-2.5"><Calendar size={14} className="text-gray-400 mt-0.5" />
-            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Start</div><div className="text-sm text-gray-900 font-medium">{JOB.startDate}</div></div>
+            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Date Created</div><div className="text-sm text-gray-900 font-medium">{JOB.startDate}</div></div>
           </div>
           <div className="flex items-start gap-2.5"><Clock size={14} className="text-amber-500 mt-0.5" />
             <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Est. Completion</div><div className="text-sm text-gray-900 font-medium">{JOB.dueDate}</div></div>
           </div>
-          <div className="flex items-start gap-2.5"><CheckCircle2 size={14} className="text-emerald-500 mt-0.5" />
-            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Completed</div><div className="text-sm text-gray-900 font-medium">{JOB.completedDate}</div></div>
+          <div className="flex items-start gap-2.5"><CheckCircle2 size={14} className={`mt-0.5 ${JOB.completedDate === "—" ? "text-gray-300" : "text-emerald-500"}`} />
+            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Date Completed</div><div className={`text-sm font-medium ${JOB.completedDate === "—" ? "text-gray-400 italic" : "text-gray-900"}`}>{JOB.completedDate === "—" ? "Not yet completed" : JOB.completedDate}</div></div>
           </div>
           <div className="flex items-start gap-2.5"><User size={14} className="text-gray-400 mt-0.5" />
             <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Lead</div><div className="text-sm text-gray-900 font-medium">Jordan Reed</div></div>
