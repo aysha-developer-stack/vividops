@@ -2,10 +2,18 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Download, FileText, Users, AlertTriangle, Clock, TrendingUp,
-  ChevronRight, Filter,
+  ChevronRight, Filter, Shield, UserCog, User as UserIcon, Crown,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import type { Role } from "@/lib/roles";
+
+type UserRoleLabel = "Super Admin" | "Admin" | "Supervisor" | "User";
+const ROLE_BADGE: Record<UserRoleLabel, { color: string; bg: string; icon: any }> = {
+  "Super Admin": { color: "text-purple-700", bg: "bg-purple-50 border-purple-200", icon: Crown },
+  Admin: { color: "text-red-700", bg: "bg-red-50 border-red-200", icon: Shield },
+  Supervisor: { color: "text-amber-700", bg: "bg-amber-50 border-amber-200", icon: UserCog },
+  User: { color: "text-primary", bg: "bg-primary/10 border-primary/20", icon: UserIcon },
+};
 
 const TABS = [
   { id: "system", label: "System-wide", icon: TrendingUp },
@@ -21,12 +29,17 @@ const SYSTEM_METRICS = [
   { label: "Active Subscriptions", value: "1,142", change: "+86", trend: "up" },
 ];
 
-const USER_PERFORMANCE = [
-  { name: "Sarah Johnson", jobs: 47, completed: 45, score: 96, avg: "3h 24m" },
-  { name: "Mike Chen", jobs: 38, completed: 35, score: 92, avg: "4h 12m" },
-  { name: "Emma Wilson", jobs: 41, completed: 37, score: 90, avg: "3h 58m" },
-  { name: "David Park", jobs: 29, completed: 24, score: 83, avg: "5h 02m" },
-  { name: "Lisa Martinez", jobs: 32, completed: 26, score: 81, avg: "4h 47m" },
+interface UserPerf { name: string; role: UserRoleLabel; jobs: number; completed: number; score: number; avg: string; hours: number; rework: number; overdue: number; }
+const USER_PERFORMANCE: UserPerf[] = [
+  { name: "Sarah Johnson", role: "Admin",      jobs: 47, completed: 45, score: 96, avg: "3h 24m", hours: 162.5, rework: 1, overdue: 0 },
+  { name: "Mike Chen",     role: "Supervisor", jobs: 38, completed: 35, score: 92, avg: "4h 12m", hours: 148.0, rework: 2, overdue: 1 },
+  { name: "Emma Wilson",   role: "Supervisor", jobs: 41, completed: 37, score: 90, avg: "3h 58m", hours: 156.5, rework: 3, overdue: 1 },
+  { name: "James Bennett", role: "Supervisor", jobs: 27, completed: 24, score: 88, avg: "4h 32m", hours: 122.0, rework: 2, overdue: 0 },
+  { name: "Jordan Reed",   role: "User",       jobs: 34, completed: 31, score: 89, avg: "4h 18m", hours: 138.0, rework: 2, overdue: 1 },
+  { name: "Riley Adams",   role: "User",       jobs: 31, completed: 28, score: 86, avg: "4h 35m", hours: 128.0, rework: 2, overdue: 1 },
+  { name: "David Park",    role: "User",       jobs: 29, completed: 24, score: 83, avg: "5h 02m", hours: 116.0, rework: 4, overdue: 2 },
+  { name: "Lisa Martinez", role: "User",       jobs: 32, completed: 26, score: 81, avg: "4h 47m", hours: 132.0, rework: 5, overdue: 3 },
+  { name: "Olivia Carter", role: "User",       jobs: 26, completed: 23, score: 84, avg: "4h 28m", hours: 104.0, rework: 2, overdue: 1 },
 ];
 
 const ERRORS = [
@@ -52,6 +65,16 @@ const SEV_COLOR: Record<string, string> = {
 export default function Reports({ role = "super-admin" as Role }: { role?: Role } = {}) {
   const [activeTab, setActiveTab] = useState("system");
   const [period, setPeriod] = useState("30d");
+  const [userRoleFilter, setUserRoleFilter] = useState<"All" | UserRoleLabel>("All");
+  const isSuperAdmin = role === "super-admin";
+  const ROLE_FILTERS: ("All" | UserRoleLabel)[] = isSuperAdmin
+    ? ["All", "Admin", "Supervisor", "User"]
+    : ["All", "Supervisor", "User"];
+  const filteredUsers = USER_PERFORMANCE.filter((u) => userRoleFilter === "All" || u.role === userRoleFilter);
+  const totalJobs = filteredUsers.reduce((s, u) => s + u.jobs, 0);
+  const totalCompleted = filteredUsers.reduce((s, u) => s + u.completed, 0);
+  const totalHours = filteredUsers.reduce((s, u) => s + u.hours, 0);
+  const totalRework = filteredUsers.reduce((s, u) => s + u.rework, 0);
 
   return (
     <DashboardLayout title="Reports" role={role}>
@@ -109,32 +132,95 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
               )}
 
               {activeTab === "users" && (
-                <table className="w-full">
-                  <thead><tr>{["User", "Jobs", "Completed", "Score", "Avg time"].map((h) => <th key={h} className="text-left pb-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>)}</tr></thead>
-                  <tbody>
-                    {USER_PERFORMANCE.map((u, i) => (
-                      <motion.tr key={u.name} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} className="border-t border-gray-50 hover:bg-gray-50">
-                        <td className="py-3.5 flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-xs font-bold flex items-center justify-center">
-                            {u.name.split(" ").map((s) => s[0]).join("")}
-                          </div>
-                          <span className="text-sm font-medium text-gray-900">{u.name}</span>
-                        </td>
-                        <td className="py-3.5 text-sm text-gray-700">{u.jobs}</td>
-                        <td className="py-3.5 text-sm text-gray-700">{u.completed}</td>
-                        <td className="py-3.5">
-                          <div className="flex items-center gap-2 w-32">
-                            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                              <motion.div initial={{ width: 0 }} animate={{ width: `${u.score}%` }} transition={{ duration: 0.8, delay: i * 0.05 }} className={`h-full rounded-full ${u.score >= 90 ? "bg-emerald-500" : u.score >= 80 ? "bg-primary" : "bg-amber-500"}`} />
-                            </div>
-                            <span className="text-xs font-semibold text-gray-700">{u.score}</span>
-                          </div>
-                        </td>
-                        <td className="py-3.5 text-sm text-gray-700">{u.avg}</td>
-                      </motion.tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="space-y-5">
+                  {/* Header with role filter */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-bold text-gray-900 flex items-center gap-2"><Users size={16} className="text-primary" /> Reports of all users</h3>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Per-user performance across the entire platform · {filteredUsers.length} {userRoleFilter === "All" ? "users" : userRoleFilter.toLowerCase() + "s"}</p>
+                    </div>
+                    <div className="flex gap-1 bg-gray-100 p-1 rounded-xl flex-wrap">
+                      {ROLE_FILTERS.map((r) => (
+                        <motion.button key={r} whileTap={{ scale: 0.96 }} onClick={() => setUserRoleFilter(r)} className={`relative px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${userRoleFilter === r ? "text-white" : "text-gray-600 hover:text-gray-900"}`}>
+                          {userRoleFilter === r && <motion.div layoutId="userRoleBg" className="absolute inset-0 bg-primary rounded-lg pointer-events-none" transition={{ type: "spring", stiffness: 300, damping: 25 }} />}
+                          <span className="relative">{r}</span>
+                        </motion.button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Summary KPIs */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {[
+                      { label: "Total jobs", value: totalJobs, icon: FileText, color: "primary" },
+                      { label: "Completed", value: totalCompleted, icon: TrendingUp, color: "emerald" },
+                      { label: "Hours logged", value: `${totalHours.toFixed(1)}h`, icon: Clock, color: "amber" },
+                      { label: "Rework cases", value: totalRework, icon: AlertTriangle, color: "red" },
+                    ].map((k, i) => {
+                      const Icon = k.icon;
+                      return (
+                        <motion.div key={k.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
+                          <div className={`w-8 h-8 rounded-lg bg-${k.color}-50 text-${k.color}-600 flex items-center justify-center mb-2`}><Icon size={14} /></div>
+                          <div className="text-xl font-bold text-gray-900">{k.value}</div>
+                          <div className="text-[11px] text-gray-500">{k.label}</div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Per-user table */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 rounded-lg">
+                        <tr>{["User", "Role", "Jobs", "Completed", "Hours", "Rework", "Overdue", "Score", "Avg time"].map((h) => (
+                          <th key={h} className="text-left px-3 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                        ))}</tr>
+                      </thead>
+                      <tbody>
+                        {filteredUsers.map((u, i) => {
+                          const badge = ROLE_BADGE[u.role];
+                          const Icon = badge.icon;
+                          return (
+                            <motion.tr key={u.name} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }} className="border-t border-gray-50 hover:bg-gray-50/60">
+                              <td className="px-3 py-3.5">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-xs font-bold flex items-center justify-center">
+                                    {u.name.split(" ").map((s) => s[0]).join("")}
+                                  </div>
+                                  <span className="text-sm font-medium text-gray-900 whitespace-nowrap">{u.name}</span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3.5">
+                                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] font-semibold ${badge.bg} ${badge.color}`}>
+                                  <Icon size={10} /> {u.role}
+                                </span>
+                              </td>
+                              <td className="px-3 py-3.5 text-sm text-gray-700 tabular-nums">{u.jobs}</td>
+                              <td className="px-3 py-3.5 text-sm text-emerald-700 font-semibold tabular-nums">{u.completed}</td>
+                              <td className="px-3 py-3.5 text-sm text-gray-700 tabular-nums">{u.hours.toFixed(1)}h</td>
+                              <td className="px-3 py-3.5 text-sm tabular-nums">
+                                <span className={u.rework > 3 ? "text-red-600 font-semibold" : u.rework > 0 ? "text-amber-600" : "text-gray-400"}>{u.rework}</span>
+                              </td>
+                              <td className="px-3 py-3.5 text-sm tabular-nums">
+                                <span className={u.overdue > 0 ? "text-red-600 font-semibold" : "text-gray-400"}>{u.overdue}</span>
+                              </td>
+                              <td className="px-3 py-3.5">
+                                <div className="flex items-center gap-2 w-28">
+                                  <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                    <motion.div initial={{ width: 0 }} animate={{ width: `${u.score}%` }} transition={{ duration: 0.8, delay: i * 0.05 }} className={`h-full rounded-full ${u.score >= 90 ? "bg-emerald-500" : u.score >= 80 ? "bg-primary" : "bg-amber-500"}`} />
+                                  </div>
+                                  <span className="text-xs font-semibold text-gray-700">{u.score}</span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3.5 text-sm text-gray-700 whitespace-nowrap">{u.avg}</td>
+                            </motion.tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {filteredUsers.length === 0 && <div className="text-center py-8 text-sm text-gray-400">No users in this role.</div>}
+                  </div>
+                </div>
               )}
 
               {activeTab === "errors" && (
