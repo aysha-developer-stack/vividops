@@ -5,6 +5,7 @@ import {
   Plus, UserPlus, FileText, TrendingUp,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import Pagination, { usePagination } from "@/components/Pagination";
 
 const STATS = [
   { label: "Total Jobs", value: 342, icon: Briefcase, change: 8.4, up: true, color: "from-primary to-sky-700", bg: "bg-primary/10", text: "text-primary" },
@@ -38,6 +39,8 @@ const TEAM = [
 ];
 
 export default function AdminDashboard() {
+  const recentP = usePagination(RECENT_JOBS, 6);
+  const teamP = usePagination(TEAM, 5);
   return (
     <DashboardLayout title="Admin Overview" role="admin">
       {/* Banner */}
@@ -114,7 +117,7 @@ export default function AdminDashboard() {
             </div>
             <Link href="/admin/jobs" className="text-xs text-primary font-semibold hover:underline">View all</Link>
           </div>
-          {RECENT_JOBS.map((j, i) => (
+          {recentP.pageItems.map((j, i) => (
             <motion.div
               key={j.id}
               initial={{ opacity: 0, x: -10 }}
@@ -133,6 +136,7 @@ export default function AdminDashboard() {
               <span className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-full ${j.color}`}>{j.status}</span>
             </motion.div>
           ))}
+          <Pagination page={recentP.page} totalPages={recentP.totalPages} total={recentP.total} pageSize={recentP.pageSize} onChange={recentP.setPage} label="jobs" />
         </motion.div>
 
         {/* Team performance */}
@@ -147,7 +151,7 @@ export default function AdminDashboard() {
             <p className="text-xs text-gray-500 mt-0.5">Top performers this week</p>
           </div>
           <div className="p-5 space-y-4">
-            {TEAM.map((t, i) => {
+            {teamP.pageItems.map((t, i) => {
               const pct = Math.round((t.completed / t.jobs) * 100);
               return (
                 <motion.div
@@ -178,6 +182,7 @@ export default function AdminDashboard() {
               );
             })}
           </div>
+          <Pagination page={teamP.page} totalPages={teamP.totalPages} total={teamP.total} pageSize={teamP.pageSize} onChange={teamP.setPage} label="members" />
         </motion.div>
       </div>
 

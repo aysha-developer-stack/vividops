@@ -5,6 +5,7 @@ import {
   Plus, UserPlus, FileText, MessageSquare,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import Pagination, { usePagination } from "@/components/Pagination";
 
 const STATS = [
   { label: "Total Users", value: 1284, change: 12.4, trend: "up" as const, icon: Users, color: "from-primary to-sky-700", iconBg: "bg-primary/10", iconText: "text-primary" },
@@ -65,6 +66,7 @@ function Counter({ value }: { value: number }) {
 
 export default function SuperAdminDashboard() {
   const maxJobs = Math.max(...PERFORMANCE.map((d) => d.jobs));
+  const activityP = usePagination(ACTIVITY, 6);
   return (
     <DashboardLayout title="Dashboard Overview">
       {/* Welcome banner */}
@@ -232,7 +234,7 @@ export default function SuperAdminDashboard() {
           <button className="text-xs font-medium text-primary hover:underline">View all</button>
         </div>
         <div className="space-y-1">
-          {ACTIVITY.map((a, i) => (
+          {activityP.pageItems.map((a, i) => (
             <motion.div
               key={i}
               initial={{ opacity: 0, x: -10 }}
@@ -258,6 +260,7 @@ export default function SuperAdminDashboard() {
             </motion.div>
           ))}
         </div>
+        <Pagination page={activityP.page} totalPages={activityP.totalPages} total={activityP.total} pageSize={activityP.pageSize} onChange={activityP.setPage} label="events" />
       </motion.div>
     </DashboardLayout>
   );

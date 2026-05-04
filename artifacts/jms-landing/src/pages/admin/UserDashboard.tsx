@@ -6,6 +6,7 @@ import {
   CheckCircle2, Calendar, Flame, Sparkles,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import Pagination, { usePagination } from "@/components/Pagination";
 
 const ASSIGNED = [
   { id: "JOB-2148", title: "Server Maintenance", client: "BrightSpark Industries", due: "Today, 5pm", priority: "High" },
@@ -35,6 +36,9 @@ const TRAINING = [
 export default function UserDashboard() {
   const [time, setTime] = useState(0);
   const [running, setRunning] = useState(false);
+  const assignedP = usePagination(ASSIGNED, 5);
+  const notifsP = usePagination(NOTIFS, 5);
+  const trainingP = usePagination(TRAINING, 4);
 
   useEffect(() => {
     if (!running) return;
@@ -150,7 +154,7 @@ export default function UserDashboard() {
             </div>
             <Link href="/user/jobs"><span className="text-xs text-primary font-semibold hover:underline cursor-pointer">View all</span></Link>
           </div>
-          {ASSIGNED.map((j, i) => (
+          {assignedP.pageItems.map((j, i) => (
             <Link key={j.id} href={`/user/jobs/${j.id}`}>
               <motion.div
                 initial={{ opacity: 0, x: -10 }}
@@ -174,6 +178,7 @@ export default function UserDashboard() {
               </motion.div>
             </Link>
           ))}
+          <Pagination page={assignedP.page} totalPages={assignedP.totalPages} total={assignedP.total} pageSize={assignedP.pageSize} onChange={assignedP.setPage} label="jobs" />
         </motion.div>
 
         {/* Notifications + training */}
@@ -188,7 +193,7 @@ export default function UserDashboard() {
               <h3 className="font-bold text-gray-900 flex items-center gap-2"><Bell size={16} className="text-primary" /> Notifications</h3>
             </div>
             <div className="p-3">
-              {NOTIFS.map((n, i) => {
+              {notifsP.pageItems.map((n, i) => {
                 const Icon = n.icon;
                 return (
                   <motion.div
@@ -211,6 +216,7 @@ export default function UserDashboard() {
                 );
               })}
             </div>
+            <Pagination page={notifsP.page} totalPages={notifsP.totalPages} total={notifsP.total} pageSize={notifsP.pageSize} onChange={notifsP.setPage} label="notifications" />
           </motion.div>
 
           <motion.div
@@ -220,7 +226,7 @@ export default function UserDashboard() {
             className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-100 rounded-2xl p-5"
           >
             <h3 className="font-bold text-amber-900 flex items-center gap-2 mb-3"><Sparkles size={16} /> Daily Training</h3>
-            {TRAINING.map((t, i) => (
+            {trainingP.pageItems.map((t, i) => (
               <motion.div
                 key={t.title}
                 initial={{ opacity: 0 }}
@@ -234,6 +240,7 @@ export default function UserDashboard() {
                 <div className="text-xs text-gray-500 mt-0.5">{t.desc}</div>
               </motion.div>
             ))}
+            <Pagination page={trainingP.page} totalPages={trainingP.totalPages} total={trainingP.total} pageSize={trainingP.pageSize} onChange={trainingP.setPage} label="updates" />
           </motion.div>
         </div>
       </div>

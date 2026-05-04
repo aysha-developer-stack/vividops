@@ -5,6 +5,7 @@ import {
   TrendingUp, TrendingDown, Eye, MoreHorizontal,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import Pagination, { usePagination } from "@/components/Pagination";
 
 interface Supervisor {
   id: number;
@@ -40,6 +41,7 @@ export default function SupervisorMonitoring() {
   const [selected, setSelected] = useState<Supervisor | null>(null);
 
   const filtered = SUPERVISORS.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
+  const supervisorsP = usePagination(filtered, 6);
 
   const totalActive = SUPERVISORS.reduce((acc, s) => acc + s.activeJobs, 0);
   const totalCompleted = SUPERVISORS.reduce((acc, s) => acc + s.completedJobs, 0);
@@ -89,7 +91,7 @@ export default function SupervisorMonitoring() {
 
       {/* Supervisor cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filtered.map((sup, i) => (
+        {supervisorsP.pageItems.map((sup, i) => (
           <motion.div
             key={sup.id}
             layout
@@ -145,6 +147,9 @@ export default function SupervisorMonitoring() {
             </div>
           </motion.div>
         ))}
+      </div>
+      <div className="mt-4 bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <Pagination page={supervisorsP.page} totalPages={supervisorsP.totalPages} total={supervisorsP.total} pageSize={supervisorsP.pageSize} onChange={supervisorsP.setPage} label="supervisors" />
       </div>
 
       {/* Detail drawer */}

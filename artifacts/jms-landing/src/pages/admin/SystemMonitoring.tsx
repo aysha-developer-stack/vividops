@@ -5,6 +5,7 @@ import {
   Server, Database, Wifi, Shield, TrendingUp, TrendingDown, Eye, Search,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import Pagination, { usePagination } from "@/components/Pagination";
 
 const SYSTEM_HEALTH = [
   { name: "API Server", status: "healthy", uptime: "99.98%", latency: "42ms", icon: Server },
@@ -58,6 +59,8 @@ export default function SystemMonitoring() {
   const filtered = LIVE_USERS.filter(
     (u) => (filter === "All" || u.status === filter) && u.name.toLowerCase().includes(search.toLowerCase())
   );
+  const activityP = usePagination(ACTIVITY_FEED, 8);
+  const usersP = usePagination(filtered, 8);
 
   return (
     <DashboardLayout title="System Monitoring" role="super-admin">
@@ -129,7 +132,7 @@ export default function SystemMonitoring() {
             </span>
           </div>
           <div className="max-h-[360px] overflow-y-auto">
-            {ACTIVITY_FEED.map((a, i) => (
+            {activityP.pageItems.map((a, i) => (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, x: -8 }}
@@ -145,6 +148,7 @@ export default function SystemMonitoring() {
               </motion.div>
             ))}
           </div>
+          <Pagination page={activityP.page} totalPages={activityP.totalPages} total={activityP.total} pageSize={activityP.pageSize} onChange={activityP.setPage} label="events" />
         </motion.div>
       </div>
 
@@ -184,7 +188,7 @@ export default function SystemMonitoring() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((u, i) => {
+              {usersP.pageItems.map((u, i) => {
                 const c = STATUS_COLOR[u.status];
                 return (
                   <motion.tr
@@ -216,6 +220,7 @@ export default function SystemMonitoring() {
           </table>
           {filtered.length === 0 && <div className="text-center py-12 text-sm text-gray-400">No users match.</div>}
         </div>
+        <Pagination page={usersP.page} totalPages={usersP.totalPages} total={usersP.total} pageSize={usersP.pageSize} onChange={usersP.setPage} label="users" />
       </motion.div>
     </DashboardLayout>
   );

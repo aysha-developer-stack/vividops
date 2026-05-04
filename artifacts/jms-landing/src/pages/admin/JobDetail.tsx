@@ -8,6 +8,7 @@ import {
   Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 
 interface Props { role?: Role }
@@ -118,6 +119,7 @@ export default function JobDetail({ role = "user" }: Props) {
   const [showActivityPing, setShowActivityPing] = useState(false);
   const [autoStopCountdown, setAutoStopCountdown] = useState(30);
   const [savedLogs, setSavedLogs] = useState(INITIAL_TIMER_LOGS);
+  const savedLogsP = usePagination(savedLogs, 6);
   const [fileSubTab, setFileSubTab] = useState<"input" | "output" | "notes">("input");
   const [notes, setNotes] = useState(INITIAL_NOTES);
   const [noteDraft, setNoteDraft] = useState("");
@@ -864,7 +866,7 @@ export default function JobDetail({ role = "user" }: Props) {
                 <div className="text-[10px] text-gray-500 uppercase tracking-wide">Total</div>
               </div>
             </div>
-            {savedLogs.map((l, i) => (
+            {savedLogsP.pageItems.map((l, i) => (
               <motion.div
                 key={l.id}
                 initial={{ opacity: 0, x: -10 }}
@@ -884,6 +886,7 @@ export default function JobDetail({ role = "user" }: Props) {
                 <div className="font-mono text-sm font-bold text-gray-900 tabular-nums w-20 text-right">{l.duration}</div>
               </motion.div>
             ))}
+            <Pagination page={savedLogsP.page} totalPages={savedLogsP.totalPages} total={savedLogsP.total} pageSize={savedLogsP.pageSize} onChange={savedLogsP.setPage} label="entries" />
           </motion.div>
         )}
       </AnimatePresence>

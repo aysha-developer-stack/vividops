@@ -5,6 +5,7 @@ import {
   Calendar, Clock, TrendingUp, Plus,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import Pagination, { usePagination } from "@/components/Pagination";
 
 const ASSIGNED = [
   { id: "JOB-2148", title: "Server Maintenance", client: "BrightSpark Industries", due: "Today", priority: "High", progress: 72 },
@@ -42,6 +43,9 @@ const PRIORITY_COLOR: Record<string, string> = {
 };
 
 export default function SupervisorDashboard() {
+  const assignedP = usePagination(ASSIGNED, 5);
+  const teamP = usePagination(TEAM, 5);
+  const overdueP = usePagination(OVERDUE, 4);
   return (
     <DashboardLayout title="Supervisor Dashboard" role="supervisor">
       {/* Banner */}
@@ -116,7 +120,7 @@ export default function SupervisorDashboard() {
             </div>
             <Link href="/supervisor/jobs"><span className="text-xs text-primary font-semibold hover:underline cursor-pointer">View all</span></Link>
           </div>
-          {ASSIGNED.map((j, i) => (
+          {assignedP.pageItems.map((j, i) => (
             <Link key={j.id} href={`/supervisor/jobs/${j.id}`}>
               <motion.div
                 initial={{ opacity: 0, x: -10 }}
@@ -146,6 +150,7 @@ export default function SupervisorDashboard() {
               </motion.div>
             </Link>
           ))}
+          <Pagination page={assignedP.page} totalPages={assignedP.totalPages} total={assignedP.total} pageSize={assignedP.pageSize} onChange={assignedP.setPage} label="jobs" />
         </motion.div>
 
         {/* Team & overdue */}
@@ -160,7 +165,7 @@ export default function SupervisorDashboard() {
               <h3 className="font-bold text-gray-900 flex items-center gap-2"><TrendingUp size={16} className="text-primary" /> My Team Today</h3>
             </div>
             <div className="p-3">
-              {TEAM.map((t, i) => (
+              {teamP.pageItems.map((t, i) => (
                 <motion.div
                   key={t.name}
                   initial={{ opacity: 0, x: 10 }}
@@ -180,6 +185,7 @@ export default function SupervisorDashboard() {
                 </motion.div>
               ))}
             </div>
+            <Pagination page={teamP.page} totalPages={teamP.totalPages} total={teamP.total} pageSize={teamP.pageSize} onChange={teamP.setPage} label="members" />
           </motion.div>
 
           <motion.div
@@ -189,7 +195,7 @@ export default function SupervisorDashboard() {
             className="bg-gradient-to-br from-red-50 to-rose-50 border border-red-100 rounded-2xl p-5"
           >
             <h3 className="font-bold text-red-900 flex items-center gap-2 mb-3"><AlertCircle size={16} /> Overdue Jobs</h3>
-            {OVERDUE.map((o, i) => (
+            {overdueP.pageItems.map((o, i) => (
               <motion.div
                 key={o.id}
                 initial={{ opacity: 0 }}
@@ -207,6 +213,7 @@ export default function SupervisorDashboard() {
                 </div>
               </motion.div>
             ))}
+            <Pagination page={overdueP.page} totalPages={overdueP.totalPages} total={overdueP.total} pageSize={overdueP.pageSize} onChange={overdueP.setPage} label="jobs" />
           </motion.div>
         </div>
       </div>
