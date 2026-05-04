@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { Link } from "wouter";
 import {
   Briefcase, Users, CheckCircle2, Clock, ArrowUpRight, ArrowDownRight,
   Plus, UserPlus, FileText, TrendingUp,
@@ -111,7 +112,7 @@ export default function AdminDashboard() {
               <h3 className="font-bold text-gray-900">Recent Jobs</h3>
               <p className="text-xs text-gray-500 mt-0.5">Latest job activity across all teams</p>
             </div>
-            <button className="text-xs text-primary font-semibold hover:underline">View all</button>
+            <Link href="/admin/jobs" className="text-xs text-primary font-semibold hover:underline">View all</Link>
           </div>
           {RECENT_JOBS.map((j, i) => (
             <motion.div
@@ -188,27 +189,28 @@ export default function AdminDashboard() {
         className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6"
       >
         {[
-          { label: "Create Job", icon: Plus, color: "from-primary to-sky-700" },
-          { label: "Add User", icon: UserPlus, color: "from-emerald-500 to-emerald-700" },
-          { label: "Generate Report", icon: FileText, color: "from-amber-500 to-orange-600" },
-        ].map((q, i) => {
+          { label: "Create Job", icon: Plus, color: "from-primary to-sky-700", href: "/admin/jobs" },
+          { label: "Add User", icon: UserPlus, color: "from-emerald-500 to-emerald-700", href: "/admin/users" },
+          { label: "Generate Report", icon: FileText, color: "from-amber-500 to-orange-600", href: "/admin/reports" },
+        ].map((q) => {
           const Icon = q.icon;
           return (
-            <motion.button
-              key={q.label}
-              whileHover={{ y: -3, scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="flex items-center gap-3 bg-white border border-gray-100 rounded-2xl p-4 hover:border-primary/30 hover:shadow-lg transition-all text-left group"
-            >
-              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${q.color} text-white flex items-center justify-center shadow-md`}>
-                <Icon size={18} />
-              </div>
-              <div className="flex-1">
-                <div className="font-semibold text-sm text-gray-900">{q.label}</div>
-                <div className="text-[11px] text-gray-500">Click to start</div>
-              </div>
-              <ArrowUpRight size={16} className="text-gray-300 group-hover:text-primary group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-all" />
-            </motion.button>
+            <Link key={q.label} href={q.href}>
+              <motion.div
+                whileHover={{ y: -3, scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="flex items-center gap-3 bg-white border border-gray-100 rounded-2xl p-4 hover:border-primary/30 hover:shadow-lg transition-all text-left group cursor-pointer"
+              >
+                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${q.color} text-white flex items-center justify-center shadow-md`}>
+                  <Icon size={18} />
+                </div>
+                <div className="flex-1">
+                  <div className="font-semibold text-sm text-gray-900">{q.label}</div>
+                  <div className="text-[11px] text-gray-500">Click to start</div>
+                </div>
+                <ArrowUpRight size={16} className="text-gray-300 group-hover:text-primary group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-all" />
+              </motion.div>
+            </Link>
           );
         })}
       </motion.div>

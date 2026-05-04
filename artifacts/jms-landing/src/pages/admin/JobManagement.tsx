@@ -1,11 +1,15 @@
 import { useState, useRef } from "react";
+import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, MoreVertical, Edit2, Trash2, UserPlus, X, Check,
-  Calendar, Clock, AlertCircle,
+  Calendar, Clock, AlertCircle, ExternalLink,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import type { Role } from "@/lib/roles";
+
+const ASSIGNEES = ["Sarah Johnson", "Mike Chen", "Emma Wilson", "David Park", "Lisa Martinez", "James Bennett", "Jordan Reed", "Riley Adams", "Olivia Carter"];
+const SUPERVISORS = ["Mike Chen", "Emma Wilson", "James Bennett"];
 
 type Status = "Pending" | "In Progress" | "Completed" | "Overdue";
 type Priority = "Low" | "Medium" | "High";
@@ -44,14 +48,36 @@ const SEED: Job[] = [
 ];
 
 export default function JobManagement({ role = "super-admin" as Role }: { role?: Role } = {}) {
+  const [, setLocation] = useLocation();
+  const basePath = role === "supervisor" ? "/supervisor/jobs" : role === "user" ? "/user/jobs" : role === "admin" ? "/admin/jobs" : "/super-admin/jobs";
   const [jobs, setJobs] = useState<Job[]>(SEED);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"All" | Status>("All");
   const [openId, setOpenId] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [reassignFor, setReassignFor] = useState<Job | null>(null);
+  const [reassignTo, setReassignTo] = useState("");
   const [form, setForm] = useState({ title: "", client: "", address: "", description: "", assignee: "Sarah Johnson", priority: "Medium" as Priority, due: "" });
   const [jobFiles, setJobFiles] = useState<{ name: string; size: string }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const startEdit = (j: Job) => {
+    setEditingId(j.id);
+    setForm({ title: j.title, client: j.client, address: "", description: "", assignee: j.assignee, priority: j.priority, due: j.due });
+    setJobFiles([]);
+    setModalOpen(true);
+    setOpenId(null);
+  };
+  const startReassign = (j: Job) => {
+    setReassignFor(j);
+    setReassignTo(j.assignee);
+    setOpenId(null);
+  };
+  const saveReassign = () => {
+    if (!reassignFor || !reassignTo) return;
+    setJobs((prev) => prev.map((j) => (j.id === reassignFor.id ? { ...j, assignee: reassignTo } : j)));
+    setReassignFor(null);
+  };
   const formatSize = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   const onFilesPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
     const picked = Array.from(e.target.files ?? []);
@@ -68,15 +94,21 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
   const remove = (id: number) => { setJobs(jobs.filter((j) => j.id !== id)); setOpenId(null); };
   const create = () => {
     if (!form.title || !form.client) return;
-    setJobs([{
-      id: Math.max(...jobs.map((j) => j.id)) + 1,
-      title: form.title, client: form.client, assignee: form.assignee,
-      status: "Pending", priority: form.priority, due: form.due || "TBD", progress: 0,
-    }, ...jobs]);
+    if (editingId !== null) {
+      setJobs(jobs.map((j) => j.id === editingId ? { ...j, title: form.title, client: form.client, assignee: form.assignee, priority: form.priority, due: form.due || j.due } : j));
+    } else {
+      setJobs([{
+        id: Math.max(...jobs.map((j) => j.id)) + 1,
+        title: form.title, client: form.client, assignee: form.assignee,
+        status: "Pending", priority: form.priority, due: form.due || "TBD", progress: 0,
+      }, ...jobs]);
+    }
     setForm({ title: "", client: "", address: "", description: "", assignee: "Sarah Johnson", priority: "Medium", due: "" });
     setJobFiles([]);
+    setEditingId(null);
     setModalOpen(false);
   };
+  const closeModal = () => { setModalOpen(false); setEditingId(null); };
 
   const counts = {
     All: jobs.length,
@@ -147,8 +179,8 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                       whileHover={{ backgroundColor: "rgb(249, 250, 251)" }}
                       className="border-b border-gray-50 last:border-0"
                     >
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-gray-900 text-sm">{j.title}</div>
+                      <td className="px-6 py-4 cursor-pointer" onClick={() => setLocation(`${basePath}/${j.id}`)}>
+                        <div className="font-medium text-gray-900 text-sm flex items-center gap-1.5 group-hover:text-primary">{j.title} <ExternalLink size={11} className="text-gray-300" /></div>
                         <div className="text-xs text-gray-500 mt-0.5">#{j.id} · {j.client}</div>
                       </td>
                       <td className="px-6 py-4">
@@ -196,10 +228,13 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                         <AnimatePresence>
                           {openId === j.id && (
                             <motion.div initial={{ opacity: 0, scale: 0.95, y: -5 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: -5 }} transition={{ duration: 0.12 }} className="absolute right-6 top-12 w-44 bg-white rounded-xl shadow-xl border border-gray-100 z-10 py-1 text-left">
-                              <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                              <Link href={`${basePath}/${j.id}`} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                <ExternalLink size={14} className="text-gray-400" /> View / Track
+                              </Link>
+                              <button onClick={() => startEdit(j)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                 <Edit2 size={14} className="text-gray-400" /> Edit
                               </button>
-                              <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                              <button onClick={() => startReassign(j)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                 <UserPlus size={14} className="text-gray-400" /> Reassign
                               </button>
                               <div className="h-px bg-gray-100 my-1" />
@@ -224,14 +259,14 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
       <AnimatePresence>
         {modalOpen && (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setModalOpen(false)} className="fixed inset-0 bg-black/50 z-40" />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeModal} className="fixed inset-0 bg-black/50 z-40" />
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} transition={{ type: "spring", stiffness: 300, damping: 28 }} className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[95vw] max-w-4xl max-h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
               <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-primary/5 to-sky-50">
                 <div>
-                  <h3 className="font-bold text-gray-900 text-base">Create New Job</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">Assign a new job to a team member and attach reference files</p>
+                  <h3 className="font-bold text-gray-900 text-base">{editingId !== null ? "Edit Job" : "Create New Job"}</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">{editingId !== null ? `Update details for job #${editingId}` : "Assign a new job to a team member and attach reference files"}</p>
                 </div>
-                <button onClick={() => setModalOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
+                <button onClick={closeModal} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
               </div>
               <div className="px-6 py-5 grid md:grid-cols-2 gap-x-6 gap-y-4 flex-1 overflow-y-auto">
                 {/* LEFT COLUMN — Job details */}
@@ -249,7 +284,7 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assignee</label>
                       <select value={form.assignee} onChange={(e) => setForm({ ...form, assignee: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors">
-                        {["Sarah Johnson", "Mike Chen", "Emma Wilson", "David Park", "Lisa Martinez"].map((n) => <option key={n}>{n}</option>)}
+                        {ASSIGNEES.map((n) => <option key={n}>{n}</option>)}
                       </select>
                     </div>
                   </div>
@@ -336,9 +371,43 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                 </div>
               </div>
               <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/40">
-                <button onClick={() => setModalOpen(false)} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl">Cancel</button>
+                <button onClick={closeModal} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl">Cancel</button>
                 <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={create} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30">
-                  <Check size={16} /> Create Job
+                  <Check size={16} /> {editingId !== null ? "Save Changes" : "Create Job"}
+                </motion.button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Reassign Modal */}
+      <AnimatePresence>
+        {reassignFor && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setReassignFor(null)} className="fixed inset-0 bg-black/50 z-40" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} transition={{ type: "spring", stiffness: 300, damping: 28 }} className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[95vw] max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
+              <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-primary/5 to-sky-50">
+                <h3 className="font-bold text-gray-900 text-base flex items-center gap-2"><UserPlus size={16} className="text-primary" /> Reassign Job</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Job #{reassignFor.id} · {reassignFor.title}</p>
+              </div>
+              <div className="px-6 py-5 space-y-4">
+                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 text-white text-xs font-bold flex items-center justify-center">{reassignFor.assignee.split(" ").map((s) => s[0]).join("")}</div>
+                  <div className="flex-1"><div className="text-[10px] text-gray-500 uppercase font-semibold">Currently assigned to</div><div className="text-sm font-semibold text-gray-900">{reassignFor.assignee}</div></div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Reassign to</label>
+                  <select value={reassignTo} onChange={(e) => setReassignTo(e.target.value)} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white">
+                    {ASSIGNEES.map((n) => <option key={n}>{n}</option>)}
+                  </select>
+                  <p className="text-[10px] text-gray-400 mt-1.5">The new assignee will be notified via Cliq and email.</p>
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/40">
+                <button onClick={() => setReassignFor(null)} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl">Cancel</button>
+                <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={saveReassign} disabled={reassignTo === reassignFor.assignee} className="flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-xl font-medium text-sm shadow-lg shadow-primary/30">
+                  <Check size={14} /> Confirm Reassign
                 </motion.button>
               </div>
             </motion.div>

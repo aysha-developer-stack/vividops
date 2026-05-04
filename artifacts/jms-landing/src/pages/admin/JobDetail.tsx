@@ -97,7 +97,11 @@ function formatTime(s: number) {
 }
 
 export default function JobDetail({ role = "user" }: Props) {
-  const [, params] = useRoute(role === "supervisor" ? "/supervisor/jobs/:id" : "/user/jobs/:id");
+  const routePath = role === "supervisor" ? "/supervisor/jobs/:id"
+    : role === "admin" ? "/admin/jobs/:id"
+    : role === "super-admin" ? "/super-admin/jobs/:id"
+    : "/user/jobs/:id";
+  const [, params] = useRoute(routePath);
   const jobId = params?.id ?? JOB.number;
 
   const [tab, setTab] = useState<TabId>(role === "supervisor" ? "overview" : "checklist");
