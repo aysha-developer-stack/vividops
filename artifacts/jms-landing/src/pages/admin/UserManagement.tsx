@@ -265,8 +265,8 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assign Role</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(["Admin", "Supervisor", "User"] as UserRole[]).map((r) => {
+                  <div className={`grid ${ROLES_TO_SHOW.length === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"} gap-2`}>
+                    {ROLES_TO_SHOW.map((r) => {
                       const cfg = ROLE_CONFIG[r];
                       const Icon = cfg.icon;
                       const selected = form.role === r;
@@ -279,7 +279,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                           className={`p-3 rounded-xl border-2 flex flex-col items-center gap-1.5 transition-colors ${selected ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300"}`}
                         >
                           <Icon size={18} className={selected ? "text-primary" : "text-gray-400"} />
-                          <span className={`text-xs font-semibold ${selected ? "text-primary" : "text-gray-700"}`}>{r}</span>
+                          <span className={`text-[11px] font-semibold text-center leading-tight ${selected ? "text-primary" : "text-gray-700"}`}>{r}</span>
                         </motion.button>
                       );
                     })}
@@ -287,9 +287,9 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                 </div>
               </div>
               <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
-                <button onClick={() => setModalOpen(false)} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl">Cancel</button>
-                <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={create} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30">
-                  <Check size={16} /> Create User
+                <button onClick={() => { setModalOpen(false); setEditingId(null); }} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl">Cancel</button>
+                <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={save} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30">
+                  <Check size={16} /> {editingId !== null ? "Save Changes" : "Create User"}
                 </motion.button>
               </div>
             </motion.div>

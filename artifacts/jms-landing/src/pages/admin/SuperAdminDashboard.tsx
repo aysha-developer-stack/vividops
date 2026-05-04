@@ -29,10 +29,10 @@ const ACTIVITY = [
 ];
 
 const QUICK_ACTIONS = [
-  { label: "Create Job", icon: Plus, href: "/super-admin/jobs", color: "bg-primary" },
   { label: "Add User", icon: UserPlus, href: "/super-admin/users", color: "bg-emerald-600" },
+  { label: "Job Overview", icon: Plus, href: "/super-admin/jobs", color: "bg-primary" },
+  { label: "System Monitoring", icon: Activity, href: "/super-admin/monitoring", color: "bg-purple-600" },
   { label: "Generate Report", icon: FileText, href: "/super-admin/reports", color: "bg-amber-600" },
-  { label: "Open Cliq", icon: MessageSquare, href: "/super-admin/communication", color: "bg-purple-600" },
 ];
 
 const PERFORMANCE = [
