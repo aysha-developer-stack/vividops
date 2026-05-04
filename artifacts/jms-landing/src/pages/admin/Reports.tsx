@@ -102,7 +102,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     (billableFilter === "all" || (billableFilter === "billable" ? t.billable : !t.billable)) &&
     (search === "" || t.user.toLowerCase().includes(search.toLowerCase()) || t.project.toLowerCase().includes(search.toLowerCase()))
   );
-  const usersP = usePagination(filteredUsers, 8);
+  const usersP = usePagination(filteredUsers, 6);
   const errorsP = usePagination(filteredErrors, 6);
   const timeP = usePagination(filteredTime, 8);
   const totalJobs = filteredUsers.reduce((s, u) => s + u.jobs, 0);
