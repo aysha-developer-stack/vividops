@@ -6,6 +6,7 @@ import {
   X, Check, Search,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 
 type UserRoleLabel = "Super Admin" | "Admin" | "Supervisor" | "User";
@@ -101,6 +102,9 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     (billableFilter === "all" || (billableFilter === "billable" ? t.billable : !t.billable)) &&
     (search === "" || t.user.toLowerCase().includes(search.toLowerCase()) || t.project.toLowerCase().includes(search.toLowerCase()))
   );
+  const usersP = usePagination(filteredUsers, 8);
+  const errorsP = usePagination(filteredErrors, 6);
+  const timeP = usePagination(filteredTime, 8);
   const totalJobs = filteredUsers.reduce((s, u) => s + u.jobs, 0);
   const totalCompleted = filteredUsers.reduce((s, u) => s + u.completed, 0);
   const totalHours = filteredUsers.reduce((s, u) => s + u.hours, 0);
@@ -342,7 +346,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                         ))}</tr>
                       </thead>
                       <tbody>
-                        {filteredUsers.map((u, i) => {
+                        {usersP.pageItems.map((u, i) => {
                           const badge = ROLE_BADGE[u.role];
                           const Icon = badge.icon;
                           return (
@@ -390,13 +394,14 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                     </table>
                     {filteredUsers.length === 0 && <div className="text-center py-8 text-sm text-gray-400">No users in this role.</div>}
                   </div>
+                  <Pagination page={usersP.page} totalPages={usersP.totalPages} total={usersP.total} pageSize={usersP.pageSize} onChange={usersP.setPage} label="users" />
                 </div>
               )}
 
               {activeTab === "errors" && (
                 <div className="space-y-2">
                   {filteredErrors.length === 0 && <div className="text-center py-8 text-sm text-gray-400">No errors match current filters.</div>}
-                  {filteredErrors.map((e, i) => (
+                  {errorsP.pageItems.map((e, i) => (
                     <motion.div key={e.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }} whileHover={{ x: 4 }} className="flex items-center gap-4 p-4 border border-gray-100 rounded-xl hover:border-gray-300 hover:shadow-md transition-all cursor-pointer">
                       <div className="w-10 h-10 rounded-lg bg-red-50 text-red-500 flex items-center justify-center shrink-0">
                         <AlertTriangle size={18} />
@@ -412,14 +417,16 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                       <ChevronRight size={16} className="text-gray-300" />
                     </motion.div>
                   ))}
+                  <Pagination page={errorsP.page} totalPages={errorsP.totalPages} total={errorsP.total} pageSize={errorsP.pageSize} onChange={errorsP.setPage} label="errors" />
                 </div>
               )}
 
               {activeTab === "time" && (
+                <div>
                 <table className="w-full">
                   <thead><tr>{["User", "Project", "Hours", "Type"].map((h) => <th key={h} className="text-left pb-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>)}</tr></thead>
                   <tbody>
-                    {filteredTime.map((t, i) => (
+                    {timeP.pageItems.map((t, i) => (
                       <motion.tr key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} className="border-t border-gray-50 hover:bg-gray-50">
                         <td className="py-3.5 text-sm font-medium text-gray-900">{t.user}</td>
                         <td className="py-3.5 text-sm text-gray-700">{t.project}</td>
@@ -433,6 +440,8 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                     ))}
                   </tbody>
                 </table>
+                <Pagination page={timeP.page} totalPages={timeP.totalPages} total={timeP.total} pageSize={timeP.pageSize} onChange={timeP.setPage} label="entries" />
+                </div>
               )}
             </motion.div>
           </AnimatePresence>

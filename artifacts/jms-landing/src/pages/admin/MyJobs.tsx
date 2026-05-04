@@ -6,6 +6,7 @@ import {
   CheckCircle2, Clock, AlertCircle, MapPin,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import Pagination, { usePagination } from "@/components/Pagination";
 
 type Status = "Pending" | "In Progress" | "Completed" | "Overdue";
 
@@ -43,6 +44,7 @@ export default function MyJobs() {
   const [search, setSearch] = useState("");
 
   const filtered = JOBS.filter((j) => (filter === "All" || j.status === filter) && (j.title.toLowerCase().includes(search.toLowerCase()) || j.client.toLowerCase().includes(search.toLowerCase())));
+  const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 5);
 
   return (
     <DashboardLayout title="My Jobs" role="user">
@@ -98,7 +100,7 @@ export default function MyJobs() {
       {/* Job list */}
       <div className="space-y-3">
         <AnimatePresence>
-          {filtered.map((j, i) => {
+          {pageItems.map((j, i) => {
             const cfg = STATUS_CFG[j.status];
             const Icon = cfg.icon;
             return (
@@ -149,6 +151,12 @@ export default function MyJobs() {
 
       {filtered.length === 0 && (
         <div className="text-center py-16 text-sm text-gray-400">No jobs match your filter.</div>
+      )}
+
+      {filtered.length > 0 && (
+        <div className="mt-4 bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onChange={setPage} label="jobs" />
+        </div>
       )}
     </DashboardLayout>
   );

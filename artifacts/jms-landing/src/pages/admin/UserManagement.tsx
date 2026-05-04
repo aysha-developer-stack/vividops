@@ -5,6 +5,7 @@ import {
   Crown, UserCog, User as UserIcon, X, Check,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 
 type UserRole = "Super Admin" | "Admin" | "Supervisor" | "User";
@@ -58,6 +59,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
     (filter === "All" || u.role === filter) &&
     (u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()))
   );
+  const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 8);
 
   const toggleStatus = (id: number) => {
     setUsers(users.map((u) => (u.id === id ? { ...u, status: u.status === "Active" ? "Inactive" : "Active" } : u)));
@@ -149,7 +151,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
             </thead>
             <tbody>
               <AnimatePresence>
-                {filtered.map((u, i) => {
+                {pageItems.map((u, i) => {
                   const cfg = ROLE_CONFIG[u.role];
                   const Icon = cfg.icon;
                   return (
@@ -233,6 +235,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
             <div className="text-center py-12 text-sm text-gray-400">No users match your search.</div>
           )}
         </div>
+        <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onChange={setPage} label="users" />
       </motion.div>
 
       {/* Create User Modal */}

@@ -6,6 +6,7 @@ import {
   Calendar, Clock, AlertCircle, ExternalLink, CheckCircle2,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 
 const ASSIGNEES = ["Sarah Johnson", "Mike Chen", "Emma Wilson", "David Park", "Lisa Martinez", "James Bennett", "Jordan Reed", "Riley Adams", "Olivia Carter"];
@@ -92,6 +93,7 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
     (filter === "All" || j.status === filter) &&
     (j.title.toLowerCase().includes(search.toLowerCase()) || j.client.toLowerCase().includes(search.toLowerCase()))
   );
+  const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 8);
 
   const remove = (id: number) => { setJobs(jobs.filter((j) => j.id !== id)); setOpenId(null); };
   const create = () => {
@@ -169,7 +171,7 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
             </thead>
             <tbody>
               <AnimatePresence>
-                {filtered.map((j, i) => {
+                {pageItems.map((j, i) => {
                   const sCfg = STATUS_CONFIG[j.status];
                   const pCfg = PRIORITY_CONFIG[j.priority];
                   return (
@@ -264,6 +266,7 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
           </table>
           {filtered.length === 0 && <div className="text-center py-12 text-sm text-gray-400">No jobs found.</div>}
         </div>
+        <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onChange={setPage} label="jobs" />
       </motion.div>
 
       {/* Create Job Modal */}

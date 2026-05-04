@@ -4,6 +4,7 @@ import {
   Search, Clock, AlertCircle, TrendingUp, Plus, X, Activity, FileWarning,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import Pagination, { usePagination } from "@/components/Pagination";
 
 interface Worker {
   id: number;
@@ -46,6 +47,8 @@ export default function UserMonitoring() {
   const [errors, setErrors] = useState<ErrorReport[]>(SEED_ERRORS);
   const [draft, setDraft] = useState<{ user: string; job: string; severity: string; desc: string }>({ user: WORKERS[0].name, job: "", severity: "Medium", desc: "" });
   const filtered = WORKERS.filter((w) => w.name.toLowerCase().includes(search.toLowerCase()));
+  const workersP = usePagination(filtered, 6);
+  const errorsP = usePagination(errors, 6);
 
   const submitError = () => {
     if (!draft.job.trim() || !draft.desc.trim()) return;
@@ -109,7 +112,7 @@ export default function UserMonitoring() {
 
             {/* Workers grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filtered.map((w, i) => (
+              {workersP.pageItems.map((w, i) => (
                 <motion.div
                   key={w.id}
                   layout
@@ -161,6 +164,9 @@ export default function UserMonitoring() {
                 </motion.div>
               ))}
             </div>
+            <div className="mt-4 bg-white rounded-2xl border border-gray-100 overflow-hidden">
+              <Pagination page={workersP.page} totalPages={workersP.totalPages} total={workersP.total} pageSize={workersP.pageSize} onChange={workersP.setPage} label="team members" />
+            </div>
           </motion.div>
         ) : (
           <motion.div
@@ -174,7 +180,7 @@ export default function UserMonitoring() {
               <h3 className="font-bold text-gray-900">Error Reports</h3>
               <p className="text-xs text-gray-500 mt-0.5">{errors.length} reports filed by you this month</p>
             </div>
-            {errors.map((e, i) => (
+            {errorsP.pageItems.map((e, i) => (
               <motion.div
                 key={e.id}
                 initial={{ opacity: 0, x: -10 }}
@@ -200,6 +206,7 @@ export default function UserMonitoring() {
                 </div>
               </motion.div>
             ))}
+            <Pagination page={errorsP.page} totalPages={errorsP.totalPages} total={errorsP.total} pageSize={errorsP.pageSize} onChange={errorsP.setPage} label="reports" />
           </motion.div>
         )}
       </AnimatePresence>

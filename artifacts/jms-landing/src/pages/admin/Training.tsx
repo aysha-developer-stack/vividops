@@ -5,6 +5,7 @@ import {
   Search, Filter, GraduationCap,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 
 const CATEGORIES = ["All", "Onboarding", "Safety", "Technical", "Leadership"];
@@ -93,8 +94,17 @@ export default function Training({ role = "super-admin" as Role }: { role?: Role
       </motion.div>
 
       {/* Course grid */}
+      <CourseGrid filtered={filtered} />
+    </DashboardLayout>
+  );
+}
+
+function CourseGrid({ filtered }: { filtered: typeof COURSES }) {
+  const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 6);
+  return (
+    <>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filtered.map((c, i) => (
+        {pageItems.map((c, i) => (
           <motion.div
             key={c.id}
             initial={{ opacity: 0, y: 20 }}
@@ -170,6 +180,11 @@ export default function Training({ role = "super-admin" as Role }: { role?: Role
       {filtered.length === 0 && (
         <div className="text-center py-16 text-sm text-gray-400">No courses match your search.</div>
       )}
-    </DashboardLayout>
+      {filtered.length > 0 && (
+        <div className="mt-4 bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onChange={setPage} label="courses" />
+        </div>
+      )}
+    </>
   );
 }

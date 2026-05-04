@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { ArrowLeft, Check, Filter as FilterIcon } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import Pagination, { usePagination } from "@/components/Pagination";
 import { NOTIFICATIONS_BY_ROLE, NOTIF_STYLE, type Notif, type NotifType } from "@/lib/notifications";
 import type { Role } from "@/lib/roles";
 import { ROLES } from "@/lib/roles";
@@ -28,6 +29,7 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
     if (filter === "unread") return items.filter((n) => n.unread);
     return items.filter((n) => n.type === filter);
   }, [items, filter]);
+  const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 8);
 
   const unreadCount = items.filter((n) => n.unread).length;
   const markAll = () => setItems((arr) => arr.map((n) => ({ ...n, unread: false })));
@@ -91,7 +93,7 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
           </div>
 
           <div className="divide-y divide-gray-50">
-            {filtered.map((n, i) => {
+            {pageItems.map((n, i) => {
               const style = NOTIF_STYLE[n.type];
               const NIcon = style.icon;
               return (
@@ -134,6 +136,7 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
               </div>
             )}
           </div>
+          <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onChange={setPage} label="notifications" />
         </motion.div>
       </div>
     </DashboardLayout>

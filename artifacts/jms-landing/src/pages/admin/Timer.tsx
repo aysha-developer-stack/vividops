@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, Square, Plus, Clock, Trash2, Briefcase } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 
 interface Entry {
@@ -64,6 +65,7 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
 
   const todayTotal = entries.filter((e) => e.date === "Today").reduce((acc, e) => acc + e.duration, 0);
   const weekTotal = entries.reduce((acc, e) => acc + e.duration, 0);
+  const entriesP = usePagination(entries, 6);
 
   return (
     <DashboardLayout title="Time Tracker" role={role}>
@@ -168,7 +170,7 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
         </div>
         <div>
           <AnimatePresence>
-            {entries.map((e, i) => (
+            {entriesP.pageItems.map((e, i) => (
               <motion.div
                 key={e.id}
                 layout
@@ -208,6 +210,7 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
             <div className="text-center py-12 text-sm text-gray-400">No entries yet — start the timer above.</div>
           )}
         </div>
+        <Pagination page={entriesP.page} totalPages={entriesP.totalPages} total={entriesP.total} pageSize={entriesP.pageSize} onChange={entriesP.setPage} label="entries" />
       </motion.div>
     </DashboardLayout>
   );
