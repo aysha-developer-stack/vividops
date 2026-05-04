@@ -76,6 +76,68 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const totalHours = filteredUsers.reduce((s, u) => s + u.hours, 0);
   const totalRework = filteredUsers.reduce((s, u) => s + u.rework, 0);
 
+  const exportUserPDF = (u: UserPerf) => {
+    const periodLabel = period === "All" ? "All time" : `Last ${period}`;
+    const rate = u.jobs > 0 ? Math.round((u.completed / u.jobs) * 100) : 0;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Vivid OPS — ${u.name} Report</title>
+<style>
+*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;margin:0;padding:40px;max-width:820px;margin:0 auto}
+.brand{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0ea5e9;padding-bottom:16px;margin-bottom:28px}
+.brand h1{margin:0;font-size:22px;color:#0ea5e9;letter-spacing:1px}
+.brand .meta{font-size:11px;color:#64748b;text-align:right}
+.user{display:flex;align-items:center;gap:16px;margin-bottom:24px}
+.avatar{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#0ea5e9,#0369a1);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px}
+.user h2{margin:0;font-size:20px}
+.role{display:inline-block;padding:2px 10px;border-radius:6px;font-size:11px;font-weight:600;margin-top:4px;background:#f1f5f9;color:#334155;border:1px solid #e2e8f0}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px}
+.kpi{padding:14px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc}
+.kpi .l{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.kpi .v{font-size:22px;font-weight:700;margin-top:4px}
+h3{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:#475569;margin:24px 0 10px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:10px;background:#f1f5f9;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#475569;border-bottom:1px solid #e2e8f0}
+td{padding:10px;border-bottom:1px solid #f1f5f9}
+.bar{height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;width:140px;display:inline-block;vertical-align:middle;margin-right:8px}
+.bar>div{height:100%;background:${u.score >= 90 ? "#10b981" : u.score >= 80 ? "#0ea5e9" : "#f59e0b"};width:${u.score}%}
+.foot{margin-top:40px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8;text-align:center}
+@media print{body{padding:20px}.no-print{display:none}}
+.btn{position:fixed;top:20px;right:20px;background:#0ea5e9;color:#fff;border:0;padding:10px 18px;border-radius:8px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(14,165,233,.4)}
+</style></head><body>
+<button class="btn no-print" onclick="window.print()">Save as PDF</button>
+<div class="brand"><h1>VIVID OPS</h1><div class="meta">Vivid Engineering<br>Generated ${new Date().toLocaleString()}<br>Period: ${periodLabel}</div></div>
+<div class="user">
+  <div class="avatar">${u.name.split(" ").map((s) => s[0]).join("")}</div>
+  <div><h2>${u.name}</h2><span class="role">${u.role}</span></div>
+</div>
+<h3>Performance summary</h3>
+<div class="kpis">
+  <div class="kpi"><div class="l">Total jobs</div><div class="v">${u.jobs}</div></div>
+  <div class="kpi"><div class="l">Completed</div><div class="v" style="color:#10b981">${u.completed}</div></div>
+  <div class="kpi"><div class="l">Completion rate</div><div class="v">${rate}%</div></div>
+  <div class="kpi"><div class="l">Performance score</div><div class="v">${u.score}</div></div>
+</div>
+<h3>Detailed metrics</h3>
+<table>
+  <thead><tr><th>Metric</th><th>Value</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>Hours logged</td><td>${u.hours.toFixed(1)}h</td><td>—</td></tr>
+    <tr><td>Average resolution time</td><td>${u.avg}</td><td>—</td></tr>
+    <tr><td>Rework cases</td><td>${u.rework}</td><td style="color:${u.rework > 3 ? "#dc2626" : u.rework > 0 ? "#d97706" : "#10b981"}">${u.rework > 3 ? "High" : u.rework > 0 ? "Moderate" : "Excellent"}</td></tr>
+    <tr><td>Overdue jobs</td><td>${u.overdue}</td><td style="color:${u.overdue > 0 ? "#dc2626" : "#10b981"}">${u.overdue > 0 ? "Needs attention" : "On track"}</td></tr>
+    <tr><td>Performance score</td><td><span class="bar"><div></div></span>${u.score} / 100</td><td>${u.score >= 90 ? "Excellent" : u.score >= 80 ? "Good" : "Needs improvement"}</td></tr>
+  </tbody>
+</table>
+<h3>Notes</h3>
+<p style="font-size:12px;color:#475569;line-height:1.6">This report covers ${u.name}'s activity during the selected period (${periodLabel}). Score is calculated from completion rate, on-time delivery, rework frequency, and supervisor sign-off. For a deeper drill-down, refer to the System Monitoring and Job Overview modules.</p>
+<div class="foot">Vivid OPS · Confidential · Generated for internal use only</div>
+<script>setTimeout(()=>window.print(),300)</script>
+</body></html>`;
+    const w = window.open("", "_blank", "width=900,height=1000");
+    if (!w) { alert("Please allow pop-ups to export the report."); return; }
+    w.document.write(html);
+    w.document.close();
+  };
+
   return (
     <DashboardLayout title="Reports" role={role}>
       {/* Header actions */}
@@ -172,7 +234,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-gray-50 rounded-lg">
-                        <tr>{["User", "Role", "Jobs", "Completed", "Hours", "Rework", "Overdue", "Score", "Avg time"].map((h) => (
+                        <tr>{["User", "Role", "Jobs", "Completed", "Hours", "Rework", "Overdue", "Score", "Avg time", "Report"].map((h) => (
                           <th key={h} className="text-left px-3 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
                         ))}</tr>
                       </thead>
@@ -213,6 +275,11 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
                                 </div>
                               </td>
                               <td className="px-3 py-3.5 text-sm text-gray-700 whitespace-nowrap">{u.avg}</td>
+                              <td className="px-3 py-3.5">
+                                <motion.button whileHover={{ y: -1, scale: 1.04 }} whileTap={{ scale: 0.94 }} onClick={() => exportUserPDF(u)} title={`Export ${u.name}'s report as PDF`} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-primary/10 hover:bg-primary hover:text-white text-primary rounded-lg text-[11px] font-semibold transition-colors whitespace-nowrap">
+                                  <Download size={11} /> PDF
+                                </motion.button>
+                              </td>
                             </motion.tr>
                           );
                         })}
