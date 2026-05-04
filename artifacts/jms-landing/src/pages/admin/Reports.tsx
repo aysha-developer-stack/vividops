@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Download, FileText, Users, AlertTriangle, Clock, TrendingUp,
   ChevronRight, Filter, Shield, UserCog, User as UserIcon, Crown,
+  X, Check, Search,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import type { Role } from "@/lib/roles";
@@ -66,11 +67,40 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const [activeTab, setActiveTab] = useState("system");
   const [period, setPeriod] = useState("30d");
   const [userRoleFilter, setUserRoleFilter] = useState<"All" | UserRoleLabel>("All");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [severityFilter, setSeverityFilter] = useState<("high" | "medium" | "low")[]>(["high", "medium", "low"]);
+  const [billableFilter, setBillableFilter] = useState<"all" | "billable" | "internal">("all");
+  const [minScore, setMinScore] = useState(0);
+  const toggleSeverity = (s: "high" | "medium" | "low") =>
+    setSeverityFilter((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+  const resetFilters = () => {
+    setSearch(""); setUserRoleFilter("All"); setSeverityFilter(["high", "medium", "low"]);
+    setBillableFilter("all"); setMinScore(0);
+  };
+  const activeFilterCount =
+    (search ? 1 : 0) +
+    (userRoleFilter !== "All" ? 1 : 0) +
+    (severityFilter.length < 3 ? 1 : 0) +
+    (billableFilter !== "all" ? 1 : 0) +
+    (minScore > 0 ? 1 : 0);
   const isSuperAdmin = role === "super-admin";
   const ROLE_FILTERS: ("All" | UserRoleLabel)[] = isSuperAdmin
     ? ["All", "Admin", "Supervisor", "User"]
     : ["All", "Supervisor", "User"];
-  const filteredUsers = USER_PERFORMANCE.filter((u) => userRoleFilter === "All" || u.role === userRoleFilter);
+  const filteredUsers = USER_PERFORMANCE.filter((u) =>
+    (userRoleFilter === "All" || u.role === userRoleFilter) &&
+    (search === "" || u.name.toLowerCase().includes(search.toLowerCase())) &&
+    u.score >= minScore
+  );
+  const filteredErrors = ERRORS.filter((e) =>
+    severityFilter.includes(e.severity as "high" | "medium" | "low") &&
+    (search === "" || e.type.toLowerCase().includes(search.toLowerCase()) || e.id.toLowerCase().includes(search.toLowerCase()))
+  );
+  const filteredTime = TIME_LOGS.filter((t) =>
+    (billableFilter === "all" || (billableFilter === "billable" ? t.billable : !t.billable)) &&
+    (search === "" || t.user.toLowerCase().includes(search.toLowerCase()) || t.project.toLowerCase().includes(search.toLowerCase()))
+  );
   const totalJobs = filteredUsers.reduce((s, u) => s + u.jobs, 0);
   const totalCompleted = filteredUsers.reduce((s, u) => s + u.completed, 0);
   const totalHours = filteredUsers.reduce((s, u) => s + u.hours, 0);
@@ -150,13 +180,86 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
             </motion.button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
-          <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:border-gray-300">
+        <div className="flex items-center gap-2 relative">
+          <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} onClick={() => setFilterOpen((v) => !v)} className={`flex items-center gap-2 px-4 py-2.5 bg-white border rounded-xl text-sm font-medium transition-colors ${filterOpen || activeFilterCount > 0 ? "border-primary text-primary" : "border-gray-200 text-gray-700 hover:border-gray-300"}`}>
             <Filter size={14} /> Filters
+            {activeFilterCount > 0 && <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-white text-[10px] font-bold">{activeFilterCount}</span>}
           </motion.button>
           <motion.button whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.97 }} className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-sm font-medium shadow-lg shadow-primary/30">
             <Download size={14} /> Export PDF
           </motion.button>
+
+          <AnimatePresence>
+            {filterOpen && (
+              <>
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setFilterOpen(false)} className="fixed inset-0 z-40" />
+                <motion.div initial={{ opacity: 0, y: -8, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.97 }} transition={{ type: "spring", stiffness: 300, damping: 25 }} className="absolute right-0 top-full mt-2 w-[340px] bg-white rounded-2xl border border-gray-100 shadow-2xl z-50 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                    <div className="flex items-center gap-2"><Filter size={14} className="text-primary" /><span className="text-sm font-bold text-gray-900">Filters</span>{activeFilterCount > 0 && <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{activeFilterCount} active</span>}</div>
+                    <button onClick={() => setFilterOpen(false)} className="p-1 hover:bg-gray-100 rounded-md text-gray-400"><X size={14} /></button>
+                  </div>
+                  <div className="p-4 space-y-4 max-h-[420px] overflow-y-auto">
+                    <div>
+                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Search</label>
+                      <div className="relative mt-1">
+                        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={activeTab === "errors" ? "Error type or ID…" : activeTab === "time" ? "User or project…" : "User name…"} className="w-full pl-8 pr-3 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-primary" />
+                      </div>
+                    </div>
+
+                    {(activeTab === "users" || activeTab === "system") && (
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Role</label>
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {ROLE_FILTERS.map((r) => (
+                            <button key={r} onClick={() => setUserRoleFilter(r)} className={`px-2.5 py-1 text-[11px] font-semibold rounded-md border transition ${userRoleFilter === r ? "bg-primary text-white border-primary" : "bg-white text-gray-600 border-gray-200 hover:border-primary/50"}`}>{r}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === "users" && (
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider flex justify-between"><span>Min performance score</span><span className="text-primary font-bold">{minScore}</span></label>
+                        <input type="range" min={0} max={100} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} className="w-full mt-2 accent-primary" />
+                      </div>
+                    )}
+
+                    {activeTab === "errors" && (
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Severity</label>
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {(["high", "medium", "low"] as const).map((s) => {
+                            const on = severityFilter.includes(s);
+                            return (
+                              <button key={s} onClick={() => toggleSeverity(s)} className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md border transition ${on ? `${SEV_COLOR[s]}` : "bg-white text-gray-400 border-gray-200"}`}>
+                                {on && <Check size={10} />} {s.toUpperCase()}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === "time" && (
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Type</label>
+                        <div className="flex gap-1.5 mt-1.5">
+                          {(["all", "billable", "internal"] as const).map((b) => (
+                            <button key={b} onClick={() => setBillableFilter(b)} className={`px-2.5 py-1 text-[11px] font-semibold rounded-md border capitalize transition ${billableFilter === b ? "bg-primary text-white border-primary" : "bg-white text-gray-600 border-gray-200 hover:border-primary/50"}`}>{b}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50">
+                    <button onClick={resetFilters} className="text-xs font-semibold text-gray-500 hover:text-gray-900">Reset all</button>
+                    <button onClick={() => setFilterOpen(false)} className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-white text-xs font-semibold rounded-lg">Apply</button>
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
         </div>
       </motion.div>
 
@@ -292,7 +395,8 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 
               {activeTab === "errors" && (
                 <div className="space-y-2">
-                  {ERRORS.map((e, i) => (
+                  {filteredErrors.length === 0 && <div className="text-center py-8 text-sm text-gray-400">No errors match current filters.</div>}
+                  {filteredErrors.map((e, i) => (
                     <motion.div key={e.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06 }} whileHover={{ x: 4 }} className="flex items-center gap-4 p-4 border border-gray-100 rounded-xl hover:border-gray-300 hover:shadow-md transition-all cursor-pointer">
                       <div className="w-10 h-10 rounded-lg bg-red-50 text-red-500 flex items-center justify-center shrink-0">
                         <AlertTriangle size={18} />
@@ -315,7 +419,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                 <table className="w-full">
                   <thead><tr>{["User", "Project", "Hours", "Type"].map((h) => <th key={h} className="text-left pb-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>)}</tr></thead>
                   <tbody>
-                    {TIME_LOGS.map((t, i) => (
+                    {filteredTime.map((t, i) => (
                       <motion.tr key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} className="border-t border-gray-50 hover:bg-gray-50">
                         <td className="py-3.5 text-sm font-medium text-gray-900">{t.user}</td>
                         <td className="py-3.5 text-sm text-gray-700">{t.project}</td>
