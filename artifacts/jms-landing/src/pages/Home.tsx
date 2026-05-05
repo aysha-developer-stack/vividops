@@ -730,7 +730,7 @@ export default function Home() {
                       size="lg"
                       className="relative bg-white text-gray-900 hover:bg-gray-100 rounded-full px-8 font-semibold overflow-hidden group"
                     >
-                      <span className="relative z-10">Get Started Today</span>
+                      <span className="relative z-10">Get Started</span>
                       <motion.div
                         className="absolute inset-0 bg-primary/10"
                         initial={{ x: "-100%" }}
@@ -828,7 +828,7 @@ export default function Home() {
           <div className="container mx-auto px-6 md:px-12 flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
               <h3 className="text-2xl md:text-3xl font-bold mb-2">Ready to streamline your operations?</h3>
-              <p className="text-gray-400">Join thousands of teams already using Vivid OPS to manage their work.</p>
+              <p className="text-gray-400">Bring your jobs, teams, and reports together in one place.</p>
             </div>
             <motion.div whileHover={{ scale: 1.05, y: -2 }} whileTap={{ scale: 0.97 }} className="shrink-0">
               <Button
@@ -836,7 +836,7 @@ export default function Home() {
                 className="relative bg-primary hover:bg-primary/90 text-white rounded-full px-8 font-semibold shadow-lg shadow-primary/30 overflow-hidden group"
               >
                 <span className="relative z-10 flex items-center gap-2">
-                  Get Started Free
+                  Get Started
                   <motion.span animate={{ x: [0, 4, 0] }} transition={{ duration: 1.5, repeat: Infinity }}>
                     <ArrowRight size={18} />
                   </motion.span>
