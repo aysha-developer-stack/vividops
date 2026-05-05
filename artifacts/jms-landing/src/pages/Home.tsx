@@ -309,7 +309,7 @@ export default function Home() {
                     animate={{ scale: [1, 1.5, 1], opacity: [1, 0.5, 1] }}
                     transition={{ duration: 1.5, repeat: Infinity }}
                   />
-                  The Command Center for Ops Teams
+                  Structural Engineering Operations Platform
                 </motion.div>
 
                 <motion.h1
