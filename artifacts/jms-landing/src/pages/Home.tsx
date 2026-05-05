@@ -896,22 +896,10 @@ export default function Home() {
 
         {/* Bottom bar */}
         <div className="relative z-10 bg-primary">
-          <div className="container mx-auto px-6 md:px-12 py-5 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="container mx-auto px-6 md:px-12 py-5">
             <p className="text-xs text-white/90 font-medium">
               &copy; {new Date().getFullYear()} Vivid OPS Pty Ltd. All rights reserved.
             </p>
-            <div className="flex items-center gap-6">
-              {["Privacy", "Terms", "Contact"].map((link) => (
-                <motion.a
-                  key={link}
-                  href="#"
-                  className="text-xs text-white/80 hover:text-white transition-colors font-medium"
-                  whileHover={{ y: -1 }}
-                >
-                  {link}
-                </motion.a>
-              ))}
-            </div>
           </div>
         </div>
       </footer>
