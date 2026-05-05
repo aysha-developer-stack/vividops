@@ -120,10 +120,10 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
 @page{size:A4;margin:0}
 *{box-sizing:border-box}html,body{margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;padding:40px;max-width:820px;margin:0 auto}
 @media print{body{padding:14mm 16mm}}
-.brand{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0B7EB9;padding-bottom:16px;margin-bottom:28px;gap:16px}
-.brand img{height:48px;width:auto;object-fit:contain;display:block}
-.brand .meta{font-size:11px;color:#64748b;text-align:right;line-height:1.6}
-.brand .meta strong{display:block;color:#0f172a;font-size:13px;margin-bottom:2px}
+.brand{display:flex;justify-content:space-between;align-items:center;background:#000;border-bottom:3px solid #0B7EB9;padding:20px 28px;margin:-14mm -16mm 28px;gap:16px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.brand img{height:84px;width:auto;object-fit:contain;display:block}
+.brand .meta{font-size:11px;color:#cbd5e1;text-align:right;line-height:1.6}
+.brand .meta strong{display:block;color:#fff;font-size:14px;margin-bottom:2px;letter-spacing:.2px}
 .user{display:flex;align-items:center;gap:16px;margin-bottom:24px}
 .avatar{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#0B7EB9,#0369a1);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px}
 .user h2{margin:0;font-size:20px}
