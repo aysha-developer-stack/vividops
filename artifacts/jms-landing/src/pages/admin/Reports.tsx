@@ -8,6 +8,7 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
+import logoImg from "@assets/Vivid_OPS_11_1777876436099.png";
 
 type UserRoleLabel = "Super Admin" | "Admin" | "Supervisor" | "User";
 const ROLE_BADGE: Record<UserRoleLabel, { color: string; bg: string; icon: any }> = {
@@ -113,14 +114,18 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const exportUserPDF = (u: UserPerf) => {
     const periodLabel = period === "All" ? "All time" : `Last ${period}`;
     const rate = u.jobs > 0 ? Math.round((u.completed / u.jobs) * 100) : 0;
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Vivid OPS — ${u.name} Report</title>
+    const logoUrl = new URL(logoImg, window.location.origin).href;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${u.name} Performance Report</title>
 <style>
-*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;margin:0;padding:40px;max-width:820px;margin:0 auto}
-.brand{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0ea5e9;padding-bottom:16px;margin-bottom:28px}
-.brand h1{margin:0;font-size:22px;color:#0ea5e9;letter-spacing:1px}
-.brand .meta{font-size:11px;color:#64748b;text-align:right}
+@page{size:A4;margin:0}
+*{box-sizing:border-box}html,body{margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;padding:40px;max-width:820px;margin:0 auto}
+@media print{body{padding:14mm 16mm}}
+.brand{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0B7EB9;padding-bottom:16px;margin-bottom:28px;gap:16px}
+.brand img{height:48px;width:auto;object-fit:contain;display:block}
+.brand .meta{font-size:11px;color:#64748b;text-align:right;line-height:1.6}
+.brand .meta strong{display:block;color:#0f172a;font-size:13px;margin-bottom:2px}
 .user{display:flex;align-items:center;gap:16px;margin-bottom:24px}
-.avatar{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#0ea5e9,#0369a1);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px}
+.avatar{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#0B7EB9,#0369a1);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px}
 .user h2{margin:0;font-size:20px}
 .role{display:inline-block;padding:2px 10px;border-radius:6px;font-size:11px;font-weight:600;margin-top:4px;background:#f1f5f9;color:#334155;border:1px solid #e2e8f0}
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px}
@@ -132,13 +137,13 @@ table{width:100%;border-collapse:collapse;font-size:12px}
 th{text-align:left;padding:10px;background:#f1f5f9;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#475569;border-bottom:1px solid #e2e8f0}
 td{padding:10px;border-bottom:1px solid #f1f5f9}
 .bar{height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;width:140px;display:inline-block;vertical-align:middle;margin-right:8px}
-.bar>div{height:100%;background:${u.score >= 90 ? "#10b981" : u.score >= 80 ? "#0ea5e9" : "#f59e0b"};width:${u.score}%}
+.bar>div{height:100%;background:${u.score >= 90 ? "#10b981" : u.score >= 80 ? "#0B7EB9" : "#f59e0b"};width:${u.score}%}
 .foot{margin-top:40px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8;text-align:center}
-@media print{body{padding:20px}.no-print{display:none}}
-.btn{position:fixed;top:20px;right:20px;background:#0ea5e9;color:#fff;border:0;padding:10px 18px;border-radius:8px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(14,165,233,.4)}
+@media print{.no-print{display:none}}
+.btn{position:fixed;top:20px;right:20px;background:#0B7EB9;color:#fff;border:0;padding:10px 18px;border-radius:8px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(11,126,185,.4)}
 </style></head><body>
 <button class="btn no-print" onclick="window.print()">Save as PDF</button>
-<div class="brand"><h1>VIVID OPS</h1><div class="meta">Vivid OPS<br>Generated ${new Date().toLocaleString()}<br>Period: ${periodLabel}</div></div>
+<div class="brand"><img src="${logoUrl}" alt="Vivid OPS"><div class="meta"><strong>${u.name} Performance Report</strong>Generated ${new Date().toLocaleString()}<br>Period: ${periodLabel}</div></div>
 <div class="user">
   <div class="avatar">${u.name.split(" ").map((s) => s[0]).join("")}</div>
   <div><h2>${u.name}</h2><span class="role">${u.role}</span></div>
