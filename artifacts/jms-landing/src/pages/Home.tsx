@@ -852,26 +852,26 @@ export default function Home() {
           </div>
         </motion.div>
 
-        {/* Main Footer Grid */}
-        <div className="relative z-10 container mx-auto px-6 md:px-12 py-14">
-          {/* Brand column */}
+        {/* Main Footer */}
+        <div className="relative z-10 container mx-auto px-6 md:px-12 py-16">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
+            className="flex flex-col items-center text-center"
           >
             <motion.img
               src={logoImg}
               alt="Vivid OPS"
-              className="h-16 w-auto object-contain mb-5"
+              className="h-16 w-auto object-contain mb-6"
               whileHover={{ scale: 1.04 }}
               transition={{ type: "spring", stiffness: 400 }}
             />
-            <p className="text-gray-400 text-sm leading-relaxed max-w-sm mb-6">
+            <p className="text-gray-400 text-sm leading-relaxed max-w-xl mb-8">
               Vivid OPS is the command center for operations teams — helping you assign jobs, track time, manage files, and report performance all in one place.
             </p>
-            <nav className="flex flex-wrap items-center gap-x-8 gap-y-2 mb-6">
+            <nav className="flex flex-wrap items-center justify-center gap-x-10 gap-y-3 mb-8">
               {["Home", "Features", "About"].map((item) => (
                 <motion.a
                   key={item}
@@ -883,20 +883,20 @@ export default function Home() {
                 </motion.a>
               ))}
             </nav>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
               <motion.div
                 className="w-2 h-2 rounded-full bg-green-400"
                 animate={{ scale: [1, 1.4, 1], opacity: [1, 0.5, 1] }}
                 transition={{ duration: 1.8, repeat: Infinity }}
               />
-              <span className="text-xs text-gray-400 font-medium">All systems operational</span>
+              <span className="text-xs text-gray-300 font-medium">All systems operational</span>
             </div>
           </motion.div>
         </div>
 
         {/* Bottom bar */}
         <div className="relative z-10 bg-primary">
-          <div className="container mx-auto px-6 md:px-12 py-5">
+          <div className="container mx-auto px-6 md:px-12 py-5 text-center">
             <p className="text-xs text-white/90 font-medium">
               &copy; {new Date().getFullYear()} Vivid OPS Pty Ltd. All rights reserved.
             </p>
