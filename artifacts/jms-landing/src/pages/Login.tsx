@@ -152,11 +152,11 @@ export default function Login() {
           </motion.div>
 
           <h2 className="text-3xl font-bold text-white leading-snug mb-3">
-            Everything your ops team needs,{" "}
-            <span className="text-primary">in one place.</span>
+            One platform for every inspection,{" "}
+            <span className="text-primary">design, and report.</span>
           </h2>
           <p className="text-gray-400 text-sm leading-relaxed">
-            Assign jobs, track progress, manage files and generate reports — all from a single dashboard built for engineering teams.
+            Coordinate site engineers, track every job from intake to sign-off, and keep documentation audit-ready — purpose-built for residential structural engineering teams.
           </p>
         </motion.div>
 
