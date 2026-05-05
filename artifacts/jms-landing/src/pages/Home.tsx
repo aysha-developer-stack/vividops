@@ -25,6 +25,7 @@ import {
   TrendingUp,
   Shield,
   Activity,
+  HardHat,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import logoImg from "@assets/Vivid_OPS_11_1777876436099.png";
@@ -884,12 +885,8 @@ export default function Home() {
               ))}
             </nav>
             <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
-              <motion.div
-                className="w-2 h-2 rounded-full bg-green-400"
-                animate={{ scale: [1, 1.4, 1], opacity: [1, 0.5, 1] }}
-                transition={{ duration: 1.8, repeat: Infinity }}
-              />
-              <span className="text-xs text-gray-300 font-medium">All systems operational</span>
+              <HardHat size={14} className="text-primary" />
+              <span className="text-xs text-gray-300 font-medium">Built for residential structural engineering teams</span>
             </div>
           </motion.div>
         </div>
