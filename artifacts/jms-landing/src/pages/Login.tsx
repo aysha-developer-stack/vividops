@@ -13,12 +13,6 @@ const floatingOrbs = [
   { size: 140, x: "80%", y: "10%", delay: 0.8, color: "bg-primary/10" },
 ];
 
-const stats = [
-  { value: "10,000+", label: "Active users" },
-  { value: "99.9%", label: "Uptime SLA" },
-  { value: "4.9★", label: "User rating" },
-];
-
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -166,24 +160,16 @@ export default function Login() {
           </p>
         </motion.div>
 
-        {/* Stats row */}
+        {/* Footer tagline */}
         <motion.div
-          className="relative z-10 flex gap-8 pt-6 border-t border-white/10"
+          className="relative z-10 pt-6 border-t border-white/10"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.7, duration: 0.6 }}
         >
-          {stats.map((s, i) => (
-            <motion.div
-              key={s.label}
-              initial={{ y: 10, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.8 + i * 0.1 }}
-            >
-              <div className="text-xl font-bold text-white">{s.value}</div>
-              <div className="text-xs text-gray-500">{s.label}</div>
-            </motion.div>
-          ))}
+          <p className="text-xs text-gray-500 tracking-wide uppercase">
+            Vivid Engineering · Residential Structural Inspections &amp; Designs
+          </p>
         </motion.div>
       </motion.div>
 
@@ -282,14 +268,7 @@ export default function Login() {
                 >
                   <h1 className="text-3xl font-bold text-gray-900 mb-2">Sign in</h1>
                   <p className="text-gray-500 text-sm">
-                    Don't have an account?{" "}
-                    <motion.a
-                      href="#"
-                      className="text-primary font-medium hover:underline"
-                      whileHover={{ color: "#0369a1" }}
-                    >
-                      Get started free
-                    </motion.a>
+                    Use your Vivid Engineering credentials to access the operations console.
                   </p>
                 </motion.div>
 
@@ -459,21 +438,6 @@ export default function Login() {
                     </AnimatePresence>
                   </motion.div>
 
-                  {/* Remember me */}
-                  <motion.label
-                    className="flex items-center gap-2.5 cursor-pointer group"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.38 }}
-                    whileHover={{ x: 2 }}
-                  >
-                    <div className="relative">
-                      <input type="checkbox" className="peer sr-only" />
-                      <div className="w-4 h-4 border-2 border-gray-300 rounded peer-checked:border-primary peer-checked:bg-primary transition-colors group-hover:border-primary/60" />
-                    </div>
-                    <span className="text-sm text-gray-500 group-hover:text-gray-700 transition-colors">Keep me signed in</span>
-                  </motion.label>
-
                   {/* Submit button */}
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
@@ -530,50 +494,14 @@ export default function Login() {
                   </motion.div>
                 </form>
 
-                {/* Divider */}
-                <motion.div
-                  className="flex items-center gap-3 my-6"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.5 }}
-                >
-                  <div className="flex-1 h-px bg-gray-200" />
-                  <span className="text-xs text-gray-400 font-medium">or continue with</span>
-                  <div className="flex-1 h-px bg-gray-200" />
-                </motion.div>
-
-                {/* SSO Button */}
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.55 }}
-                >
-                  <motion.button
-                    type="button"
-                    className="w-full flex items-center justify-center gap-3 border-2 border-gray-200 rounded-xl py-3 text-sm font-medium text-gray-700 bg-white hover:border-gray-300 hover:bg-gray-50 transition-colors"
-                    whileHover={{ scale: 1.01, y: -1, borderColor: "#d1d5db" }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                      <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615Z" fill="#4285F4"/>
-                      <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18Z" fill="#34A853"/>
-                      <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332Z" fill="#FBBC05"/>
-                      <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58Z" fill="#EA4335"/>
-                    </svg>
-                    Sign in with Google
-                  </motion.button>
-                </motion.div>
-
                 {/* Footer note */}
                 <motion.p
                   className="text-center text-xs text-gray-400 mt-8"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  transition={{ delay: 0.65 }}
+                  transition={{ delay: 0.5 }}
                 >
-                  By signing in you agree to our{" "}
-                  <a href="#" className="text-primary hover:underline">Terms</a> and{" "}
-                  <a href="#" className="text-primary hover:underline">Privacy Policy</a>.
+                  Need access? Contact your administrator at Vivid Engineering.
                 </motion.p>
               </motion.div>
             )}
