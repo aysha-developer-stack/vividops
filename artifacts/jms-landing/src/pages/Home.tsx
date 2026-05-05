@@ -871,6 +871,18 @@ export default function Home() {
             <p className="text-gray-400 text-sm leading-relaxed max-w-sm mb-6">
               Vivid OPS is the command center for operations teams — helping you assign jobs, track time, manage files, and report performance all in one place.
             </p>
+            <nav className="flex flex-wrap items-center gap-x-8 gap-y-2 mb-6">
+              {["Home", "Features", "About"].map((item) => (
+                <motion.a
+                  key={item}
+                  href={item === "Home" ? "/" : `#${item.toLowerCase()}`}
+                  className="text-sm text-gray-300 hover:text-white transition-colors font-medium"
+                  whileHover={{ y: -1 }}
+                >
+                  {item}
+                </motion.a>
+              ))}
+            </nav>
             <div className="flex items-center gap-2">
               <motion.div
                 className="w-2 h-2 rounded-full bg-green-400"
