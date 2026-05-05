@@ -98,7 +98,7 @@ export default function Login() {
           <Link href="/">
             <motion.img
               src={logoImg}
-              alt="Vivid Engineering"
+              alt="Vivid OPS"
               className="h-16 w-auto object-contain cursor-pointer"
               whileHover={{ scale: 1.04 }}
               transition={{ type: "spring", stiffness: 400 }}
@@ -123,7 +123,7 @@ export default function Login() {
               <div className="w-3 h-3 rounded-full bg-red-400/80" />
               <div className="w-3 h-3 rounded-full bg-yellow-400/80" />
               <div className="w-3 h-3 rounded-full bg-green-400/80" />
-              <div className="ml-auto text-xs text-gray-500 font-mono">app.vividengineering.com.au</div>
+              <div className="ml-auto text-xs text-gray-500 font-mono">app.vividops.com.au</div>
             </div>
             {[
               { label: "Electrical Inspection #481", status: "In Progress", pct: 72, color: "bg-primary" },
@@ -223,7 +223,7 @@ export default function Login() {
             transition={{ delay: 0.2 }}
           >
             <Link href="/">
-              <img src={logoImg} alt="Vivid Engineering" className="h-14 w-auto object-contain" />
+              <img src={logoImg} alt="Vivid OPS" className="h-14 w-auto object-contain" />
             </Link>
           </motion.div>
 
@@ -593,7 +593,7 @@ export default function Login() {
               whileHover={{ x: -3 }}
             >
               <ArrowLeft size={14} />
-              Back to Vivid Engineering
+              Back to Vivid OPS
             </motion.span>
           </Link>
         </motion.div>

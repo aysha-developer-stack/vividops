@@ -803,7 +803,7 @@ export default function JobDetail({ role = "user" }: Props) {
                   <h3 className="font-bold text-gray-900 text-sm mb-3 flex items-center gap-2"><AlertTriangle size={14} className="text-primary" /> How job channels work</h3>
                   <ol className="space-y-3">
                     {[
-                      "When a job is created, Vivid Engineering auto-creates a dedicated Cliq channel.",
+                      "When a job is created, Vivid OPS auto-creates a dedicated Cliq channel.",
                       "All assigned workers + the supervisor are added as members automatically.",
                       "Conversation, files and @mentions live inside Zoho Cliq.",
                       "When the job is completed, the channel is archived (kept for audit).",
@@ -834,7 +834,7 @@ export default function JobDetail({ role = "user" }: Props) {
                 {/* Quick-send fallback inline (optional) */}
                 <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-200 p-4">
                   <h4 className="text-xs font-bold text-amber-900 mb-1">Quick message</h4>
-                  <p className="text-[11px] text-amber-800/80 mb-3">Send a one-off note to the channel without leaving Vivid Engineering.</p>
+                  <p className="text-[11px] text-amber-800/80 mb-3">Send a one-off note to the channel without leaving Vivid OPS.</p>
                   <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="space-y-2">
                     <textarea
                       value={draft}

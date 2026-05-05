@@ -15,7 +15,7 @@ export function getName(): string {
 }
 
 export function getEmail(): string {
-  return sessionStorage.getItem(EMAIL_KEY) ?? "admin@vividengineering.com.au";
+  return sessionStorage.getItem(EMAIL_KEY) ?? "admin@vividops.com.au";
 }
 
 export function getRole(): Role {

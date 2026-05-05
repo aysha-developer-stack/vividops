@@ -138,7 +138,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 .btn{position:fixed;top:20px;right:20px;background:#0ea5e9;color:#fff;border:0;padding:10px 18px;border-radius:8px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(14,165,233,.4)}
 </style></head><body>
 <button class="btn no-print" onclick="window.print()">Save as PDF</button>
-<div class="brand"><h1>VIVID OPS</h1><div class="meta">Vivid Engineering<br>Generated ${new Date().toLocaleString()}<br>Period: ${periodLabel}</div></div>
+<div class="brand"><h1>VIVID OPS</h1><div class="meta">Vivid OPS<br>Generated ${new Date().toLocaleString()}<br>Period: ${periodLabel}</div></div>
 <div class="user">
   <div class="avatar">${u.name.split(" ").map((s) => s[0]).join("")}</div>
   <div><h2>${u.name}</h2><span class="role">${u.role}</span></div>

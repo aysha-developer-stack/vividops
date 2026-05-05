@@ -29,14 +29,14 @@ const ROLE_CONFIG: Record<UserRole, { color: string; bg: string; icon: any }> = 
 };
 
 const SEED: User[] = [
-  { id: 0, name: "Alex Morgan", email: "alex@vividengineering.com.au", role: "Super Admin", status: "Active", joined: "Jan 02, 2025", avatar: "AM" },
-  { id: 1, name: "Sarah Johnson", email: "sarah.j@vividengineering.com.au", role: "Admin", status: "Active", joined: "Jan 12, 2025", avatar: "SJ" },
-  { id: 2, name: "Mike Chen", email: "mike.c@vividengineering.com.au", role: "Supervisor", status: "Active", joined: "Feb 03, 2025", avatar: "MC" },
-  { id: 3, name: "Emma Wilson", email: "emma.w@vividengineering.com.au", role: "Supervisor", status: "Active", joined: "Feb 14, 2025", avatar: "EW" },
-  { id: 4, name: "David Park", email: "david.p@vividengineering.com.au", role: "User", status: "Active", joined: "Mar 01, 2025", avatar: "DP" },
-  { id: 5, name: "Lisa Martinez", email: "lisa.m@vividengineering.com.au", role: "User", status: "Inactive", joined: "Mar 18, 2025", avatar: "LM" },
-  { id: 6, name: "James Bennett", email: "james.b@vividengineering.com.au", role: "Supervisor", status: "Active", joined: "Apr 02, 2025", avatar: "JB" },
-  { id: 7, name: "Olivia Carter", email: "olivia.c@vividengineering.com.au", role: "User", status: "Active", joined: "Apr 11, 2025", avatar: "OC" },
+  { id: 0, name: "Alex Morgan", email: "alex@vividops.com.au", role: "Super Admin", status: "Active", joined: "Jan 02, 2025", avatar: "AM" },
+  { id: 1, name: "Sarah Johnson", email: "sarah.j@vividops.com.au", role: "Admin", status: "Active", joined: "Jan 12, 2025", avatar: "SJ" },
+  { id: 2, name: "Mike Chen", email: "mike.c@vividops.com.au", role: "Supervisor", status: "Active", joined: "Feb 03, 2025", avatar: "MC" },
+  { id: 3, name: "Emma Wilson", email: "emma.w@vividops.com.au", role: "Supervisor", status: "Active", joined: "Feb 14, 2025", avatar: "EW" },
+  { id: 4, name: "David Park", email: "david.p@vividops.com.au", role: "User", status: "Active", joined: "Mar 01, 2025", avatar: "DP" },
+  { id: 5, name: "Lisa Martinez", email: "lisa.m@vividops.com.au", role: "User", status: "Inactive", joined: "Mar 18, 2025", avatar: "LM" },
+  { id: 6, name: "James Bennett", email: "james.b@vividops.com.au", role: "Supervisor", status: "Active", joined: "Apr 02, 2025", avatar: "JB" },
+  { id: 7, name: "Olivia Carter", email: "olivia.c@vividops.com.au", role: "User", status: "Active", joined: "Apr 11, 2025", avatar: "OC" },
 ];
 
 export default function UserManagement({ role = "super-admin" as Role }: { role?: Role } = {}) {
