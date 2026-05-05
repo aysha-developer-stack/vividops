@@ -25,7 +25,7 @@ import {
   TrendingUp,
   Shield,
   Activity,
-  HardHat,
+  Compass,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import logoImg from "@assets/Vivid_OPS_11_1777876436099.png";
@@ -885,8 +885,8 @@ export default function Home() {
               ))}
             </nav>
             <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
-              <HardHat size={14} className="text-primary" />
-              <span className="text-xs text-gray-300 font-medium">Built for residential structural engineering teams</span>
+              <Compass size={14} className="text-primary" />
+              <span className="text-xs text-gray-300 font-medium">Purpose-built for structural inspection &amp; design teams</span>
             </div>
           </motion.div>
         </div>
