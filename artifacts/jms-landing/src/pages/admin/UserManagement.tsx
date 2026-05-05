@@ -2,7 +2,8 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, MoreVertical, Edit2, Trash2, Power, Shield,
-  Crown, UserCog, User as UserIcon, X, Check,
+  Crown, UserCog, User as UserIcon, X, Check, Mail, KeyRound,
+  Copy, CheckCircle2, AlertTriangle,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -46,7 +47,29 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
   const [openId, setOpenId] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({ name: "", email: "", role: "User" as UserRole });
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    role: "User" as UserRole,
+    delivery: "email-invite" as "email-invite" | "temp-password",
+  });
+  const [credentialResult, setCredentialResult] = useState<{
+    name: string; email: string; role: UserRole;
+    delivery: "email-invite" | "temp-password"; tempPassword?: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const generateTempPassword = () => {
+    const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    const lower = "abcdefghijkmnpqrstuvwxyz";
+    const digits = "23456789";
+    const symbols = "!@#$%&*";
+    const all = upper + lower + digits + symbols;
+    const pick = (s: string) => s[Math.floor(Math.random() * s.length)];
+    const required = [pick(upper), pick(lower), pick(digits), pick(symbols)];
+    const rest = Array.from({ length: 8 }, () => pick(all));
+    return [...required, ...rest].sort(() => Math.random() - 0.5).join("");
+  };
 
   const isSuperAdmin = role === "super-admin";
   // Super Admin can manage every role; Admin can manage Supervisor & User only.
@@ -71,18 +94,19 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
   };
   const startCreate = () => {
     setEditingId(null);
-    setForm({ name: "", email: "", role: "User" });
+    setForm({ name: "", email: "", role: "User", delivery: "email-invite" });
     setModalOpen(true);
   };
   const startEdit = (u: User) => {
     setEditingId(u.id);
-    setForm({ name: u.name, email: u.email, role: u.role });
+    setForm({ name: u.name, email: u.email, role: u.role, delivery: "email-invite" });
     setModalOpen(true);
     setOpenId(null);
   };
   const save = () => {
     if (!form.name || !form.email) return;
-    if (editingId !== null) {
+    const isCreating = editingId === null;
+    if (!isCreating) {
       setUsers(users.map((u) => (u.id === editingId ? { ...u, name: form.name, email: form.email, role: form.role,
         avatar: form.name.split(" ").map((s) => s[0]).join("").slice(0, 2).toUpperCase() } : u)));
     } else {
@@ -92,9 +116,28 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
         avatar: form.name.split(" ").map((s) => s[0]).join("").slice(0, 2).toUpperCase(),
       }, ...users]);
     }
-    setEditingId(null);
-    setForm({ name: "", email: "", role: "User" });
     setModalOpen(false);
+    if (isCreating) {
+      setCredentialResult({
+        name: form.name,
+        email: form.email,
+        role: form.role,
+        delivery: form.delivery,
+        tempPassword: form.delivery === "temp-password" ? generateTempPassword() : undefined,
+      });
+    }
+    setEditingId(null);
+    setForm({ name: "", email: "", role: "User", delivery: "email-invite" });
+  };
+
+  const closeCredentialModal = () => { setCredentialResult(null); setCopied(false); };
+  const copyTempPassword = async () => {
+    if (!credentialResult?.tempPassword) return;
+    try {
+      await navigator.clipboard.writeText(credentialResult.tempPassword);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* ignore */ }
   };
 
   return (
@@ -288,11 +331,131 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                     })}
                   </div>
                 </div>
+
+                {editingId === null && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Sign-in Credentials</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {[
+                        { id: "email-invite" as const, icon: Mail, title: "Email an invite", desc: "Send a sign-in link with a setup-password prompt to the user's email." },
+                        { id: "temp-password" as const, icon: KeyRound, title: "Generate temp password", desc: "Create a one-time password to share manually. User must reset on first sign-in." },
+                      ].map((opt) => {
+                        const selected = form.delivery === opt.id;
+                        const Icon = opt.icon;
+                        return (
+                          <motion.button
+                            key={opt.id}
+                            type="button"
+                            whileHover={{ y: -2 }}
+                            whileTap={{ scale: 0.97 }}
+                            onClick={() => setForm({ ...form, delivery: opt.id })}
+                            className={`p-3 rounded-xl border-2 text-left flex gap-2.5 transition-colors ${selected ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300"}`}
+                          >
+                            <Icon size={16} className={`shrink-0 mt-0.5 ${selected ? "text-primary" : "text-gray-400"}`} />
+                            <div>
+                              <div className={`text-xs font-semibold leading-tight ${selected ? "text-primary" : "text-gray-800"}`}>{opt.title}</div>
+                              <div className="text-[10.5px] text-gray-500 mt-0.5 leading-snug">{opt.desc}</div>
+                            </div>
+                          </motion.button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
                 <button onClick={() => { setModalOpen(false); setEditingId(null); }} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl">Cancel</button>
                 <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={save} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30">
                   <Check size={16} /> {editingId !== null ? "Save Changes" : "Create User"}
+                </motion.button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Credential Result Modal */}
+      <AnimatePresence>
+        {credentialResult && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeCredentialModal} className="fixed inset-0 bg-black/50 z-40" />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", stiffness: 300, damping: 28 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md bg-white rounded-2xl shadow-2xl"
+            >
+              <div className="p-6 border-b border-gray-100 flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center shrink-0">
+                  <CheckCircle2 size={20} className="text-emerald-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-gray-900">User created</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {credentialResult.name} has been added as a {credentialResult.role}.
+                  </p>
+                </div>
+                <button onClick={closeCredentialModal} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {credentialResult.delivery === "email-invite" ? (
+                  <>
+                    <div className="flex items-start gap-3 p-4 bg-primary/5 border border-primary/20 rounded-xl">
+                      <Mail size={18} className="text-primary shrink-0 mt-0.5" />
+                      <div className="text-sm text-gray-700 leading-relaxed">
+                        An invitation email has been sent to{" "}
+                        <span className="font-semibold text-gray-900">{credentialResult.email}</span>.
+                        It contains a one-time link to set their password and sign in to Vivid OPS.
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-gray-500 leading-relaxed">
+                      The link expires in 48 hours. If the user does not receive it, ask them to check their spam folder or recreate the account using the temporary-password option.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Email</label>
+                      <div className="px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-800 font-medium">
+                        {credentialResult.email}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Temporary password</label>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 px-3 py-2.5 bg-gray-900 text-emerald-300 rounded-lg text-sm font-mono tracking-wider select-all">
+                          {credentialResult.tempPassword}
+                        </code>
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={copyTempPassword}
+                          className={`px-3 py-2.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${copied ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-primary text-white hover:bg-primary/90"}`}
+                        >
+                          {copied ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy</>}
+                        </motion.button>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                      <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                      <div className="text-[11.5px] text-amber-900 leading-relaxed">
+                        This password is shown once and cannot be retrieved later. Share it with the user securely. They will be required to set a new password on first sign-in.
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="p-6 border-t border-gray-100 flex justify-end">
+                <motion.button
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={closeCredentialModal}
+                  className="bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30"
+                >
+                  Done
                 </motion.button>
               </div>
             </motion.div>
