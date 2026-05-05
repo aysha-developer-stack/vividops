@@ -379,29 +379,6 @@ export default function Home() {
                     </Button>
                   </motion.div>
                 </motion.div>
-
-                <motion.div
-                  custom={0.4}
-                  initial="hidden"
-                  animate="visible"
-                  variants={fadeUp}
-                  className="mt-10 flex items-center gap-4 text-sm text-gray-500 font-medium"
-                >
-                  <div className="flex -space-x-2">
-                    {[1, 2, 3, 4].map((i) => (
-                      <motion.div
-                        key={i}
-                        initial={{ x: -10, opacity: 0 }}
-                        animate={{ x: 0, opacity: 1 }}
-                        transition={{ delay: 0.5 + i * 0.07 }}
-                        className="w-8 h-8 rounded-full border-2 border-white bg-gray-200 overflow-hidden"
-                      >
-                        <img src={`https://i.pravatar.cc/100?img=${i + 10}`} alt="Avatar" className="w-full h-full object-cover" />
-                      </motion.div>
-                    ))}
-                  </div>
-                  <p>Trusted by <strong className="text-gray-700">10,000+</strong> operations teams</p>
-                </motion.div>
               </div>
 
               {/* Dashboard Mockup */}
