@@ -895,7 +895,7 @@ export default function Home() {
         <div className="relative z-10 bg-primary">
           <div className="container mx-auto px-6 md:px-12 py-5 text-center">
             <p className="text-xs text-white/90 font-medium">
-              &copy; {new Date().getFullYear()} Vivid OPS by VE
+              &copy; {new Date().getFullYear()} Vivid OPS by VE. All rights reserved.
             </p>
           </div>
         </div>
