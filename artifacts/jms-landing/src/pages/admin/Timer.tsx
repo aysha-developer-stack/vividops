@@ -14,13 +14,13 @@ interface Entry {
 }
 
 const SEED: Entry[] = [
-  { id: 1, task: "Server diagnostics", project: "Server Maintenance #482", duration: 5430, date: "Today" },
-  { id: 2, task: "Client meeting", project: "Site Inspection - North", duration: 2700, date: "Today" },
-  { id: 3, task: "Documentation review", project: "Quarterly Audit", duration: 4520, date: "Yesterday" },
-  { id: 4, task: "Equipment calibration", project: "Plumbing Overhaul", duration: 7250, date: "Yesterday" },
+  { id: 1, task: "Site walkthrough", project: "Wilkinson Residence Inspection #482", duration: 5430, date: "Today" },
+  { id: 2, task: "Client meeting", project: "Patel Residence Pre-Purchase", duration: 2700, date: "Today" },
+  { id: 3, task: "Engineering report drafting", project: "Engineer Compliance Report", duration: 4520, date: "Yesterday" },
+  { id: 4, task: "Foundation calculations", project: "Underpinning Design", duration: 7250, date: "Yesterday" },
 ];
 
-const PROJECTS = ["Server Maintenance #482", "Site Inspection - North", "Quarterly Audit", "Plumbing Overhaul", "Annual Safety Audit"];
+const PROJECTS = ["Wilkinson Residence Inspection #482", "Patel Residence Pre-Purchase", "Engineer Compliance Report", "Underpinning Design", "Annual Engineer Certification"];
 
 function formatTime(s: number) {
   const h = Math.floor(s / 3600);

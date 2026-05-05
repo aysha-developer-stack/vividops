@@ -15,17 +15,17 @@ const STATS = [
 ];
 
 const ACTIVITY = [
-  { user: "Sarah Johnson", action: "completed job", target: "Server Maintenance #482", time: "2m ago", color: "bg-emerald-500" },
-  { user: "Mike Chen", action: "created job", target: "Site Inspection - North", time: "15m ago", color: "bg-primary" },
+  { user: "Sarah Johnson", action: "completed job", target: "Wilkinson Residence Inspection #482", time: "2m ago", color: "bg-emerald-500" },
+  { user: "Mike Chen", action: "created job", target: "Patel Residence Pre-Purchase", time: "15m ago", color: "bg-primary" },
   { user: "Emma Wilson", action: "was promoted to", target: "Supervisor", time: "1h ago", color: "bg-amber-500" },
-  { user: "David Park", action: "reported error in", target: "Quarterly Audit Report", time: "2h ago", color: "bg-red-500" },
-  { user: "Lisa Martinez", action: "logged time on", target: "Plumbing Overhaul", time: "3h ago", color: "bg-purple-500" },
-  { user: "Jordan Reed", action: "marked rework on", target: "JOB-2147 Inspection", time: "4h ago", color: "bg-orange-500" },
-  { user: "Olivia Carter", action: "uploaded files to", target: "Network Setup #2120", time: "5h ago", color: "bg-primary" },
+  { user: "David Park", action: "reported error in", target: "Anderson Compliance Report", time: "2h ago", color: "bg-red-500" },
+  { user: "Lisa Martinez", action: "logged time on", target: "Underpinning Design", time: "3h ago", color: "bg-purple-500" },
+  { user: "Jordan Reed", action: "marked rework on", target: "JOB-2147 Patel Footing Inspection", time: "4h ago", color: "bg-orange-500" },
+  { user: "Olivia Carter", action: "uploaded files to", target: "Slab Design #2120", time: "5h ago", color: "bg-primary" },
   { user: "Riley Adams", action: "auto-stopped timer on", target: "JOB-2150 (no activity)", time: "6h ago", color: "bg-amber-500" },
   { user: "James Bennett", action: "joined team", target: "Field Operations - West", time: "Yesterday", color: "bg-emerald-500" },
   { user: "Mia Wong", action: "exported report", target: "Q1 Performance Summary", time: "Yesterday", color: "bg-purple-500" },
-  { user: "Chris Park", action: "updated checklist on", target: "Annual Safety Audit", time: "Yesterday", color: "bg-primary" },
+  { user: "Chris Park", action: "updated checklist on", target: "Annual Engineer Certification", time: "Yesterday", color: "bg-primary" },
   { user: "Jamie Rivera", action: "changed billing plan to", target: "Enterprise Pro", time: "2 days ago", color: "bg-purple-500" },
 ];
 

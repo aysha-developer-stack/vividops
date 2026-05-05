@@ -26,8 +26,8 @@ const SUPERVISORS: Supervisor[] = [
   { id: 1, name: "Sam Carter", avatar: "SC", team: "North Region", activeJobs: 12, completedJobs: 48, overdue: 1, avgRating: 4.8, hoursThisWeek: 38.5, status: "online", trend: 8.2, lastSeen: "Active now" },
   { id: 2, name: "Mia Wong", avatar: "MW", team: "Central Hub", activeJobs: 8, completedJobs: 52, overdue: 0, avgRating: 4.9, hoursThisWeek: 41.0, status: "online", trend: 12.4, lastSeen: "Active now" },
   { id: 3, name: "Chris Park", avatar: "CP", team: "South Region", activeJobs: 10, completedJobs: 36, overdue: 3, avgRating: 4.4, hoursThisWeek: 35.2, status: "away", trend: -2.1, lastSeen: "12m ago" },
-  { id: 4, name: "Riley Adams", avatar: "RA", team: "Logistics", activeJobs: 6, completedJobs: 40, overdue: 0, avgRating: 4.7, hoursThisWeek: 36.8, status: "online", trend: 5.6, lastSeen: "Active now" },
-  { id: 5, name: "Jordan Lee", avatar: "JL", team: "Plant Ops", activeJobs: 9, completedJobs: 31, overdue: 2, avgRating: 4.3, hoursThisWeek: 32.4, status: "offline", trend: -4.8, lastSeen: "2h ago" },
+  { id: 4, name: "Riley Adams", avatar: "RA", team: "West Region", activeJobs: 6, completedJobs: 40, overdue: 0, avgRating: 4.7, hoursThisWeek: 36.8, status: "online", trend: 5.6, lastSeen: "Active now" },
+  { id: 5, name: "Jordan Lee", avatar: "JL", team: "East Region", activeJobs: 9, completedJobs: 31, overdue: 2, avgRating: 4.3, hoursThisWeek: 32.4, status: "offline", trend: -4.8, lastSeen: "2h ago" },
 ];
 
 const STATUS_DOT: Record<Supervisor["status"], string> = {

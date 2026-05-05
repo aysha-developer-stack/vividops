@@ -126,9 +126,9 @@ export default function Login() {
               <div className="ml-auto text-xs text-gray-500 font-mono">app.vividops.com.au</div>
             </div>
             {[
-              { label: "Electrical Inspection #481", status: "In Progress", pct: 72, color: "bg-primary" },
-              { label: "Plumbing Overhaul - Site B", status: "Pending", pct: 28, color: "bg-yellow-400" },
-              { label: "Annual Safety Audit", status: "Completed", pct: 100, color: "bg-green-400" },
+              { label: "Beam & Column Design #481", status: "In Progress", pct: 72, color: "bg-primary" },
+              { label: "Underpinning Design - Site B", status: "Pending", pct: 28, color: "bg-yellow-400" },
+              { label: "Annual Engineer Certification", status: "Completed", pct: 100, color: "bg-green-400" },
             ].map((job, i) => (
               <motion.div
                 key={job.label}

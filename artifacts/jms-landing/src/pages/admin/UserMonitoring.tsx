@@ -29,8 +29,8 @@ const WORKERS: Worker[] = [
 
 interface ErrorReport { id: number; user: string; job: string; desc: string; severity: string; date: string; }
 const SEED_ERRORS: ErrorReport[] = [
-  { id: 1, user: "Lisa Martinez", job: "JOB-2147", desc: "Equipment misconfigured during inspection", severity: "Medium", date: "Today" },
-  { id: 2, user: "David Wilson", job: "JOB-2144", desc: "Missed checklist step #4", severity: "Low", date: "Yesterday" },
+  { id: 1, user: "Lisa Martinez", job: "JOB-2147", desc: "Incorrect footing dimensions recorded during inspection", severity: "Medium", date: "Today" },
+  { id: 2, user: "David Wilson", job: "JOB-2144", desc: "Missed checklist step #4 (subfloor moisture check)", severity: "Low", date: "Yesterday" },
   { id: 3, user: "Olivia Carter", job: "JOB-2150", desc: "Late arrival to client site", severity: "Low", date: "2d ago" },
 ];
 

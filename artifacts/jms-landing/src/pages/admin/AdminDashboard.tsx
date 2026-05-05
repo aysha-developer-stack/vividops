@@ -15,16 +15,16 @@ const STATS = [
 ];
 
 const RECENT_JOBS = [
-  { id: "JOB-2148", client: "BrightSpark Industries", supervisor: "Sam Carter", status: "In Progress", color: "bg-primary/10 text-primary" },
-  { id: "JOB-2147", client: "North Bay Logistics", supervisor: "Mia Wong", status: "Pending", color: "bg-amber-50 text-amber-700" },
-  { id: "JOB-2146", client: "Greenfield Co.", supervisor: "Chris Park", status: "Completed", color: "bg-emerald-50 text-emerald-700" },
-  { id: "JOB-2145", client: "Blue Ocean Ltd.", supervisor: "Sam Carter", status: "Overdue", color: "bg-red-50 text-red-700" },
-  { id: "JOB-2144", client: "Pacific Engineering", supervisor: "Mia Wong", status: "In Progress", color: "bg-primary/10 text-primary" },
-  { id: "JOB-2143", client: "Sterling Manufacturing", supervisor: "Chris Park", status: "Completed", color: "bg-emerald-50 text-emerald-700" },
+  { id: "JOB-2148", client: "Wilkinson Residence", supervisor: "Sam Carter", status: "In Progress", color: "bg-primary/10 text-primary" },
+  { id: "JOB-2147", client: "Patel Residence", supervisor: "Mia Wong", status: "Completed", color: "bg-emerald-50 text-emerald-700" },
+  { id: "JOB-2146", client: "Greenfield Builders", supervisor: "Chris Park", status: "Completed", color: "bg-emerald-50 text-emerald-700" },
+  { id: "JOB-2145", client: "Thompson Residence", supervisor: "Sam Carter", status: "Overdue", color: "bg-red-50 text-red-700" },
+  { id: "JOB-2144", client: "Nguyen Residence", supervisor: "Mia Wong", status: "In Progress", color: "bg-primary/10 text-primary" },
+  { id: "JOB-2143", client: "Sterling Homes", supervisor: "Chris Park", status: "Completed", color: "bg-emerald-50 text-emerald-700" },
   { id: "JOB-2142", client: "Vivid Construction", supervisor: "Sam Carter", status: "Rework", color: "bg-orange-50 text-orange-700" },
-  { id: "JOB-2141", client: "Apex Holdings", supervisor: "Mia Wong", status: "In Progress", color: "bg-primary/10 text-primary" },
-  { id: "JOB-2140", client: "Northern Mining Co.", supervisor: "Chris Park", status: "Pending", color: "bg-amber-50 text-amber-700" },
-  { id: "JOB-2139", client: "Coastal Utilities", supervisor: "Sam Carter", status: "Completed", color: "bg-emerald-50 text-emerald-700" },
+  { id: "JOB-2141", client: "Apex Builders", supervisor: "Mia Wong", status: "In Progress", color: "bg-primary/10 text-primary" },
+  { id: "JOB-2140", client: "Northern Estate Homes", supervisor: "Chris Park", status: "Pending", color: "bg-amber-50 text-amber-700" },
+  { id: "JOB-2139", client: "Coastal Heritage Homes", supervisor: "Sam Carter", status: "Completed", color: "bg-emerald-50 text-emerald-700" },
 ];
 
 const TEAM = [

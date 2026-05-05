@@ -42,12 +42,12 @@ const PRIORITY_CONFIG: Record<Priority, { color: string; dot: string }> = {
 };
 
 const SEED: Job[] = [
-  { id: 482, title: "Server Maintenance", client: "TechCorp Ltd", assignee: "Sarah Johnson", status: "In Progress", priority: "High", created: "Apr 18", due: "Apr 22", progress: 72 },
-  { id: 481, title: "Site Inspection - North", client: "BuildRight Co", assignee: "Mike Chen", status: "Pending", priority: "Medium", created: "Apr 20", due: "Apr 25", progress: 0 },
-  { id: 480, title: "Quarterly Audit", client: "FinSecure", assignee: "Emma Wilson", status: "Completed", priority: "High", created: "Apr 10", due: "Apr 18", completed: "Apr 17", progress: 100 },
-  { id: 479, title: "Plumbing Overhaul - Site B", client: "City Council", assignee: "David Park", status: "Overdue", priority: "High", created: "Apr 08", due: "Apr 15", progress: 45 },
-  { id: 478, title: "Electrical Inspection", client: "GreenEnergy", assignee: "Lisa Martinez", status: "In Progress", priority: "Low", created: "Apr 22", due: "Apr 28", progress: 30 },
-  { id: 477, title: "Annual Safety Audit", client: "MetroWorks", assignee: "James Bennett", status: "Pending", priority: "Medium", created: "Apr 24", due: "May 02", progress: 0 },
+  { id: 482, title: "Structural Inspection", client: "Anderson Residence", assignee: "Sarah Johnson", status: "In Progress", priority: "High", created: "Apr 18", due: "Apr 22", progress: 72 },
+  { id: 481, title: "Patel Residence Pre-Purchase", client: "BuildRight Constructions", assignee: "Mike Chen", status: "Pending", priority: "Medium", created: "Apr 20", due: "Apr 25", progress: 0 },
+  { id: 480, title: "Engineer Compliance Report", client: "Mitchell Residence", assignee: "Emma Wilson", status: "Completed", priority: "High", created: "Apr 10", due: "Apr 18", completed: "Apr 17", progress: 100 },
+  { id: 479, title: "Underpinning Design - Site B", client: "Westwood Council", assignee: "David Park", status: "Overdue", priority: "High", created: "Apr 08", due: "Apr 15", progress: 45 },
+  { id: 478, title: "Beam & Column Design", client: "Harrison Residence", assignee: "Lisa Martinez", status: "In Progress", priority: "Low", created: "Apr 22", due: "Apr 28", progress: 30 },
+  { id: 477, title: "Annual Engineer Certification", client: "MetroBuild Group", assignee: "James Bennett", status: "Pending", priority: "Medium", created: "Apr 24", due: "May 02", progress: 0 },
 ];
 
 export default function JobManagement({ role = "super-admin" as Role }: { role?: Role } = {}) {
@@ -288,12 +288,12 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Job Details</div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Title</label>
-                    <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Server Maintenance" className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                    <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Structural Inspection" className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Client</label>
-                      <input value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} placeholder="e.g. TechCorp Ltd" className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                      <input value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} placeholder="e.g. Anderson Residence" className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assignee</label>

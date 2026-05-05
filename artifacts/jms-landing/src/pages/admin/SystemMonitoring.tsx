@@ -2,16 +2,16 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   Activity, Users, Briefcase, AlertTriangle, CheckCircle2, Clock,
-  Server, Database, Wifi, Shield, TrendingUp, TrendingDown, Eye, Search,
+  FileText, Image, Wifi, UserCheck, TrendingUp, TrendingDown, Eye, Search,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 
 const SYSTEM_HEALTH = [
-  { name: "API Server", status: "healthy", uptime: "99.98%", latency: "42ms", icon: Server },
-  { name: "Database", status: "healthy", uptime: "99.99%", latency: "12ms", icon: Database },
+  { name: "Inspection Report Vault", status: "healthy", uptime: "99.98%", latency: "42ms", icon: FileText },
+  { name: "Site Photo Storage", status: "healthy", uptime: "99.99%", latency: "12ms", icon: Image },
   { name: "Zoho Cliq Sync", status: "healthy", uptime: "99.85%", latency: "180ms", icon: Wifi },
-  { name: "Auth Service", status: "degraded", uptime: "98.42%", latency: "320ms", icon: Shield },
+  { name: "Client Portal", status: "degraded", uptime: "98.42%", latency: "320ms", icon: UserCheck },
 ];
 
 const LIVE_USERS = [
@@ -29,7 +29,7 @@ const ACTIVITY_FEED = [
   { type: "user", text: "New supervisor account created: Emma Wilson", user: "Super Admin", time: "1h ago", color: "emerald" },
   { type: "alert", text: "JOB-2143 is overdue (12h past due date)", user: "System", time: "3h ago", color: "red" },
   { type: "job", text: "JOB-2150 completed and approved", user: "Mike Chen", time: "4h ago", color: "emerald" },
-  { type: "system", text: "Auth service latency spike detected (320ms)", user: "System", time: "5h ago", color: "amber" },
+  { type: "system", text: "Client Portal sync delay detected (320ms)", user: "System", time: "5h ago", color: "amber" },
   { type: "user", text: "User deactivated: Lisa Martinez", user: "Sarah Johnson", time: "6h ago", color: "gray" },
   { type: "job", text: "JOB-2152 created and assigned to 3 users", user: "Mike Chen", time: "8h ago", color: "primary" },
 ];

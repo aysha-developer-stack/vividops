@@ -8,14 +8,14 @@ import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 
 const ASSIGNED = [
-  { id: "JOB-2148", title: "Server Maintenance", client: "BrightSpark Industries", due: "Today", priority: "High", progress: 72 },
-  { id: "JOB-2150", title: "Site Inspection", client: "North Bay Logistics", due: "Tomorrow", priority: "Medium", progress: 35 },
-  { id: "JOB-2151", title: "Equipment Calibration", client: "Greenfield Co.", due: "Apr 24", priority: "Medium", progress: 10 },
-  { id: "JOB-2155", title: "Emergency Repair", client: "Blue Ocean Ltd.", due: "Apr 25", priority: "High", progress: 0 },
-  { id: "JOB-2156", title: "HVAC Quarterly Service", client: "Pacific Engineering", due: "Apr 26", priority: "Low", progress: 5 },
-  { id: "JOB-2158", title: "Fire Alarm Testing", client: "Sterling Manufacturing", due: "Apr 27", priority: "High", progress: 0 },
-  { id: "JOB-2160", title: "Solar Panel Inspection", client: "Vivid Construction", due: "Apr 28", priority: "Medium", progress: 22 },
-  { id: "JOB-2162", title: "Generator Load Test", client: "Apex Holdings", due: "Apr 29", priority: "Low", progress: 0 },
+  { id: "JOB-2148", title: "Structural Inspection", client: "Wilkinson Residence", due: "Today", priority: "High", progress: 72 },
+  { id: "JOB-2150", title: "Pre-Purchase Inspection", client: "Patel Residence", due: "Tomorrow", priority: "Medium", progress: 35 },
+  { id: "JOB-2151", title: "Footing Design Review", client: "Greenfield Builders", due: "Apr 24", priority: "Medium", progress: 10 },
+  { id: "JOB-2155", title: "Crack Assessment", client: "Thompson Residence", due: "Apr 25", priority: "High", progress: 0 },
+  { id: "JOB-2156", title: "Retaining Wall Design", client: "Nguyen Residence", due: "Apr 26", priority: "Low", progress: 5 },
+  { id: "JOB-2158", title: "Termite Damage Assessment", client: "Sterling Homes", due: "Apr 27", priority: "High", progress: 0 },
+  { id: "JOB-2160", title: "Roof Truss Inspection", client: "Vivid Construction", due: "Apr 28", priority: "Medium", progress: 22 },
+  { id: "JOB-2162", title: "Load-Bearing Wall Assessment", client: "Apex Builders", due: "Apr 29", priority: "Low", progress: 0 },
 ];
 
 const TEAM = [
@@ -30,10 +30,10 @@ const TEAM = [
 ];
 
 const OVERDUE = [
-  { id: "JOB-2120", title: "Network Setup", days: 2, assignee: "Riley Adams" },
-  { id: "JOB-2118", title: "Quarterly Audit", days: 3, assignee: "Olivia Carter" },
-  { id: "JOB-2099", title: "Cooling Tower Service", days: 5, assignee: "Lisa Martinez" },
-  { id: "JOB-2087", title: "Emergency Lighting Check", days: 7, assignee: "James Bennett" },
+  { id: "JOB-2120", title: "Slab Design", days: 2, assignee: "Riley Adams" },
+  { id: "JOB-2118", title: "Engineer Compliance Report", days: 3, assignee: "Olivia Carter" },
+  { id: "JOB-2099", title: "Subsidence Investigation", days: 5, assignee: "Lisa Martinez" },
+  { id: "JOB-2087", title: "Wall Crack Inspection", days: 7, assignee: "James Bennett" },
 ];
 
 const PRIORITY_COLOR: Record<string, string> = {

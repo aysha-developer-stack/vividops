@@ -22,11 +22,11 @@ const DMS = [
 ];
 
 const MESSAGES = [
-  { id: 1, user: "Sarah Johnson", avatar: "SJ", text: "Hey team — Server Maintenance #482 is at 72% completion. On track for end of day!", time: "10:24 AM", isMe: false },
+  { id: 1, user: "Sarah Johnson", avatar: "SJ", text: "Hey team — Wilkinson Residence Inspection #482 is at 72% completion. On track for end of day!", time: "10:24 AM", isMe: false },
   { id: 2, user: "Mike Chen", avatar: "MC", text: "Nice work 🙌 I'll start the inspection report in parallel.", time: "10:26 AM", isMe: false },
   { id: 3, user: "Alex Morgan", avatar: "AM", text: "Great. Make sure to flag any blockers in the channel.", time: "10:31 AM", isMe: true },
-  { id: 4, user: "Emma Wilson", avatar: "EW", text: "Quarterly Audit just got marked complete. All clean!", time: "10:42 AM", isMe: false },
-  { id: 5, user: "Sarah Johnson", avatar: "SJ", text: "Quick question — should we escalate the overdue Plumbing job?", time: "10:48 AM", isMe: false },
+  { id: 4, user: "Emma Wilson", avatar: "EW", text: "Engineer Compliance Report just got marked complete. All clean!", time: "10:42 AM", isMe: false },
+  { id: 5, user: "Sarah Johnson", avatar: "SJ", text: "Quick question — should we escalate the overdue Underpinning Design?", time: "10:48 AM", isMe: false },
 ];
 
 const STATUS_DOT: Record<string, string> = {

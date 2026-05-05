@@ -15,66 +15,66 @@ interface Props { role?: Role }
 
 const JOB = {
   number: "JOB-2148",
-  title: "Server Maintenance",
-  client: "BrightSpark Industries",
-  address: "120 Park Avenue, Sydney NSW 2000",
+  title: "Structural Inspection",
+  client: "Wilkinson Residence",
+  address: "12 Oak Street, Mosman NSW 2088",
   startDate: "Apr 18, 2026",
   dueDate: "Apr 20, 2026, 5:00 PM",
   completedDate: "—",
   status: "In Progress",
   priority: "High",
-  description: "Quarterly server maintenance including firmware updates, hardware inspection, and performance benchmarking across all production server racks.",
+  description: "Full residential structural inspection covering footings, slab, load-bearing walls, roof framing, and visible cracks. Engineer to deliver a signed inspection report with photos and remedial recommendations.",
 };
 
 const WORKERS = [
-  { name: "Jordan Reed", avatar: "JR", role: "Lead", status: "online", hours: 6.5 },
-  { name: "Riley Adams", avatar: "RA", role: "Tech", status: "online", hours: 4.2 },
-  { name: "Olivia Carter", avatar: "OC", role: "Tech", status: "away", hours: 3.8 },
+  { name: "Jordan Reed", avatar: "JR", role: "Lead Engineer", status: "online", hours: 6.5 },
+  { name: "Riley Adams", avatar: "RA", role: "Inspector", status: "online", hours: 4.2 },
+  { name: "Olivia Carter", avatar: "OC", role: "Inspector", status: "away", hours: 3.8 },
 ];
 
 interface ChecklistItem { id: number; text: string; done: boolean }
 
 const INITIAL_CHECKLIST: ChecklistItem[] = [
-  { id: 1, text: "Power down server rack A", done: true },
-  { id: 2, text: "Verify backup completion", done: true },
-  { id: 3, text: "Apply firmware updates", done: true },
-  { id: 4, text: "Run hardware diagnostics", done: false },
-  { id: 5, text: "Replace failed drives if needed", done: false },
-  { id: 6, text: "Performance benchmarks", done: false },
-  { id: 7, text: "Power on and verify uptime", done: false },
-  { id: 8, text: "Document changes in log", done: false },
+  { id: 1, text: "Site arrival + safety walkaround", done: true },
+  { id: 2, text: "Inspect footings and perimeter slab", done: true },
+  { id: 3, text: "Photograph and measure visible cracks", done: true },
+  { id: 4, text: "Assess load-bearing walls and lintels", done: false },
+  { id: 5, text: "Inspect roof trusses and ceiling structure", done: false },
+  { id: 6, text: "Check subfloor for moisture and movement", done: false },
+  { id: 7, text: "Discuss findings with homeowner on-site", done: false },
+  { id: 8, text: "Draft and sign inspection report", done: false },
 ];
 
 interface FileItem { id: number; name: string; size: string; type: "doc" | "image" | "pdf"; uploadedBy: string; uploadedAt: string; tag: "input" | "output"; version?: number; group?: string }
 
 const INITIAL_FILES: FileItem[] = [
   // INPUT — provided by supervisor at job creation
-  { id: 1, name: "site_diagram_v2.pdf", size: "2.4 MB", type: "pdf", uploadedBy: "Sam Carter", uploadedAt: "Yesterday", tag: "input" },
+  { id: 1, name: "site_plan_v2.pdf", size: "2.4 MB", type: "pdf", uploadedBy: "Sam Carter", uploadedAt: "Yesterday", tag: "input" },
   { id: 2, name: "client_brief.docx", size: "186 KB", type: "doc", uploadedBy: "Sam Carter", uploadedAt: "Yesterday", tag: "input" },
-  { id: 3, name: "equipment_manual.pdf", size: "5.8 MB", type: "pdf", uploadedBy: "Sam Carter", uploadedAt: "2 days ago", tag: "input" },
+  { id: 3, name: "architectural_drawings.pdf", size: "5.8 MB", type: "pdf", uploadedBy: "Sam Carter", uploadedAt: "2 days ago", tag: "input" },
   // OUTPUT — uploaded by user, with version history
-  { id: 4, name: "diagnostics_report.docx", size: "298 KB", type: "doc", uploadedBy: "Jordan Reed", uploadedAt: "Today, 10:14am", tag: "output", version: 1, group: "diagnostics_report" },
-  { id: 5, name: "diagnostics_report.docx", size: "318 KB", type: "doc", uploadedBy: "Jordan Reed", uploadedAt: "Today, 11:02am", tag: "output", version: 2, group: "diagnostics_report" },
-  { id: 6, name: "rack_photo_after.jpg", size: "1.4 MB", type: "image", uploadedBy: "Jordan Reed", uploadedAt: "Today, 11:08am", tag: "output", version: 1, group: "rack_photo_after" },
+  { id: 4, name: "inspection_report.docx", size: "298 KB", type: "doc", uploadedBy: "Jordan Reed", uploadedAt: "Today, 10:14am", tag: "output", version: 1, group: "inspection_report" },
+  { id: 5, name: "inspection_report.docx", size: "318 KB", type: "doc", uploadedBy: "Jordan Reed", uploadedAt: "Today, 11:02am", tag: "output", version: 2, group: "inspection_report" },
+  { id: 6, name: "footing_crack_east.jpg", size: "1.4 MB", type: "image", uploadedBy: "Jordan Reed", uploadedAt: "Today, 11:08am", tag: "output", version: 1, group: "footing_crack_east" },
 ];
 
 interface FileNote { id: number; author: string; avatar: string; text: string; time: string; kind: "rework" | "comment" }
 
 const INITIAL_NOTES: FileNote[] = [
-  { id: 1, author: "Sam Carter", avatar: "SC", kind: "rework", text: "diagnostics_report.docx v1 — please add the firmware version table at the bottom and re-upload.", time: "Today, 10:42am" },
-  { id: 2, author: "Jordan Reed", avatar: "JR", kind: "comment", text: "Re-uploaded as v2 with the firmware table added.", time: "Today, 11:02am" },
+  { id: 1, author: "Sam Carter", avatar: "SC", kind: "rework", text: "inspection_report.docx v1 — please add the crack width measurements table for the east footing and re-upload.", time: "Today, 10:42am" },
+  { id: 2, author: "Jordan Reed", avatar: "JR", kind: "comment", text: "Re-uploaded as v2 with the crack measurements table added.", time: "Today, 11:02am" },
 ];
 
 const INITIAL_MESSAGES = [
-  { id: 1, user: "Sam Carter", avatar: "SC", text: "Make sure to check the cooling fans on rack B — they were running hot last week.", time: "9:02am", isMe: false },
-  { id: 2, user: "Jordan Reed", avatar: "JR", text: "Will do. Just powered down rack A, starting diagnostics now.", time: "9:14am", isMe: true },
-  { id: 3, user: "Riley Adams", avatar: "RA", text: "I've got the spare drives ready if we need them.", time: "10:48am", isMe: false },
+  { id: 1, user: "Sam Carter", avatar: "SC", text: "Pay close attention to the east-side footing — homeowner reported a new crack last week.", time: "9:02am", isMe: false },
+  { id: 2, user: "Jordan Reed", avatar: "JR", text: "Will do. On site now, starting the perimeter walkaround.", time: "9:14am", isMe: true },
+  { id: 3, user: "Riley Adams", avatar: "RA", text: "I've got the crack gauge and moisture meter ready when you need them.", time: "10:48am", isMe: false },
 ];
 
 const INITIAL_TIMER_LOGS = [
-  { id: 1, user: "Jordan Reed", duration: "2:30:15", task: "Power down + backup", date: "Today, 9:00am" },
-  { id: 2, user: "Riley Adams", duration: "1:45:00", task: "Drive replacement prep", date: "Today, 10:30am" },
-  { id: 3, user: "Jordan Reed", duration: "1:18:42", task: "Firmware updates", date: "Today, 11:30am" },
+  { id: 1, user: "Jordan Reed", duration: "2:30:15", task: "Site walkaround + footing inspection", date: "Today, 9:00am" },
+  { id: 2, user: "Riley Adams", duration: "1:45:00", task: "Crack measurement + photos", date: "Today, 10:30am" },
+  { id: 3, user: "Jordan Reed", duration: "1:18:42", task: "Inspection report drafting", date: "Today, 11:30am" },
 ];
 
 const TABS = [

@@ -22,12 +22,12 @@ interface Job {
 }
 
 const JOBS: Job[] = [
-  { id: "JOB-2148", title: "Server Maintenance", client: "BrightSpark Industries", address: "120 Park Ave, Sydney", status: "In Progress", deadline: "Today, 5pm", daysLeft: 0, priority: "High" },
-  { id: "JOB-2150", title: "Site Inspection", client: "North Bay Logistics", address: "45 Harbor Rd, Melbourne", status: "In Progress", deadline: "Tomorrow", daysLeft: 1, priority: "Medium" },
-  { id: "JOB-2151", title: "Equipment Calibration", client: "Greenfield Co.", address: "8 Industrial Pde", status: "Pending", deadline: "Apr 24", daysLeft: 4, priority: "Medium" },
-  { id: "JOB-2155", title: "Emergency Repair", client: "Blue Ocean Ltd.", address: "200 Bay St", status: "Pending", deadline: "Apr 25", daysLeft: 5, priority: "High" },
-  { id: "JOB-2147", title: "Annual Safety Audit", client: "MetroWorks", address: "12 King St", status: "Completed", deadline: "Apr 18", daysLeft: -2, priority: "Low" },
-  { id: "JOB-2120", title: "Network Setup", client: "TechCore", address: "55 Pitt St", status: "Overdue", deadline: "Apr 18", daysLeft: -2, priority: "High" },
+  { id: "JOB-2148", title: "Structural Inspection", client: "Wilkinson Residence", address: "12 Oak St, Mosman NSW", status: "In Progress", deadline: "Today, 5pm", daysLeft: 0, priority: "High" },
+  { id: "JOB-2150", title: "Pre-Purchase Inspection", client: "Patel Residence", address: "45 Eucalyptus Rd, Hawthorn VIC", status: "In Progress", deadline: "Tomorrow", daysLeft: 1, priority: "Medium" },
+  { id: "JOB-2151", title: "Footing Design Review", client: "Greenfield Builders", address: "8 Banksia Cres", status: "Pending", deadline: "Apr 24", daysLeft: 4, priority: "Medium" },
+  { id: "JOB-2155", title: "Crack Assessment", client: "Thompson Residence", address: "27 Birchwood Rd", status: "Pending", deadline: "Apr 25", daysLeft: 5, priority: "High" },
+  { id: "JOB-2147", title: "Footing Inspection", client: "Patel Residence", address: "12 King St, Parramatta", status: "Completed", deadline: "Apr 18", daysLeft: -2, priority: "Low" },
+  { id: "JOB-2120", title: "Slab Design", client: "Carter Residence", address: "55 Magnolia Ave", status: "Overdue", deadline: "Apr 18", daysLeft: -2, priority: "High" },
 ];
 
 const STATUS_CFG: Record<Status, { color: string; icon: any; bar: string }> = {

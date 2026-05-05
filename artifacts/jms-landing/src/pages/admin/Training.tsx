@@ -12,10 +12,10 @@ const CATEGORIES = ["All", "Onboarding", "Safety", "Technical", "Leadership"];
 
 const COURSES = [
   { id: 1, title: "Vivid OPS Platform Onboarding", category: "Onboarding", lessons: 8, duration: "1h 24m", progress: 100, level: "Beginner", thumb: "from-primary to-sky-700" },
-  { id: 2, title: "Workplace Safety Fundamentals", category: "Safety", lessons: 12, duration: "2h 10m", progress: 75, level: "Beginner", thumb: "from-amber-500 to-orange-600" },
+  { id: 2, title: "Site Inspection Safety Fundamentals", category: "Safety", lessons: 12, duration: "2h 10m", progress: 75, level: "Beginner", thumb: "from-amber-500 to-orange-600" },
   { id: 3, title: "Advanced Job Scheduling", category: "Technical", lessons: 15, duration: "3h 45m", progress: 40, level: "Advanced", thumb: "from-emerald-500 to-emerald-700" },
   { id: 4, title: "Team Leadership Essentials", category: "Leadership", lessons: 10, duration: "2h 30m", progress: 0, level: "Intermediate", thumb: "from-purple-500 to-indigo-700" },
-  { id: 5, title: "Equipment Handling Certification", category: "Safety", lessons: 6, duration: "1h 05m", progress: 100, level: "Beginner", thumb: "from-red-500 to-rose-700" },
+  { id: 5, title: "Inspection Tools & Equipment Certification", category: "Safety", lessons: 6, duration: "1h 05m", progress: 100, level: "Beginner", thumb: "from-red-500 to-rose-700" },
   { id: 6, title: "Reports & Analytics Mastery", category: "Technical", lessons: 9, duration: "1h 50m", progress: 0, level: "Intermediate", thumb: "from-cyan-500 to-blue-700" },
 ];
 

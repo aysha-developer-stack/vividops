@@ -169,9 +169,9 @@ export default function Home() {
   }, []);
 
   const jobs = [
-    { title: "Server Maintenance #482", status: "In Progress", color: "bg-sky-100 text-sky-700 border-sky-200", progress: 65 },
-    { title: "Site Inspection - North", status: "Pending", color: "bg-amber-100 text-amber-700 border-amber-200", progress: 0 },
-    { title: "Quarterly Audit", status: "Completed", color: "bg-green-100 text-green-700 border-green-200", progress: 100 },
+    { title: "Wilkinson Residence Inspection #482", status: "In Progress", color: "bg-sky-100 text-sky-700 border-sky-200", progress: 65 },
+    { title: "Patel Residence Pre-Purchase", status: "Pending", color: "bg-amber-100 text-amber-700 border-amber-200", progress: 0 },
+    { title: "Engineer Compliance Report", status: "Completed", color: "bg-green-100 text-green-700 border-green-200", progress: 100 },
   ];
 
   return (

@@ -9,17 +9,17 @@ import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 
 const ASSIGNED = [
-  { id: "JOB-2148", title: "Server Maintenance", client: "BrightSpark Industries", due: "Today, 5pm", priority: "High" },
-  { id: "JOB-2150", title: "Site Inspection", client: "North Bay Logistics", due: "Tomorrow", priority: "Medium" },
-  { id: "JOB-2151", title: "Equipment Calibration", client: "Greenfield Co.", due: "Apr 24", priority: "Medium" },
-  { id: "JOB-2155", title: "Emergency Repair", client: "Blue Ocean Ltd.", due: "Apr 25", priority: "High" },
-  { id: "JOB-2156", title: "HVAC Quarterly Service", client: "Pacific Engineering", due: "Apr 26", priority: "Low" },
-  { id: "JOB-2160", title: "Solar Panel Inspection", client: "Vivid Construction", due: "Apr 28", priority: "Medium" },
+  { id: "JOB-2148", title: "Structural Inspection", client: "Wilkinson Residence", due: "Today, 5pm", priority: "High" },
+  { id: "JOB-2150", title: "Pre-Purchase Inspection", client: "Patel Residence", due: "Tomorrow", priority: "Medium" },
+  { id: "JOB-2151", title: "Footing Design Review", client: "Greenfield Builders", due: "Apr 24", priority: "Medium" },
+  { id: "JOB-2155", title: "Crack Assessment", client: "Thompson Residence", due: "Apr 25", priority: "High" },
+  { id: "JOB-2156", title: "Retaining Wall Design", client: "Nguyen Residence", due: "Apr 26", priority: "Low" },
+  { id: "JOB-2160", title: "Roof Truss Inspection", client: "Vivid Construction", due: "Apr 28", priority: "Medium" },
 ];
 
 const NOTIFS = [
   { title: "New job assigned", desc: "JOB-2151 by Sam Carter", time: "5m ago", icon: Briefcase, color: "text-primary bg-primary/10" },
-  { title: "Training due today", desc: "Workplace Safety Module 4", time: "1h ago", icon: GraduationCap, color: "text-amber-600 bg-amber-50" },
+  { title: "Training due today", desc: "Site Safety Module 4", time: "1h ago", icon: GraduationCap, color: "text-amber-600 bg-amber-50" },
   { title: "Job marked complete", desc: "Great work on JOB-2147!", time: "2h ago", icon: CheckCircle2, color: "text-emerald-600 bg-emerald-50" },
   { title: "Still working?", desc: "Timer running on JOB-2148 for 1h", time: "3h ago", icon: Clock, color: "text-amber-600 bg-amber-50" },
   { title: "Rework cleared", desc: "Sam approved your fix on JOB-2147", time: "Yesterday", icon: CheckCircle2, color: "text-emerald-600 bg-emerald-50" },
@@ -88,7 +88,7 @@ export default function UserDashboard() {
               <span className="text-xs font-bold text-white/80 uppercase tracking-wider">{running ? "Tracking time" : "Ready to start"}</span>
             </div>
             <div className="font-mono text-5xl md:text-6xl font-bold text-white tabular-nums mb-4">{fmt(time)}</div>
-            <div className="text-sm text-white/80 mb-5">JOB-2148 · Server Maintenance</div>
+            <div className="text-sm text-white/80 mb-5">JOB-2148 · Structural Inspection</div>
             <div className="flex gap-2">
               <motion.button
                 whileHover={{ scale: 1.05 }}

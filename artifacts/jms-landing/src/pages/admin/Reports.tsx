@@ -45,16 +45,16 @@ const USER_PERFORMANCE: UserPerf[] = [
 ];
 
 const ERRORS = [
-  { id: "ERR-2841", type: "Database Timeout", count: 12, severity: "high", lastSeen: "2m ago" },
-  { id: "ERR-2840", type: "Auth Failed", count: 8, severity: "medium", lastSeen: "14m ago" },
-  { id: "ERR-2839", type: "Upload Rejected", count: 5, severity: "low", lastSeen: "1h ago" },
-  { id: "ERR-2838", type: "Webhook Delivery Failed", count: 3, severity: "medium", lastSeen: "3h ago" },
+  { id: "ERR-2841", type: "Report Sync Timeout", count: 12, severity: "high", lastSeen: "2m ago" },
+  { id: "ERR-2840", type: "Login Failed", count: 8, severity: "medium", lastSeen: "14m ago" },
+  { id: "ERR-2839", type: "Photo Upload Rejected", count: 5, severity: "low", lastSeen: "1h ago" },
+  { id: "ERR-2838", type: "Email Notification Failed", count: 3, severity: "medium", lastSeen: "3h ago" },
 ];
 
 const TIME_LOGS = [
-  { user: "Sarah Johnson", project: "Server Maintenance", hours: 28.5, billable: true },
-  { user: "Mike Chen", project: "Site Inspection", hours: 22.0, billable: true },
-  { user: "Emma Wilson", project: "Quarterly Audit", hours: 35.5, billable: true },
+  { user: "Sarah Johnson", project: "Structural Inspection", hours: 28.5, billable: true },
+  { user: "Mike Chen", project: "Pre-Purchase Inspection", hours: 22.0, billable: true },
+  { user: "Emma Wilson", project: "Engineer Compliance Report", hours: 35.5, billable: true },
   { user: "David Park", project: "Internal Training", hours: 8.0, billable: false },
 ];
 
