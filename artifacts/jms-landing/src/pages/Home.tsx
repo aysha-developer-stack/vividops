@@ -141,9 +141,9 @@ const features = [
 ];
 
 const steps = [
-  { step: "01", title: "Create & Assign", desc: "Managers create detailed jobs with checklists and assign them to the right field technicians.", icon: Briefcase },
-  { step: "02", title: "Work & Track", desc: "Users receive notifications, start the smart timer, complete checklists, and upload photos.", icon: Clock },
-  { step: "03", title: "Review & Analyze", desc: "Supervisors review completed work, while admins get aggregated performance data.", icon: BarChart3 },
+  { step: "01", title: "Create & Assign", desc: "Managers scope inspections and design jobs, build checklists, and assign them to the right site engineers.", icon: Briefcase },
+  { step: "02", title: "Work & Track", desc: "Engineers get notified, start the smart timer, tick off site checks, and upload photos and reports from anywhere.", icon: Clock },
+  { step: "03", title: "Review & Analyze", desc: "Supervisors sign off completed work and admins see live performance, billable hours, and project health at a glance.", icon: BarChart3 },
 ];
 
 const benefits = [
