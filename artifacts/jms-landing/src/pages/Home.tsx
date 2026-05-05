@@ -854,89 +854,32 @@ export default function Home() {
 
         {/* Main Footer Grid */}
         <div className="relative z-10 container mx-auto px-6 md:px-12 py-14">
-          <div className="grid md:grid-cols-4 gap-10">
-            {/* Brand column */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5 }}
-              className="md:col-span-2"
-            >
-              <motion.img
-                src={logoImg}
-                alt="Vivid OPS"
-                className="h-16 w-auto object-contain mb-5"
-                whileHover={{ scale: 1.04 }}
-                transition={{ type: "spring", stiffness: 400 }}
+          {/* Brand column */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+          >
+            <motion.img
+              src={logoImg}
+              alt="Vivid OPS"
+              className="h-16 w-auto object-contain mb-5"
+              whileHover={{ scale: 1.04 }}
+              transition={{ type: "spring", stiffness: 400 }}
+            />
+            <p className="text-gray-400 text-sm leading-relaxed max-w-sm mb-6">
+              Vivid OPS is the command center for operations teams — helping you assign jobs, track time, manage files, and report performance all in one place.
+            </p>
+            <div className="flex items-center gap-2">
+              <motion.div
+                className="w-2 h-2 rounded-full bg-green-400"
+                animate={{ scale: [1, 1.4, 1], opacity: [1, 0.5, 1] }}
+                transition={{ duration: 1.8, repeat: Infinity }}
               />
-              <p className="text-gray-400 text-sm leading-relaxed max-w-sm mb-6">
-                Vivid OPS is the command center for operations teams — helping you assign jobs, track time, manage files, and report performance all in one place.
-              </p>
-              <div className="flex items-center gap-2">
-                <motion.div
-                  className="w-2 h-2 rounded-full bg-green-400"
-                  animate={{ scale: [1, 1.4, 1], opacity: [1, 0.5, 1] }}
-                  transition={{ duration: 1.8, repeat: Infinity }}
-                />
-                <span className="text-xs text-gray-400 font-medium">All systems operational</span>
-              </div>
-            </motion.div>
-
-            {/* Quick Links */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-            >
-              <h4 className="text-sm font-semibold text-white uppercase tracking-widest mb-5">Product</h4>
-              <ul className="space-y-3">
-                {["Features", "How It Works", "Pricing", "Changelog", "Roadmap"].map((item) => (
-                  <li key={item}>
-                    <motion.a
-                      href="#"
-                      className="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1.5 group"
-                      whileHover={{ x: 4 }}
-                      transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                    >
-                      <motion.span
-                        className="w-1 h-1 rounded-full bg-primary opacity-0 group-hover:opacity-100 transition-opacity"
-                      />
-                      {item}
-                    </motion.a>
-                  </li>
-                ))}
-              </ul>
-            </motion.div>
-
-            {/* Contact */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-            >
-              <h4 className="text-sm font-semibold text-white uppercase tracking-widest mb-5">Company</h4>
-              <ul className="space-y-3">
-                {["About Us", "Privacy Policy", "Terms of Service", "Contact Support", "Security"].map((item) => (
-                  <li key={item}>
-                    <motion.a
-                      href="#"
-                      className="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1.5 group"
-                      whileHover={{ x: 4 }}
-                      transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                    >
-                      <motion.span
-                        className="w-1 h-1 rounded-full bg-primary opacity-0 group-hover:opacity-100 transition-opacity"
-                      />
-                      {item}
-                    </motion.a>
-                  </li>
-                ))}
-              </ul>
-            </motion.div>
-          </div>
+              <span className="text-xs text-gray-400 font-medium">All systems operational</span>
+            </div>
+          </motion.div>
         </div>
 
         {/* Bottom bar */}
