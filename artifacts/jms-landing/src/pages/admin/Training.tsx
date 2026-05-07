@@ -474,13 +474,28 @@ function PostCard({
       </div>
 
       {post.attachments.length > 0 && (
-        <div className={`px-5 grid gap-2 ${post.attachments.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
+        <div
+          className={
+            post.attachments.length === 1
+              ? "px-5"
+              : "px-5 flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 [scrollbar-width:thin]"
+          }
+        >
           {post.attachments.map((a, i) => (
             <button
               key={i}
               onClick={() => onOpenAttachment(a)}
-              className={`relative aspect-video rounded-xl overflow-hidden bg-gradient-to-br ${a.gradient ?? "from-gray-500 to-gray-700"} group`}
+              className={`relative aspect-video rounded-xl overflow-hidden bg-gradient-to-br ${a.gradient ?? "from-gray-500 to-gray-700"} group ${
+                post.attachments.length === 1
+                  ? "w-full"
+                  : "snap-start shrink-0 w-[78%] sm:w-[62%] md:w-[55%]"
+              }`}
             >
+              {post.attachments.length > 1 && (
+                <span className="absolute bottom-2 left-2 z-10 text-[10px] font-semibold text-white bg-black/60 px-1.5 py-0.5 rounded">
+                  {i + 1} / {post.attachments.length}
+                </span>
+              )}
               <div className="absolute inset-0 bg-black/10 group-hover:bg-black/30 transition-colors" />
               {a.kind === "video" ? (
                 <>
