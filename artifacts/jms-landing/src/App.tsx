@@ -50,6 +50,7 @@ function Router() {
       <Route path="/admin/supervisors" component={SupervisorMonitoring} />
       <Route path="/admin/reports"><Reports role="admin" /></Route>
       <Route path="/admin/communication"><Communication role="admin" /></Route>
+      <Route path="/admin/training"><Training role="admin" /></Route>
       <Route path="/admin/settings"><Settings role="admin" /></Route>
       <Route path="/admin/notifications"><Notifications role="admin" /></Route>
 
@@ -60,6 +61,7 @@ function Router() {
       <Route path="/supervisor/users" component={UserMonitoring} />
       <Route path="/supervisor/communication"><Communication role="supervisor" /></Route>
       <Route path="/supervisor/reports"><Reports role="supervisor" /></Route>
+      <Route path="/supervisor/training"><Training role="supervisor" /></Route>
       <Route path="/supervisor/settings"><Settings role="supervisor" /></Route>
       <Route path="/supervisor/notifications"><Notifications role="supervisor" /></Route>
 
