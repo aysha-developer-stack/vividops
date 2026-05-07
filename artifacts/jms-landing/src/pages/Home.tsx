@@ -192,7 +192,7 @@ export default function Home() {
             <motion.img
               src={logoImg}
               alt="Vivid OPS"
-              className="h-20 md:h-24 w-auto object-contain"
+              className="w-[190px] h-[85.5px] object-contain"
               whileHover={{ scale: 1.05 }}
               transition={{ type: "spring", stiffness: 400, damping: 20 }}
             />
