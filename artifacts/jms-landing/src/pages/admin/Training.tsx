@@ -1,10 +1,11 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Play, BookOpen, Award, Clock, CheckCircle2,
   Search, GraduationCap, Megaphone, Image as ImageIcon, Video, Send,
   Users as UsersIcon, X, Pin, MoreVertical, Heart, MessageSquare,
   Paperclip, Calendar, Images, Film, Download, Eye,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -474,55 +475,8 @@ function PostCard({
       </div>
 
       {post.attachments.length > 0 && (
-        <div
-          className={
-            post.attachments.length === 1
-              ? "px-5"
-              : "px-5 flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 [scrollbar-width:thin]"
-          }
-        >
-          {post.attachments.map((a, i) => (
-            <button
-              key={i}
-              onClick={() => onOpenAttachment(a)}
-              className={`relative aspect-video rounded-xl overflow-hidden bg-gradient-to-br ${a.gradient ?? "from-gray-500 to-gray-700"} group ${
-                post.attachments.length === 1
-                  ? "w-full"
-                  : "snap-start shrink-0 w-[78%] sm:w-[62%] md:w-[55%]"
-              }`}
-            >
-              {post.attachments.length > 1 && (
-                <span className="absolute bottom-2 left-2 z-10 text-[10px] font-semibold text-white bg-black/60 px-1.5 py-0.5 rounded">
-                  {i + 1} / {post.attachments.length}
-                </span>
-              )}
-              <div className="absolute inset-0 bg-black/10 group-hover:bg-black/30 transition-colors" />
-              {a.kind === "video" ? (
-                <>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-14 h-14 rounded-full bg-white/95 text-primary flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform">
-                      <Play size={22} fill="currentColor" className="ml-1" />
-                    </div>
-                  </div>
-                  {a.duration && (
-                    <span className="absolute bottom-2 right-2 text-[11px] font-semibold text-white bg-black/60 px-1.5 py-0.5 rounded">
-                      {a.duration}
-                    </span>
-                  )}
-                  <span className="absolute top-2 left-2 text-[10px] font-bold uppercase tracking-wider text-white bg-black/40 px-2 py-0.5 rounded flex items-center gap-1">
-                    <Video size={10} /> Video
-                  </span>
-                </>
-              ) : (
-                <>
-                  <ImageIcon size={40} className="absolute inset-0 m-auto text-white/40" />
-                  <span className="absolute top-2 left-2 text-[10px] font-bold uppercase tracking-wider text-white bg-black/40 px-2 py-0.5 rounded flex items-center gap-1">
-                    <ImageIcon size={10} /> Picture
-                  </span>
-                </>
-              )}
-            </button>
-          ))}
+        <div className="px-5">
+          <AttachmentCarousel attachments={post.attachments} onOpen={onOpenAttachment} />
         </div>
       )}
 
@@ -540,6 +494,122 @@ function PostCard({
         </button>
       </div>
     </motion.div>
+  );
+}
+
+/* -------------------------- Attachment Carousel -------------------------- */
+
+function AttachmentCarousel({
+  attachments,
+  onOpen,
+}: {
+  attachments: Attachment[];
+  onOpen: (a: Attachment) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(0);
+  const count = attachments.length;
+  const single = count === 1;
+
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el || single) return;
+    const onScroll = () => {
+      const idx = Math.round(el.scrollLeft / el.clientWidth);
+      setActive(Math.max(0, Math.min(count - 1, idx)));
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [count, single]);
+
+  const goTo = (idx: number) => {
+    const el = trackRef.current;
+    if (!el) return;
+    el.scrollTo({ left: idx * el.clientWidth, behavior: "smooth" });
+  };
+
+  return (
+    <div className="relative group/carousel">
+      <div
+        ref={trackRef}
+        className={
+          single
+            ? ""
+            : "flex overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden rounded-xl"
+        }
+      >
+        {attachments.map((a, i) => (
+          <button
+            key={i}
+            onClick={() => onOpen(a)}
+            className={`relative aspect-video bg-gradient-to-br ${a.gradient ?? "from-gray-500 to-gray-700"} group ${
+              single ? "w-full rounded-xl overflow-hidden" : "snap-center shrink-0 w-full overflow-hidden"
+            }`}
+          >
+            <div className="absolute inset-0 bg-black/10 group-hover:bg-black/20 transition-colors" />
+            {a.kind === "video" ? (
+              <>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-16 h-16 rounded-full bg-white/95 text-primary flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform">
+                    <Play size={26} fill="currentColor" className="ml-1" />
+                  </div>
+                </div>
+                {a.duration && (
+                  <span className="absolute bottom-2 right-2 text-[11px] font-semibold text-white bg-black/60 px-1.5 py-0.5 rounded">
+                    {a.duration}
+                  </span>
+                )}
+              </>
+            ) : (
+              <ImageIcon size={48} className="absolute inset-0 m-auto text-white/40" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {!single && (
+        <>
+          {/* Counter pill — top-right, Instagram-style */}
+          <div className="absolute top-3 right-3 text-[11px] font-semibold text-white bg-black/55 backdrop-blur-sm px-2 py-0.5 rounded-full pointer-events-none">
+            {active + 1} / {count}
+          </div>
+
+          {/* Prev arrow */}
+          {active > 0 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); goTo(active - 1); }}
+              aria-label="Previous"
+              className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/95 text-gray-800 flex items-center justify-center shadow-lg opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:scale-105"
+            >
+              <ChevronLeft size={18} />
+            </button>
+          )}
+
+          {/* Next arrow */}
+          {active < count - 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); goTo(active + 1); }}
+              aria-label="Next"
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/95 text-gray-800 flex items-center justify-center shadow-lg opacity-0 group-hover/carousel:opacity-100 transition-opacity hover:scale-105"
+            >
+              <ChevronRight size={18} />
+            </button>
+          )}
+
+          {/* Dot indicators */}
+          <div className="flex items-center justify-center gap-1.5 mt-3">
+            {attachments.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => goTo(i)}
+                aria-label={`Go to slide ${i + 1}`}
+                className={`h-1.5 rounded-full transition-all ${i === active ? "w-5 bg-primary" : "w-1.5 bg-gray-300 hover:bg-gray-400"}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
