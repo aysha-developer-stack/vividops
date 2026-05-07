@@ -4,7 +4,7 @@ import {
   Play, BookOpen, Award, Clock, CheckCircle2,
   Search, GraduationCap, Megaphone, Image as ImageIcon, Video, Send,
   Users as UsersIcon, X, Pin, MoreVertical, Heart, MessageSquare,
-  Paperclip, Calendar,
+  Paperclip, Calendar, Images, Film, Download, Eye,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -98,15 +98,17 @@ const SEED_POSTS: UpdatePost[] = [
 ];
 
 export default function Training({ role = "super-admin" as Role }: { role?: Role } = {}) {
-  const [tab, setTab] = useState<"updates" | "courses">("updates");
+  const [tab, setTab] = useState<"updates" | "photos" | "videos" | "courses">("updates");
   const canPost = role !== "user";
 
   return (
     <DashboardLayout title="Training & Learning" role={role}>
       {/* Tabs */}
-      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-fit mb-6">
+      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-fit mb-6 flex-wrap">
         {[
           { id: "updates" as const, label: "Daily Updates", icon: Megaphone },
+          { id: "photos" as const, label: "Photo Gallery", icon: Images },
+          { id: "videos" as const, label: "Video Library", icon: Film },
           { id: "courses" as const, label: "Courses", icon: GraduationCap },
         ].map((t) => {
           const Icon = t.icon;
@@ -132,27 +134,18 @@ export default function Training({ role = "super-admin" as Role }: { role?: Role
       </div>
 
       <AnimatePresence mode="wait">
-        {tab === "updates" ? (
-          <motion.div
-            key="updates"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2 }}
-          >
-            <DailyUpdates canPost={canPost} />
-          </motion.div>
-        ) : (
-          <motion.div
-            key="courses"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2 }}
-          >
-            <CoursesView />
-          </motion.div>
-        )}
+        <motion.div
+          key={tab}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.2 }}
+        >
+          {tab === "updates" && <DailyUpdates canPost={canPost} />}
+          {tab === "photos" && <PhotoGallery canPost={canPost} />}
+          {tab === "videos" && <VideoLibrary canPost={canPost} />}
+          {tab === "courses" && <CoursesView />}
+        </motion.div>
       </AnimatePresence>
     </DashboardLayout>
   );
@@ -532,6 +525,369 @@ function PostCard({
         </button>
       </div>
     </motion.div>
+  );
+}
+
+/* -------------------------- Photo Gallery -------------------------- */
+
+interface PhotoItem {
+  id: number;
+  title: string;
+  album: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  gradient: string;
+  size?: string;
+}
+
+const SEED_PHOTOS: PhotoItem[] = [
+  { id: 1, title: "Anchor-point setup — Tower B", album: "Safety", uploadedBy: "Sara Al-Mutairi", uploadedAt: "Today", gradient: "from-red-500 to-rose-700" },
+  { id: 2, title: "Foundation rebar layout", album: "Inspections", uploadedBy: "Khalid Rahman", uploadedAt: "Today", gradient: "from-amber-400 to-orange-600" },
+  { id: 3, title: "Slab moisture-meter readings", album: "Inspections", uploadedBy: "Khalid Rahman", uploadedAt: "Yesterday", gradient: "from-primary to-sky-700" },
+  { id: 4, title: "Roof flashing detail", album: "Inspections", uploadedBy: "Omar Hassan", uploadedAt: "Yesterday", gradient: "from-emerald-500 to-emerald-700" },
+  { id: 5, title: "Approved harness — Petzl Avao", album: "Safety", uploadedBy: "Sara Al-Mutairi", uploadedAt: "2 days ago", gradient: "from-purple-500 to-indigo-700" },
+  { id: 6, title: "Crack mapping — wall section 4", album: "Inspections", uploadedBy: "Layla Karim", uploadedAt: "2 days ago", gradient: "from-cyan-500 to-blue-700" },
+  { id: 7, title: "Updated drawing template — sheet A1", album: "Designs", uploadedBy: "Omar Hassan", uploadedAt: "3 days ago", gradient: "from-pink-500 to-rose-600" },
+  { id: 8, title: "Steel column connection — typical", album: "Designs", uploadedBy: "Khalid Rahman", uploadedAt: "3 days ago", gradient: "from-slate-600 to-slate-800" },
+  { id: 9, title: "Site safety briefing — morning shift", album: "Safety", uploadedBy: "Sara Al-Mutairi", uploadedAt: "4 days ago", gradient: "from-teal-500 to-emerald-700" },
+  { id: 10, title: "Concrete pour preparation", album: "Inspections", uploadedBy: "Layla Karim", uploadedAt: "5 days ago", gradient: "from-yellow-500 to-amber-700" },
+  { id: 11, title: "Reinforcement spacing check", album: "Inspections", uploadedBy: "Khalid Rahman", uploadedAt: "5 days ago", gradient: "from-fuchsia-500 to-purple-700" },
+  { id: 12, title: "Approved PPE checklist board", album: "Safety", uploadedBy: "Sara Al-Mutairi", uploadedAt: "1 week ago", gradient: "from-orange-500 to-red-700" },
+];
+
+const PHOTO_ALBUMS = ["All", "Inspections", "Safety", "Designs"];
+
+function PhotoGallery({ canPost }: { canPost: boolean }) {
+  const [album, setAlbum] = useState("All");
+  const [search, setSearch] = useState("");
+  const [lightbox, setLightbox] = useState<PhotoItem | null>(null);
+
+  const filtered = SEED_PHOTOS.filter(
+    (p) =>
+      (album === "All" || p.album === album) &&
+      p.title.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <>
+      <GalleryToolbar
+        search={search}
+        setSearch={setSearch}
+        filter={album}
+        setFilter={setAlbum}
+        options={PHOTO_ALBUMS}
+        layoutId="photoFilter"
+        placeholder="Search photos…"
+        canPost={canPost}
+        uploadLabel="Upload photos"
+        uploadIcon={ImageIcon}
+        accept="image/*"
+        multiple
+      />
+
+      {filtered.length === 0 ? (
+        <div className="text-center py-16 text-sm text-gray-400">No photos match your filters.</div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {filtered.map((p, i) => (
+            <motion.button
+              key={p.id}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: i * 0.03 }}
+              whileHover={{ y: -3 }}
+              onClick={() => setLightbox(p)}
+              className={`group relative aspect-square rounded-xl overflow-hidden bg-gradient-to-br ${p.gradient} shadow-sm hover:shadow-xl transition-shadow text-left`}
+            >
+              <ImageIcon size={36} className="absolute inset-0 m-auto text-white/30" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="absolute bottom-0 left-0 right-0 p-2.5 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="text-xs font-bold truncate">{p.title}</div>
+                <div className="text-[10px] text-white/80 truncate">{p.uploadedBy} · {p.uploadedAt}</div>
+              </div>
+              <span className="absolute top-2 left-2 text-[9px] font-bold uppercase tracking-wider text-white bg-black/40 px-1.5 py-0.5 rounded">
+                {p.album}
+              </span>
+              <div className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white/95 text-primary flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <Eye size={13} />
+              </div>
+            </motion.button>
+          ))}
+        </div>
+      )}
+
+      <AnimatePresence>
+        {lightbox && <PhotoLightbox photo={lightbox} onClose={() => setLightbox(null)} />}
+      </AnimatePresence>
+    </>
+  );
+}
+
+function PhotoLightbox({ photo, onClose }: { photo: PhotoItem; onClose: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+      className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-6"
+    >
+      <button onClick={onClose} className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center">
+        <X size={20} />
+      </button>
+      <motion.div
+        initial={{ scale: 0.9 }}
+        animate={{ scale: 1 }}
+        exit={{ scale: 0.9 }}
+        onClick={(e) => e.stopPropagation()}
+        className="max-w-4xl w-full"
+      >
+        <div className={`relative aspect-video rounded-2xl overflow-hidden bg-gradient-to-br ${photo.gradient} flex items-center justify-center`}>
+          <ImageIcon size={72} className="text-white/30" />
+        </div>
+        <div className="mt-4 flex items-start justify-between gap-4 text-white">
+          <div>
+            <div className="text-lg font-bold">{photo.title}</div>
+            <div className="text-xs text-white/70 mt-1">{photo.album} · uploaded by {photo.uploadedBy} · {photo.uploadedAt}</div>
+          </div>
+          <button className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg text-xs font-semibold">
+            <Download size={14} /> Download
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+/* -------------------------- Video Library -------------------------- */
+
+interface VideoItem {
+  id: number;
+  title: string;
+  category: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  duration: string;
+  views: number;
+  gradient: string;
+  description?: string;
+}
+
+const SEED_VIDEOS: VideoItem[] = [
+  { id: 1, title: "Updated drawing review workflow", category: "Designs", uploadedBy: "Omar Hassan", uploadedAt: "Today", duration: "5:46", views: 42, gradient: "from-purple-600 to-indigo-800", description: "Walkthrough of the new structural drawing review process used during Thursday's design review." },
+  { id: 2, title: "Roof inspection — moisture meter walkthrough", category: "Inspections", uploadedBy: "Khalid Rahman", uploadedAt: "Today", duration: "2:14", views: 87, gradient: "from-primary to-sky-800", description: "How to capture moisture-meter readings on all four slab quadrants and log them in the report template." },
+  { id: 3, title: "Harness inspection & anchor-point safety", category: "Safety", uploadedBy: "Sara Al-Mutairi", uploadedAt: "Yesterday", duration: "4:08", views: 134, gradient: "from-red-500 to-rose-700" },
+  { id: 4, title: "Tablet field-app — daily usage tips", category: "Onboarding", uploadedBy: "Layla Karim", uploadedAt: "2 days ago", duration: "8:22", views: 56, gradient: "from-emerald-500 to-emerald-700" },
+  { id: 5, title: "Reinforcement layout — common mistakes", category: "Inspections", uploadedBy: "Khalid Rahman", uploadedAt: "3 days ago", duration: "6:31", views: 71, gradient: "from-amber-500 to-orange-600" },
+  { id: 6, title: "Time-tracking & billable-hours guide", category: "Onboarding", uploadedBy: "Sara Al-Mutairi", uploadedAt: "5 days ago", duration: "3:50", views: 98, gradient: "from-cyan-500 to-blue-700" },
+  { id: 7, title: "Steel connection details — typical", category: "Designs", uploadedBy: "Omar Hassan", uploadedAt: "1 week ago", duration: "7:12", views: 64, gradient: "from-slate-600 to-slate-800" },
+  { id: 8, title: "Pre-pour concrete checklist", category: "Inspections", uploadedBy: "Layla Karim", uploadedAt: "1 week ago", duration: "4:45", views: 80, gradient: "from-teal-500 to-emerald-700" },
+];
+
+const VIDEO_CATEGORIES = ["All", "Onboarding", "Inspections", "Designs", "Safety"];
+
+function VideoLibrary({ canPost }: { canPost: boolean }) {
+  const [cat, setCat] = useState("All");
+  const [search, setSearch] = useState("");
+  const [player, setPlayer] = useState<VideoItem | null>(null);
+
+  const filtered = SEED_VIDEOS.filter(
+    (v) =>
+      (cat === "All" || v.category === cat) &&
+      v.title.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const featured = filtered[0];
+  const rest = filtered.slice(1);
+
+  return (
+    <>
+      <GalleryToolbar
+        search={search}
+        setSearch={setSearch}
+        filter={cat}
+        setFilter={setCat}
+        options={VIDEO_CATEGORIES}
+        layoutId="videoFilter"
+        placeholder="Search videos…"
+        canPost={canPost}
+        uploadLabel="Upload video"
+        uploadIcon={Video}
+        accept="video/*"
+      />
+
+      {filtered.length === 0 ? (
+        <div className="text-center py-16 text-sm text-gray-400">No videos match your filters.</div>
+      ) : (
+        <>
+          {/* Featured */}
+          {featured && (
+            <motion.button
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              onClick={() => setPlayer(featured)}
+              className={`group relative w-full aspect-[16/7] rounded-2xl overflow-hidden bg-gradient-to-br ${featured.gradient} mb-5 text-left shadow-sm hover:shadow-xl transition-shadow`}
+            >
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-20 h-20 rounded-full bg-white/95 text-primary flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform">
+                  <Play size={32} fill="currentColor" className="ml-1" />
+                </div>
+              </div>
+              <span className="absolute top-4 left-4 text-[10px] font-bold uppercase tracking-wider text-white bg-primary px-2 py-1 rounded">
+                Featured
+              </span>
+              <span className="absolute top-4 right-4 text-xs font-semibold text-white bg-black/60 px-2 py-1 rounded">
+                {featured.duration}
+              </span>
+              <div className="absolute bottom-0 left-0 right-0 p-5 text-white">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-white/80 mb-1">{featured.category}</div>
+                <div className="text-xl font-bold mb-1">{featured.title}</div>
+                <div className="text-xs text-white/80">{featured.uploadedBy} · {featured.uploadedAt} · {featured.views} views</div>
+              </div>
+            </motion.button>
+          )}
+
+          {/* Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {rest.map((v, i) => (
+              <motion.button
+                key={v.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.04 }}
+                whileHover={{ y: -4 }}
+                onClick={() => setPlayer(v)}
+                className="bg-white rounded-2xl border border-gray-100 overflow-hidden text-left hover:shadow-xl transition-shadow"
+              >
+                <div className={`relative aspect-video bg-gradient-to-br ${v.gradient} group`}>
+                  <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-14 h-14 rounded-full bg-white/95 text-primary flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform">
+                      <Play size={22} fill="currentColor" className="ml-1" />
+                    </div>
+                  </div>
+                  <span className="absolute bottom-2 right-2 text-[11px] font-semibold text-white bg-black/70 px-1.5 py-0.5 rounded">
+                    {v.duration}
+                  </span>
+                  <span className="absolute top-2 left-2 text-[10px] font-bold uppercase tracking-wider text-white bg-black/40 px-2 py-0.5 rounded">
+                    {v.category}
+                  </span>
+                </div>
+                <div className="p-4">
+                  <div className="font-bold text-gray-900 text-sm leading-snug line-clamp-2 mb-2">{v.title}</div>
+                  <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                    <span>{v.uploadedBy}</span>
+                    <span>•</span>
+                    <span>{v.uploadedAt}</span>
+                    <span>•</span>
+                    <span>{v.views} views</span>
+                  </div>
+                </div>
+              </motion.button>
+            ))}
+          </div>
+        </>
+      )}
+
+      <AnimatePresence>
+        {player && <VideoPlayer video={player} onClose={() => setPlayer(null)} />}
+      </AnimatePresence>
+    </>
+  );
+}
+
+function VideoPlayer({ video, onClose }: { video: VideoItem; onClose: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+      className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-6"
+    >
+      <button onClick={onClose} className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center">
+        <X size={20} />
+      </button>
+      <motion.div
+        initial={{ scale: 0.9 }}
+        animate={{ scale: 1 }}
+        exit={{ scale: 0.9 }}
+        onClick={(e) => e.stopPropagation()}
+        className="max-w-4xl w-full"
+      >
+        <div className={`relative aspect-video rounded-2xl overflow-hidden bg-gradient-to-br ${video.gradient} flex items-center justify-center`}>
+          <div className="w-24 h-24 rounded-full bg-white/95 text-primary flex items-center justify-center shadow-2xl">
+            <Play size={36} fill="currentColor" className="ml-1" />
+          </div>
+          <span className="absolute bottom-3 right-3 text-xs font-semibold text-white bg-black/70 px-2 py-1 rounded">
+            {video.duration}
+          </span>
+        </div>
+        <div className="mt-4 text-white">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-white/70 mb-1">{video.category}</div>
+          <div className="text-xl font-bold">{video.title}</div>
+          <div className="text-xs text-white/70 mt-1">{video.uploadedBy} · {video.uploadedAt} · {video.views} views</div>
+          {video.description && (
+            <p className="text-sm text-white/85 mt-3 leading-relaxed">{video.description}</p>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+/* -------------------------- Shared gallery toolbar -------------------------- */
+
+function GalleryToolbar({
+  search, setSearch, filter, setFilter, options, layoutId, placeholder,
+  canPost, uploadLabel, uploadIcon: UploadIcon, accept, multiple,
+}: {
+  search: string;
+  setSearch: (s: string) => void;
+  filter: string;
+  setFilter: (s: string) => void;
+  options: string[];
+  layoutId: string;
+  placeholder: string;
+  canPost: boolean;
+  uploadLabel: string;
+  uploadIcon: any;
+  accept: string;
+  multiple?: boolean;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  return (
+    <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between mb-5">
+      <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 max-w-md flex-1 focus-within:border-primary transition-colors">
+        <Search size={16} className="text-gray-400" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={placeholder} className="bg-transparent text-sm flex-1 focus:outline-none" />
+      </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto">
+          {options.map((c) => (
+            <motion.button key={c} whileTap={{ scale: 0.96 }} onClick={() => setFilter(c)} className={`relative px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${filter === c ? "text-white" : "text-gray-600 hover:text-gray-900"}`}>
+              {filter === c && <motion.div layoutId={layoutId} className="absolute inset-0 bg-primary rounded-lg pointer-events-none" transition={{ type: "spring", stiffness: 300, damping: 25 }} />}
+              <span className="relative">{c}</span>
+            </motion.button>
+          ))}
+        </div>
+        {canPost && (
+          <>
+            <input ref={fileRef} type="file" accept={accept} multiple={multiple} className="hidden" />
+            <motion.button
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => fileRef.current?.click()}
+              className="bg-primary text-white px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-primary/30"
+            >
+              <UploadIcon size={14} />
+              {uploadLabel}
+            </motion.button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
