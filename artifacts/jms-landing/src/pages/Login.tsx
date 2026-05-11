@@ -4,8 +4,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, ArrowRight, ArrowLeft, Mail, Lock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import logoImg from "@assets/Untitled-2_1778148933357.png";
-import { setSession } from "@/lib/auth";
+import { useLogin } from "@/lib/auth";
 import { ROLES, Role } from "@/lib/roles";
+import { ApiError } from "@workspace/api-client-react";
 
 const floatingOrbs = [
   { size: 320, x: "-20%", y: "-10%", delay: 0, color: "bg-primary/20" },
@@ -18,11 +19,12 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
   const [role, setRole] = useState<Role>("super-admin");
   const [, setLocation] = useLocation();
+  const loginMutation = useLogin();
+  const isLoading = loginMutation.isPending;
 
   const validate = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -41,18 +43,21 @@ export default function Login() {
       return;
     }
     setErrors({});
-    setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 1500));
-    setIsLoading(false);
-    setIsSuccess(true);
-    const names: Record<Role, string> = {
-      "super-admin": "Alex Morgan",
-      admin: "Jamie Rivera",
-      supervisor: "Sam Carter",
-      user: "Jordan Reed",
-    };
-    setSession(email, names[role], role);
-    setTimeout(() => setLocation(ROLES[role].base), 1600);
+    try {
+      const result = await loginMutation.mutateAsync({ data: { email, password } });
+      setIsSuccess(true);
+      const targetRole = (result.user.role as Role) ?? role;
+      const target = result.user.mustResetPassword
+        ? "/reset-password"
+        : ROLES[targetRole]?.base ?? "/";
+      setTimeout(() => setLocation(target), 1200);
+    } catch (err) {
+      const message =
+        err instanceof ApiError && err.status === 401
+          ? "Invalid email or password"
+          : "Something went wrong. Please try again.";
+      setErrors({ form: message });
+    }
   };
 
   return (
@@ -272,6 +277,15 @@ export default function Login() {
                   </p>
                 </motion.div>
 
+                {errors.form && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-4 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs flex items-center gap-2"
+                  >
+                    <span>{errors.form}</span>
+                  </motion.div>
+                )}
                 <form onSubmit={handleSubmit} className="space-y-5" noValidate>
                   {/* Role selector */}
                   <motion.div

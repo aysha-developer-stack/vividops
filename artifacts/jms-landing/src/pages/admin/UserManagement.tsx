@@ -1,133 +1,203 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, MoreVertical, Edit2, Trash2, Power, Shield,
   Crown, UserCog, User as UserIcon, X, Check, Mail, KeyRound,
-  Copy, CheckCircle2, AlertTriangle,
+  Copy, CheckCircle2, AlertTriangle, Loader2, RefreshCw,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
+import {
+  useListUsers,
+  useCreateUser,
+  useUpdateUser,
+  useDeleteUser,
+  useResendInvite,
+  getListUsersQueryKey,
+  type User,
+  type UserRole as ApiUserRole,
+  type UserStatus as ApiUserStatus,
+  ApiError,
+} from "@workspace/api-client-react";
 
-type UserRole = "Super Admin" | "Admin" | "Supervisor" | "User";
-type Status = "Active" | "Inactive";
+type UiRole = "Super Admin" | "Admin" | "Supervisor" | "User";
 
-interface User {
-  id: number;
-  name: string;
-  email: string;
-  role: UserRole;
-  status: Status;
-  joined: string;
-  avatar: string;
-}
+const ROLE_API_TO_UI: Record<ApiUserRole, UiRole> = {
+  "super-admin": "Super Admin",
+  admin: "Admin",
+  supervisor: "Supervisor",
+  user: "User",
+};
+const ROLE_UI_TO_API: Record<UiRole, ApiUserRole> = {
+  "Super Admin": "super-admin",
+  Admin: "admin",
+  Supervisor: "supervisor",
+  User: "user",
+};
 
-const ROLE_CONFIG: Record<UserRole, { color: string; bg: string; icon: any }> = {
+const ROLE_CONFIG: Record<UiRole, { color: string; bg: string; icon: any }> = {
   "Super Admin": { color: "text-purple-700", bg: "bg-purple-50 border-purple-200", icon: Crown },
   Admin: { color: "text-red-700", bg: "bg-red-50 border-red-200", icon: Shield },
   Supervisor: { color: "text-amber-700", bg: "bg-amber-50 border-amber-200", icon: UserCog },
   User: { color: "text-primary", bg: "bg-primary/10 border-primary/20", icon: UserIcon },
 };
 
-const SEED: User[] = [
-  { id: 0, name: "Alex Morgan", email: "alex@vividops.com.au", role: "Super Admin", status: "Active", joined: "Jan 02, 2025", avatar: "AM" },
-  { id: 1, name: "Sarah Johnson", email: "sarah.j@vividops.com.au", role: "Admin", status: "Active", joined: "Jan 12, 2025", avatar: "SJ" },
-  { id: 2, name: "Mike Chen", email: "mike.c@vividops.com.au", role: "Supervisor", status: "Active", joined: "Feb 03, 2025", avatar: "MC" },
-  { id: 3, name: "Emma Wilson", email: "emma.w@vividops.com.au", role: "Supervisor", status: "Active", joined: "Feb 14, 2025", avatar: "EW" },
-  { id: 4, name: "David Park", email: "david.p@vividops.com.au", role: "User", status: "Active", joined: "Mar 01, 2025", avatar: "DP" },
-  { id: 5, name: "Lisa Martinez", email: "lisa.m@vividops.com.au", role: "User", status: "Inactive", joined: "Mar 18, 2025", avatar: "LM" },
-  { id: 6, name: "James Bennett", email: "james.b@vividops.com.au", role: "Supervisor", status: "Active", joined: "Apr 02, 2025", avatar: "JB" },
-  { id: 7, name: "Olivia Carter", email: "olivia.c@vividops.com.au", role: "User", status: "Active", joined: "Apr 11, 2025", avatar: "OC" },
-];
+const formatJoined = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+
+const initials = (name: string) =>
+  name.trim().split(/\s+/).map((s) => s[0] ?? "").join("").slice(0, 2).toUpperCase() || "?";
 
 export default function UserManagement({ role = "super-admin" as Role }: { role?: Role } = {}) {
-  const [users, setUsers] = useState<User[]>(SEED);
+  const qc = useQueryClient();
+  const usersQuery = useListUsers();
+  const createMutation = useCreateUser();
+  const updateMutation = useUpdateUser();
+  const deleteMutation = useDeleteUser();
+  const resendMutation = useResendInvite();
+
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"All" | UserRole>("All");
-  const [openId, setOpenId] = useState<number | null>(null);
+  const [filter, setFilter] = useState<"All" | UiRole>("All");
+  const [openId, setOpenId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "",
     email: "",
-    role: "User" as UserRole,
+    role: "User" as UiRole,
     delivery: "email-invite" as "email-invite" | "temp-password",
   });
   const [credentialResult, setCredentialResult] = useState<{
-    name: string; email: string; role: UserRole;
-    delivery: "email-invite" | "temp-password"; tempPassword?: string;
+    name: string; email: string; role: UiRole;
+    delivery: "email-invite" | "temp-password";
+    tempPassword?: string | null;
+    emailSent?: boolean | null;
   } | null>(null);
   const [copied, setCopied] = useState(false);
-
-  const generateTempPassword = () => {
-    const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-    const lower = "abcdefghijkmnpqrstuvwxyz";
-    const digits = "23456789";
-    const symbols = "!@#$%&*";
-    const all = upper + lower + digits + symbols;
-    const pick = (s: string) => s[Math.floor(Math.random() * s.length)];
-    const required = [pick(upper), pick(lower), pick(digits), pick(symbols)];
-    const rest = Array.from({ length: 8 }, () => pick(all));
-    return [...required, ...rest].sort(() => Math.random() - 0.5).join("");
-  };
+  const [formError, setFormError] = useState<string | null>(null);
 
   const isSuperAdmin = role === "super-admin";
-  // Super Admin can manage every role; Admin can manage Supervisor & User only.
-  const ROLES_TO_SHOW: UserRole[] = isSuperAdmin
+  const ROLES_TO_SHOW: UiRole[] = isSuperAdmin
     ? ["Super Admin", "Admin", "Supervisor", "User"]
     : ["Supervisor", "User"];
   const FILTER_TABS = ["All", ...ROLES_TO_SHOW] as const;
 
-  const filtered = users.filter((u) =>
-    (filter === "All" || u.role === filter) &&
-    (u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()))
-  );
+  const users = usersQuery.data ?? [];
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return users.filter((u) => {
+      const ui = ROLE_API_TO_UI[u.role];
+      if (filter !== "All" && ui !== filter) return false;
+      if (!q) return true;
+      return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+    });
+  }, [users, filter, search]);
   const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 8);
 
-  const toggleStatus = (id: number) => {
-    setUsers(users.map((u) => (u.id === id ? { ...u, status: u.status === "Active" ? "Inactive" : "Active" } : u)));
+  const toggleStatus = async (u: User) => {
     setOpenId(null);
+    try {
+      await updateMutation.mutateAsync({
+        id: u.id,
+        data: { status: u.status === "active" ? "inactive" : "active" as ApiUserStatus },
+      });
+      await invalidate();
+    } catch (err) {
+      setFormError(extractError(err));
+    }
   };
-  const remove = (id: number) => {
-    setUsers(users.filter((u) => u.id !== id));
+  const remove = async (u: User) => {
     setOpenId(null);
+    if (!confirm(`Delete ${u.name}? This cannot be undone.`)) return;
+    try {
+      await deleteMutation.mutateAsync({ id: u.id });
+      await invalidate();
+    } catch (err) {
+      setFormError(extractError(err));
+    }
   };
+  const resend = async (u: User) => {
+    setOpenId(null);
+    try {
+      const result = await resendMutation.mutateAsync({ id: u.id });
+      await invalidate();
+      setCredentialResult({
+        name: result.user.name,
+        email: result.user.email,
+        role: ROLE_API_TO_UI[result.user.role],
+        delivery: "email-invite",
+        emailSent: result.emailSent ?? false,
+      });
+    } catch (err) {
+      setFormError(extractError(err));
+    }
+  };
+
   const startCreate = () => {
     setEditingId(null);
     setForm({ name: "", email: "", role: "User", delivery: "email-invite" });
+    setFormError(null);
     setModalOpen(true);
   };
   const startEdit = (u: User) => {
     setEditingId(u.id);
-    setForm({ name: u.name, email: u.email, role: u.role, delivery: "email-invite" });
+    setForm({
+      name: u.name,
+      email: u.email,
+      role: ROLE_API_TO_UI[u.role],
+      delivery: "email-invite",
+    });
+    setFormError(null);
     setModalOpen(true);
     setOpenId(null);
   };
-  const save = () => {
-    if (!form.name || !form.email) return;
-    const isCreating = editingId === null;
-    if (!isCreating) {
-      setUsers(users.map((u) => (u.id === editingId ? { ...u, name: form.name, email: form.email, role: form.role,
-        avatar: form.name.split(" ").map((s) => s[0]).join("").slice(0, 2).toUpperCase() } : u)));
-    } else {
-      setUsers([{
-        id: Date.now(), name: form.name, email: form.email, role: form.role,
-        status: "Active", joined: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
-        avatar: form.name.split(" ").map((s) => s[0]).join("").slice(0, 2).toUpperCase(),
-      }, ...users]);
+  const save = async () => {
+    if (!form.name || !form.email) {
+      setFormError("Name and email are required");
+      return;
     }
-    setModalOpen(false);
-    if (isCreating) {
-      setCredentialResult({
-        name: form.name,
-        email: form.email,
-        role: form.role,
-        delivery: form.delivery,
-        tempPassword: form.delivery === "temp-password" ? generateTempPassword() : undefined,
-      });
+    setFormError(null);
+    try {
+      if (editingId !== null) {
+        await updateMutation.mutateAsync({
+          id: editingId,
+          data: {
+            name: form.name,
+            email: form.email,
+            role: ROLE_UI_TO_API[form.role],
+          },
+        });
+        await invalidate();
+        setModalOpen(false);
+        setEditingId(null);
+      } else {
+        const result = await createMutation.mutateAsync({
+          data: {
+            name: form.name,
+            email: form.email,
+            role: ROLE_UI_TO_API[form.role],
+            delivery: form.delivery,
+          },
+        });
+        await invalidate();
+        setModalOpen(false);
+        setCredentialResult({
+          name: result.user.name,
+          email: result.user.email,
+          role: ROLE_API_TO_UI[result.user.role],
+          delivery: result.delivery,
+          tempPassword: result.tempPassword ?? null,
+          emailSent: result.emailSent ?? null,
+        });
+      }
+    } catch (err) {
+      setFormError(extractError(err));
     }
-    setEditingId(null);
-    setForm({ name: "", email: "", role: "User", delivery: "email-invite" });
   };
 
   const closeCredentialModal = () => { setCredentialResult(null); setCopied(false); };
@@ -139,6 +209,9 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
       setTimeout(() => setCopied(false), 2000);
     } catch { /* ignore */ }
   };
+
+  const isSaving =
+    createMutation.isPending || updateMutation.isPending;
 
   return (
     <DashboardLayout title="User Management" role={role}>
@@ -160,7 +233,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                 <motion.button
                   key={r}
                   whileTap={{ scale: 0.96 }}
-                  onClick={() => setFilter(r as "All" | UserRole)}
+                  onClick={() => setFilter(r as "All" | UiRole)}
                   className={`relative px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${filter === r ? "text-white" : "text-gray-600 hover:text-gray-900"}`}
                 >
                   {filter === r && (
@@ -182,6 +255,13 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
           </motion.button>
         </div>
 
+        {formError && !modalOpen && (
+          <div className="px-5 py-3 bg-red-50 border-b border-red-100 text-red-700 text-sm flex items-center gap-2">
+            <AlertTriangle size={14} /> {formError}
+            <button onClick={() => setFormError(null)} className="ml-auto p-1 hover:bg-red-100 rounded"><X size={12} /></button>
+          </div>
+        )}
+
         {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -195,8 +275,10 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
             <tbody>
               <AnimatePresence>
                 {pageItems.map((u, i) => {
-                  const cfg = ROLE_CONFIG[u.role];
+                  const ui = ROLE_API_TO_UI[u.role];
+                  const cfg = ROLE_CONFIG[ui];
                   const Icon = cfg.icon;
+                  const status = u.status === "active" ? "Active" : "Inactive";
                   return (
                     <motion.tr
                       key={u.id}
@@ -211,7 +293,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-xs font-bold flex items-center justify-center shrink-0">
-                            {u.avatar}
+                            {initials(u.name)}
                           </div>
                           <div>
                             <div className="font-medium text-gray-900 text-sm">{u.name}</div>
@@ -222,20 +304,20 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
                           <Icon size={11} />
-                          {u.role}
+                          {ui}
                         </span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           <motion.div
-                            className={`w-2 h-2 rounded-full ${u.status === "Active" ? "bg-emerald-500" : "bg-gray-400"}`}
-                            animate={u.status === "Active" ? { scale: [1, 1.3, 1] } : {}}
+                            className={`w-2 h-2 rounded-full ${status === "Active" ? "bg-emerald-500" : "bg-gray-400"}`}
+                            animate={status === "Active" ? { scale: [1, 1.3, 1] } : {}}
                             transition={{ duration: 2, repeat: Infinity }}
                           />
-                          <span className={`text-sm font-medium ${u.status === "Active" ? "text-emerald-700" : "text-gray-500"}`}>{u.status}</span>
+                          <span className={`text-sm font-medium ${status === "Active" ? "text-emerald-700" : "text-gray-500"}`}>{status}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{u.joined}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500">{formatJoined(u.createdAt as unknown as string)}</td>
                       <td className="px-6 py-4 text-right relative">
                         <motion.button
                           whileHover={{ scale: 1.1 }}
@@ -252,16 +334,19 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                               animate={{ opacity: 1, scale: 1, y: 0 }}
                               exit={{ opacity: 0, scale: 0.95, y: -5 }}
                               transition={{ duration: 0.12 }}
-                              className="absolute right-6 top-12 w-44 bg-white rounded-xl shadow-xl border border-gray-100 z-10 py-1 text-left"
+                              className="absolute right-6 top-12 w-48 bg-white rounded-xl shadow-xl border border-gray-100 z-10 py-1 text-left"
                             >
                               <button onClick={() => startEdit(u)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                 <Edit2 size={14} className="text-gray-400" /> Edit
                               </button>
-                              <button onClick={() => toggleStatus(u.id)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                <Power size={14} className="text-gray-400" /> {u.status === "Active" ? "Deactivate" : "Activate"}
+                              <button onClick={() => toggleStatus(u)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                <Power size={14} className="text-gray-400" /> {status === "Active" ? "Deactivate" : "Activate"}
+                              </button>
+                              <button onClick={() => resend(u)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                <RefreshCw size={14} className="text-gray-400" /> Resend invite
                               </button>
                               <div className="h-px bg-gray-100 my-1" />
-                              <button onClick={() => remove(u.id)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50">
+                              <button onClick={() => remove(u)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50">
                                 <Trash2 size={14} /> Delete
                               </button>
                             </motion.div>
@@ -274,7 +359,12 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
               </AnimatePresence>
             </tbody>
           </table>
-          {filtered.length === 0 && (
+          {usersQuery.isLoading && (
+            <div className="text-center py-12 text-sm text-gray-400 flex items-center justify-center gap-2">
+              <Loader2 size={16} className="animate-spin" /> Loading users…
+            </div>
+          )}
+          {!usersQuery.isLoading && filtered.length === 0 && (
             <div className="text-center py-12 text-sm text-gray-400">No users match your search.</div>
           )}
         </div>
@@ -285,7 +375,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
       <AnimatePresence>
         {modalOpen && (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setModalOpen(false)} className="fixed inset-0 bg-black/50 z-40" />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => !isSaving && setModalOpen(false)} className="fixed inset-0 bg-black/50 z-40" />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -298,9 +388,14 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                   <h3 className="font-bold text-gray-900">{editingId !== null ? "Edit User" : "Create New User"}</h3>
                   <p className="text-xs text-gray-500 mt-0.5">{editingId !== null ? "Update this team member's details and role" : "Add a new team member to the platform"}</p>
                 </div>
-                <button onClick={() => { setModalOpen(false); setEditingId(null); }} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
+                <button onClick={() => { if (!isSaving) { setModalOpen(false); setEditingId(null); } }} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
               </div>
               <div className="p-6 space-y-4">
+                {formError && (
+                  <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs flex items-center gap-2">
+                    <AlertTriangle size={12} /> {formError}
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1.5">Full Name</label>
                   <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="John Doe" className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
@@ -364,9 +459,10 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                 )}
               </div>
               <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
-                <button onClick={() => { setModalOpen(false); setEditingId(null); }} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl">Cancel</button>
-                <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={save} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30">
-                  <Check size={16} /> {editingId !== null ? "Save Changes" : "Create User"}
+                <button disabled={isSaving} onClick={() => { setModalOpen(false); setEditingId(null); }} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl disabled:opacity-50">Cancel</button>
+                <motion.button disabled={isSaving} whileHover={!isSaving ? { scale: 1.04 } : undefined} whileTap={!isSaving ? { scale: 0.97 } : undefined} onClick={save} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30 disabled:opacity-70">
+                  {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                  {editingId !== null ? "Save Changes" : "Create User"}
                 </motion.button>
               </div>
             </motion.div>
@@ -405,13 +501,15 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                     <div className="flex items-start gap-3 p-4 bg-primary/5 border border-primary/20 rounded-xl">
                       <Mail size={18} className="text-primary shrink-0 mt-0.5" />
                       <div className="text-sm text-gray-700 leading-relaxed">
-                        An invitation email has been sent to{" "}
-                        <span className="font-semibold text-gray-900">{credentialResult.email}</span>.
-                        It contains a one-time link to set their password and sign in to Vivid OPS.
+                        {credentialResult.emailSent ? (
+                          <>An invitation email has been sent to <span className="font-semibold text-gray-900">{credentialResult.email}</span> with a temporary password and sign-in instructions.</>
+                        ) : (
+                          <>The account was created but the email could not be sent. Configure <code className="px-1 py-0.5 bg-amber-100 text-amber-900 rounded text-[11px]">RESEND_API_KEY</code> to enable invite emails, or use the temp-password option to share credentials manually.</>
+                        )}
                       </div>
                     </div>
                     <div className="text-[11px] text-gray-500 leading-relaxed">
-                      The link expires in 48 hours. If the user does not receive it, ask them to check their spam folder or recreate the account using the temporary-password option.
+                      The user will be required to set a new password on their first sign-in.
                     </div>
                   </>
                 ) : (
@@ -464,4 +562,14 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
       </AnimatePresence>
     </DashboardLayout>
   );
+}
+
+function extractError(err: unknown): string {
+  if (err instanceof ApiError) {
+    const data = err.data as { error?: string } | null;
+    if (data?.error) return data.error;
+    return err.message;
+  }
+  if (err instanceof Error) return err.message;
+  return "Something went wrong";
 }

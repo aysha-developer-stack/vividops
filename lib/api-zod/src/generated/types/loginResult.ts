@@ -5,7 +5,8 @@
  * Vivid OPS API
  * OpenAPI spec version: 0.1.0
  */
+import type { User } from "./user";
 
-export interface HealthStatus {
-  status: string;
+export interface LoginResult {
+  user: User;
 }
