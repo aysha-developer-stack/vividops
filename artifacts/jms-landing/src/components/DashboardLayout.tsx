@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Settings, Bell, ChevronLeft, LogOut, Search, Menu, Check,
 } from "lucide-react";
-import logoImg from "@assets/vividops1_1778500503511.png";
+import logoImg from "@assets/Untitled-2_1778148933357.png";
 import { getName, getEmail, clearSession } from "@/lib/auth";
 import { NOTIF_STYLE, NOTIFICATIONS_BY_ROLE, type Notif } from "@/lib/notifications";
 import { ROLES, Role } from "@/lib/roles";

@@ -28,7 +28,7 @@ import {
   Compass,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import logoImg from "@assets/vividops1_1778500503511.png";
+import logoImg from "@assets/Untitled-2_1778148933357.png";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
