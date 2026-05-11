@@ -8,7 +8,7 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
-import logoImg from "@assets/Untitled-2_1778148933357.png";
+import logoImg from "@assets/vv_1778503190047.png";
 
 type UserRoleLabel = "Super Admin" | "Admin" | "Supervisor" | "User";
 const ROLE_BADGE: Record<UserRoleLabel, { color: string; bg: string; icon: any }> = {
