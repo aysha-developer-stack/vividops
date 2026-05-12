@@ -871,7 +871,7 @@ export default function Home() {
             <motion.img
               src={logoImg}
               alt="Vivid OPS"
-              className="h-24 w-auto object-contain mb-6"
+              className="h-20 w-auto object-contain mb-6"
               whileHover={{ scale: 1.04 }}
               transition={{ type: "spring", stiffness: 400 }}
             />

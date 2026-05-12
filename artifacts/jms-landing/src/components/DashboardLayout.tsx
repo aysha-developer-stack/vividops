@@ -83,7 +83,7 @@ export default function DashboardLayout({
         {/* Logo */}
         <div className={`${collapsed ? "h-20" : "h-28"} flex items-center justify-center px-3 border-b border-white/10 shrink-0`}>
           <Link href="/" className="flex flex-col items-center justify-center gap-1.5 overflow-hidden">
-            <img src={logoImg} alt="Vivid OPS" className={`${collapsed ? "h-12" : "h-20"} w-auto object-contain transition-all`} />
+            <img src={logoImg} alt="Vivid OPS" className={`${collapsed ? "h-10" : "h-14"} w-auto object-contain transition-all`} />
             <AnimatePresence>
               {!collapsed && (
                 <motion.div
