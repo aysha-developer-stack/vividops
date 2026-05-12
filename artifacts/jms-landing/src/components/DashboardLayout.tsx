@@ -319,12 +319,16 @@ export default function DashboardLayout({
                     </div>
                     <div className="py-2">
                       {[
-                        { label: "Profile Settings", icon: Settings },
-                        { label: "Notifications", icon: Bell },
+                        { label: "Profile Settings", icon: Settings, path: `${config.base}/settings` },
+                        { label: "Notifications", icon: Bell, path: `${config.base}/notifications` },
                       ].map((item) => (
                         <motion.button
                           key={item.label}
                           whileHover={{ x: 4 }}
+                          onClick={() => {
+                            setProfileOpen(false);
+                            setLocation(item.path);
+                          }}
                           className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                         >
                           <item.icon size={16} className="text-gray-400" />
