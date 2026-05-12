@@ -1,6 +1,6 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Response } from "express";
 import { eq } from "drizzle-orm";
-import { db, users } from "@workspace/db";
+import { db, sessions, users, type UserRow } from "@workspace/db";
 import { CreateUserBody, UpdateUserBody } from "@workspace/api-zod";
 import { generateTempPassword, hashPassword } from "../lib/auth";
 import { publicUser } from "../lib/serialize";
@@ -10,6 +10,20 @@ import { sendInviteEmail } from "../lib/email";
 const router: IRouter = Router();
 
 const adminOnly = requireRole("super-admin", "admin");
+
+/**
+ * Returns true if the actor is allowed to manage / view the target user.
+ * Super-admins can manage anyone. Admins can only manage supervisor + user.
+ * If denied, writes a 403 response and returns false.
+ */
+function assertCanManage(actor: UserRow, target: UserRow, res: Response): boolean {
+  if (actor.role === "super-admin") return true;
+  if (actor.role === "admin" && (target.role === "supervisor" || target.role === "user")) {
+    return true;
+  }
+  res.status(403).json({ error: "You do not have permission to manage this user" });
+  return false;
+}
 
 function buildSignInUrl(): string {
   const domains = process.env.REPLIT_DOMAINS?.split(",").map((s) => s.trim());
@@ -90,12 +104,14 @@ router.post("/users", adminOnly, async (req, res) => {
 
 router.get("/users/:id", adminOnly, async (req, res) => {
   const id = req.params.id as string;
+  const actor = req.session!.user;
   const [user] = await db
     .select()
     .from(users)
     .where(eq(users.id, id))
     .limit(1);
   if (!user) return res.status(404).json({ error: "User not found" });
+  if (!assertCanManage(actor, user, res)) return;
   return res.json(publicUser(user));
 });
 
@@ -109,14 +125,10 @@ router.patch("/users/:id", adminOnly, async (req, res) => {
 
   const [target] = await db.select().from(users).where(eq(users.id, id)).limit(1);
   if (!target) return res.status(404).json({ error: "User not found" });
+  if (!assertCanManage(actor, target, res)) return;
 
-  if (actor.role === "admin") {
-    if (target.role === "super-admin" || target.role === "admin") {
-      return res.status(403).json({ error: "Admins cannot modify admin accounts" });
-    }
-    if (parsed.data.role === "super-admin" || parsed.data.role === "admin") {
-      return res.status(403).json({ error: "Admins cannot promote to admin" });
-    }
+  if (actor.role === "admin" && parsed.data.role && parsed.data.role !== "supervisor" && parsed.data.role !== "user") {
+    return res.status(403).json({ error: "Admins can only assign supervisor or user roles" });
   }
 
   const patch: Record<string, unknown> = { updatedAt: new Date() };
@@ -140,29 +152,26 @@ router.delete("/users/:id", adminOnly, async (req, res) => {
     return res.status(400).json({ error: "You cannot delete your own account" });
   }
   const [target] = await db
-    .select({ id: users.id, role: users.role })
+    .select()
     .from(users)
     .where(eq(users.id, id))
     .limit(1);
   if (!target) return res.status(404).json({ error: "User not found" });
-  if (
-    actor.role === "admin" &&
-    (target.role === "super-admin" || target.role === "admin")
-  ) {
-    return res.status(403).json({ error: "Admins cannot delete admin accounts" });
-  }
+  if (!assertCanManage(actor, target, res)) return;
   await db.delete(users).where(eq(users.id, id));
   return res.status(204).end();
 });
 
 router.post("/users/:id/resend-invite", adminOnly, async (req, res) => {
   const id = req.params.id as string;
+  const actor = req.session!.user;
   const [target] = await db
     .select()
     .from(users)
     .where(eq(users.id, id))
     .limit(1);
   if (!target) return res.status(404).json({ error: "User not found" });
+  if (!assertCanManage(actor, target, res)) return;
 
   const tempPassword = generateTempPassword();
   const passwordHash = await hashPassword(tempPassword);
@@ -171,6 +180,9 @@ router.post("/users/:id/resend-invite", adminOnly, async (req, res) => {
     .set({ passwordHash, mustResetPassword: true, updatedAt: new Date() })
     .where(eq(users.id, target.id))
     .returning();
+
+  // Credentials changed — invalidate every existing session for this user.
+  await db.delete(sessions).where(eq(sessions.userId, target.id));
 
   const result = await sendInviteEmail({
     to: updated.email,

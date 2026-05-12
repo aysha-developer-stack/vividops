@@ -96,6 +96,17 @@ router.post("/auth/reset-password", requireAuth, async (req, res) => {
     .where(eq(users.id, user.id))
     .returning();
 
+  // Revoke every other session for this user. Rotate the current session id so
+  // the active browser keeps working but any stolen cookie is now useless.
+  const currentSid = req.session!.sessionId;
+  await db.delete(sessions).where(eq(sessions.userId, user.id));
+  const [fresh] = await db
+    .insert(sessions)
+    .values({ userId: user.id, expiresAt: sessionExpiresAt() })
+    .returning();
+  res.cookie(SESSION_COOKIE, fresh.id, cookieOpts);
+  void currentSid;
+
   return res.json(publicUser(updated));
 });
 
