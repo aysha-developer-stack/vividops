@@ -1,87 +1,169 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus, Search, MoreVertical, Edit2, Trash2, UserPlus, X, Check,
-  Calendar, Clock, AlertCircle, ExternalLink, CheckCircle2,
+  Plus, Search, MoreVertical, Edit2, Trash2, UserPlus, X,
+  Calendar, ExternalLink, CheckCircle2,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
+import {
+  useListJobs,
+  useCreateJob,
+  useUpdateJob,
+  useDeleteJob,
+  useListAssignableUsers,
+  getListJobsQueryKey,
+  ApiError,
+  type Job as ApiJob,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  statusToUi, priorityToUi, formatShortDate,
+  STATUS_UI_TO_API, PRIORITY_UI_TO_API,
+  type UiStatus, type UiPriority,
+} from "@/lib/jobMappers";
 
-const ASSIGNEES = ["Sarah Johnson", "Mike Chen", "Emma Wilson", "David Park", "Lisa Martinez", "James Bennett", "Jordan Reed", "Riley Adams", "Olivia Carter"];
-const SUPERVISORS = ["Mike Chen", "Emma Wilson", "James Bennett"];
-
-type Status = "Pending" | "In Progress" | "Completed" | "Overdue";
-type Priority = "Low" | "Medium" | "High";
-
-interface Job {
-  id: number;
+interface UiJob {
+  id: string;          // server uuid
+  number: string;      // JOB-1042
   title: string;
   client: string;
   assignee: string;
-  status: Status;
-  priority: Priority;
+  assigneeId: string | null;
+  status: UiStatus;
+  priority: UiPriority;
   created: string;
   due: string;
   completed?: string;
   progress: number;
 }
 
-const STATUS_CONFIG: Record<Status, { color: string; bg: string }> = {
+function mapJob(j: ApiJob): UiJob {
+  return {
+    id: j.id,
+    number: j.number,
+    title: j.title,
+    client: j.client,
+    assignee: j.assignee?.name ?? "Unassigned",
+    assigneeId: j.assignee?.id ?? null,
+    status: statusToUi(j),
+    priority: priorityToUi(j.priority),
+    created: formatShortDate(j.createdAt),
+    due: j.dueDate ? formatShortDate(j.dueDate) : "TBD",
+    completed: j.completedAt ? formatShortDate(j.completedAt) : undefined,
+    progress: j.progress,
+  };
+}
+
+const STATUS_CONFIG: Record<UiStatus, { color: string; bg: string }> = {
   "Pending": { color: "text-amber-700", bg: "bg-amber-50 border-amber-200" },
   "In Progress": { color: "text-primary", bg: "bg-primary/10 border-primary/20" },
   "Completed": { color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200" },
   "Overdue": { color: "text-red-700", bg: "bg-red-50 border-red-200" },
 };
 
-const PRIORITY_CONFIG: Record<Priority, { color: string; dot: string }> = {
+const PRIORITY_CONFIG: Record<UiPriority, { color: string; dot: string }> = {
   Low: { color: "text-gray-600", dot: "bg-gray-400" },
   Medium: { color: "text-amber-600", dot: "bg-amber-500" },
   High: { color: "text-red-600", dot: "bg-red-500" },
 };
 
-const SEED: Job[] = [
-  { id: 482, title: "Structural Inspection", client: "Anderson Residence", assignee: "Sarah Johnson", status: "In Progress", priority: "High", created: "Apr 18", due: "Apr 22", progress: 72 },
-  { id: 481, title: "Patel Residence Pre-Purchase", client: "BuildRight Constructions", assignee: "Mike Chen", status: "Pending", priority: "Medium", created: "Apr 20", due: "Apr 25", progress: 0 },
-  { id: 480, title: "Engineer Compliance Report", client: "Mitchell Residence", assignee: "Emma Wilson", status: "Completed", priority: "High", created: "Apr 10", due: "Apr 18", completed: "Apr 17", progress: 100 },
-  { id: 479, title: "Underpinning Design - Site B", client: "Westwood Council", assignee: "David Park", status: "Overdue", priority: "High", created: "Apr 08", due: "Apr 15", progress: 45 },
-  { id: 478, title: "Beam & Column Design", client: "Harrison Residence", assignee: "Lisa Martinez", status: "In Progress", priority: "Low", created: "Apr 22", due: "Apr 28", progress: 30 },
-  { id: 477, title: "Annual Engineer Certification", client: "MetroBuild Group", assignee: "James Bennett", status: "Pending", priority: "Medium", created: "Apr 24", due: "May 02", progress: 0 },
-];
+interface FormState {
+  title: string;
+  client: string;
+  address: string;
+  description: string;
+  assigneeId: string;
+  priority: UiPriority;
+  due: string;
+}
+
+const EMPTY_FORM: FormState = {
+  title: "",
+  client: "",
+  address: "",
+  description: "",
+  assigneeId: "",
+  priority: "Medium",
+  due: "",
+};
 
 export default function JobManagement({ role = "super-admin" as Role }: { role?: Role } = {}) {
   const [, setLocation] = useLocation();
-  const basePath = role === "supervisor" ? "/supervisor/jobs" : role === "user" ? "/user/jobs" : role === "admin" ? "/admin/jobs" : "/super-admin/jobs";
-  const [jobs, setJobs] = useState<Job[]>(SEED);
+  const basePath =
+    role === "supervisor" ? "/supervisor/jobs"
+    : role === "user" ? "/user/jobs"
+    : role === "admin" ? "/admin/jobs"
+    : "/super-admin/jobs";
+
+  const qc = useQueryClient();
+  const jobsQuery = useListJobs();
+  const assignablesQuery = useListAssignableUsers();
+  const createMutation = useCreateJob();
+  const updateMutation = useUpdateJob();
+  const deleteMutation = useDeleteJob();
+
+  const invalidateJobs = () => qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+
+  const jobs: UiJob[] = useMemo(
+    () => (jobsQuery.data ?? []).map(mapJob),
+    [jobsQuery.data],
+  );
+  const assignables = assignablesQuery.data ?? [];
+
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"All" | Status>("All");
-  const [openId, setOpenId] = useState<number | null>(null);
+  const [filter, setFilter] = useState<"All" | UiStatus>("All");
+  const [openId, setOpenId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [reassignFor, setReassignFor] = useState<Job | null>(null);
-  const [reassignTo, setReassignTo] = useState("");
-  const [form, setForm] = useState({ title: "", client: "", address: "", description: "", assignee: "Sarah Johnson", priority: "Medium" as Priority, due: "" });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [reassignFor, setReassignFor] = useState<UiJob | null>(null);
+  const [reassignTo, setReassignTo] = useState<string>("");
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [jobFiles, setJobFiles] = useState<{ name: string; size: string }[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const startEdit = (j: Job) => {
+
+  const startEdit = (j: UiJob) => {
     setEditingId(j.id);
-    setForm({ title: j.title, client: j.client, address: "", description: "", assignee: j.assignee, priority: j.priority, due: j.due });
+    setForm({
+      title: j.title,
+      client: j.client,
+      address: "",
+      description: "",
+      assigneeId: j.assigneeId ?? "",
+      priority: j.priority,
+      due: "",
+    });
     setJobFiles([]);
+    setError(null);
     setModalOpen(true);
     setOpenId(null);
   };
-  const startReassign = (j: Job) => {
+  const startReassign = (j: UiJob) => {
     setReassignFor(j);
-    setReassignTo(j.assignee);
+    setReassignTo(j.assigneeId ?? "");
     setOpenId(null);
   };
-  const saveReassign = () => {
-    if (!reassignFor || !reassignTo) return;
-    setJobs((prev) => prev.map((j) => (j.id === reassignFor.id ? { ...j, assignee: reassignTo } : j)));
-    setReassignFor(null);
+  const saveReassign = async () => {
+    if (!reassignFor) return;
+    try {
+      await updateMutation.mutateAsync({
+        id: reassignFor.id,
+        data: { assigneeId: reassignTo || null },
+      });
+      await invalidateJobs();
+      setReassignFor(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to reassign job");
+    }
   };
-  const formatSize = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+
+  const formatSize = (bytes: number) =>
+    bytes < 1024 ? `${bytes} B`
+    : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB`
+    : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   const onFilesPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
     const picked = Array.from(e.target.files ?? []);
     if (picked.length === 0) return;
@@ -91,30 +173,57 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
 
   const filtered = jobs.filter((j) =>
     (filter === "All" || j.status === filter) &&
-    (j.title.toLowerCase().includes(search.toLowerCase()) || j.client.toLowerCase().includes(search.toLowerCase()))
+    (j.title.toLowerCase().includes(search.toLowerCase()) ||
+      j.client.toLowerCase().includes(search.toLowerCase()))
   );
   const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 8);
 
-  const remove = (id: number) => { setJobs(jobs.filter((j) => j.id !== id)); setOpenId(null); };
-  const create = () => {
-    if (!form.title || !form.client) return;
-    if (editingId !== null) {
-      setJobs(jobs.map((j) => j.id === editingId ? { ...j, title: form.title, client: form.client, assignee: form.assignee, priority: form.priority, due: form.due || j.due } : j));
-    } else {
-      setJobs([{
-        id: Math.max(...jobs.map((j) => j.id)) + 1,
-        title: form.title, client: form.client, assignee: form.assignee,
-        status: "Pending", priority: form.priority,
-        created: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit" }),
-        due: form.due || "TBD", progress: 0,
-      }, ...jobs]);
+  const remove = async (id: string) => {
+    setOpenId(null);
+    try {
+      await deleteMutation.mutateAsync({ id });
+      await invalidateJobs();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to delete job");
     }
-    setForm({ title: "", client: "", address: "", description: "", assignee: "Sarah Johnson", priority: "Medium", due: "" });
-    setJobFiles([]);
-    setEditingId(null);
-    setModalOpen(false);
   };
-  const closeModal = () => { setModalOpen(false); setEditingId(null); };
+
+  const submit = async () => {
+    if (!form.title || !form.client) {
+      setError("Title and client are required");
+      return;
+    }
+    setError(null);
+    const payload = {
+      title: form.title,
+      client: form.client,
+      address: form.address || undefined,
+      description: form.description || undefined,
+      priority: PRIORITY_UI_TO_API[form.priority],
+      assigneeId: form.assigneeId || null,
+      dueDate: form.due ? new Date(form.due).toISOString() : null,
+    };
+    try {
+      if (editingId !== null) {
+        await updateMutation.mutateAsync({ id: editingId, data: payload });
+      } else {
+        await createMutation.mutateAsync({ data: payload });
+      }
+      await invalidateJobs();
+      setForm(EMPTY_FORM);
+      setJobFiles([]);
+      setEditingId(null);
+      setModalOpen(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to save job");
+    }
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditingId(null);
+    setError(null);
+  };
 
   const counts = {
     All: jobs.length,
@@ -123,6 +232,8 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
     "Completed": jobs.filter((j) => j.status === "Completed").length,
     "Overdue": jobs.filter((j) => j.status === "Overdue").length,
   };
+
+  const isSaving = createMutation.isPending || updateMutation.isPending;
 
   return (
     <DashboardLayout title="Job Management" role={role}>
@@ -150,15 +261,21 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
             <Search size={16} className="text-gray-400" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search jobs by title or client…" className="bg-transparent text-sm flex-1 focus:outline-none" />
           </div>
-          <motion.button
-            whileHover={{ scale: 1.04, y: -1 }}
-            whileTap={{ scale: 0.97 }}
-            onClick={() => setModalOpen(true)}
-            className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30 transition-colors"
-          >
-            <Plus size={16} /> Create Job
-          </motion.button>
+          {role !== "user" && (
+            <motion.button
+              whileHover={{ scale: 1.04, y: -1 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => { setForm({ ...EMPTY_FORM, assigneeId: assignables[0]?.id ?? "" }); setEditingId(null); setError(null); setModalOpen(true); }}
+              className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30 transition-colors"
+            >
+              <Plus size={16} /> Create Job
+            </motion.button>
+          )}
         </div>
+
+        {error && (
+          <div className="px-5 py-3 bg-red-50 border-b border-red-100 text-sm text-red-700">{error}</div>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -187,12 +304,12 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                     >
                       <td className="px-6 py-4 cursor-pointer" onClick={() => setLocation(`${basePath}/${j.id}`)}>
                         <div className="font-medium text-gray-900 text-sm flex items-center gap-1.5 group-hover:text-primary">{j.title} <ExternalLink size={11} className="text-gray-300" /></div>
-                        <div className="text-xs text-gray-500 mt-0.5">#{j.id} · {j.client} · <span className="text-gray-400">Created {j.created}</span></div>
+                        <div className="text-xs text-gray-500 mt-0.5">{j.number} · {j.client} · <span className="text-gray-400">Created {j.created}</span></div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-[10px] font-bold flex items-center justify-center">
-                            {j.assignee.split(" ").map((s) => s[0]).join("")}
+                            {j.assignee.split(" ").map((s) => s[0]).join("").slice(0, 2)}
                           </div>
                           <span className="text-sm text-gray-700">{j.assignee}</span>
                         </div>
@@ -244,16 +361,20 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                               <Link href={`${basePath}/${j.id}`} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                 <ExternalLink size={14} className="text-gray-400" /> View / Track
                               </Link>
-                              <button onClick={() => startEdit(j)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                <Edit2 size={14} className="text-gray-400" /> Edit
-                              </button>
-                              <button onClick={() => startReassign(j)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                <UserPlus size={14} className="text-gray-400" /> Reassign
-                              </button>
-                              <div className="h-px bg-gray-100 my-1" />
-                              <button onClick={() => remove(j.id)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50">
-                                <Trash2 size={14} /> Delete
-                              </button>
+                              {role !== "user" && (
+                                <>
+                                  <button onClick={() => startEdit(j)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                    <Edit2 size={14} className="text-gray-400" /> Edit
+                                  </button>
+                                  <button onClick={() => startReassign(j)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                    <UserPlus size={14} className="text-gray-400" /> Reassign
+                                  </button>
+                                  <div className="h-px bg-gray-100 my-1" />
+                                  <button onClick={() => remove(j.id)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50">
+                                    <Trash2 size={14} /> Delete
+                                  </button>
+                                </>
+                              )}
                             </motion.div>
                           )}
                         </AnimatePresence>
@@ -264,12 +385,13 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
               </AnimatePresence>
             </tbody>
           </table>
-          {filtered.length === 0 && <div className="text-center py-12 text-sm text-gray-400">No jobs found.</div>}
+          {jobsQuery.isLoading && <div className="text-center py-12 text-sm text-gray-400">Loading jobs…</div>}
+          {!jobsQuery.isLoading && filtered.length === 0 && <div className="text-center py-12 text-sm text-gray-400">No jobs found.</div>}
         </div>
         <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onChange={setPage} label="jobs" />
       </motion.div>
 
-      {/* Create Job Modal */}
+      {/* Create / Edit Job Modal */}
       <AnimatePresence>
         {modalOpen && (
           <>
@@ -278,10 +400,13 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
               <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-primary/5 to-sky-50">
                 <div>
                   <h3 className="font-bold text-gray-900 text-base">{editingId !== null ? "Edit Job" : "Create New Job"}</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">{editingId !== null ? `Update details for job #${editingId}` : "Assign a new job to a team member and attach reference files"}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{editingId !== null ? "Update job details" : "Assign a new job to a team member"}</p>
                 </div>
                 <button onClick={closeModal} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
               </div>
+              {error && (
+                <div className="px-6 py-3 bg-red-50 border-b border-red-100 text-sm text-red-700">{error}</div>
+              )}
               <div className="px-6 py-5 grid md:grid-cols-2 gap-x-6 gap-y-4 flex-1 overflow-y-auto">
                 {/* LEFT COLUMN — Job details */}
                 <div className="space-y-4">
@@ -297,8 +422,9 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assignee</label>
-                      <select value={form.assignee} onChange={(e) => setForm({ ...form, assignee: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors">
-                        {ASSIGNEES.map((n) => <option key={n}>{n}</option>)}
+                      <select value={form.assigneeId} onChange={(e) => setForm({ ...form, assigneeId: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors">
+                        <option value="">Unassigned</option>
+                        {assignables.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </select>
                     </div>
                   </div>
@@ -317,7 +443,7 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Priority</label>
                     <div className="grid grid-cols-3 gap-2">
-                      {(["Low", "Medium", "High"] as Priority[]).map((p) => {
+                      {(["Low", "Medium", "High"] as UiPriority[]).map((p) => {
                         const cfg = PRIORITY_CONFIG[p];
                         const sel = form.priority === p;
                         return (
@@ -331,10 +457,10 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                   </div>
                 </div>
 
-                {/* RIGHT COLUMN — Job Files */}
+                {/* RIGHT COLUMN — Job Files (UI only — uploads coming with S3) */}
                 <div className="space-y-4 md:border-l md:border-gray-100 md:pl-6">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1 flex items-center gap-2">
-                    Job Files <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[9px]">Input</span>
+                    Job Files <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[9px]">Coming soon</span>
                   </div>
                   <input
                     ref={fileInputRef}
@@ -349,45 +475,38 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
                     tabIndex={0}
                     onClick={() => fileInputRef.current?.click()}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click(); }}
-                    onDragOver={(e) => { e.preventDefault(); }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const dropped = Array.from(e.dataTransfer.files ?? []);
-                      if (dropped.length === 0) return;
-                      setJobFiles([...jobFiles, ...dropped.map((f) => ({ name: f.name, size: formatSize(f.size) }))]);
-                    }}
-                    className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center hover-elevate active-elevate-2 cursor-pointer transition-colors hover:bg-blue-50/40 hover:border-primary/40"
+                    className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center cursor-pointer transition-colors hover:bg-blue-50/40 hover:border-primary/40 opacity-70"
                   >
                     <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-2">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
                     </div>
-                    <div className="text-xs font-semibold text-gray-700">Click to browse, or drag files here</div>
-                    <div className="text-[10px] text-gray-500 mt-1">Design briefs · client docs · reference images</div>
-                    <div className="text-[10px] text-gray-400 mt-2">PDF, DOC, XLS, images, DWG · max 25 MB each</div>
+                    <div className="text-xs font-semibold text-gray-700">File uploads will be enabled once storage is configured</div>
+                    <div className="text-[10px] text-gray-500 mt-1">For now you can preview the picker locally</div>
                   </div>
-                  {jobFiles.length > 0 ? (
+                  {jobFiles.length > 0 && (
                     <div className="space-y-1.5 max-h-[280px] overflow-y-auto pr-1">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{jobFiles.length} file{jobFiles.length > 1 ? "s" : ""} attached</div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{jobFiles.length} local-only preview</div>
                       {jobFiles.map((f, i) => (
                         <motion.div key={i} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-2 px-3 py-2 bg-blue-50/60 border border-blue-100 rounded-lg text-xs">
-                          <div className="w-7 h-7 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 font-bold text-[10px]">PDF</div>
+                          <div className="w-7 h-7 rounded-md bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 font-bold text-[10px]">FILE</div>
                           <span className="font-semibold text-gray-700 truncate flex-1">{f.name}</span>
                           <span className="text-gray-500 shrink-0">{f.size}</span>
-                          <button type="button" onClick={(e) => { e.stopPropagation(); setJobFiles(jobFiles.filter((_, x) => x !== i)); }} className="text-gray-400 hover:text-red-500 font-bold px-1 shrink-0">×</button>
                         </motion.div>
                       ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-6 text-[11px] text-gray-400 border border-dashed border-gray-200 rounded-xl bg-gray-50/40">
-                      No files attached yet — this is optional.
                     </div>
                   )}
                 </div>
               </div>
-              <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/40">
-                <button onClick={closeModal} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl">Cancel</button>
-                <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={create} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30">
-                  <Check size={16} /> {editingId !== null ? "Save Changes" : "Create Job"}
+              <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50">
+                <button onClick={closeModal} className="px-4 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors">Cancel</button>
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  disabled={isSaving}
+                  onClick={submit}
+                  className="px-5 py-2 bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold shadow-md shadow-primary/30 transition-colors"
+                >
+                  {isSaving ? "Saving…" : editingId !== null ? "Save changes" : "Create Job"}
                 </motion.button>
               </div>
             </motion.div>
@@ -400,29 +519,30 @@ export default function JobManagement({ role = "super-admin" as Role }: { role?:
         {reassignFor && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setReassignFor(null)} className="fixed inset-0 bg-black/50 z-40" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} transition={{ type: "spring", stiffness: 300, damping: 28 }} className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[95vw] max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
-              <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-primary/5 to-sky-50">
-                <h3 className="font-bold text-gray-900 text-base flex items-center gap-2"><UserPlus size={16} className="text-primary" /> Reassign Job</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Job #{reassignFor.id} · {reassignFor.title}</p>
-              </div>
-              <div className="px-6 py-5 space-y-4">
-                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 text-white text-xs font-bold flex items-center justify-center">{reassignFor.assignee.split(" ").map((s) => s[0]).join("")}</div>
-                  <div className="flex-1"><div className="text-[10px] text-gray-500 uppercase font-semibold">Currently assigned to</div><div className="text-sm font-semibold text-gray-900">{reassignFor.assignee}</div></div>
-                </div>
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[95vw] max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
+              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Reassign to</label>
-                  <select value={reassignTo} onChange={(e) => setReassignTo(e.target.value)} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white">
-                    {ASSIGNEES.map((n) => <option key={n}>{n}</option>)}
-                  </select>
-                  <p className="text-[10px] text-gray-400 mt-1.5">The new assignee will be notified via Cliq and email.</p>
+                  <h3 className="font-bold text-gray-900 text-base">Reassign Job</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">{reassignFor.number} · {reassignFor.title}</p>
                 </div>
+                <button onClick={() => setReassignFor(null)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
               </div>
-              <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50/40">
-                <button onClick={() => setReassignFor(null)} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl">Cancel</button>
-                <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={saveReassign} disabled={reassignTo === reassignFor.assignee} className="flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-xl font-medium text-sm shadow-lg shadow-primary/30">
-                  <Check size={14} /> Confirm Reassign
-                </motion.button>
+              <div className="px-6 py-5 space-y-3">
+                <label className="block text-xs font-semibold text-gray-700">New Assignee</label>
+                <select value={reassignTo} onChange={(e) => setReassignTo(e.target.value)} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white">
+                  <option value="">Unassigned</option>
+                  {assignables.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
+              <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50">
+                <button onClick={() => setReassignFor(null)} className="px-4 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100">Cancel</button>
+                <button
+                  disabled={updateMutation.isPending}
+                  onClick={saveReassign}
+                  className="px-5 py-2 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-xl text-sm font-semibold shadow-md shadow-primary/30"
+                >
+                  {updateMutation.isPending ? "Saving…" : "Reassign"}
+                </button>
               </div>
             </motion.div>
           </>

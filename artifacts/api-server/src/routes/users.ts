@@ -11,6 +11,22 @@ const router: IRouter = Router();
 
 const adminOnly = requireRole("super-admin", "admin");
 
+// Returns active users + supervisors that any signed-in user can pick when
+// assigning a job. Defined BEFORE /users/:id so the literal path wins over
+// the parameterized route.
+router.get("/users/assignable", async (req, res) => {
+  if (!req.session) return res.status(401).json({ error: "Not signed in" });
+  const rows = await db
+    .select({ id: users.id, name: users.name, role: users.role })
+    .from(users)
+    .where(eq(users.status, "active"))
+    .orderBy(users.name);
+  const assignable = rows.filter(
+    (u) => u.role === "user" || u.role === "supervisor",
+  );
+  return res.json(assignable);
+});
+
 /**
  * Returns true if the actor is allowed to manage / view the target user.
  * Super-admins can manage anyone. Admins can only manage supervisor + user.

@@ -11,6 +11,7 @@ tags:
   - name: health
   - name: auth
   - name: users
+  - name: jobs
 paths:
   /healthz:
     get:
@@ -97,6 +98,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/User"
 
+  /users/assignable:
+    get:
+      operationId: listAssignableUsers
+      tags: [users]
+      summary: List users that can be assigned to jobs (active users + supervisors)
+      responses:
+        "200":
+          description: Assignable users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AssignableUser"
+
   /users:
     get:
       operationId: listUsers
@@ -172,6 +188,90 @@ paths:
       operationId: deleteUser
       tags: [users]
       summary: Delete a user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Deleted
+
+  /jobs:
+    get:
+      operationId: listJobs
+      tags: [jobs]
+      summary: List jobs visible to the current user
+      responses:
+        "200":
+          description: Job list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Job"
+    post:
+      operationId: createJob
+      tags: [jobs]
+      summary: Create a new job (admin / super-admin / supervisor)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobInput"
+      responses:
+        "201":
+          description: Job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /jobs/{id}:
+    get:
+      operationId: getJob
+      tags: [jobs]
+      summary: Get a single job by id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+    patch:
+      operationId: updateJob
+      tags: [jobs]
+      summary: Update a job (status, assignee, fields, progress)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobUpdate"
+      responses:
+        "200":
+          description: Updated job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+    delete:
+      operationId: deleteJob
+      tags: [jobs]
+      summary: Delete a job
       parameters:
         - in: path
           name: id
@@ -289,3 +389,97 @@ components:
       properties:
         currentPassword: { type: string, minLength: 1 }
         newPassword: { type: string, minLength: 8 }
+
+    AssignableUser:
+      type: object
+      required: [id, name, role]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        role: { $ref: "#/components/schemas/UserRole" }
+
+    JobStatus:
+      type: string
+      enum: [pending, in_progress, completed, cancelled]
+
+    JobPriority:
+      type: string
+      enum: [low, medium, high]
+
+    JobUserRef:
+      type: object
+      required: [id, name, role]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        role: { $ref: "#/components/schemas/UserRole" }
+
+    Job:
+      type: object
+      required:
+        [
+          id,
+          number,
+          title,
+          client,
+          status,
+          priority,
+          progress,
+          isOverdue,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: string, description: "Display number e.g. JOB-1042" }
+        title: { type: string }
+        client: { type: string }
+        address: { type: ["string", "null"] }
+        description: { type: ["string", "null"] }
+        status: { $ref: "#/components/schemas/JobStatus" }
+        priority: { $ref: "#/components/schemas/JobPriority" }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        isOverdue: { type: boolean }
+        assignee:
+          oneOf:
+            - $ref: "#/components/schemas/JobUserRef"
+            - type: "null"
+        supervisor:
+          oneOf:
+            - $ref: "#/components/schemas/JobUserRef"
+            - type: "null"
+        dueDate:
+          type: ["string", "null"]
+          format: date-time
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    JobInput:
+      type: object
+      required: [title, client]
+      properties:
+        title: { type: string, minLength: 1 }
+        client: { type: string, minLength: 1 }
+        address: { type: string }
+        description: { type: string }
+        priority: { $ref: "#/components/schemas/JobPriority" }
+        assigneeId: { type: ["string", "null"], format: uuid }
+        supervisorId: { type: ["string", "null"], format: uuid }
+        dueDate: { type: ["string", "null"], format: date-time }
+
+    JobUpdate:
+      type: object
+      properties:
+        title: { type: string, minLength: 1 }
+        client: { type: string, minLength: 1 }
+        address: { type: ["string", "null"] }
+        description: { type: ["string", "null"] }
+        priority: { $ref: "#/components/schemas/JobPriority" }
+        status: { $ref: "#/components/schemas/JobStatus" }
+        assigneeId: { type: ["string", "null"], format: uuid }
+        supervisorId: { type: ["string", "null"], format: uuid }
+        dueDate: { type: ["string", "null"], format: date-time }
+        progress: { type: integer, minimum: 0, maximum: 100 }

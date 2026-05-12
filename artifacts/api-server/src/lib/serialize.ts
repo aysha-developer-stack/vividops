@@ -1,4 +1,4 @@
-import type { UserRow } from "@workspace/db";
+import type { JobRow, UserRow } from "@workspace/db";
 
 export function publicUser(u: UserRow) {
   return {
@@ -10,5 +10,42 @@ export function publicUser(u: UserRow) {
     mustResetPassword: u.mustResetPassword,
     lastSignInAt: u.lastSignInAt ? u.lastSignInAt.toISOString() : null,
     createdAt: u.createdAt.toISOString(),
+  };
+}
+
+type RefUser = Pick<UserRow, "id" | "name" | "role"> | null | undefined;
+
+function userRef(u: RefUser) {
+  return u ? { id: u.id, name: u.name, role: u.role } : null;
+}
+
+export function publicJob(
+  job: JobRow,
+  assignee: RefUser,
+  supervisor: RefUser,
+) {
+  const now = new Date();
+  const isOverdue =
+    !!job.dueDate &&
+    job.status !== "completed" &&
+    job.status !== "cancelled" &&
+    job.dueDate < now;
+  return {
+    id: job.id,
+    number: `JOB-${job.serial}`,
+    title: job.title,
+    client: job.client,
+    address: job.address,
+    description: job.description,
+    status: job.status,
+    priority: job.priority,
+    progress: job.progress,
+    isOverdue,
+    assignee: userRef(assignee),
+    supervisor: userRef(supervisor),
+    dueDate: job.dueDate ? job.dueDate.toISOString() : null,
+    completedAt: job.completedAt ? job.completedAt.toISOString() : null,
+    createdAt: job.createdAt.toISOString(),
+    updatedAt: job.updatedAt.toISOString(),
   };
 }

@@ -73,6 +73,18 @@ export const ResetPasswordResponse = zod.object({
 });
 
 /**
+ * @summary List users that can be assigned to jobs (active users + supervisors)
+ */
+export const ListAssignableUsersResponseItem = zod.object({
+  id: zod.string().uuid(),
+  name: zod.string(),
+  role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+});
+export const ListAssignableUsersResponse = zod.array(
+  ListAssignableUsersResponseItem,
+);
+
+/**
  * @summary List users (admin / super-admin only)
  */
 export const ListUsersResponseItem = zod.object({
@@ -145,6 +157,197 @@ export const UpdateUserResponse = zod.object({
  * @summary Delete a user
  */
 export const DeleteUserParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+/**
+ * @summary List jobs visible to the current user
+ */
+export const listJobsResponseProgressMin = 0;
+export const listJobsResponseProgressMax = 100;
+
+export const ListJobsResponseItem = zod.object({
+  id: zod.string().uuid(),
+  number: zod.string().describe("Display number e.g. JOB-1042"),
+  title: zod.string(),
+  client: zod.string(),
+  address: zod.string().nullish(),
+  description: zod.string().nullish(),
+  status: zod.enum(["pending", "in_progress", "completed", "cancelled"]),
+  priority: zod.enum(["low", "medium", "high"]),
+  progress: zod
+    .number()
+    .min(listJobsResponseProgressMin)
+    .max(listJobsResponseProgressMax),
+  isOverdue: zod.boolean(),
+  assignee: zod
+    .union([
+      zod.object({
+        id: zod.string().uuid(),
+        name: zod.string(),
+        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  supervisor: zod
+    .union([
+      zod.object({
+        id: zod.string().uuid(),
+        name: zod.string(),
+        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  dueDate: zod.coerce.date().nullish(),
+  completedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+export const ListJobsResponse = zod.array(ListJobsResponseItem);
+
+/**
+ * @summary Create a new job (admin / super-admin / supervisor)
+ */
+
+export const CreateJobBody = zod.object({
+  title: zod.string().min(1),
+  client: zod.string().min(1),
+  address: zod.string().optional(),
+  description: zod.string().optional(),
+  priority: zod.enum(["low", "medium", "high"]).optional(),
+  assigneeId: zod.string().uuid().nullish(),
+  supervisorId: zod.string().uuid().nullish(),
+  dueDate: zod.coerce.date().nullish(),
+});
+
+/**
+ * @summary Get a single job by id
+ */
+export const GetJobParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const getJobResponseProgressMin = 0;
+export const getJobResponseProgressMax = 100;
+
+export const GetJobResponse = zod.object({
+  id: zod.string().uuid(),
+  number: zod.string().describe("Display number e.g. JOB-1042"),
+  title: zod.string(),
+  client: zod.string(),
+  address: zod.string().nullish(),
+  description: zod.string().nullish(),
+  status: zod.enum(["pending", "in_progress", "completed", "cancelled"]),
+  priority: zod.enum(["low", "medium", "high"]),
+  progress: zod
+    .number()
+    .min(getJobResponseProgressMin)
+    .max(getJobResponseProgressMax),
+  isOverdue: zod.boolean(),
+  assignee: zod
+    .union([
+      zod.object({
+        id: zod.string().uuid(),
+        name: zod.string(),
+        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  supervisor: zod
+    .union([
+      zod.object({
+        id: zod.string().uuid(),
+        name: zod.string(),
+        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  dueDate: zod.coerce.date().nullish(),
+  completedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Update a job (status, assignee, fields, progress)
+ */
+export const UpdateJobParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const updateJobBodyProgressMin = 0;
+export const updateJobBodyProgressMax = 100;
+
+export const UpdateJobBody = zod.object({
+  title: zod.string().min(1).optional(),
+  client: zod.string().min(1).optional(),
+  address: zod.string().nullish(),
+  description: zod.string().nullish(),
+  priority: zod.enum(["low", "medium", "high"]).optional(),
+  status: zod
+    .enum(["pending", "in_progress", "completed", "cancelled"])
+    .optional(),
+  assigneeId: zod.string().uuid().nullish(),
+  supervisorId: zod.string().uuid().nullish(),
+  dueDate: zod.coerce.date().nullish(),
+  progress: zod
+    .number()
+    .min(updateJobBodyProgressMin)
+    .max(updateJobBodyProgressMax)
+    .optional(),
+});
+
+export const updateJobResponseProgressMin = 0;
+export const updateJobResponseProgressMax = 100;
+
+export const UpdateJobResponse = zod.object({
+  id: zod.string().uuid(),
+  number: zod.string().describe("Display number e.g. JOB-1042"),
+  title: zod.string(),
+  client: zod.string(),
+  address: zod.string().nullish(),
+  description: zod.string().nullish(),
+  status: zod.enum(["pending", "in_progress", "completed", "cancelled"]),
+  priority: zod.enum(["low", "medium", "high"]),
+  progress: zod
+    .number()
+    .min(updateJobResponseProgressMin)
+    .max(updateJobResponseProgressMax),
+  isOverdue: zod.boolean(),
+  assignee: zod
+    .union([
+      zod.object({
+        id: zod.string().uuid(),
+        name: zod.string(),
+        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  supervisor: zod
+    .union([
+      zod.object({
+        id: zod.string().uuid(),
+        name: zod.string(),
+        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+  dueDate: zod.coerce.date().nullish(),
+  completedAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Delete a job
+ */
+export const DeleteJobParams = zod.object({
   id: zod.coerce.string().uuid(),
 });
 

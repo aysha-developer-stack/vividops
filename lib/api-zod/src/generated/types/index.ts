@@ -7,9 +7,16 @@
  */
 
 export * from "./apiErrorBody";
+export * from "./assignableUser";
 export * from "./createUserResult";
 export * from "./createUserResultDelivery";
 export * from "./healthStatus";
+export * from "./job";
+export * from "./jobInput";
+export * from "./jobPriority";
+export * from "./jobStatus";
+export * from "./jobUpdate";
+export * from "./jobUserRef";
 export * from "./loginInput";
 export * from "./loginResult";
 export * from "./resetPasswordInput";

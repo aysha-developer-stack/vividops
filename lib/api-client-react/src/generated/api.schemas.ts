@@ -104,3 +104,100 @@ export interface ResetPasswordInput {
   /** @minLength 8 */
   newPassword: string;
 }
+
+export interface AssignableUser {
+  id: string;
+  name: string;
+  role: UserRole;
+}
+
+export type JobStatus = (typeof JobStatus)[keyof typeof JobStatus];
+
+export const JobStatus = {
+  pending: "pending",
+  in_progress: "in_progress",
+  completed: "completed",
+  cancelled: "cancelled",
+} as const;
+
+export type JobPriority = (typeof JobPriority)[keyof typeof JobPriority];
+
+export const JobPriority = {
+  low: "low",
+  medium: "medium",
+  high: "high",
+} as const;
+
+export interface JobUserRef {
+  id: string;
+  name: string;
+  role: UserRole;
+}
+
+export interface Job {
+  id: string;
+  /** Display number e.g. JOB-1042 */
+  number: string;
+  title: string;
+  client: string;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  description?: string | null;
+  status: JobStatus;
+  priority: JobPriority;
+  /**
+   * @minimum 0
+   * @maximum 100
+   */
+  progress: number;
+  isOverdue: boolean;
+  assignee?: JobUserRef | null;
+  supervisor?: JobUserRef | null;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JobInput {
+  /** @minLength 1 */
+  title: string;
+  /** @minLength 1 */
+  client: string;
+  address?: string;
+  description?: string;
+  priority?: JobPriority;
+  /** @nullable */
+  assigneeId?: string | null;
+  /** @nullable */
+  supervisorId?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
+}
+
+export interface JobUpdate {
+  /** @minLength 1 */
+  title?: string;
+  /** @minLength 1 */
+  client?: string;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  description?: string | null;
+  priority?: JobPriority;
+  status?: JobStatus;
+  /** @nullable */
+  assigneeId?: string | null;
+  /** @nullable */
+  supervisorId?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
+  /**
+   * @minimum 0
+   * @maximum 100
+   */
+  progress?: number;
+}
