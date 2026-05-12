@@ -23,7 +23,7 @@ export interface RoleConfig {
 export const ROLES: Record<Role, RoleConfig> = {
   "super-admin": {
     label: "Super Admin",
-    portal: "Admin Portal",
+    portal: "Super Admin Portal",
     icon: Crown,
     base: "/super-admin",
     nav: [
