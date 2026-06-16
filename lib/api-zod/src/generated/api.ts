@@ -21,6 +21,7 @@ export const HealthCheckResponse = zod.object({
 export const LoginBody = zod.object({
   email: zod.string().email(),
   password: zod.string().min(1),
+  role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
 });
 
 export const LoginResponse = zod.object({
@@ -378,4 +379,138 @@ export const ResendInviteResponse = zod.object({
     .boolean()
     .nullish()
     .describe("True when an invite email was successfully dispatched"),
+});
+
+/**
+ * @summary Get stats and recent activity for the dashboard
+ */
+export const getDashboardStatsResponseRecentJobsItemProgressMin = 0;
+export const getDashboardStatsResponseRecentJobsItemProgressMax = 100;
+
+export const GetDashboardStatsResponse = zod.object({
+  stats: zod.object({
+    totalUsers: zod.number(),
+    totalJobs: zod.number(),
+    activeJobs: zod.number(),
+    overdueJobs: zod.number(),
+  }),
+  recentJobs: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      number: zod.string().describe("Display number e.g. JOB-1042"),
+      title: zod.string(),
+      client: zod.string(),
+      address: zod.string().nullish(),
+      description: zod.string().nullish(),
+      status: zod.enum(["pending", "in_progress", "completed", "cancelled"]),
+      priority: zod.enum(["low", "medium", "high"]),
+      progress: zod
+        .number()
+        .min(getDashboardStatsResponseRecentJobsItemProgressMin)
+        .max(getDashboardStatsResponseRecentJobsItemProgressMax),
+      isOverdue: zod.boolean(),
+      assignee: zod
+        .union([
+          zod.object({
+            id: zod.string().uuid(),
+            name: zod.string(),
+            role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+          }),
+          zod.null(),
+        ])
+        .optional(),
+      supervisor: zod
+        .union([
+          zod.object({
+            id: zod.string().uuid(),
+            name: zod.string(),
+            role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+          }),
+          zod.null(),
+        ])
+        .optional(),
+      dueDate: zod.coerce.date().nullish(),
+      completedAt: zod.coerce.date().nullish(),
+      createdAt: zod.coerce.date(),
+      updatedAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get all training/update posts
+ */
+export const GetPostsResponseItem = zod.object({
+  id: zod.string().uuid(),
+  title: zod.string(),
+  body: zod.string(),
+  category: zod.string(),
+  authorId: zod.string().uuid(),
+  attachments: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+});
+export const GetPostsResponse = zod.array(GetPostsResponseItem);
+
+/**
+ * @summary Create a new post
+ */
+export const CreatePostBody = zod.object({
+  title: zod.string(),
+  body: zod.string(),
+  category: zod.string(),
+});
+
+/**
+ * @summary Get current user notifications
+ */
+export const GetNotificationsResponseItem = zod.object({
+  id: zod.string().uuid(),
+  userId: zod.string().uuid(),
+  title: zod.string(),
+  description: zod.string(),
+  type: zod.string(),
+  isRead: zod.boolean(),
+  createdAt: zod.coerce.date(),
+});
+export const GetNotificationsResponse = zod.array(GetNotificationsResponseItem);
+
+/**
+ * @summary Mark a notification as read
+ */
+export const MarkNotificationReadParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const MarkNotificationReadResponse = zod.object({
+  success: zod.boolean().optional(),
+});
+
+/**
+ * @summary Get all time logs for current user
+ */
+export const GetTimeLogsResponseItem = zod.object({
+  id: zod.string().uuid(),
+  userId: zod.string().uuid(),
+  jobId: zod.string().uuid().nullish(),
+  task: zod.string(),
+  duration: zod.number().describe("duration in seconds"),
+  startTime: zod.coerce.date().optional(),
+  createdAt: zod.coerce.date(),
+});
+export const GetTimeLogsResponse = zod.array(GetTimeLogsResponseItem);
+
+/**
+ * @summary Create a new time log
+ */
+export const CreateTimeLogBody = zod.object({
+  task: zod.string(),
+  duration: zod.number(),
+  jobId: zod.string().uuid().nullish(),
+});
+
+/**
+ * @summary Delete a time log
+ */
+export const DeleteTimeLogParams = zod.object({
+  id: zod.coerce.string().uuid(),
 });

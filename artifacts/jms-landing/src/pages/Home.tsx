@@ -8,6 +8,7 @@ import {
   useTransform,
   AnimatePresence,
   useSpring,
+  type Variants,
 } from "framer-motion";
 import {
   CheckCircle2,
@@ -30,7 +31,7 @@ import {
 import { Button } from "@/components/ui/button";
 import logoImg from "@assets/vv_1778503190047.png";
 
-const fadeUp = {
+const fadeUp: Variants = {
   hidden: { opacity: 0, y: 30 },
   visible: (delay = 0) => ({
     opacity: 1,
@@ -39,7 +40,7 @@ const fadeUp = {
   }),
 };
 
-const fadeLeft = {
+const fadeLeft: Variants = {
   hidden: { opacity: 0, x: -40 },
   visible: (delay = 0) => ({
     opacity: 1,
@@ -48,7 +49,7 @@ const fadeLeft = {
   }),
 };
 
-const fadeRight = {
+const fadeRight: Variants = {
   hidden: { opacity: 0, x: 40 },
   visible: (delay = 0) => ({
     opacity: 1,
@@ -922,11 +923,11 @@ function AnimatedTimerDisplay() {
   return (
     <div className="text-lg font-bold text-gray-800 flex items-center gap-1 tabular-nums">
       <Clock size={14} className="text-primary mr-1 shrink-0" />
-      <motion.span key={h}>{h}</motion.span>:
-      <motion.span key={m}>{m}</motion.span>:
+      <motion.span key={`h-${h}`}>{h}</motion.span>:
+      <motion.span key={`m-${m}`}>{m}</motion.span>:
       <AnimatePresence mode="popLayout">
         <motion.span
-          key={s}
+          key={`s-${s}`}
           initial={{ y: -8, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 8, opacity: 0 }}

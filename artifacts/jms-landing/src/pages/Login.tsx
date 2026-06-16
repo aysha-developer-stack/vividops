@@ -43,19 +43,32 @@ export default function Login() {
       return;
     }
     setErrors({});
-    try {
-      const result = await loginMutation.mutateAsync({ data: { email, password } });
-      setIsSuccess(true);
+      try {
+        const result = await loginMutation.mutateAsync({ 
+          data: { 
+            email, 
+            password,
+            role // Pass the selected role to the backend
+          } 
+        });
+        setIsSuccess(true);
+      if (result.user.role === "user" && result.user.mustResetPassword) {
+        setTimeout(() => setLocation("/reset-password"), 200);
+        return;
+      }
       const targetRole = (result.user.role as Role) ?? role;
-      const target = result.user.mustResetPassword
-        ? "/reset-password"
-        : ROLES[targetRole]?.base ?? "/";
+      const target = ROLES[targetRole]?.base ?? "/";
       setTimeout(() => setLocation(target), 1200);
     } catch (err) {
-      const message =
-        err instanceof ApiError && err.status === 401
-          ? "Invalid email or password"
-          : "Something went wrong. Please try again.";
+      let message = "Something went wrong. Please try again.";
+      if (err instanceof ApiError) {
+        if (err.status === 401) {
+          const data = err.data as { error?: string } | null;
+          message = data?.error || "Invalid email or password";
+        } else if (err.status === 400) {
+          message = "Please check your credentials and try again.";
+        }
+      }
       setErrors({ form: message });
     }
   };

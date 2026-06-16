@@ -10,6 +10,7 @@ import { sendInviteEmail } from "../lib/email";
 const router: IRouter = Router();
 
 const adminOnly = requireRole("super-admin", "admin");
+const listUsersAllowed = requireRole("super-admin", "admin", "supervisor");
 
 // Returns active users + supervisors that any signed-in user can pick when
 // assigning a job. Defined BEFORE /users/:id so the literal path wins over
@@ -42,22 +43,31 @@ function assertCanManage(actor: UserRow, target: UserRow, res: Response): boolea
 }
 
 function buildSignInUrl(): string {
+  const explicit =
+    process.env.PUBLIC_APP_URL ??
+    process.env.APP_URL ??
+    process.env.FRONTEND_URL ??
+    "";
+  if (explicit) {
+    const base = explicit.replace(/\/+$/, "");
+    return `${base}/login`;
+  }
   const domains = process.env.REPLIT_DOMAINS?.split(",").map((s) => s.trim());
   const host = domains?.[0];
   if (host) return `https://${host}/login`;
-  return "/login";
+  return "http://localhost:5173/login";
 }
 
-router.get("/users", adminOnly, async (req, res) => {
+router.get("/users", listUsersAllowed, async (req, res) => {
   const actor = req.session!.user;
   const rows = await db.select().from(users).orderBy(users.createdAt);
 
-  // Admins cannot see super-admins or other admins (per existing UI rule:
-  // Admin manages Supervisor + User only).
   const visible =
     actor.role === "super-admin"
       ? rows
-      : rows.filter((u) => u.role === "supervisor" || u.role === "user");
+      : actor.role === "admin"
+        ? rows.filter((u) => u.role === "supervisor" || u.role === "user")
+        : rows.filter((u) => u.role === "user");
 
   return res.json(visible.map(publicUser));
 });
@@ -100,6 +110,7 @@ router.post("/users", adminOnly, async (req, res) => {
     .returning();
 
   let emailSent: boolean | null = null;
+  let emailError: string | null = null;
   if (delivery === "email-invite") {
     const result = await sendInviteEmail({
       to: created.email,
@@ -108,6 +119,7 @@ router.post("/users", adminOnly, async (req, res) => {
       signInUrl: buildSignInUrl(),
     });
     emailSent = result.sent;
+    emailError = result.sent ? null : result.error ?? "Failed to send email";
   }
 
   return res.status(201).json({
@@ -115,6 +127,7 @@ router.post("/users", adminOnly, async (req, res) => {
     delivery,
     tempPassword: delivery === "temp-password" ? tempPassword : null,
     emailSent,
+    emailError,
   });
 });
 
@@ -174,8 +187,27 @@ router.delete("/users/:id", adminOnly, async (req, res) => {
     .limit(1);
   if (!target) return res.status(404).json({ error: "User not found" });
   if (!assertCanManage(actor, target, res)) return;
-  await db.delete(users).where(eq(users.id, id));
-  return res.status(204).end();
+  try {
+    await db.delete(users).where(eq(users.id, id));
+    return res.status(204).end();
+  } catch (err) {
+    const anyErr = err as any;
+    const code =
+      anyErr?.code ??
+      anyErr?.cause?.code ??
+      anyErr?.cause?.cause?.code ??
+      anyErr?.originalError?.code ??
+      anyErr?.meta?.cause?.code;
+    const message = typeof anyErr?.message === "string" ? anyErr.message : "";
+
+    if (code === "23503" || message.toLowerCase().includes("foreign key")) {
+      return res.status(409).json({
+        error:
+          "Cannot delete this user because they have related records (e.g., uploaded files, checklists, logs, or job links). Set the user status to Inactive instead.",
+      });
+    }
+    return res.status(500).json({ error: "Failed to delete user" });
+  }
 });
 
 router.post("/users/:id/resend-invite", adminOnly, async (req, res) => {
@@ -212,6 +244,7 @@ router.post("/users/:id/resend-invite", adminOnly, async (req, res) => {
     delivery: "email-invite",
     tempPassword: null,
     emailSent: result.sent,
+    emailError: result.sent ? null : result.error ?? "Failed to send email",
   });
 });
 

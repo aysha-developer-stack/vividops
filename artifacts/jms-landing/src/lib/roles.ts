@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Briefcase, Users, BarChart3, MessageCircle,
   Timer, GraduationCap, Settings, Crown, Shield, HardHat, User as UserIcon,
-  Activity, ClipboardList, Eye, FileText,
+  Activity, ClipboardList, Eye, FileText, AlertTriangle, Folder, CheckSquare, Bell, ListChecks,
 } from "lucide-react";
 
 export type Role = "super-admin" | "admin" | "supervisor" | "user";
@@ -28,11 +28,15 @@ export const ROLES: Record<Role, RoleConfig> = {
     base: "/super-admin",
     nav: [
       { label: "Dashboard", icon: LayoutDashboard, path: "/super-admin" },
-      { label: "User Management", icon: Users, path: "/super-admin/users" },
-      { label: "Job Overview", icon: Briefcase, path: "/super-admin/jobs" },
-      { label: "System Monitoring", icon: Activity, path: "/super-admin/monitoring" },
+      { label: "Users", icon: Users, path: "/super-admin/users" },
+      { label: "Roles & Permissions", icon: CheckSquare, path: "/super-admin/roles" },
+      { label: "Jobs", icon: Briefcase, path: "/super-admin/jobs" },
       { label: "Reports", icon: BarChart3, path: "/super-admin/reports" },
+      { label: "System Monitoring", icon: Activity, path: "/super-admin/monitoring" },
       { label: "Training", icon: GraduationCap, path: "/super-admin/training" },
+      { label: "Communication", icon: MessageCircle, path: "/super-admin/communication" },
+      { label: "Files", icon: Folder, path: "/super-admin/files" },
+      { label: "Notifications", icon: Bell, path: "/super-admin/notifications" },
       { label: "Settings", icon: Settings, path: "/super-admin/settings" },
     ],
   },
@@ -43,11 +47,13 @@ export const ROLES: Record<Role, RoleConfig> = {
     base: "/admin",
     nav: [
       { label: "Dashboard", icon: LayoutDashboard, path: "/admin" },
-      { label: "Jobs", icon: Briefcase, path: "/admin/jobs" },
       { label: "Users", icon: Users, path: "/admin/users" },
+      { label: "Jobs", icon: Briefcase, path: "/admin/jobs" },
+      { label: "Monitoring", icon: Eye, path: "/admin/monitoring" },
       { label: "Reports", icon: BarChart3, path: "/admin/reports" },
-      { label: "Supervisor Monitoring", icon: Eye, path: "/admin/supervisors" },
       { label: "Training", icon: GraduationCap, path: "/admin/training" },
+      { label: "Communication", icon: MessageCircle, path: "/admin/communication" },
+      { label: "Files", icon: Folder, path: "/admin/files" },
       { label: "Settings", icon: Settings, path: "/admin/settings" },
     ],
   },
@@ -59,11 +65,11 @@ export const ROLES: Record<Role, RoleConfig> = {
     nav: [
       { label: "Dashboard", icon: LayoutDashboard, path: "/supervisor" },
       { label: "Jobs", icon: Briefcase, path: "/supervisor/jobs" },
-      { label: "User Monitoring", icon: Activity, path: "/supervisor/users" },
+      { label: "Timer Monitor", icon: Eye, path: "/supervisor/users" },
+      { label: "Error Reports", icon: AlertTriangle, path: "/supervisor/error-reports" },
       { label: "Reports", icon: BarChart3, path: "/supervisor/reports" },
-      { label: "Communication", icon: MessageCircle, path: "/supervisor/communication" },
       { label: "Training", icon: GraduationCap, path: "/supervisor/training" },
-      { label: "Settings", icon: Settings, path: "/supervisor/settings" },
+      { label: "Communication", icon: MessageCircle, path: "/supervisor/communication" },
     ],
   },
   user: {
@@ -75,9 +81,12 @@ export const ROLES: Record<Role, RoleConfig> = {
       { label: "Dashboard", icon: LayoutDashboard, path: "/user" },
       { label: "My Jobs", icon: ClipboardList, path: "/user/jobs" },
       { label: "Timer", icon: Timer, path: "/user/timer" },
-      { label: "My Reports", icon: FileText, path: "/user/reports" },
-      { label: "Training", icon: GraduationCap, path: "/user/training" },
       { label: "Communication", icon: MessageCircle, path: "/user/communication" },
+      { label: "Files & Checklists", icon: Folder, path: "/user/files" },
+      { label: "My Reports", icon: BarChart3, path: "/user/reports" },
+      { label: "Training", icon: GraduationCap, path: "/user/training" },
+      { label: "Notifications", icon: Bell, path: "/user/notifications" },
+      { label: "Settings", icon: Settings, path: "/user/settings" },
     ],
   },
 };

@@ -1,0 +1,279 @@
+import { Router, type IRouter } from "express";
+import { desc, eq, inArray, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import {
+  db,
+  errorReports,
+  jobs,
+  users,
+  type ErrorReportRow,
+  type JobRow,
+  type UserRow,
+} from "@workspace/db";
+import { requireAuth, requireRole } from "../middlewares/requireAuth";
+
+const router: IRouter = Router();
+
+const targetUserAlias = alias(users, "target_user");
+const creatorAlias = alias(users, "creator_user");
+
+let schemaEnsured = false;
+const ensureSchema = async () => {
+  if (schemaEnsured) return;
+  schemaEnsured = true;
+  await db.execute(sql`DO $$ BEGIN
+    CREATE TYPE error_severity AS ENUM ('low', 'medium', 'high');
+  EXCEPTION
+    WHEN duplicate_object THEN NULL;
+  END $$;`);
+  await db.execute(sql`DO $$ BEGIN
+    CREATE TYPE error_report_status AS ENUM ('open', 'resolved');
+  EXCEPTION
+    WHEN duplicate_object THEN NULL;
+  END $$;`);
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS error_reports (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    job_id uuid REFERENCES jobs(id) ON DELETE SET NULL,
+    user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_by_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title text NOT NULL,
+    description text NOT NULL,
+    severity error_severity NOT NULL DEFAULT 'medium',
+    status error_report_status NOT NULL DEFAULT 'open',
+    resolved_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  );`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS error_reports_job_idx ON error_reports(job_id);`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS error_reports_user_idx ON error_reports(user_id);`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS error_reports_created_by_idx ON error_reports(created_by_id);`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS error_reports_status_idx ON error_reports(status);`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS error_reports_severity_idx ON error_reports(severity);`);
+};
+
+function canViewJob(actor: UserRow, job: JobRow): boolean {
+  if (actor.role === "super-admin" || actor.role === "admin") return true;
+  if (actor.role === "supervisor") {
+    return job.supervisorId === actor.id || job.createdById === actor.id;
+  }
+  return job.assigneeId === actor.id;
+}
+
+function canManageJob(actor: UserRow, job: JobRow): boolean {
+  if (actor.role === "super-admin" || actor.role === "admin") return true;
+  if (actor.role === "supervisor") {
+    return job.supervisorId === actor.id || job.createdById === actor.id;
+  }
+  return false;
+}
+
+type PublicErrorReport = ErrorReportRow & {
+  jobNumber: string | null;
+  jobTitle: string | null;
+  user: { id: string; name: string; role: UserRow["role"] } | null;
+  createdBy: { id: string; name: string; role: UserRow["role"] } | null;
+};
+
+function toPublic(row: {
+  report: ErrorReportRow;
+  job: Pick<JobRow, "id" | "serial" | "title"> | null;
+  user: Pick<UserRow, "id" | "name" | "role"> | null;
+  createdBy: Pick<UserRow, "id" | "name" | "role"> | null;
+}): PublicErrorReport {
+  return {
+    ...row.report,
+    jobNumber: row.job ? `JOB-${row.job.serial}` : null,
+    jobTitle: row.job?.title ?? null,
+    user: row.user?.id ? row.user : null,
+    createdBy: row.createdBy?.id ? row.createdBy : null,
+  };
+}
+
+router.get("/error-reports", requireAuth, async (req, res) => {
+  await ensureSchema();
+  const actor = req.session!.user;
+
+  const q = db
+    .select({
+      report: errorReports,
+      job: { id: jobs.id, serial: jobs.serial, title: jobs.title },
+      user: { id: targetUserAlias.id, name: targetUserAlias.name, role: targetUserAlias.role },
+      createdBy: { id: creatorAlias.id, name: creatorAlias.name, role: creatorAlias.role },
+    })
+    .from(errorReports)
+    .leftJoin(jobs, eq(jobs.id, errorReports.jobId))
+    .leftJoin(targetUserAlias, eq(targetUserAlias.id, errorReports.userId))
+    .leftJoin(creatorAlias, eq(creatorAlias.id, errorReports.createdById))
+    .orderBy(desc(errorReports.createdAt));
+
+  if (actor.role === "super-admin" || actor.role === "admin") {
+    const rows = await q;
+    res.json(rows.map(toPublic));
+    return;
+  }
+
+  if (actor.role === "supervisor") {
+    const managedJobs = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(or(eq(jobs.supervisorId, actor.id), eq(jobs.createdById, actor.id)));
+    const jobIds = managedJobs.map((j) => j.id);
+
+    if (jobIds.length === 0) {
+      const rows = await q.where(eq(errorReports.createdById, actor.id));
+      res.json(rows.map(toPublic));
+      return;
+    }
+
+    const rows = await q.where(
+      or(
+        inArray(errorReports.jobId, jobIds),
+        eq(errorReports.createdById, actor.id),
+      ),
+    );
+    res.json(rows.map(toPublic));
+    return;
+  }
+
+  const rows = await q.where(eq(errorReports.userId, actor.id));
+  res.json(rows.map(toPublic));
+});
+
+const creatorOnly = requireRole("super-admin", "admin", "supervisor");
+
+router.post("/error-reports", creatorOnly, async (req, res) => {
+  await ensureSchema();
+  const actor = req.session!.user;
+  const body = req.body as Partial<{
+    jobId: string | null;
+    userId: string;
+    title: string;
+    description: string;
+    severity: "low" | "medium" | "high";
+  }>;
+
+  if (!body.userId || !body.title || !body.description) {
+    res.status(400).json({ error: "userId, title and description are required" });
+    return;
+  }
+  const severity = body.severity ?? "medium";
+  if (severity !== "low" && severity !== "medium" && severity !== "high") {
+    res.status(400).json({ error: "Invalid severity" });
+    return;
+  }
+
+  let jobRow: JobRow | null = null;
+  const jobId = body.jobId ?? null;
+  if (jobId) {
+    const [j] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    if (!j) {
+      res.status(404).json({ error: "Job not found" });
+      return;
+    }
+    if (!canViewJob(actor, j)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (actor.role === "supervisor" && j.assigneeId !== body.userId) {
+      res.status(400).json({ error: "userId must match the job assignee" });
+      return;
+    }
+    jobRow = j;
+  } else if (actor.role === "supervisor") {
+    res.status(400).json({ error: "jobId is required for supervisors" });
+    return;
+  }
+
+  const [created] = await db
+    .insert(errorReports)
+    .values({
+      jobId,
+      userId: body.userId,
+      createdById: actor.id,
+      title: body.title,
+      description: body.description,
+      severity,
+      status: "open",
+      updatedAt: new Date(),
+    })
+    .returning();
+
+  const userRow = await db
+    .select({ id: users.id, name: users.name, role: users.role })
+    .from(users)
+    .where(eq(users.id, created.userId))
+    .then((r) => r[0] ?? null);
+
+  const pub = toPublic({
+    report: created,
+    job: jobRow ? { id: jobRow.id, serial: jobRow.serial, title: jobRow.title } : null,
+    user: userRow,
+    createdBy: { id: actor.id, name: actor.name, role: actor.role },
+  });
+
+  res.status(201).json(pub);
+});
+
+router.patch("/error-reports/:id", requireAuth, async (req, res) => {
+  await ensureSchema();
+  const actor = req.session!.user;
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const body = req.body as Partial<{ status: "open" | "resolved" }>;
+
+  const [existing] = await db.select().from(errorReports).where(eq(errorReports.id, id)).limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  if (actor.role === "user") {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  if (actor.role === "supervisor") {
+    if (!existing.jobId) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    const [j] = await db.select().from(jobs).where(eq(jobs.id, existing.jobId)).limit(1);
+    if (!j || !canManageJob(actor, j)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+  }
+
+  const status = body.status;
+  if (status !== "open" && status !== "resolved") {
+    res.status(400).json({ error: "Invalid status" });
+    return;
+  }
+
+  const patch: Record<string, unknown> = { status, updatedAt: new Date() };
+  if (status === "resolved") patch.resolvedAt = new Date();
+  if (status === "open") patch.resolvedAt = null;
+
+  const [updated] = await db.update(errorReports).set(patch).where(eq(errorReports.id, id)).returning();
+
+  const [job] = updated.jobId
+    ? await db
+        .select({ id: jobs.id, serial: jobs.serial, title: jobs.title })
+        .from(jobs)
+        .where(eq(jobs.id, updated.jobId))
+        .limit(1)
+    : [null];
+  const userRow = await db
+    .select({ id: users.id, name: users.name, role: users.role })
+    .from(users)
+    .where(eq(users.id, updated.userId))
+    .then((r) => r[0] ?? null);
+  const creatorRow = await db
+    .select({ id: users.id, name: users.name, role: users.role })
+    .from(users)
+    .where(eq(users.id, updated.createdById))
+    .then((r) => r[0] ?? null);
+
+  res.json(toPublic({ report: updated, job: job?.id ? job : null, user: userRow, createdBy: creatorRow }));
+});
+
+export default router;

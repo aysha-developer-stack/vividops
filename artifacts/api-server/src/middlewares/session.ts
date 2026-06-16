@@ -8,6 +8,11 @@ export interface SessionContext {
   user: UserRow;
 }
 
+const sessionCache = new Map<
+  string,
+  { cacheUntilMs: number; value: SessionContext }
+>();
+
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
@@ -24,6 +29,12 @@ export async function attachSession(
 ): Promise<void> {
   const sid = req.cookies?.[SESSION_COOKIE];
   if (!sid || typeof sid !== "string") {
+    return next();
+  }
+
+  const cached = sessionCache.get(sid);
+  if (cached && cached.cacheUntilMs > Date.now()) {
+    req.session = cached.value;
     return next();
   }
 
@@ -46,7 +57,13 @@ export async function attachSession(
     if (row.user.status !== "active") {
       return next();
     }
-    req.session = { sessionId: sid, user: row.user };
+    const value = { sessionId: sid, user: row.user };
+    req.session = value;
+    const cacheUntilMs = Math.min(
+      row.session.expiresAt.getTime(),
+      Date.now() + 30_000,
+    );
+    sessionCache.set(sid, { cacheUntilMs, value });
   } catch (err) {
     req.log.error({ err }, "Failed to load session");
   }

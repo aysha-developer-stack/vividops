@@ -5,9 +5,11 @@
  * Vivid OPS API
  * OpenAPI spec version: 0.1.0
  */
+import type { UserRole } from "./userRole";
 
 export interface LoginInput {
   email: string;
   /** @minLength 1 */
   password: string;
+  role: UserRole;
 }

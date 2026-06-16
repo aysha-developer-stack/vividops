@@ -299,6 +299,132 @@ paths:
               schema:
                 $ref: "#/components/schemas/CreateUserResult"
 
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Get stats and recent activity for the dashboard
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /posts:
+    get:
+      operationId: getPosts
+      tags: [posts]
+      summary: Get all training/update posts
+      responses:
+        "200":
+          description: List of posts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Post"
+    post:
+      operationId: createPost
+      tags: [posts]
+      summary: Create a new post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostInput"
+      responses:
+        "201":
+          description: Created post
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+
+  /notifications:
+    get:
+      operationId: getNotifications
+      tags: [notifications]
+      summary: Get current user notifications
+      responses:
+        "200":
+          description: List of notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+
+  /notifications/{id}/read:
+    patch:
+      operationId: markNotificationRead
+      tags: [notifications]
+      summary: Mark a notification as read
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+
+  /time-logs:
+    get:
+      operationId: getTimeLogs
+      tags: [time-logs]
+      summary: Get all time logs for current user
+      responses:
+        "200":
+          description: List of time logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TimeLog"
+    post:
+      operationId: createTimeLog
+      tags: [time-logs]
+      summary: Create a new time log
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TimeLogInput"
+      responses:
+        "201":
+          description: Created time log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimeLog"
+
+  /time-logs/{id}:
+    delete:
+      operationId: deleteTimeLog
+      tags: [time-logs]
+      summary: Delete a time log
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Deleted
+
 components:
   schemas:
     HealthStatus:
@@ -372,10 +498,11 @@ components:
 
     LoginInput:
       type: object
-      required: [email, password]
+      required: [email, password, role]
       properties:
         email: { type: string, format: email }
         password: { type: string, minLength: 1 }
+        role: { $ref: "#/components/schemas/UserRole" }
 
     LoginResult:
       type: object
@@ -483,3 +610,71 @@ components:
         supervisorId: { type: ["string", "null"], format: uuid }
         dueDate: { type: ["string", "null"], format: date-time }
         progress: { type: integer, minimum: 0, maximum: 100 }
+
+    DashboardStats:
+      type: object
+      required: [stats, recentJobs]
+      properties:
+        stats:
+          type: object
+          required: [totalUsers, totalJobs, activeJobs, overdueJobs]
+          properties:
+            totalUsers: { type: integer }
+            totalJobs: { type: integer }
+            activeJobs: { type: integer }
+            overdueJobs: { type: integer }
+        recentJobs:
+          type: array
+          items: { $ref: "#/components/schemas/Job" }
+
+    Post:
+      type: object
+      required: [id, title, body, category, authorId, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        body: { type: string }
+        category: { type: string }
+        authorId: { type: string, format: uuid }
+        attachments: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+
+    PostInput:
+      type: object
+      required: [title, body, category]
+      properties:
+        title: { type: string }
+        body: { type: string }
+        category: { type: string }
+
+    Notification:
+      type: object
+      required: [id, userId, title, description, type, isRead, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        type: { type: string }
+        isRead: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    TimeLog:
+      type: object
+      required: [id, userId, task, duration, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        jobId: { type: ["string", "null"], format: uuid }
+        task: { type: string }
+        duration: { type: integer, description: "duration in seconds" }
+        startTime: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    TimeLogInput:
+      type: object
+      required: [task, duration]
+      properties:
+        task: { type: string }
+        duration: { type: integer }
+        jobId: { type: ["string", "null"], format: uuid }

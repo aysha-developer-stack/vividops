@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import {
@@ -6,41 +7,99 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
-
-const STATS = [
-  { label: "Total Jobs", value: 342, icon: Briefcase, change: 8.4, up: true, color: "from-primary to-sky-700", bg: "bg-primary/10", text: "text-primary" },
-  { label: "Active Users", value: 86, icon: Users, change: 4.2, up: true, color: "from-emerald-500 to-emerald-700", bg: "bg-emerald-50", text: "text-emerald-600" },
-  { label: "Completed", value: 124, icon: CheckCircle2, change: 12.7, up: true, color: "from-purple-500 to-purple-700", bg: "bg-purple-50", text: "text-purple-600" },
-  { label: "Pending", value: 47, icon: Clock, change: 2.1, up: false, color: "from-amber-500 to-orange-600", bg: "bg-amber-50", text: "text-amber-600" },
-];
-
-const RECENT_JOBS = [
-  { id: "JOB-2148", client: "Wilkinson Residence", supervisor: "Sam Carter", status: "In Progress", color: "bg-primary/10 text-primary" },
-  { id: "JOB-2147", client: "Patel Residence", supervisor: "Mia Wong", status: "Completed", color: "bg-emerald-50 text-emerald-700" },
-  { id: "JOB-2146", client: "Greenfield Builders", supervisor: "Chris Park", status: "Completed", color: "bg-emerald-50 text-emerald-700" },
-  { id: "JOB-2145", client: "Thompson Residence", supervisor: "Sam Carter", status: "Overdue", color: "bg-red-50 text-red-700" },
-  { id: "JOB-2144", client: "Nguyen Residence", supervisor: "Mia Wong", status: "In Progress", color: "bg-primary/10 text-primary" },
-  { id: "JOB-2143", client: "Sterling Homes", supervisor: "Chris Park", status: "Completed", color: "bg-emerald-50 text-emerald-700" },
-  { id: "JOB-2142", client: "Vivid Construction", supervisor: "Sam Carter", status: "Rework", color: "bg-orange-50 text-orange-700" },
-  { id: "JOB-2141", client: "Apex Builders", supervisor: "Mia Wong", status: "In Progress", color: "bg-primary/10 text-primary" },
-  { id: "JOB-2140", client: "Northern Estate Homes", supervisor: "Chris Park", status: "Pending", color: "bg-amber-50 text-amber-700" },
-  { id: "JOB-2139", client: "Coastal Heritage Homes", supervisor: "Sam Carter", status: "Completed", color: "bg-emerald-50 text-emerald-700" },
-];
-
-const TEAM = [
-  { name: "Sam Carter", role: "Supervisor", jobs: 12, completed: 9 },
-  { name: "Mia Wong", role: "Supervisor", jobs: 8, completed: 7 },
-  { name: "Chris Park", role: "Supervisor", jobs: 10, completed: 6 },
-  { name: "Riley Adams", role: "Field User", jobs: 14, completed: 11 },
-  { name: "Olivia Carter", role: "Field User", jobs: 9, completed: 8 },
-  { name: "James Bennett", role: "Field User", jobs: 7, completed: 5 },
-  { name: "Lisa Martinez", role: "Field User", jobs: 11, completed: 10 },
-  { name: "Jordan Reed", role: "Field User", jobs: 13, completed: 9 },
-];
+import { useGetDashboardStats, useListUsers, useListJobs, type User } from "@workspace/api-client-react";
+import { useAuth } from "@/lib/auth";
 
 export default function AdminDashboard() {
-  const recentP = usePagination(RECENT_JOBS, 6);
-  const teamP = usePagination(TEAM, 5);
+  const { user: currentUser } = useAuth();
+  const { data: dashboardData, isLoading } = useGetDashboardStats();
+  const { data: apiUsers } = useListUsers();
+  const { data: apiJobs } = useListJobs();
+  const showSkeleton = isLoading && !dashboardData;
+
+  const parseMs = (iso: string | null | undefined) => {
+    if (!iso) return null;
+    const ms = new Date(iso).getTime();
+    return Number.isFinite(ms) ? ms : null;
+  };
+
+  const pctChange = (current: number, previous: number) => {
+    if (!Number.isFinite(current) || !Number.isFinite(previous)) return 0;
+    if (previous <= 0) return current > 0 ? 100 : 0;
+    return Math.round(((current - previous) / previous) * 100);
+  };
+
+  const stats = useMemo(() => {
+    const nowMs = Date.now();
+    const prevMs = nowMs - 7 * 24 * 60 * 60 * 1000;
+
+    const usersPrev = (apiUsers ?? []).filter((u: User) => {
+      const createdMs = parseMs(u.createdAt as unknown as string);
+      return createdMs != null && createdMs <= prevMs;
+    }).length;
+
+    const jobsPrev = (apiJobs ?? []).filter((j) => {
+      const createdMs = parseMs(j.createdAt);
+      return createdMs != null && createdMs <= prevMs;
+    }).length;
+
+    const activePrev = (apiJobs ?? []).filter((j) => {
+      if (j.status !== "in_progress") return false;
+      const createdMs = parseMs(j.createdAt);
+      if (createdMs == null || createdMs > prevMs) return false;
+      const completedMs = parseMs(j.completedAt);
+      if (completedMs != null && completedMs <= prevMs) return false;
+      return true;
+    }).length;
+
+    const overduePrev = (apiJobs ?? []).filter((j) => {
+      if (j.status === "completed") return false;
+      const createdMs = parseMs(j.createdAt);
+      if (createdMs == null || createdMs > prevMs) return false;
+      const dueMs = parseMs(j.dueDate);
+      if (dueMs == null) return false;
+      return dueMs < prevMs;
+    }).length;
+
+    const totalJobs = dashboardData?.stats.totalJobs ?? 0;
+    const totalUsers = dashboardData?.stats.totalUsers ?? 0;
+    const activeJobs = dashboardData?.stats.activeJobs ?? 0;
+    const overdueJobs = dashboardData?.stats.overdueJobs ?? 0;
+
+    const jobsChange = pctChange(totalJobs, jobsPrev);
+    const usersChange = pctChange(totalUsers, usersPrev);
+    const activeChange = pctChange(activeJobs, activePrev);
+    const overdueChange = pctChange(overdueJobs, overduePrev);
+
+    return [
+      { label: "Total Jobs", value: totalJobs, icon: Briefcase, change: Math.abs(jobsChange), up: jobsChange >= 0, color: "from-primary to-sky-700", bg: "bg-primary/10", text: "text-primary" },
+      { label: "Active Users", value: totalUsers, icon: Users, change: Math.abs(usersChange), up: usersChange >= 0, color: "from-emerald-500 to-emerald-700", bg: "bg-emerald-50", text: "text-emerald-600" },
+      { label: "Active Jobs", value: activeJobs, icon: CheckCircle2, change: Math.abs(activeChange), up: activeChange >= 0, color: "from-purple-500 to-purple-700", bg: "bg-purple-50", text: "text-purple-600" },
+      { label: "Overdue", value: overdueJobs, icon: Clock, change: Math.abs(overdueChange), up: overdueJobs <= overduePrev, color: "from-amber-500 to-orange-600", bg: "bg-amber-50", text: "text-amber-600" },
+    ];
+  }, [dashboardData, apiUsers, apiJobs]);
+
+  const recentJobs = useMemo(() => (dashboardData?.recentJobs ?? []).map(j => ({
+    id: j.number,
+    client: j.client,
+    supervisor: j.supervisor?.name ?? "Unassigned",
+    status: j.status,
+    color: "bg-primary/10 text-primary"
+  })), [dashboardData]);
+
+  const team = useMemo(() => (apiUsers ?? []).map((u: User) => {
+    const userJobs = (apiJobs ?? []).filter(j => j.assignee?.id === u.id);
+    return {
+      name: u.name,
+      role: u.role.charAt(0).toUpperCase() + u.role.slice(1),
+      jobs: userJobs.length,
+      completed: userJobs.filter(j => j.status === 'completed').length
+    };
+  }), [apiUsers, apiJobs]);
+
+  const recentP = usePagination(recentJobs, 6);
+  const teamP = usePagination(team, 5);
+  
   return (
     <DashboardLayout title="Admin Overview" role="admin">
       {/* Banner */}
@@ -56,7 +115,7 @@ export default function AdminDashboard() {
         />
         <div className="relative z-10 flex items-start justify-between flex-wrap gap-4">
           <div>
-            <h2 className="text-2xl md:text-3xl font-bold text-white">Welcome back, Jamie 👋</h2>
+            <h2 className="text-2xl md:text-3xl font-bold text-white">Welcome back, {currentUser?.name?.split(" ")[0] ?? "Admin"} 👋</h2>
             <p className="text-sm text-gray-400 mt-1">Here's a snapshot of operations across your team.</p>
           </div>
           <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 text-xs text-gray-300">
@@ -67,14 +126,14 @@ export default function AdminDashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {STATS.map((s, i) => {
+        {stats.map((s, i) => {
           const Icon = s.icon;
           return (
             <motion.div
               key={s.label}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 + i * 0.06 }}
+              transition={{ delay: 0.02 + i * 0.03 }}
               whileHover={{ y: -4, boxShadow: "0 14px 28px rgba(0,0,0,0.07)" }}
               className="relative bg-white rounded-2xl p-5 border border-gray-100 overflow-hidden"
             >
@@ -91,10 +150,14 @@ export default function AdminDashboard() {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 0.3 + i * 0.06 }}
+                transition={{ delay: 0.1 + i * 0.03 }}
                 className="text-3xl font-bold text-gray-900 mt-4"
               >
-                {s.value}
+                {showSkeleton ? (
+                  <div className="h-8 w-16 bg-gray-100 rounded animate-pulse" />
+                ) : (
+                  s.value
+                )}
               </motion.div>
               <div className="text-xs text-gray-500 font-medium mt-1">{s.label}</div>
             </motion.div>
@@ -107,7 +170,7 @@ export default function AdminDashboard() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
+          transition={{ delay: 0.1 }}
           className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 overflow-hidden"
         >
           <div className="p-5 border-b border-gray-100 flex items-center justify-between">
@@ -122,16 +185,16 @@ export default function AdminDashboard() {
               key={j.id}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.35 + i * 0.05 }}
+              transition={{ delay: 0.15 + i * 0.03 }}
               whileHover={{ backgroundColor: "rgb(249, 250, 251)", x: 4 }}
               className="flex items-center gap-4 px-5 py-4 border-b border-gray-50 last:border-0 cursor-pointer"
             >
               <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary/10 to-sky-100 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                {j.id.split("-")[1].slice(-2)}
+                {j.id?.includes("-") ? j.id.split("-")[1]?.slice(-2) : (j.id?.slice(-2) ?? "??")}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="font-semibold text-sm text-gray-900">{j.client}</div>
-                <div className="text-xs text-gray-500 mt-0.5">{j.id} · Supervised by {j.supervisor}</div>
+                <div className="text-xs text-gray-500 mt-0.5">{j.id ?? "No Number"} · Supervised by {j.supervisor}</div>
               </div>
               <span className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-full ${j.color}`}>{j.status}</span>
             </motion.div>
@@ -143,7 +206,7 @@ export default function AdminDashboard() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
+          transition={{ delay: 0.2 }}
           className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
         >
           <div className="p-5 border-b border-gray-100">
@@ -151,18 +214,18 @@ export default function AdminDashboard() {
             <p className="text-xs text-gray-500 mt-0.5">Top performers this week</p>
           </div>
           <div className="p-5 space-y-4">
-            {teamP.pageItems.map((t, i) => {
-              const pct = Math.round((t.completed / t.jobs) * 100);
+            {teamP.pageItems.map((t: any, i: number) => {
+              const pct = t.jobs > 0 ? Math.round((t.completed / t.jobs) * 100) : 0;
               return (
                 <motion.div
                   key={t.name}
                   initial={{ opacity: 0, x: 10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.5 + i * 0.06 }}
+                  transition={{ delay: 0.25 + i * 0.03 }}
                 >
                   <div className="flex items-center gap-3 mb-1.5">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-xs font-bold flex items-center justify-center">
-                      {t.name.split(" ").map((s) => s[0]).join("")}
+                      {t.name.split(" ").map((s: string) => s[0]).join("")}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold text-gray-900 truncate">{t.name}</div>
@@ -174,7 +237,7 @@ export default function AdminDashboard() {
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${pct}%` }}
-                      transition={{ delay: 0.6 + i * 0.06, duration: 0.8, ease: "easeOut" }}
+                      transition={{ delay: 0.3 + i * 0.03, duration: 0.4, ease: "easeOut" }}
                       className="h-full rounded-full bg-primary"
                     />
                   </div>
@@ -190,7 +253,7 @@ export default function AdminDashboard() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.6 }}
+        transition={{ delay: 0.3 }}
         className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6"
       >
         {[

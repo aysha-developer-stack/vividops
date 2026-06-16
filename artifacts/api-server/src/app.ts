@@ -33,6 +33,22 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(attachSession);
 
+app.use((req, res, next) => {
+  if (req.url.includes("/auth/login") && req.method === "POST") {
+    console.log("!!! LOGIN POST HIT !!!", req.body);
+  }
+  next();
+});
+
 app.use("/api", router);
+
+// Error handling
+app.use((err: any, req: any, res: any, next: any) => {
+  logger.error({ err, url: req.url, method: req.method }, "Unhandled error");
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({
+    error: "Internal Server Error",
+  });
+});
 
 export default app;

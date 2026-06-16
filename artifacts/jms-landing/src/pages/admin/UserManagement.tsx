@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -21,6 +21,14 @@ import {
   type UserStatus as ApiUserStatus,
   ApiError,
 } from "@workspace/api-client-react";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 type UiRole = "Super Admin" | "Admin" | "Supervisor" | "User";
 
@@ -57,9 +65,16 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
   const updateMutation = useUpdateUser();
   const deleteMutation = useDeleteUser();
   const resendMutation = useResendInvite();
+  const isInitialLoading = usersQuery.isLoading && !usersQuery.data;
 
-  const invalidate = () =>
-    qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+  const invalidate = useCallback(
+    () => qc.invalidateQueries({ queryKey: getListUsersQueryKey() }),
+    [qc]
+  );
+
+  useEffect(() => {
+    invalidate();
+  }, [invalidate]);
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"All" | UiRole>("All");
@@ -77,6 +92,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
     delivery: "email-invite" | "temp-password";
     tempPassword?: string | null;
     emailSent?: boolean | null;
+    emailError?: string | null;
   } | null>(null);
   const [copied, setCopied] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -98,6 +114,26 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
     });
   }, [users, filter, search]);
   const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 8);
+
+  if (isInitialLoading) {
+    return (
+      <DashboardLayout title="User Management" role={role}>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (usersQuery.isError) {
+    return (
+      <DashboardLayout title="User Management" role={role}>
+        <div className="px-6 py-10 text-sm text-red-700">
+          Failed to load users.
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   const toggleStatus = async (u: User) => {
     setOpenId(null);
@@ -132,6 +168,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
         role: ROLE_API_TO_UI[result.user.role],
         delivery: "email-invite",
         emailSent: result.emailSent ?? false,
+        emailError: (result as any).emailError ?? null,
       });
     } catch (err) {
       setFormError(extractError(err));
@@ -193,6 +230,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
           delivery: result.delivery,
           tempPassword: result.tempPassword ?? null,
           emailSent: result.emailSent ?? null,
+          emailError: (result as any).emailError ?? null,
         });
       }
     } catch (err) {
@@ -273,90 +311,75 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
               </tr>
             </thead>
             <tbody>
-              <AnimatePresence>
-                {pageItems.map((u, i) => {
-                  const ui = ROLE_API_TO_UI[u.role];
-                  const cfg = ROLE_CONFIG[ui];
-                  const Icon = cfg.icon;
-                  const status = u.status === "active" ? "Active" : "Inactive";
-                  return (
-                    <motion.tr
-                      key={u.id}
-                      layout
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, x: -20 }}
-                      transition={{ delay: i * 0.03 }}
-                      whileHover={{ backgroundColor: "rgb(249, 250, 251)" }}
-                      className="border-b border-gray-50 last:border-0 group"
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-xs font-bold flex items-center justify-center shrink-0">
-                            {initials(u.name)}
-                          </div>
-                          <div>
-                            <div className="font-medium text-gray-900 text-sm">{u.name}</div>
-                            <div className="text-xs text-gray-500">{u.email}</div>
-                          </div>
+              {pageItems.map((u) => {
+                const ui = ROLE_API_TO_UI[u.role];
+                const cfg = ROLE_CONFIG[ui];
+                const Icon = cfg.icon;
+                const status = u.status === "active" ? "Active" : "Inactive";
+                return (
+                  <tr
+                    key={u.id}
+                    className="border-b border-gray-50 last:border-0 group hover:bg-gray-50"
+                  >
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-xs font-bold flex items-center justify-center shrink-0">
+                          {initials(u.name)}
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
-                          <Icon size={11} />
-                          {ui}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <motion.div
-                            className={`w-2 h-2 rounded-full ${status === "Active" ? "bg-emerald-500" : "bg-gray-400"}`}
-                            animate={status === "Active" ? { scale: [1, 1.3, 1] } : {}}
-                            transition={{ duration: 2, repeat: Infinity }}
-                          />
-                          <span className={`text-sm font-medium ${status === "Active" ? "text-emerald-700" : "text-gray-500"}`}>{status}</span>
+                        <div>
+                          <div className="font-medium text-gray-900 text-sm">{u.name}</div>
+                          <div className="text-xs text-gray-500">{u.email}</div>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{formatJoined(u.createdAt as unknown as string)}</td>
-                      <td className="px-6 py-4 text-right relative">
-                        <motion.button
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
-                          onClick={() => setOpenId(openId === u.id ? null : u.id)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                        >
-                          <MoreVertical size={16} />
-                        </motion.button>
-                        <AnimatePresence>
-                          {openId === u.id && (
-                            <motion.div
-                              initial={{ opacity: 0, scale: 0.95, y: -5 }}
-                              animate={{ opacity: 1, scale: 1, y: 0 }}
-                              exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                              transition={{ duration: 0.12 }}
-                              className="absolute right-6 top-12 w-48 bg-white rounded-xl shadow-xl border border-gray-100 z-10 py-1 text-left"
-                            >
-                              <button onClick={() => startEdit(u)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                <Edit2 size={14} className="text-gray-400" /> Edit
-                              </button>
-                              <button onClick={() => toggleStatus(u)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                <Power size={14} className="text-gray-400" /> {status === "Active" ? "Deactivate" : "Activate"}
-                              </button>
-                              <button onClick={() => resend(u)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                <RefreshCw size={14} className="text-gray-400" /> Resend invite
-                              </button>
-                              <div className="h-px bg-gray-100 my-1" />
-                              <button onClick={() => remove(u)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50">
-                                <Trash2 size={14} /> Delete
-                              </button>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </td>
-                    </motion.tr>
-                  );
-                })}
-              </AnimatePresence>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
+                        <Icon size={11} />
+                        {ui}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${status === "Active" ? "bg-emerald-500" : "bg-gray-400"}`} />
+                        <span className={`text-sm font-medium ${status === "Active" ? "text-emerald-700" : "text-gray-500"}`}>{status}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{formatJoined(u.createdAt as unknown as string)}</td>
+                    <td className="px-6 py-4 text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <motion.button
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                          >
+                            <MoreVertical size={16} />
+                          </motion.button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem onClick={() => startEdit(u)}>
+                            <Edit2 size={14} className="mr-2 text-gray-400" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => toggleStatus(u)}>
+                            <Power size={14} className="mr-2 text-gray-400" />
+                            {status === "Active" ? "Deactivate" : "Activate"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => resend(u)}>
+                            <RefreshCw size={14} className="mr-2 text-gray-400" />
+                            Resend invite
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => remove(u)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                            <Trash2 size={14} className="mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {usersQuery.isLoading && (
@@ -374,23 +397,23 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
       {/* Create User Modal */}
       <AnimatePresence>
         {modalOpen && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => !isSaving && setModalOpen(false)} className="fixed inset-0 bg-black/50 z-40" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => !isSaving && setModalOpen(false)} className="absolute inset-0 bg-black/50" />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md bg-white rounded-2xl shadow-2xl"
+              className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden"
             >
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between shrink-0">
                 <div>
                   <h3 className="font-bold text-gray-900">{editingId !== null ? "Edit User" : "Create New User"}</h3>
                   <p className="text-xs text-gray-500 mt-0.5">{editingId !== null ? "Update this team member's details and role" : "Add a new team member to the platform"}</p>
                 </div>
                 <button onClick={() => { if (!isSaving) { setModalOpen(false); setEditingId(null); } }} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
               </div>
-              <div className="p-6 space-y-4">
+              <div className="p-6 space-y-4 overflow-y-auto">
                 {formError && (
                   <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs flex items-center gap-2">
                     <AlertTriangle size={12} /> {formError}
@@ -458,7 +481,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                   </div>
                 )}
               </div>
-              <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
+              <div className="p-6 border-t border-gray-100 flex justify-end gap-3 shrink-0">
                 <button disabled={isSaving} onClick={() => { setModalOpen(false); setEditingId(null); }} className="px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl disabled:opacity-50">Cancel</button>
                 <motion.button disabled={isSaving} whileHover={!isSaving ? { scale: 1.04 } : undefined} whileTap={!isSaving ? { scale: 0.97 } : undefined} onClick={save} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30 disabled:opacity-70">
                   {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
@@ -466,23 +489,23 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                 </motion.button>
               </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
 
       {/* Credential Result Modal */}
       <AnimatePresence>
         {credentialResult && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeCredentialModal} className="fixed inset-0 bg-black/50 z-40" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeCredentialModal} className="absolute inset-0 bg-black/50" />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md bg-white rounded-2xl shadow-2xl"
+              className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden"
             >
-              <div className="p-6 border-b border-gray-100 flex items-start gap-3">
+              <div className="p-6 border-b border-gray-100 flex items-start gap-3 shrink-0">
                 <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center shrink-0">
                   <CheckCircle2 size={20} className="text-emerald-600" />
                 </div>
@@ -495,7 +518,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                 <button onClick={closeCredentialModal} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
               </div>
 
-              <div className="p-6 space-y-4">
+              <div className="p-6 space-y-4 overflow-y-auto">
                 {credentialResult.delivery === "email-invite" ? (
                   <>
                     <div className="flex items-start gap-3 p-4 bg-primary/5 border border-primary/20 rounded-xl">
@@ -504,7 +527,21 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                         {credentialResult.emailSent ? (
                           <>An invitation email has been sent to <span className="font-semibold text-gray-900">{credentialResult.email}</span> with a temporary password and sign-in instructions.</>
                         ) : (
-                          <>The account was created but the email could not be sent. Configure <code className="px-1 py-0.5 bg-amber-100 text-amber-900 rounded text-[11px]">RESEND_API_KEY</code> to enable invite emails, or use the temp-password option to share credentials manually.</>
+                          <>
+                            The account was created but the email could not be sent.
+                            {credentialResult.emailError ? (
+                              <>
+                                {" "}
+                                <span className="font-medium text-gray-900">Reason:</span>{" "}
+                                <span className="text-gray-900">{credentialResult.emailError}</span>
+                              </>
+                            ) : (
+                              <>
+                                {" "}
+                                Configure <code className="px-1 py-0.5 bg-amber-100 text-amber-900 rounded text-[11px]">RESEND_API_KEY</code> to enable invite emails, or use the temp-password option to share credentials manually.
+                              </>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -557,7 +594,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                 </motion.button>
               </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
     </DashboardLayout>

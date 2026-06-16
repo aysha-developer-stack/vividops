@@ -1,15 +1,24 @@
 import { Resend } from "resend";
 import { logger } from "./logger";
 
-const apiKey = process.env.RESEND_API_KEY;
-const fromAddress = process.env.RESEND_FROM_EMAIL ?? "Vivid OPS <onboarding@resend.dev>";
+let warnedMissingKey = false;
 
-const resend = apiKey ? new Resend(apiKey) : null;
+function getFromAddress(): string {
+  return process.env.RESEND_FROM_EMAIL ?? "Vivid OPS <onboarding@resend.dev>";
+}
 
-if (!resend) {
-  logger.warn(
-    "RESEND_API_KEY is not set — invite emails will be logged only, not sent.",
-  );
+function getResend(): Resend | null {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    if (!warnedMissingKey) {
+      warnedMissingKey = true;
+      logger.warn(
+        "RESEND_API_KEY is not set — invite emails will be logged only, not sent.",
+      );
+    }
+    return null;
+  }
+  return new Resend(apiKey);
 }
 
 export interface InviteEmailParams {
@@ -21,15 +30,16 @@ export interface InviteEmailParams {
 
 export async function sendInviteEmail(
   params: InviteEmailParams,
-): Promise<{ sent: boolean }> {
+): Promise<{ sent: boolean; error?: string }> {
   const { to, name, tempPassword, signInUrl } = params;
 
+  const resend = getResend();
   if (!resend) {
     logger.info(
       { to, signInUrl },
       "[email:dry-run] Would send invite email (RESEND_API_KEY missing)",
     );
-    return { sent: false };
+    return { sent: false, error: "RESEND_API_KEY is not set" };
   }
 
   const subject = "Welcome to Vivid OPS — your account is ready";
@@ -56,19 +66,19 @@ export async function sendInviteEmail(
 
   try {
     const { error } = await resend.emails.send({
-      from: fromAddress,
+      from: getFromAddress(),
       to,
       subject,
       html,
     });
     if (error) {
       logger.error({ err: error, to }, "Failed to send invite email");
-      return { sent: false };
+      return { sent: false, error: (error as any)?.message ?? "Failed to send email" };
     }
     return { sent: true };
   } catch (err) {
     logger.error({ err, to }, "Failed to send invite email");
-    return { sent: false };
+    return { sent: false, error: err instanceof Error ? err.message : "Failed to send email" };
   }
 }
 

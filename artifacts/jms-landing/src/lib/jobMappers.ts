@@ -1,13 +1,14 @@
 import type { Job as ApiJob, JobStatus, JobPriority } from "@workspace/api-client-react";
 
-export type UiStatus = "Pending" | "In Progress" | "Completed" | "Overdue";
+export type UiStatus = "Pending" | "In Progress" | "Completed" | "Overdue" | "Rework";
 export type UiPriority = "Low" | "Medium" | "High";
 
-const STATUS_API_TO_UI: Record<JobStatus, UiStatus> = {
+const STATUS_API_TO_UI: Record<string, UiStatus> = {
   pending: "Pending",
   in_progress: "In Progress",
   completed: "Completed",
   cancelled: "Pending",
+  rework: "Rework",
 };
 
 const PRIORITY_API_TO_UI: Record<JobPriority, UiPriority> = {
@@ -16,10 +17,11 @@ const PRIORITY_API_TO_UI: Record<JobPriority, UiPriority> = {
   high: "High",
 };
 
-export const STATUS_UI_TO_API: Record<Exclude<UiStatus, "Overdue">, JobStatus> = {
+export const STATUS_UI_TO_API: Record<Exclude<UiStatus, "Overdue">, string> = {
   Pending: "pending",
   "In Progress": "in_progress",
   Completed: "completed",
+  Rework: "rework",
 };
 
 export const PRIORITY_UI_TO_API: Record<UiPriority, JobPriority> = {

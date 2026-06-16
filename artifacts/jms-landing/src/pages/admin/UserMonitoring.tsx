@@ -1,13 +1,26 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, Clock, AlertCircle, TrendingUp, Plus, X, Activity, FileWarning,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/lib/auth";
+import {
+  useListUsers,
+  useListJobs,
+  useGetTimeLogs,
+  type User,
+  getListUsersQueryKey,
+  getListJobsQueryKey,
+  getGetTimeLogsQueryKey,
+} from "@workspace/api-client-react";
+
+import type { Role } from "@/lib/roles";
 
 interface Worker {
-  id: number;
+  id: string;
   name: string;
   avatar: string;
   hoursToday: number;
@@ -19,47 +32,193 @@ interface Worker {
   lastJob: string;
 }
 
-const WORKERS: Worker[] = [
-  { id: 1, name: "Riley Adams", avatar: "RA", hoursToday: 6.5, hoursWeek: 32.4, jobsCompleted: 14, errors: 0, efficiency: 96, status: "active", lastJob: "JOB-2148" },
-  { id: 2, name: "Olivia Carter", avatar: "OC", hoursToday: 5.2, hoursWeek: 28.8, jobsCompleted: 11, errors: 1, efficiency: 88, status: "active", lastJob: "JOB-2150" },
-  { id: 3, name: "Lisa Martinez", avatar: "LM", hoursToday: 7.8, hoursWeek: 38.1, jobsCompleted: 16, errors: 2, efficiency: 82, status: "idle", lastJob: "JOB-2147" },
-  { id: 4, name: "James Bennett", avatar: "JB", hoursToday: 3.1, hoursWeek: 22.6, jobsCompleted: 9, errors: 0, efficiency: 94, status: "active", lastJob: "JOB-2151" },
-  { id: 5, name: "David Wilson", avatar: "DW", hoursToday: 0, hoursWeek: 18.4, jobsCompleted: 6, errors: 3, efficiency: 71, status: "offline", lastJob: "JOB-2144" },
-];
-
-interface ErrorReport { id: number; user: string; job: string; desc: string; severity: string; date: string; }
-const SEED_ERRORS: ErrorReport[] = [
-  { id: 1, user: "Lisa Martinez", job: "JOB-2147", desc: "Incorrect footing dimensions recorded during inspection", severity: "Medium", date: "Today" },
-  { id: 2, user: "David Wilson", job: "JOB-2144", desc: "Missed checklist step #4 (subfloor moisture check)", severity: "Low", date: "Yesterday" },
-  { id: 3, user: "Olivia Carter", job: "JOB-2150", desc: "Late arrival to client site", severity: "Low", date: "2d ago" },
-];
-
-const SEVERITY: Record<string, string> = {
-  High: "bg-red-50 text-red-700 border-red-200",
-  Medium: "bg-amber-50 text-amber-700 border-amber-200",
-  Low: "bg-blue-50 text-blue-700 border-blue-200",
+type ApiErrorReport = {
+  id: string;
+  jobId: string | null;
+  userId: string;
+  createdById: string;
+  title: string;
+  description: string;
+  severity: "low" | "medium" | "high";
+  status: "open" | "resolved";
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+  jobNumber: string | null;
+  jobTitle: string | null;
+  user: { id: string; name: string; role: string } | null;
+  createdBy: { id: string; name: string; role: string } | null;
 };
 
-export default function UserMonitoring() {
-  const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<"performance" | "errors">("performance");
-  const [errorModal, setErrorModal] = useState(false);
-  const [errors, setErrors] = useState<ErrorReport[]>(SEED_ERRORS);
-  const [draft, setDraft] = useState<{ user: string; job: string; severity: string; desc: string }>({ user: WORKERS[0].name, job: "", severity: "Medium", desc: "" });
-  const filtered = WORKERS.filter((w) => w.name.toLowerCase().includes(search.toLowerCase()));
-  const workersP = usePagination(filtered, 6);
-  const errorsP = usePagination(errors, 6);
+const SEVERITY: Record<"high" | "medium" | "low", string> = {
+  high: "bg-red-50 text-red-700 border-red-200",
+  medium: "bg-amber-50 text-amber-700 border-amber-200",
+  low: "bg-blue-50 text-blue-700 border-blue-200",
+};
 
-  const submitError = () => {
-    if (!draft.job.trim() || !draft.desc.trim()) return;
-    setErrors([{ id: Date.now(), user: draft.user, job: draft.job, desc: draft.desc, severity: draft.severity, date: "Just now" }, ...errors]);
-    setDraft({ user: WORKERS[0].name, job: "", severity: "Medium", desc: "" });
-    setErrorModal(false);
-    setTab("errors");
+export default function UserMonitoring(
+  { initialTab = "performance", role = "super-admin" }: { initialTab?: "performance" | "errors", role?: Role } = {}
+) {
+  const qc = useQueryClient();
+  const { user: currentUser } = useAuth();
+  const { data: apiUsers, isLoading: usersLoading } = useListUsers();
+  const { data: apiJobs, isLoading: jobsLoading } = useListJobs();
+  const { data: apiTimeLogs, isLoading: logsLoading } = useGetTimeLogs();
+
+  const [search, setSearch] = useState("");
+  const [tab, setTab] = useState<"performance" | "errors">(initialTab);
+  const [errorModal, setErrorModal] = useState(false);
+  const [errors, setErrors] = useState<ApiErrorReport[]>([]);
+  const [selectedError, setSelectedError] = useState<ApiErrorReport | null>(null);
+  const [updatingError, setUpdatingError] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState<{ jobId: string; userId: string; title: string; severity: "low" | "medium" | "high"; desc: string }>({
+    jobId: "",
+    userId: "",
+    title: "",
+    severity: "medium",
+    desc: "",
+  });
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/error-reports", { credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as unknown;
+        if (!Array.isArray(data)) return;
+        if (!cancelled) setErrors(data as ApiErrorReport[]);
+      } catch {
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tab]);
+
+  const jobBase =
+    role === "super-admin" ? "/super-admin/jobs"
+    : role === "admin" ? "/admin/jobs"
+    : role === "supervisor" ? "/supervisor/jobs"
+    : "/user/jobs";
+
+  const updateErrorStatus = async (id: string, status: "open" | "resolved") => {
+    try {
+      setUpdatingError(true);
+      const res = await fetch(`/api/error-reports/${id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) return;
+      const updated = (await res.json()) as ApiErrorReport;
+      setErrors((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+      setSelectedError((prev) => (prev?.id === updated.id ? updated : prev));
+    } finally {
+      setUpdatingError(false);
+    }
   };
 
+  useEffect(() => {
+    qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+    qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+  }, [qc]);
+
+  const workers: Worker[] = (apiUsers ?? [])
+    .filter((u: User) => u.role === "user")
+    .map((u: User) => {
+      const userJobs = (apiJobs ?? []).filter(j => j.assignee?.id === u.id);
+      const userLogs = (apiTimeLogs ?? []).filter(l => l.userId === u.id);
+      const lastJob = userJobs[0]?.number ?? "None";
+      
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const hoursToday = userLogs
+        .filter(l => new Date(l.createdAt) >= today)
+        .reduce((sum, l) => sum + (l.duration / 3600), 0);
+      
+      const hoursWeek = userLogs
+        .reduce((sum, l) => sum + (l.duration / 3600), 0);
+
+      return {
+        id: u.id,
+        name: u.name,
+        avatar: u.name.split(" ").map(s => s[0]).join("").toUpperCase(),
+        hoursToday: Number(hoursToday.toFixed(1)),
+        hoursWeek: Number(hoursWeek.toFixed(1)),
+        jobsCompleted: userJobs.filter(j => j.status === 'completed').length,
+        errors: userJobs.filter(j => j.isOverdue).length,
+        efficiency: 100,
+        status: u.status === "active" ? "active" : "offline",
+        lastJob
+      };
+    });
+
+  const filtered = workers.filter((w: Worker) => w.name.toLowerCase().includes(search.toLowerCase()));
+  const workersP = usePagination(filtered, 6);
+  const filteredErrors = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return errors;
+    return errors.filter((e) => {
+      const userName = e.user?.name ?? "";
+      const job = `${e.jobNumber ?? ""} ${e.jobTitle ?? ""}`.trim();
+      return (
+        e.title.toLowerCase().includes(q) ||
+        e.description.toLowerCase().includes(q) ||
+        userName.toLowerCase().includes(q) ||
+        job.toLowerCase().includes(q)
+      );
+    });
+  }, [errors, search]);
+  const errorsP = usePagination(filteredErrors, 6);
+
+  const submitError = async () => {
+    if (!draft.jobId || !draft.userId || !draft.title.trim() || !draft.desc.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/error-reports", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobId: draft.jobId,
+          userId: draft.userId,
+          title: draft.title.trim(),
+          description: draft.desc.trim(),
+          severity: draft.severity,
+        }),
+      });
+      if (!res.ok) return;
+      const created = (await res.json()) as ApiErrorReport;
+      setErrors((prev) => [created, ...prev]);
+      setErrorModal(false);
+      setTab("errors");
+      setDraft({ jobId: "", userId: "", title: "", severity: "medium", desc: "" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const isLoading = usersLoading || jobsLoading || logsLoading;
+  const anyData = apiUsers || apiJobs || apiTimeLogs;
+
+  if (isLoading && !anyData) {
+    return (
+      <DashboardLayout title={initialTab === "errors" ? "Error Reports" : "User Monitoring"} role={role}>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
-    <DashboardLayout title="User Monitoring" role="supervisor">
+    <DashboardLayout title={tab === "errors" ? "Error Reports" : "User Monitoring"} role={role}>
       {/* Tab pills */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
@@ -178,7 +337,15 @@ export default function UserMonitoring() {
           >
             <div className="px-5 py-4 border-b border-gray-100">
               <h3 className="font-bold text-gray-900">Error Reports</h3>
-              <p className="text-xs text-gray-500 mt-0.5">{errors.length} reports filed by you this month</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {errors.filter((e) => e.createdBy?.id === currentUser?.id && Date.now() - new Date(e.createdAt).getTime() < 30 * 24 * 60 * 60 * 1000).length} reports filed by you in the last 30 days
+              </p>
+            </div>
+            <div className="px-5 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 max-w-md focus-within:border-primary transition-colors">
+                <Search size={16} className="text-gray-400" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search errors…" className="bg-transparent text-sm flex-1 focus:outline-none" />
+              </div>
             </div>
             {errorsP.pageItems.map((e, i) => (
               <motion.div
@@ -187,6 +354,7 @@ export default function UserMonitoring() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.05 }}
                 whileHover={{ backgroundColor: "rgb(249,250,251)" }}
+                onClick={() => setSelectedError(e)}
                 className="px-5 py-4 border-b border-gray-50 last:border-0 cursor-pointer"
               >
                 <div className="flex items-start gap-3">
@@ -195,18 +363,105 @@ export default function UserMonitoring() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <span className="font-semibold text-sm text-gray-900">{e.user}</span>
+                      <span className="font-semibold text-sm text-gray-900">{e.user?.name ?? "—"}</span>
                       <span className="text-xs text-gray-400">·</span>
-                      <span className="text-xs text-primary font-medium">{e.job}</span>
+                      <span className="text-xs text-primary font-medium">{e.jobNumber ?? "—"}</span>
                       <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${SEVERITY[e.severity]}`}>{e.severity}</span>
+                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${e.status === "resolved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-700 border-gray-200"}`}>{e.status}</span>
                     </div>
-                    <p className="text-sm text-gray-600">{e.desc}</p>
-                    <div className="text-[10px] text-gray-400 mt-1">{e.date}</div>
+                    <p className="text-sm font-semibold text-gray-900">{e.title}</p>
+                    <p className="text-sm text-gray-600 mt-0.5">{e.description}</p>
+                    <div className="text-[10px] text-gray-400 mt-1">{new Date(e.createdAt).toLocaleString()}</div>
                   </div>
                 </div>
               </motion.div>
             ))}
             <Pagination page={errorsP.page} totalPages={errorsP.totalPages} total={errorsP.total} pageSize={errorsP.pageSize} onChange={errorsP.setPage} label="reports" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {selectedError && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSelectedError(null)}
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              transition={{ type: "spring", stiffness: 300, damping: 28 }}
+              onClick={(ev) => ev.stopPropagation()}
+              className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden border border-gray-100 shadow-2xl"
+            >
+              <div className="px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-lg font-bold text-gray-900 truncate">{selectedError.title}</h3>
+                    <span className={`px-2 py-1 rounded-lg border text-[10px] font-semibold uppercase ${selectedError.status === "resolved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-700 border-gray-200"}`}>{selectedError.status}</span>
+                    <span className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold uppercase ${SEVERITY[selectedError.severity]}`}>{selectedError.severity}</span>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {selectedError.jobNumber ?? "—"} · {selectedError.jobTitle ?? "—"}
+                  </div>
+                </div>
+                <button onClick={() => setSelectedError(null)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="px-6 py-5 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-gray-100 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Worker</div>
+                    <div className="text-sm font-semibold text-gray-900 mt-1">{selectedError.user?.name ?? "—"}</div>
+                  </div>
+                  <div className="rounded-xl border border-gray-100 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Created By</div>
+                    <div className="text-sm font-semibold text-gray-900 mt-1">{selectedError.createdBy?.name ?? "—"}</div>
+                  </div>
+                  <div className="rounded-xl border border-gray-100 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Created At</div>
+                    <div className="text-sm font-semibold text-gray-900 mt-1">{new Date(selectedError.createdAt).toLocaleString()}</div>
+                  </div>
+                  <div className="rounded-xl border border-gray-100 p-4">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Report ID</div>
+                    <div className="text-sm font-mono text-gray-700 mt-1 truncate">{selectedError.id}</div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-100 p-4">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Description</div>
+                  <div className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">{selectedError.description}</div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { if (selectedError.jobId) window.location.assign(`${jobBase}/${selectedError.jobId}`); }}
+                      disabled={!selectedError.jobId}
+                      className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Open Job
+                    </button>
+                  </div>
+
+                  {role !== "user" && (
+                    <button
+                      onClick={() => updateErrorStatus(selectedError.id, selectedError.status === "resolved" ? "open" : "resolved")}
+                      disabled={updatingError}
+                      className={`px-4 py-2 rounded-xl text-sm font-semibold text-white ${selectedError.status === "resolved" ? "bg-gray-700 hover:bg-gray-800" : "bg-emerald-600 hover:bg-emerald-700"} disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      {selectedError.status === "resolved" ? "Reopen" : "Mark Resolved"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -235,19 +490,42 @@ export default function UserMonitoring() {
               </div>
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Worker</label>
-                  <select value={draft.user} onChange={(e) => setDraft({ ...draft, user: e.target.value })} className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary">
-                    {WORKERS.map((w) => <option key={w.id}>{w.name}</option>)}
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Job</label>
+                  <select
+                    value={draft.jobId}
+                    onChange={(e) => {
+                      const jobId = e.target.value;
+                      const job = (apiJobs ?? []).find((j) => j.id === jobId);
+                      const userId = job?.assignee?.id ?? "";
+                      setDraft({ ...draft, jobId, userId });
+                    }}
+                    className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                  >
+                    <option value="">Select a job</option>
+                    {(apiJobs ?? []).map((j) => (
+                      <option key={j.id} value={j.id}>{j.number} · {j.title}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Job ID</label>
-                  <input value={draft.job} onChange={(e) => setDraft({ ...draft, job: e.target.value })} className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary" placeholder="JOB-2148" />
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Worker</label>
+                  <select
+                    value={draft.userId}
+                    onChange={(e) => setDraft({ ...draft, userId: e.target.value })}
+                    className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                  >
+                    <option value="">Select a worker</option>
+                    {workers.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Title</label>
+                  <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary" placeholder="Missing dimensions" />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Severity</label>
                   <div className="grid grid-cols-3 gap-2">
-                    {["Low", "Medium", "High"].map((s) => (
+                    {(["low", "medium", "high"] as const).map((s) => (
                       <button key={s} onClick={() => setDraft({ ...draft, severity: s })} className={`py-2 rounded-lg text-xs font-bold border-2 ${SEVERITY[s]} ${draft.severity === s ? "ring-2 ring-primary ring-offset-1" : "opacity-60"}`}>{s}</button>
                     ))}
                   </div>
@@ -256,7 +534,13 @@ export default function UserMonitoring() {
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Description</label>
                   <textarea value={draft.desc} onChange={(e) => setDraft({ ...draft, desc: e.target.value })} rows={3} className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary resize-none" placeholder="Describe the error…" />
                 </div>
-                <button onClick={submitError} disabled={!draft.job.trim() || !draft.desc.trim()} className="w-full mt-2 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">Submit Report</button>
+                <button
+                  onClick={submitError}
+                  disabled={!draft.jobId || !draft.userId || !draft.title.trim() || !draft.desc.trim() || saving}
+                  className="w-full mt-2 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Submit Report
+                </button>
               </div>
             </motion.div>
           </motion.div>

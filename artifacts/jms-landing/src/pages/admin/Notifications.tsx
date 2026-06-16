@@ -2,11 +2,18 @@ import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { ArrowLeft, Check, Filter as FilterIcon } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
-import { NOTIFICATIONS_BY_ROLE, NOTIF_STYLE, type Notif, type NotifType } from "@/lib/notifications";
+import { NOTIF_STYLE, type NotifType } from "@/lib/notifications";
 import type { Role } from "@/lib/roles";
 import { ROLES } from "@/lib/roles";
+import {
+  getGetNotificationsQueryKey,
+  useGetNotifications,
+  useMarkNotificationRead,
+  type Notification,
+} from "@workspace/api-client-react";
 
 const FILTERS: Array<{ id: "all" | "unread" | NotifType; label: string }> = [
   { id: "all", label: "All" },
@@ -19,22 +26,78 @@ const FILTERS: Array<{ id: "all" | "unread" | NotifType; label: string }> = [
 ];
 
 export default function Notifications({ role = "super-admin" }: { role?: Role }) {
-  const [items, setItems] = useState<Notif[]>(NOTIFICATIONS_BY_ROLE[role]);
+  const qc = useQueryClient();
+  const { data: apiNotifications, isLoading } = useGetNotifications();
+  const markReadMutation = useMarkNotificationRead();
   const [filter, setFilter] = useState<"all" | "unread" | NotifType>("all");
   const config = ROLES[role];
   const dashboardPath = config.base;
+
+  const items = useMemo(() => {
+    return (apiNotifications ?? []).map(n => ({
+      id: n.id,
+      type: n.type as NotifType,
+      title: n.title,
+      desc: n.description,
+      time: new Date(n.createdAt).toLocaleString(),
+      unread: !n.isRead
+    }));
+  }, [apiNotifications]);
 
   const filtered = useMemo(() => {
     if (filter === "all") return items;
     if (filter === "unread") return items.filter((n) => n.unread);
     return items.filter((n) => n.type === filter);
   }, [items, filter]);
+
   const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 8);
 
   const unreadCount = items.filter((n) => n.unread).length;
-  const markAll = () => setItems((arr) => arr.map((n) => ({ ...n, unread: false })));
-  const toggleOne = (id: number) =>
-    setItems((arr) => arr.map((n) => (n.id === id ? { ...n, unread: !n.unread } : n)));
+
+  const setReadInCache = (ids: string[]) => {
+    if (ids.length === 0) return;
+    const key = getGetNotificationsQueryKey();
+    qc.setQueryData(key, (prev: Notification[] | undefined) => {
+      if (!prev) return prev;
+      const set = new Set(ids);
+      return prev.map((n) => (set.has(n.id) ? { ...n, isRead: true } : n));
+    });
+  };
+
+  const markAll = async () => {
+    const unreadIds = (apiNotifications ?? []).filter((n) => !n.isRead).map((n) => n.id);
+    if (unreadIds.length === 0) return;
+
+    setReadInCache(unreadIds);
+    try {
+      await Promise.all(unreadIds.map((id) => markReadMutation.mutateAsync({ id })));
+    } catch (err) {
+      console.error("Failed to mark all notifications as read:", err);
+    } finally {
+      await qc.invalidateQueries({ queryKey: getGetNotificationsQueryKey() });
+    }
+  };
+
+  const toggleOne = async (id: string) => {
+    setReadInCache([id]);
+    try {
+      await markReadMutation.mutateAsync({ id });
+    } catch (err) {
+      console.error("Failed to mark notification as read:", err);
+    } finally {
+      await qc.invalidateQueries({ queryKey: getGetNotificationsQueryKey() });
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <DashboardLayout title="Notifications" role={role}>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout title="Notifications" role={role}>
@@ -102,9 +165,9 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.03 }}
-                  whileHover={{ x: 2 }}
-                  onClick={() => toggleOne(n.id)}
-                  className={`px-5 py-4 flex gap-4 cursor-pointer hover:bg-gray-50 relative ${n.unread ? "bg-primary/[0.02]" : ""}`}
+                  whileHover={n.unread ? { x: 2 } : {}}
+                  onClick={() => n.unread && toggleOne(n.id)}
+                  className={`px-5 py-4 flex gap-4 relative ${n.unread ? "cursor-pointer hover:bg-gray-50 bg-primary/[0.02]" : ""}`}
                 >
                   {n.unread && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
                   <div className={`w-11 h-11 rounded-xl ${style.color} flex items-center justify-center shrink-0`}>
@@ -121,12 +184,14 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
                     <div className="text-xs text-gray-600 mt-1">{n.desc}</div>
                     <div className="text-[11px] text-gray-400 mt-1.5 font-medium">{n.time}</div>
                   </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); toggleOne(n.id); }}
-                    className="self-start text-[11px] font-semibold text-primary hover:underline shrink-0"
-                  >
-                    {n.unread ? "Mark read" : "Mark unread"}
-                  </button>
+                  {n.unread && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleOne(n.id); }}
+                      className="self-start text-[11px] font-semibold text-primary hover:underline shrink-0"
+                    >
+                      Mark read
+                    </button>
+                  )}
                 </motion.div>
               );
             })}

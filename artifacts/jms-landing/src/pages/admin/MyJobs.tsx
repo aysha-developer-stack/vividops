@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, Calendar, ChevronRight, Briefcase,
-  CheckCircle2, Clock, AlertCircle, MapPin,
+  CheckCircle2, Clock, AlertCircle, MapPin, AlertTriangle,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -52,9 +52,10 @@ const STATUS_CFG: Record<UiStatus, { color: string; icon: any; bar: string }> = 
   "In Progress": { color: "bg-primary/10 text-primary border-primary/30", icon: Briefcase, bar: "bg-primary" },
   "Completed": { color: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: CheckCircle2, bar: "bg-emerald-400" },
   "Overdue": { color: "bg-red-50 text-red-700 border-red-200", icon: AlertCircle, bar: "bg-red-500" },
+  "Rework": { color: "bg-purple-50 text-purple-700 border-purple-200", icon: AlertTriangle, bar: "bg-purple-500" },
 };
 
-const FILTERS: ("All" | UiStatus)[] = ["All", "Pending", "In Progress", "Completed", "Overdue"];
+const FILTERS: ("All" | UiStatus)[] = ["All", "Pending", "In Progress", "Completed", "Overdue", "Rework"];
 
 export default function MyJobs() {
   const [filter, setFilter] = useState<"All" | UiStatus>("All");
@@ -77,8 +78,8 @@ export default function MyJobs() {
   return (
     <DashboardLayout title="My Jobs" role="user">
       {/* Stats summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        {(["Pending", "In Progress", "Completed", "Overdue"] as UiStatus[]).map((s, i) => {
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+        {(["Pending", "In Progress", "Completed", "Overdue", "Rework"] as UiStatus[]).map((s, i) => {
           const count = jobs.filter((j) => j.status === s).length;
           const cfg = STATUS_CFG[s];
           const Icon = cfg.icon;
@@ -156,7 +157,7 @@ export default function MyJobs() {
                     <div className={`absolute left-0 top-0 bottom-0 w-1 ${cfg.bar}`} />
                     <div className="flex items-start gap-4">
                       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 to-sky-100 text-primary flex items-center justify-center font-bold text-sm shrink-0">
-                        {j.number.split("-")[1]?.slice(-2) ?? "—"}
+                        {j.number?.includes("-") ? j.number.split("-")[1]?.slice(-2) : (j.number?.slice(-2) ?? "—")}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2 mb-1 flex-wrap">

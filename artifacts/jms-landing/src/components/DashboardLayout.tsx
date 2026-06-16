@@ -8,6 +8,15 @@ import logoImg from "@assets/vv_1778503190047.png";
 import { getName, getEmail, clearSession } from "@/lib/auth";
 import { NOTIF_STYLE, NOTIFICATIONS_BY_ROLE, type Notif } from "@/lib/notifications";
 import { ROLES, Role } from "@/lib/roles";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  getGetDashboardStatsQueryOptions,
+  getListUsersQueryOptions,
+  getGetTimeLogsQueryOptions,
+  getGetPostsQueryOptions,
+  getGetNotificationsQueryOptions,
+  getListJobsQueryOptions,
+} from "@workspace/api-client-react";
 
 export default function DashboardLayout({
   title,
@@ -27,9 +36,10 @@ export default function DashboardLayout({
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [name, setName] = useState("Alex Morgan");
-  const [email, setEmail] = useState("admin@vividops.com.au");
+  const [email, setEmail] = useState("admin@gmail.com");
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const qc = useQueryClient();
 
   useEffect(() => {
     setName(getName());
@@ -55,6 +65,72 @@ export default function DashboardLayout({
   const unreadCount = notifications.filter((n) => n.unread).length;
   const markAllRead = () => setNotifications((ns) => ns.map((n) => ({ ...n, unread: false })));
   const markOneRead = (id: number) => setNotifications((ns) => ns.map((n) => n.id === id ? { ...n, unread: false } : n));
+
+  const prefetchDataForPath = (path: string) => {
+    try {
+      if (path.includes("/users")) {
+        qc.prefetchQuery(getListUsersQueryOptions());
+      }
+      if (path.includes("/jobs")) {
+        qc.prefetchQuery(getListJobsQueryOptions());
+      }
+      if (path.includes("/files") || path.includes("/assignments") || path.includes("/rework-requests")) {
+        qc.prefetchQuery(getListJobsQueryOptions());
+      }
+      if (path.endsWith("/reports") || path.includes("/reports")) {
+        qc.prefetchQuery(getGetDashboardStatsQueryOptions());
+        qc.prefetchQuery(getListUsersQueryOptions());
+        qc.prefetchQuery(getGetTimeLogsQueryOptions());
+      }
+      if (path.endsWith("/error-reports") || path.includes("/error-reports")) {
+        qc.prefetchQuery(getListUsersQueryOptions());
+        qc.prefetchQuery(getListJobsQueryOptions());
+        qc.prefetchQuery(getGetTimeLogsQueryOptions());
+      }
+      if (path.endsWith("/training") || path.includes("/training")) {
+        qc.prefetchQuery(getGetPostsQueryOptions());
+      }
+      if (path.endsWith("/notifications") || path.includes("/notifications")) {
+        qc.prefetchQuery(getGetNotificationsQueryOptions());
+      }
+      if (
+        path === "/super-admin" ||
+        path === "/admin" ||
+        path === "/supervisor" ||
+        path === "/user"
+      ) {
+        qc.prefetchQuery(getGetDashboardStatsQueryOptions());
+      }
+    } catch {
+    }
+  };
+
+  const prefetchCodeForPath = (path: string) => {
+    if (path === "/super-admin") void import("@/pages/admin/SuperAdminDashboard");
+    if (path === "/admin") void import("@/pages/admin/AdminDashboard");
+    if (path === "/supervisor") void import("@/pages/admin/SupervisorDashboard");
+    if (path === "/user") void import("@/pages/admin/UserDashboard");
+    if (path.includes("/users")) {
+      if (path.startsWith("/supervisor")) void import("@/pages/admin/UserMonitoring");
+      else void import("@/pages/admin/UserManagement");
+    }
+    if (path.includes("/jobs")) void import("@/pages/admin/JobManagement");
+    if (path.includes("/reports")) void import("@/pages/admin/Reports");
+    if (path.includes("/communication")) void import("@/pages/admin/Communication");
+    if (path.includes("/training")) void import("@/pages/admin/Training");
+    if (path.includes("/settings")) void import("@/pages/admin/Settings");
+    if (path.startsWith("/user/files")) void import("@/pages/admin/FilesChecklists");
+    if (path.startsWith("/super-admin/files")) void import("../pages/admin/SuperAdminFiles");
+    if (path.startsWith("/admin/files")) void import("../pages/admin/SuperAdminFiles");
+    if (path.includes("/supervisors")) void import("@/pages/admin/SupervisorMonitoring");
+    if (path.includes("/monitoring")) void import("@/pages/admin/SystemMonitoring");
+    if (path.includes("/roles")) void import("../pages/admin/SuperAdminRolesPermissions");
+  };
+
+  const prefetchForPath = (path: string) => {
+    prefetchCodeForPath(path);
+    prefetchDataForPath(path);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -116,6 +192,8 @@ export default function DashboardLayout({
                     isActive ? "bg-primary text-white shadow-lg shadow-primary/30" : "text-gray-400 hover:bg-white/5 hover:text-white"
                   }`}
                   onClick={() => setMobileOpen(false)}
+                  onMouseEnter={() => prefetchForPath(item.path)}
+                  onFocus={() => prefetchForPath(item.path)}
                 >
                   {isActive && (
                     <motion.div

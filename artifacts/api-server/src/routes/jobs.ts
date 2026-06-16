@@ -1,15 +1,111 @@
 import { Router, type IRouter } from "express";
-import { eq, or, desc, inArray } from "drizzle-orm";
+import { and, eq, or, desc, inArray, sql as dsql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { db, jobs, users, type JobRow, type UserRow } from "@workspace/db";
+import { db, jobs, users, jobMembers, type JobRow, type UserRow, sql } from "@workspace/db";
+import { randomUUID } from "node:crypto";
 import { CreateJobBody, UpdateJobBody } from "@workspace/api-zod";
 import { publicJob } from "../lib/serialize";
 import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import { logger } from "../lib/logger";
+import { getZohoCliqAccessToken } from "../lib/zoho";
 
 const router: IRouter = Router();
 
 const assigneeAlias = alias(users, "assignee");
 const supervisorAlias = alias(users, "supervisor");
+
+let jobMembersSchemaEnsured = false;
+const ensureJobMembersSchema = async () => {
+  if (jobMembersSchemaEnsured) return;
+  jobMembersSchemaEnsured = true;
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS job_members (
+      id uuid PRIMARY KEY,
+      job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT job_members_job_user_uniq UNIQUE (job_id, user_id)
+    );
+  `);
+  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_members_job_idx ON job_members (job_id);`);
+  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_members_user_idx ON job_members (user_id);`);
+};
+
+let jobMessagesSchemaEnsured = false;
+const ensureJobMessagesSchema = async () => {
+  if (jobMessagesSchemaEnsured) return;
+  jobMessagesSchemaEnsured = true;
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS job_messages (
+      id uuid PRIMARY KEY,
+      job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      text text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_messages_job_idx ON job_messages (job_id);`);
+  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_messages_job_created_idx ON job_messages (job_id, created_at);`);
+};
+
+let jobMessageSyncSchemaEnsured = false;
+const ensureJobMessageSyncSchema = async () => {
+  if (jobMessageSyncSchemaEnsured) return;
+  jobMessageSyncSchemaEnsured = true;
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS job_message_sync (
+      id uuid PRIMARY KEY,
+      job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      source text NOT NULL,
+      external_message_id text,
+      sender_email text,
+      payload text,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(
+    dsql`CREATE UNIQUE INDEX IF NOT EXISTS job_message_sync_source_external_idx ON job_message_sync (source, external_message_id) WHERE external_message_id IS NOT NULL;`,
+  );
+  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_message_sync_job_idx ON job_message_sync (job_id, created_at);`);
+};
+
+let notificationsSchemaEnsured = false;
+const ensureNotificationsSchema = async () => {
+  if (notificationsSchemaEnsured) return;
+  notificationsSchemaEnsured = true;
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id uuid PRIMARY KEY,
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title text NOT NULL,
+      description text NOT NULL,
+      type text NOT NULL,
+      is_read boolean NOT NULL DEFAULT false,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(dsql`CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id);`);
+};
+
+let jobCliqSchemaEnsured = false;
+const ensureJobCliqSchema = async () => {
+  if (jobCliqSchemaEnsured) return;
+  jobCliqSchemaEnsured = true;
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS job_cliq_channels (
+      job_id uuid PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+      channel_name text NOT NULL,
+      channel_id text,
+      channel_url text,
+      status text NOT NULL DEFAULT 'pending',
+      last_error text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(dsql`ALTER TABLE job_cliq_channels ADD COLUMN IF NOT EXISTS channel_id text;`);
+  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_cliq_channels_status_idx ON job_cliq_channels (status);`);
+};
 
 type JobWithRefs = {
   job: JobRow;
@@ -56,12 +152,19 @@ async function loadJob(id: string): Promise<JobWithRefs | null> {
  * Returns true if actor may view a job. Admins/super-admins see all.
  * Supervisors see jobs they supervise or created. Users see jobs assigned to them.
  */
-function canViewJob(actor: UserRow, job: JobRow): boolean {
+async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
   if (actor.role === "supervisor") {
     return job.supervisorId === actor.id || job.createdById === actor.id;
   }
-  return job.assigneeId === actor.id;
+  if (job.assigneeId === actor.id) return true;
+  await ensureJobMembersSchema();
+  const [row] = await db
+    .select({ id: jobMembers.id })
+    .from(jobMembers)
+    .where(and(eq(jobMembers.jobId, job.id), eq(jobMembers.userId, actor.id)))
+    .limit(1);
+  return !!row;
 }
 
 /**
@@ -76,6 +179,589 @@ function canManageJob(actor: UserRow, job: JobRow): boolean {
     return job.supervisorId === actor.id || job.createdById === actor.id;
   }
   return false;
+}
+
+function slugifyChannel(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+}
+
+function computeCliqChannelName(job: JobRow): string {
+  const num = `job-${job.serial}`;
+  const title = slugifyChannel(job.title || "job");
+  return `${num}-${title}`.slice(0, 80);
+}
+
+function cliqWebRoot(): string {
+  const explicit = process.env.ZOHO_CLIQ_WEB_ROOT;
+  if (explicit && explicit.trim()) return explicit.trim().replace(/\/+$/, "");
+  const api = process.env.ZOHO_CLIQ_API_ROOT || "https://cliq.zoho.com/api/v2";
+  const normalized = api.trim().replace(/\/+$/, "");
+  if (normalized.endsWith("/api/v2")) return normalized.slice(0, -"/api/v2".length);
+  return "https://cliq.zoho.com";
+}
+
+function computeCliqChannelUrl(channelName: string): string | null {
+  if (!channelName) return null;
+  return `${cliqWebRoot()}/channels/${channelName}`;
+}
+
+async function getOrCreateJobCliqChannel(job: JobRow): Promise<{
+  channelName: string;
+  channelId: string | null;
+  channelUrl: string | null;
+  status: string;
+  lastError: string | null;
+}> {
+  await ensureJobCliqSchema();
+  const rows = await db.execute(sql`
+    SELECT channel_name, channel_id, channel_url, status, last_error
+    FROM job_cliq_channels
+    WHERE job_id = ${job.id}
+    LIMIT 1
+  `);
+  const existing = (rows as any).rows?.[0] as
+    | { channel_name: string; channel_id: string | null; channel_url: string | null; status: string; last_error: string | null }
+    | undefined;
+  if (existing?.channel_name) {
+    const normalizedUrl = computeCliqChannelUrl(existing.channel_name);
+    if ((existing.channel_url ?? null) !== normalizedUrl) {
+      await db.execute(sql`
+        UPDATE job_cliq_channels
+        SET channel_url = ${normalizedUrl},
+            updated_at = now()
+        WHERE job_id = ${job.id}
+      `);
+    }
+    return {
+      channelName: existing.channel_name,
+      channelId: existing.channel_id ?? null,
+      channelUrl: normalizedUrl,
+      status: existing.status,
+      lastError: existing.last_error ?? null,
+    };
+  }
+
+  const channelName = computeCliqChannelName(job);
+  const channelUrl = computeCliqChannelUrl(channelName);
+  await db.execute(sql`
+    INSERT INTO job_cliq_channels (job_id, channel_name, channel_url, status)
+    VALUES (${job.id}, ${channelName}, ${channelUrl}, 'pending')
+    ON CONFLICT (job_id) DO UPDATE
+      SET channel_name = EXCLUDED.channel_name,
+          channel_url = EXCLUDED.channel_url,
+          updated_at = now()
+  `);
+
+  return { channelName, channelId: null, channelUrl, status: "pending", lastError: null };
+}
+
+function cliqApiRoot(): string {
+  return (process.env.ZOHO_CLIQ_API_ROOT || "https://cliq.zoho.com/api/v2").replace(/\/+$/, "");
+}
+
+async function postCliqMessageToChannelByName(channelName: string, text: string): Promise<void> {
+  const token = await getZohoCliqAccessToken();
+  const url = `${cliqApiRoot()}/channelsbyname/${encodeURIComponent(channelName)}/message`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Zoho-oauthtoken ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Cliq channel message failed (${res.status}): ${body}`);
+  }
+}
+
+async function resolveCliqChannelIdByName(token: string, channelName: string): Promise<string | null> {
+  const url = `${cliqApiRoot()}/channels?name=${encodeURIComponent(channelName)}&limit=1`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { Authorization: `Zoho-oauthtoken ${token}` },
+  });
+  if (!res.ok) return null;
+  const json = (await res.json().catch(() => null)) as any;
+  const list =
+    (Array.isArray(json?.channels) ? json.channels : null) ??
+    (Array.isArray(json?.data) ? json.data : null) ??
+    (Array.isArray(json) ? json : null) ??
+    [];
+  for (const item of list) {
+    const id =
+      (typeof item?.channel_id === "string" && item.channel_id.trim()) ? item.channel_id.trim()
+      : (typeof item?.channelId === "string" && item.channelId.trim()) ? item.channelId.trim()
+      : null;
+    if (id) return id;
+  }
+  return null;
+}
+
+async function postCliqMessageViaWebhook(text: string): Promise<void> {
+  const webhookUrl = process.env.ZOHO_CLIQ_WEBHOOK_URL;
+  if (!webhookUrl) throw new Error("ZOHO_CLIQ_WEBHOOK_URL is not set");
+  const res = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Cliq webhook failed (${res.status}): ${body}`);
+  }
+}
+
+async function listJobParticipantIds(job: JobRow): Promise<string[]> {
+  const ids = new Set<string>();
+  if (job.assigneeId) ids.add(job.assigneeId);
+  if (job.supervisorId) ids.add(job.supervisorId);
+  if (job.createdById) ids.add(job.createdById);
+
+  await ensureJobMembersSchema();
+  const memberRows = await db
+    .select({ userId: jobMembers.userId })
+    .from(jobMembers)
+    .where(eq(jobMembers.jobId, job.id));
+  for (const m of memberRows) ids.add(m.userId);
+
+  const admins = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(inArray(users.role, ["super-admin", "admin"] as any));
+  for (const a of admins) ids.add(a.id);
+
+  return Array.from(ids);
+}
+
+async function findJobByCliqChannelName(channelName: string): Promise<JobWithRefs | null> {
+  await ensureJobCliqSchema();
+  const rows = await db.execute(sql`
+    SELECT job_id
+    FROM job_cliq_channels
+    WHERE lower(channel_name) = lower(${channelName})
+    LIMIT 1
+  `);
+  const row = ((rows as any).rows ?? [])[0] as { job_id?: string } | undefined;
+  if (!row?.job_id) return null;
+  return loadJob(row.job_id);
+}
+
+async function findUserByEmail(email: string): Promise<UserRow | null> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+  const [row] = await db
+    .select()
+    .from(users)
+    .where(sql`lower(${users.email}) = ${normalized}`)
+    .limit(1);
+  return row ?? null;
+}
+
+function normalizeMirroredCliqText(job: JobRow, text: string): string {
+  const trimmed = text.trim();
+  const prefix = `JOB-${job.serial} · ${job.title}`;
+  if (!trimmed.startsWith(`${prefix}\n`)) return trimmed;
+  const remainder = trimmed.slice(prefix.length + 1).trim();
+  const generic = remainder.match(/^[^:\n]{1,120}:\s*([\s\S]+)$/);
+  return generic?.[1]?.trim() || remainder;
+}
+
+async function findRecentJobMessage(jobId: string, userId: string, text: string): Promise<{
+  id: string;
+  created_at: string;
+} | null> {
+  const rows = await db.execute(sql`
+    SELECT id, created_at
+    FROM job_messages
+    WHERE job_id = ${jobId}
+      AND user_id = ${userId}
+      AND text = ${text}
+      AND created_at > now() - interval '2 minutes'
+    ORDER BY created_at DESC
+    LIMIT 1
+  `);
+  return (((rows as any).rows ?? [])[0] as { id: string; created_at: string } | undefined) ?? null;
+}
+
+type CreateStoredJobMessageOptions = {
+  job: JobRow;
+  actor: Pick<UserRow, "id" | "name">;
+  text: string;
+  pushToCliq?: boolean;
+  externalSource?: string | null;
+  externalMessageId?: string | null;
+  senderEmail?: string | null;
+  rawPayload?: unknown;
+};
+
+async function createStoredJobMessage({
+  job,
+  actor,
+  text,
+  pushToCliq = false,
+  externalSource = null,
+  externalMessageId = null,
+  senderEmail = null,
+  rawPayload = null,
+}: CreateStoredJobMessageOptions): Promise<{
+  id: string;
+  text: string;
+  createdAt: string;
+  user: { id: string; name: string };
+  duplicate: boolean;
+}> {
+  const cleanText = text.trim();
+  if (!cleanText) throw new Error("text is required");
+
+  await ensureJobMessagesSchema();
+  await ensureJobMessageSyncSchema();
+
+  if (externalSource && externalMessageId) {
+    const existing = await db.execute(sql`
+      SELECT id
+      FROM job_message_sync
+      WHERE source = ${externalSource}
+        AND external_message_id = ${externalMessageId}
+      LIMIT 1
+    `);
+    const existingRow = ((existing as any).rows ?? [])[0] as { id?: string } | undefined;
+    if (existingRow?.id) {
+      const recent = await findRecentJobMessage(job.id, actor.id, cleanText);
+      return {
+        id: recent?.id ?? existingRow.id,
+        text: cleanText,
+        createdAt: recent?.created_at ?? new Date().toISOString(),
+        user: { id: actor.id, name: actor.name },
+        duplicate: true,
+      };
+    }
+  }
+
+  const msgId = randomUUID();
+  const inserted = await db.execute(sql`
+    INSERT INTO job_messages (id, job_id, user_id, text)
+    VALUES (${msgId}, ${job.id}, ${actor.id}, ${cleanText})
+    RETURNING id, created_at
+  `);
+  const insertedRow = ((inserted as any).rows ?? [])[0] as
+    | { id: string; created_at: string }
+    | undefined;
+  const createdAt = insertedRow?.created_at ?? new Date().toISOString();
+
+  if (externalSource) {
+    await db.execute(sql`
+      INSERT INTO job_message_sync (id, job_id, source, external_message_id, sender_email, payload)
+      VALUES (
+        ${randomUUID()},
+        ${job.id},
+        ${externalSource},
+        ${externalMessageId},
+        ${senderEmail},
+        ${rawPayload == null ? null : JSON.stringify(rawPayload)}
+      )
+      ON CONFLICT DO NOTHING
+    `);
+  }
+
+  try {
+    await ensureNotificationsSchema();
+    const recipients = await listJobParticipantIds(job);
+    const title = `New message on JOB-${job.serial}`;
+    const description = `${job.title}\n${actor.name}: ${cleanText}`;
+    const values = recipients
+      .filter((uid) => uid !== actor.id)
+      .map((uid) => ({
+        id: randomUUID(),
+        userId: uid,
+        title,
+        description,
+        type: "job_message",
+      }));
+    for (const v of values) {
+      await db.execute(sql`
+        INSERT INTO notifications (id, user_id, title, description, type, is_read)
+        VALUES (${v.id}, ${v.userId}, ${v.title}, ${v.description}, ${v.type}, false)
+      `);
+    }
+  } catch (err) {
+    logger.warn({ err, jobId: job.id }, "Failed to create in-app message notifications");
+  }
+
+  if (pushToCliq) {
+    const prefix = `JOB-${job.serial} · ${job.title}`;
+    const payload = `${prefix}\n${actor.name}: ${cleanText}`;
+    try {
+      const ch = await getOrCreateJobCliqChannel(job);
+      await postCliqMessageToChannelByName(ch.channelName, payload);
+    } catch (errToken) {
+      try {
+        await postCliqMessageViaWebhook(payload);
+      } catch (errWebhook) {
+        logger.warn(
+          { err: errWebhook, jobId: job.id },
+          "Failed to send message to Zoho Cliq",
+        );
+      }
+      logger.debug({ err: errToken, jobId: job.id }, "Cliq channel API send failed; fell back to webhook");
+    }
+  }
+
+  return {
+    id: msgId,
+    text: cleanText,
+    createdAt,
+    user: { id: actor.id, name: actor.name },
+    duplicate: false,
+  };
+}
+
+function getCliqSyncSecret(): string {
+  return (process.env.ZOHO_CLIQ_SYNC_SECRET || "").trim();
+}
+
+type IncomingCliqMessage = {
+  channelName: string;
+  text: string;
+  senderEmail: string;
+  senderName: string;
+  externalMessageId: string | null;
+  rawPayload: unknown;
+};
+
+function parseIncomingCliqMessage(payload: unknown): IncomingCliqMessage | null {
+  if (!payload || typeof payload !== "object") return null;
+  const obj = payload as Record<string, any>;
+
+  const pickString = (...values: unknown[]): string => {
+    for (const v of values) {
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    return "";
+  };
+
+  const channelName = pickString(
+    obj.channelName,
+    obj.channel_name,
+    obj.channel_unique_name,
+    obj.channel?.unique_name,
+    obj.channel?.channel_unique_name,
+    obj.data?.channel_unique_name,
+    obj.data?.channelName,
+  );
+  const text = pickString(
+    obj.text,
+    obj.message,
+    obj.message_text,
+    obj.data?.message,
+    obj.data?.text,
+    obj.message?.text,
+  );
+  const senderEmail = pickString(
+    obj.senderEmail,
+    obj.sender_email,
+    obj.email,
+    obj.user?.email,
+    obj.user?.email_id,
+    obj.sender?.email,
+    obj.sender?.email_id,
+  ).toLowerCase();
+  const senderName = pickString(
+    obj.senderName,
+    obj.sender_name,
+    obj.user?.name,
+    obj.sender?.name,
+    obj.name,
+  );
+  const externalMessageId = pickString(
+    obj.externalMessageId,
+    obj.external_message_id,
+    obj.messageId,
+    obj.message_id,
+    obj.data?.message_id,
+    obj.message?.id,
+    obj.message?.message_id,
+  );
+
+  if (!channelName || !text || !senderEmail || !senderName) return null;
+  return {
+    channelName,
+    text,
+    senderEmail,
+    senderName,
+    externalMessageId: externalMessageId || null,
+    rawPayload: payload,
+  };
+}
+
+async function markJobCliqStatus(jobId: string, status: string, lastError: string | null): Promise<void> {
+  await ensureJobCliqSchema();
+  await db.execute(sql`
+    UPDATE job_cliq_channels
+    SET status = ${status},
+        last_error = ${lastError},
+        updated_at = now()
+    WHERE job_id = ${jobId}
+  `);
+}
+
+async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
+  const ch = await getOrCreateJobCliqChannel(job);
+  const channelName = ch.channelName;
+  let token = "";
+  try {
+    token = await getZohoCliqAccessToken();
+  } catch (err) {
+    await markJobCliqStatus(
+      job.id,
+      "manual",
+      err instanceof Error ? err.message : String(err),
+    );
+    return;
+  }
+
+  const pickString = (v: unknown): string | null => {
+    if (typeof v !== "string") return null;
+    const s = v.trim();
+    return s ? s : null;
+  };
+
+  const participantIds = await listJobParticipantIds(job);
+  const participantRows = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(inArray(users.id, participantIds));
+  const participantEmails = Array.from(
+    new Set(
+      participantRows
+        .map((r) => (typeof r.email === "string" ? r.email.trim() : ""))
+        .filter(Boolean),
+    ),
+  );
+
+  await markJobCliqStatus(job.id, "provisioning", null);
+
+  if (ch.status === "active" && !ch.lastError && ch.channelId) {
+    let memberAddError: string | null = null;
+    if (participantEmails.length > 0) {
+      const addRes = await fetch(`${cliqApiRoot()}/channels/${encodeURIComponent(ch.channelId)}/members`, {
+        method: "POST",
+        headers: {
+          Authorization: `Zoho-oauthtoken ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email_ids: participantEmails }),
+      });
+      if (!addRes.ok) {
+        const body = await addRes.text().catch(() => "");
+        memberAddError = `Cliq add channel members failed (${addRes.status}): ${body}`;
+      }
+    }
+
+    await db.execute(sql`
+      UPDATE job_cliq_channels
+      SET status = 'active',
+          last_error = ${memberAddError},
+          updated_at = now()
+      WHERE job_id = ${job.id}
+    `);
+    return;
+  }
+
+  const rawLevel = (process.env.ZOHO_CLIQ_CHANNEL_LEVEL || "private").trim().toLowerCase();
+  const level =
+    rawLevel === "organization" || rawLevel === "team" || rawLevel === "private" || rawLevel === "external"
+      ? rawLevel
+      : "private";
+
+  const createBody: Record<string, unknown> = {
+    level,
+    name: channelName,
+    description: `Job channel for JOB-${job.serial} · ${job.title}`,
+  };
+  if (level === "private" && participantEmails.length > 0) {
+    createBody.email_ids = participantEmails;
+  }
+
+  const createRes = await fetch(`${cliqApiRoot()}/channels`, {
+    method: "POST",
+    headers: {
+      Authorization: `Zoho-oauthtoken ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(createBody),
+  });
+  if (!createRes.ok) {
+    const body = await createRes.text().catch(() => "");
+    throw new Error(`Cliq create channel failed (${createRes.status}): ${body}`);
+  }
+
+  const createJson = (await createRes.json().catch(() => null)) as any;
+  const discoveredChannelId =
+    pickString(createJson?.data?.channel_id) ??
+    pickString(createJson?.data?.channelId) ??
+    pickString(createJson?.channel_id) ??
+    pickString(createJson?.channelId);
+  const discoveredName =
+    pickString(createJson?.data?.unique_name) ??
+    pickString(createJson?.data?.channel_unique_name) ??
+    pickString(createJson?.data?.name) ??
+    pickString(createJson?.data?.uniqueName) ??
+    pickString(createJson?.unique_name) ??
+    pickString(createJson?.name);
+  const createdChannelName = discoveredName ?? channelName;
+
+  const discoveredUrl =
+    pickString(createJson?.data?.permalink) ??
+    pickString(createJson?.data?.channel_url) ??
+    pickString(createJson?.data?.url) ??
+    pickString(createJson?.permalink) ??
+    pickString(createJson?.url);
+  const createdChannelUrl = discoveredUrl ?? computeCliqChannelUrl(createdChannelName);
+
+  await db.execute(sql`
+    UPDATE job_cliq_channels
+    SET channel_name = ${createdChannelName},
+        channel_id = ${discoveredChannelId},
+        channel_url = ${createdChannelUrl},
+        updated_at = now()
+    WHERE job_id = ${job.id}
+  `);
+
+  let memberAddError: string | null = null;
+  if (participantEmails.length > 0) {
+    const channelIdForMembers = discoveredChannelId ?? ch.channelId;
+    const addUrl = channelIdForMembers
+      ? `${cliqApiRoot()}/channels/${encodeURIComponent(channelIdForMembers)}/members`
+      : `${cliqApiRoot()}/channelsbyname/${encodeURIComponent(createdChannelName)}/members`;
+    const addRes = await fetch(addUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Zoho-oauthtoken ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email_ids: participantEmails }),
+    });
+    if (!addRes.ok) {
+      const body = await addRes.text().catch(() => "");
+      memberAddError = `Cliq add channel members failed (${addRes.status}): ${body}`;
+    }
+  }
+
+  const channelUrl = createdChannelUrl;
+  await db.execute(sql`
+    UPDATE job_cliq_channels
+    SET channel_url = ${channelUrl},
+        status = 'active',
+        last_error = ${memberAddError},
+        updated_at = now()
+    WHERE job_id = ${job.id}
+  `);
 }
 
 router.get("/jobs", requireAuth, async (req, res) => {
@@ -94,12 +780,21 @@ router.get("/jobs", requireAuth, async (req, res) => {
       )
       .orderBy(desc(jobs.createdAt));
   } else {
-    rows = await q
-      .where(eq(jobs.assigneeId, actor.id))
-      .orderBy(desc(jobs.createdAt));
+    await ensureJobMembersSchema();
+    const memberRows = await db
+      .select({ jobId: jobMembers.jobId })
+      .from(jobMembers)
+      .where(eq(jobMembers.userId, actor.id));
+    const memberJobIds = memberRows.map((r) => r.jobId);
+    rows =
+      memberJobIds.length === 0
+        ? await q.where(eq(jobs.assigneeId, actor.id)).orderBy(desc(jobs.createdAt))
+        : await q
+            .where(or(eq(jobs.assigneeId, actor.id), inArray(jobs.id, memberJobIds)))
+            .orderBy(desc(jobs.createdAt));
   }
   return res.json(
-    rows.map((r) =>
+    rows.map((r: any) =>
       rowToPublic({
         job: r.job,
         assignee: r.assignee?.id ? r.assignee : null,
@@ -158,6 +853,15 @@ router.post("/jobs", creatorRole, async (req, res) => {
     .returning();
 
   const full = await loadJob(created.id);
+  if (full) {
+    void getOrCreateJobCliqChannel(full.job).catch((err) => {
+      logger.warn({ err, jobId: full.job.id }, "Failed to initialize job Cliq channel metadata");
+    });
+    void provisionCliqChannelForJob(full.job).catch((err) => {
+      void markJobCliqStatus(full.job.id, "failed", err instanceof Error ? err.message : String(err)).catch(() => {});
+      logger.warn({ err, jobId: full.job.id }, "Failed to provision Cliq channel");
+    });
+  }
   return res.status(201).json(rowToPublic(full!));
 });
 
@@ -165,7 +869,7 @@ router.get("/jobs/:id", requireAuth, async (req, res) => {
   const id = req.params.id as string;
   const full = await loadJob(id);
   if (!full) return res.status(404).json({ error: "Job not found" });
-  if (!canViewJob(req.session!.user, full.job)) {
+  if (!(await canViewJob(req.session!.user, full.job))) {
     return res.status(403).json({ error: "You cannot view this job" });
   }
   return res.json(rowToPublic(full));
@@ -242,6 +946,15 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
 
   await db.update(jobs).set(patch).where(eq(jobs.id, id));
   const after = await loadJob(id);
+  if (after) {
+    void getOrCreateJobCliqChannel(after.job).catch((err) => {
+      logger.warn({ err, jobId: after.job.id }, "Failed to refresh job Cliq channel metadata");
+    });
+    void provisionCliqChannelForJob(after.job).catch((err) => {
+      void markJobCliqStatus(after.job.id, "failed", err instanceof Error ? err.message : String(err)).catch(() => {});
+      logger.warn({ err, jobId: after.job.id }, "Failed to provision Cliq channel");
+    });
+  }
   return res.json(rowToPublic(after!));
 });
 
@@ -255,6 +968,252 @@ router.delete("/jobs/:id", creatorRole, async (req, res) => {
   }
   await db.delete(jobs).where(eq(jobs.id, id));
   return res.status(204).end();
+});
+
+router.post("/zoho/cliq/messages/incoming", async (req, res) => {
+  try {
+    const configuredSecret = getCliqSyncSecret();
+    if (!configuredSecret) {
+      return res.status(501).json({ error: "ZOHO_CLIQ_SYNC_SECRET not configured" });
+    }
+
+    const suppliedSecret =
+      (typeof req.headers["x-cliq-sync-secret"] === "string" ? req.headers["x-cliq-sync-secret"] : "") ||
+      (typeof req.query.secret === "string" ? req.query.secret : "") ||
+      (typeof req.body?.secret === "string" ? req.body.secret : "");
+    if (!suppliedSecret || suppliedSecret !== configuredSecret) {
+      return res.status(401).json({ error: "Invalid Cliq sync secret" });
+    }
+
+    const message = parseIncomingCliqMessage(req.body);
+    if (!message) {
+      return res.status(400).json({ error: "Invalid Cliq payload" });
+    }
+
+    const full = await findJobByCliqChannelName(message.channelName);
+    if (!full) {
+      return res.status(404).json({ error: "Job channel not found" });
+    }
+
+    const actor = await findUserByEmail(message.senderEmail);
+    if (!actor) {
+      await markJobCliqStatus(full.job.id, "active", `Cliq sync user not found for ${message.senderEmail}`);
+      return res.status(404).json({ error: "Cliq sender not mapped to an app user" });
+    }
+
+    if (!(await canViewJob(actor, full.job))) {
+      await markJobCliqStatus(full.job.id, "active", `Cliq sync sender ${message.senderEmail} is not assigned to the job`);
+      return res.status(403).json({ error: "Cliq sender is not assigned to this job" });
+    }
+
+    const normalizedText = normalizeMirroredCliqText(full.job, message.text);
+    const recent = await findRecentJobMessage(full.job.id, actor.id, normalizedText);
+    if (recent) {
+      return res.json({ ok: true, duplicate: true, id: recent.id });
+    }
+
+    const created = await createStoredJobMessage({
+      job: full.job,
+      actor,
+      text: normalizedText,
+      pushToCliq: false,
+      externalSource: "zoho_cliq",
+      externalMessageId: message.externalMessageId,
+      senderEmail: message.senderEmail,
+      rawPayload: message.rawPayload,
+    });
+
+    await markJobCliqStatus(full.job.id, "active", null);
+    return res.json({ ok: true, duplicate: created.duplicate, id: created.id });
+  } catch (err) {
+    logger.error({ err }, "Failed to sync incoming Cliq message");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/jobs/:id/messages", requireAuth, async (req, res) => {
+  try {
+    const id = req.params.id as string;
+    const actor = req.session!.user;
+
+    const full = await loadJob(id);
+    if (!full) return res.status(404).json({ error: "Job not found" });
+    if (!(await canViewJob(actor, full.job))) {
+      return res.status(403).json({ error: "You cannot view this job" });
+    }
+
+    await ensureJobMessagesSchema();
+    const rows = await db.execute(sql`
+      SELECT
+        jm.id,
+        jm.text,
+        jm.created_at,
+        u.id AS user_id,
+        u.name AS user_name
+      FROM job_messages jm
+      JOIN users u ON u.id = jm.user_id
+      WHERE jm.job_id = ${id}
+      ORDER BY jm.created_at ASC
+      LIMIT 200
+    `);
+    const items = ((rows as any).rows ?? []) as Array<{
+      id: string;
+      text: string;
+      created_at: string;
+      user_id: string;
+      user_name: string;
+    }>;
+
+    return res.json(
+      items.map((m) => ({
+        id: m.id,
+        text: m.text,
+        createdAt: m.created_at,
+        isMe: m.user_id === actor.id,
+        user: { id: m.user_id, name: m.user_name },
+      })),
+    );
+  } catch (err) {
+    logger.error({ err }, "Failed to list job messages");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/jobs/:id/messages", requireAuth, async (req, res) => {
+  try {
+    const id = req.params.id as string;
+    const actor = req.session!.user;
+    const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+    const pushToCliq = req.body?.pushToCliq !== false;
+    if (!text) return res.status(400).json({ error: "text is required" });
+
+    const full = await loadJob(id);
+    if (!full) return res.status(404).json({ error: "Job not found" });
+    if (!(await canViewJob(actor, full.job))) {
+      return res.status(403).json({ error: "You cannot view this job" });
+    }
+
+    const created = await createStoredJobMessage({
+      job: full.job,
+      actor,
+      text,
+      pushToCliq,
+    });
+
+    return res.status(201).json({
+      id: created.id,
+      text: created.text,
+      createdAt: created.createdAt,
+      isMe: true,
+      user: created.user,
+    });
+  } catch (err) {
+    logger.error({ err }, "Failed to create job message");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/jobs/:id/cliq/channel", requireAuth, async (req, res) => {
+  try {
+    const id = req.params.id as string;
+    const actor = req.session!.user;
+
+    const full = await loadJob(id);
+    if (!full) return res.status(404).json({ error: "Job not found" });
+    if (!(await canViewJob(actor, full.job))) {
+      return res.status(403).json({ error: "You cannot view this job" });
+    }
+
+    const ch = await getOrCreateJobCliqChannel(full.job);
+    return res.json(ch);
+  } catch (err) {
+    logger.error({ err }, "Failed to get job Cliq channel");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/jobs/:id/cliq/join", requireAuth, async (req, res) => {
+  try {
+    const id = req.params.id as string;
+    const actor = req.session!.user;
+
+    const full = await loadJob(id);
+    if (!full) return res.status(404).json({ error: "Job not found" });
+    if (!(await canViewJob(actor, full.job))) {
+      return res.status(403).json({ error: "You cannot view this job" });
+    }
+
+    const email = typeof actor.email === "string" ? actor.email.trim() : "";
+    if (!email) return res.status(400).json({ error: "User email is missing" });
+
+    let ch = await getOrCreateJobCliqChannel(full.job);
+    if (ch.status !== "active") {
+      await provisionCliqChannelForJob(full.job);
+      ch = await getOrCreateJobCliqChannel(full.job);
+    }
+
+    const token = await getZohoCliqAccessToken();
+    let channelId = ch.channelId;
+    if (!channelId) {
+      channelId = await resolveCliqChannelIdByName(token, ch.channelName);
+      if (channelId) {
+        await db.execute(sql`
+          UPDATE job_cliq_channels
+          SET channel_id = ${channelId},
+              updated_at = now()
+          WHERE job_id = ${full.job.id}
+        `);
+        ch = await getOrCreateJobCliqChannel(full.job);
+      }
+    }
+
+    if (!channelId) {
+      return res.status(409).json({ error: "Cliq channel not provisioned yet" });
+    }
+
+    const addRes = await fetch(`${cliqApiRoot()}/channels/${encodeURIComponent(channelId)}/members`, {
+      method: "POST",
+      headers: {
+        Authorization: `Zoho-oauthtoken ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email_ids: [email] }),
+    });
+
+    if (!addRes.ok) {
+      const body = await addRes.text().catch(() => "");
+      await markJobCliqStatus(full.job.id, "active", `Cliq join failed (${addRes.status}): ${body}`);
+      return res.status(502).json({ error: "Cliq join failed" });
+    }
+
+    await markJobCliqStatus(full.job.id, "active", null);
+    ch = await getOrCreateJobCliqChannel(full.job);
+    return res.json({ success: true, channelUrl: ch.channelUrl, channelName: ch.channelName });
+  } catch (err) {
+    logger.error({ err }, "Failed to join job Cliq channel");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/jobs/:id/cliq/provision", requireAuth, async (req, res) => {
+  try {
+    const id = req.params.id as string;
+    const actor = req.session!.user;
+
+    const full = await loadJob(id);
+    if (!full) return res.status(404).json({ error: "Job not found" });
+    if (!canManageJob(actor, full.job)) {
+      return res.status(403).json({ error: "You cannot provision this job" });
+    }
+
+    await getOrCreateJobCliqChannel(full.job);
+    await provisionCliqChannelForJob(full.job);
+    const ch = await getOrCreateJobCliqChannel(full.job);
+    return res.json(ch);
+  } catch (err) {
+    logger.error({ err }, "Failed to provision job Cliq channel");
+    return res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 export default router;

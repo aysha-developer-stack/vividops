@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Activity, Users, Briefcase, AlertTriangle, CheckCircle2, Clock,
@@ -6,39 +6,14 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
+import { useGetDashboardStats, useListUsers, useListJobs, type User } from "@workspace/api-client-react";
+import type { Role } from "@/lib/roles";
 
 const SYSTEM_HEALTH = [
   { name: "Inspection Report Vault", status: "healthy", uptime: "99.98%", latency: "42ms", icon: FileText },
   { name: "Site Photo Storage", status: "healthy", uptime: "99.99%", latency: "12ms", icon: Image },
   { name: "Zoho Cliq Sync", status: "healthy", uptime: "99.85%", latency: "180ms", icon: Wifi },
   { name: "Client Portal", status: "degraded", uptime: "98.42%", latency: "320ms", icon: UserCheck },
-];
-
-const LIVE_USERS = [
-  { name: "Sarah Johnson", role: "Admin", status: "Active", lastSeen: "now", action: "Viewing Reports", avatar: "SJ" },
-  { name: "Mike Chen", role: "Supervisor", status: "Active", lastSeen: "now", action: "Reviewing JOB-2148", avatar: "MC" },
-  { name: "Jordan Reed", role: "User", status: "On Job", lastSeen: "2m ago", action: "Timer running on JOB-2148", avatar: "JR" },
-  { name: "Riley Adams", role: "User", status: "On Job", lastSeen: "5m ago", action: "Uploading files to JOB-2150", avatar: "RA" },
-  { name: "Emma Wilson", role: "Supervisor", status: "Active", lastSeen: "12m ago", action: "Approving completed jobs", avatar: "EW" },
-  { name: "David Park", role: "User", status: "Idle", lastSeen: "28m ago", action: "—", avatar: "DP" },
-  { name: "Olivia Carter", role: "User", status: "Active", lastSeen: "now", action: "Adding checklist notes", avatar: "OC" },
-];
-
-const ACTIVITY_FEED = [
-  { type: "job", text: "JOB-2148 marked for rework", user: "Sam Carter", time: "2m ago", color: "amber" },
-  { type: "user", text: "New supervisor account created: Emma Wilson", user: "Super Admin", time: "1h ago", color: "emerald" },
-  { type: "alert", text: "JOB-2143 is overdue (12h past due date)", user: "System", time: "3h ago", color: "red" },
-  { type: "job", text: "JOB-2150 completed and approved", user: "Mike Chen", time: "4h ago", color: "emerald" },
-  { type: "system", text: "Client Portal sync delay detected (320ms)", user: "System", time: "5h ago", color: "amber" },
-  { type: "user", text: "User deactivated: Lisa Martinez", user: "Sarah Johnson", time: "6h ago", color: "gray" },
-  { type: "job", text: "JOB-2152 created and assigned to 3 users", user: "Mike Chen", time: "8h ago", color: "primary" },
-];
-
-const KPIS = [
-  { label: "Online Users", value: 47, total: 1284, change: "+12", trend: "up" as const, icon: Users, color: "emerald" },
-  { label: "Active Jobs", value: 156, total: 482, change: "+8", trend: "up" as const, icon: Briefcase, color: "primary" },
-  { label: "Overdue Jobs", value: 23, total: 482, change: "-4", trend: "down" as const, icon: AlertTriangle, color: "red" },
-  { label: "Avg Response", value: "1.4h", change: "-12%", trend: "down" as const, icon: Clock, color: "amber" },
 ];
 
 const STATUS_COLOR: Record<string, { dot: string; text: string; bg: string }> = {
@@ -53,20 +28,63 @@ const HEALTH_COLOR: Record<string, { dot: string; text: string; bg: string; ring
   down: { dot: "bg-red-500", text: "text-red-700", bg: "bg-red-50", ring: "ring-red-200" },
 };
 
-export default function SystemMonitoring() {
+export default function SystemMonitoring({ role = "super-admin" as Role }: { role?: Role } = {}) {
+  const { data: dashboardData } = useGetDashboardStats();
+  const { data: apiUsers, isLoading: usersLoading } = useListUsers();
+  const { data: apiJobs, isLoading: jobsLoading } = useListJobs();
+
   const [filter, setFilter] = useState<"All" | "Active" | "On Job" | "Idle">("All");
   const [search, setSearch] = useState("");
-  const filtered = LIVE_USERS.filter(
+
+  const kpis = useMemo(() => [
+    { label: "Online Users", value: (apiUsers ?? []).filter(u => u.status === 'active').length, total: (apiUsers ?? []).length, change: "+0", trend: "up" as const, icon: Users, color: "emerald" },
+    { label: "Active Jobs", value: dashboardData?.stats.activeJobs ?? 0, total: dashboardData?.stats.totalJobs ?? 0, change: "+0", trend: "up" as const, icon: Briefcase, color: "primary" },
+    { label: "Overdue Jobs", value: dashboardData?.stats.overdueJobs ?? 0, total: dashboardData?.stats.totalJobs ?? 0, change: "-0", trend: "down" as const, icon: AlertTriangle, color: "red" },
+    { label: "Avg Response", value: "1.4h", change: "-0%", trend: "down" as const, icon: Clock, color: "amber" },
+  ], [dashboardData, apiUsers]);
+
+  const liveUsers = useMemo(() => (apiUsers ?? []).map((u: User) => {
+    const isOnline = u.status === 'active';
+    return {
+      name: u.name,
+      role: u.role.charAt(0).toUpperCase() + u.role.slice(1),
+      status: isOnline ? "Active" : "Idle" as "Active" | "On Job" | "Idle",
+      lastSeen: u.lastSignInAt ? new Date(u.lastSignInAt).toLocaleTimeString() : "Never",
+      action: isOnline ? "Active in system" : "Offline",
+      avatar: u.name.split(" ").map(s => s[0]).join("").toUpperCase()
+    };
+  }), [apiUsers]);
+
+  const activityFeed = useMemo(() => (apiJobs ?? []).slice(0, 10).map(j => ({
+    type: "job",
+    text: `Job ${j.number}: ${j.title}`,
+    user: j.assignee?.name ?? "Unassigned",
+    time: new Date(j.updatedAt).toLocaleTimeString(),
+    color: j.status === 'completed' ? "emerald" : j.isOverdue ? "red" : "primary"
+  })), [apiJobs]);
+
+  const filtered = liveUsers.filter(
     (u) => (filter === "All" || u.status === filter) && u.name.toLowerCase().includes(search.toLowerCase())
   );
-  const activityP = usePagination(ACTIVITY_FEED, 8);
+  const activityP = usePagination(activityFeed, 8);
   const usersP = usePagination(filtered, 8);
 
+  const isLoading = usersLoading || jobsLoading;
+  if (isLoading && !apiUsers) {
+    return (
+      <DashboardLayout title="System Monitoring" role={role}>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
-    <DashboardLayout title="System Monitoring" role="super-admin">
+    <DashboardLayout title="System Monitoring" role={role}>
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {KPIS.map((k, i) => {
+        {kpis.map((k, i) => {
           const Icon = k.icon;
           return (
             <motion.div

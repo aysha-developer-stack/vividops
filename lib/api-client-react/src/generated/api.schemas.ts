@@ -92,6 +92,7 @@ export interface LoginInput {
   email: string;
   /** @minLength 1 */
   password: string;
+  role: UserRole;
 }
 
 export interface LoginResult {
@@ -201,3 +202,65 @@ export interface JobUpdate {
    */
   progress?: number;
 }
+
+export type DashboardStatsStats = {
+  totalUsers: number;
+  totalJobs: number;
+  activeJobs: number;
+  overdueJobs: number;
+};
+
+export interface DashboardStats {
+  stats: DashboardStatsStats;
+  recentJobs: Job[];
+}
+
+export interface Post {
+  id: string;
+  title: string;
+  body: string;
+  category: string;
+  authorId: string;
+  /** @nullable */
+  attachments?: string | null;
+  createdAt: string;
+}
+
+export interface PostInput {
+  title: string;
+  body: string;
+  category: string;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  title: string;
+  description: string;
+  type: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export interface TimeLog {
+  id: string;
+  userId: string;
+  /** @nullable */
+  jobId?: string | null;
+  task: string;
+  /** duration in seconds */
+  duration: number;
+  startTime?: string;
+  createdAt: string;
+}
+
+export interface TimeLogInput {
+  task: string;
+  duration: number;
+  /** @nullable */
+  jobId?: string | null;
+}
+
+export type MarkNotificationRead200 = {
+  success?: boolean;
+};

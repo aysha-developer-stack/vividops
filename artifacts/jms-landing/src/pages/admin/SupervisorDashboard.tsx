@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import {
@@ -6,35 +7,8 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
-
-const ASSIGNED = [
-  { id: "JOB-2148", title: "Structural Inspection", client: "Wilkinson Residence", due: "Today", priority: "High", progress: 72 },
-  { id: "JOB-2150", title: "Pre-Purchase Inspection", client: "Patel Residence", due: "Tomorrow", priority: "Medium", progress: 35 },
-  { id: "JOB-2151", title: "Footing Design Review", client: "Greenfield Builders", due: "Apr 24", priority: "Medium", progress: 10 },
-  { id: "JOB-2155", title: "Crack Assessment", client: "Thompson Residence", due: "Apr 25", priority: "High", progress: 0 },
-  { id: "JOB-2156", title: "Retaining Wall Design", client: "Nguyen Residence", due: "Apr 26", priority: "Low", progress: 5 },
-  { id: "JOB-2158", title: "Termite Damage Assessment", client: "Sterling Homes", due: "Apr 27", priority: "High", progress: 0 },
-  { id: "JOB-2160", title: "Roof Truss Inspection", client: "Vivid Construction", due: "Apr 28", priority: "Medium", progress: 22 },
-  { id: "JOB-2162", title: "Load-Bearing Wall Assessment", client: "Apex Builders", due: "Apr 29", priority: "Low", progress: 0 },
-];
-
-const TEAM = [
-  { name: "Riley Adams", avatar: "RA", jobsToday: 3, hoursToday: 6.5, status: "online" },
-  { name: "Olivia Carter", avatar: "OC", jobsToday: 2, hoursToday: 5.2, status: "online" },
-  { name: "Lisa Martinez", avatar: "LM", jobsToday: 4, hoursToday: 7.8, status: "away" },
-  { name: "James Bennett", avatar: "JB", jobsToday: 1, hoursToday: 3.1, status: "online" },
-  { name: "Jordan Reed", avatar: "JR", jobsToday: 3, hoursToday: 5.9, status: "online" },
-  { name: "Sarah Johnson", avatar: "SJ", jobsToday: 2, hoursToday: 4.4, status: "offline" },
-  { name: "Mike Chen", avatar: "MC", jobsToday: 5, hoursToday: 8.2, status: "online" },
-  { name: "Emma Wilson", avatar: "EW", jobsToday: 1, hoursToday: 2.8, status: "away" },
-];
-
-const OVERDUE = [
-  { id: "JOB-2120", title: "Slab Design", days: 2, assignee: "Riley Adams" },
-  { id: "JOB-2118", title: "Engineer Compliance Report", days: 3, assignee: "Olivia Carter" },
-  { id: "JOB-2099", title: "Subsidence Investigation", days: 5, assignee: "Lisa Martinez" },
-  { id: "JOB-2087", title: "Wall Crack Inspection", days: 7, assignee: "James Bennett" },
-];
+import { useGetDashboardStats, useListUsers, useGetTimeLogs, useListJobs, type User } from "@workspace/api-client-react";
+import { useAuth } from "@/lib/auth";
 
 const PRIORITY_COLOR: Record<string, string> = {
   High: "bg-red-50 text-red-700 border-red-200",
@@ -43,9 +17,59 @@ const PRIORITY_COLOR: Record<string, string> = {
 };
 
 export default function SupervisorDashboard() {
-  const assignedP = usePagination(ASSIGNED, 5);
-  const teamP = usePagination(TEAM, 5);
-  const overdueP = usePagination(OVERDUE, 4);
+  const { user: currentUser } = useAuth();
+  const { data: dashboardData, isLoading: statsLoading } = useGetDashboardStats();
+  const { data: apiUsers } = useListUsers();
+  const { data: apiTimeLogs } = useGetTimeLogs();
+  const { data: apiJobs } = useListJobs();
+  const showSkeleton = statsLoading && !dashboardData;
+
+  const assignedJobs = useMemo(() => (apiJobs ?? []).map(j => ({
+    id: j.id,
+    number: j.number,
+    title: j.title,
+    client: j.client,
+    due: j.dueDate ? new Date(j.dueDate).toLocaleDateString() : "No date",
+    priority: j.priority.charAt(0).toUpperCase() + j.priority.slice(1),
+    progress: j.progress
+  })), [apiJobs]);
+
+  const team = useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    return (apiUsers ?? []).filter((u: User) => u.role === "user").map((u: User) => {
+      const userLogs = (apiTimeLogs ?? []).filter(l => l.userId === u.id && new Date(l.createdAt) >= today);
+      const userJobs = (apiJobs ?? []).filter(j => j.assignee?.id === u.id && new Date(j.createdAt) >= today);
+      const hours = userLogs.reduce((sum, l) => sum + (l.duration / 3600), 0);
+      
+      return {
+        name: u.name,
+        avatar: u.name.split(" ").map(s => s[0]).join("").toUpperCase(),
+        jobsToday: userJobs.length,
+        hoursToday: Number(hours.toFixed(1)),
+        status: u.status === "active" ? "online" : "offline"
+      };
+    });
+  }, [apiUsers, apiTimeLogs, apiJobs]);
+
+  const overdue = useMemo(() => {
+    return (apiJobs ?? []).filter(j => j.isOverdue).map((j: any) => {
+      const due = j.dueDate ? new Date(j.dueDate) : new Date();
+      const diff = Math.max(0, Math.floor((new Date().getTime() - due.getTime()) / (1000 * 60 * 60 * 24)));
+      return {
+        id: j.number,
+        title: j.title,
+        days: diff,
+        assignee: j.assignee?.name ?? "Unassigned"
+      };
+    });
+  }, [apiJobs]);
+
+  const assignedP = usePagination(assignedJobs, 5);
+  const teamP = usePagination(team, 5);
+  const overdueP = usePagination(overdue, 4);
+
   return (
     <DashboardLayout title="Supervisor Dashboard" role="supervisor">
       {/* Banner */}
@@ -61,8 +85,8 @@ export default function SupervisorDashboard() {
         />
         <div className="relative z-10 flex items-start justify-between flex-wrap gap-4">
           <div>
-            <h2 className="text-2xl md:text-3xl font-bold text-white">Hey Sam, ready to lead today? 💪</h2>
-            <p className="text-sm text-gray-400 mt-1">You have 4 active jobs and a team of 8 reporting to you.</p>
+            <h2 className="text-2xl md:text-3xl font-bold text-white">Hey {currentUser?.name?.split(" ")[0] ?? "Supervisor"}, ready to lead today? 💪</h2>
+            <p className="text-sm text-gray-400 mt-1">You have {dashboardData?.stats.activeJobs} active jobs and a team of {team.length} reporting to you.</p>
           </div>
           <Link href="/supervisor/jobs">
             <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-primary/30">
@@ -75,10 +99,10 @@ export default function SupervisorDashboard() {
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
-          { label: "My Active Jobs", value: 12, icon: Briefcase, color: "from-primary to-sky-700", bg: "bg-primary/10", text: "text-primary" },
-          { label: "Team Size", value: 8, icon: Users, color: "from-emerald-500 to-emerald-700", bg: "bg-emerald-50", text: "text-emerald-600" },
-          { label: "Completed Today", value: 5, icon: CheckCircle2, color: "from-purple-500 to-purple-700", bg: "bg-purple-50", text: "text-purple-600" },
-          { label: "Overdue", value: 2, icon: AlertCircle, color: "from-red-500 to-rose-700", bg: "bg-red-50", text: "text-red-600" },
+          { label: "My Active Jobs", value: dashboardData?.stats.activeJobs ?? 0, icon: Briefcase, color: "from-primary to-sky-700", bg: "bg-primary/10", text: "text-primary" },
+          { label: "Team Size", value: team.length, icon: Users, color: "from-emerald-500 to-emerald-700", bg: "bg-emerald-50", text: "text-emerald-600" },
+          { label: "Total Jobs", value: dashboardData?.stats.totalJobs ?? 0, icon: CheckCircle2, color: "from-purple-500 to-purple-700", bg: "bg-purple-50", text: "text-purple-600" },
+          { label: "Overdue", value: dashboardData?.stats.overdueJobs ?? 0, icon: AlertCircle, color: "from-red-500 to-rose-700", bg: "bg-red-50", text: "text-red-600" },
         ].map((s, i) => {
           const Icon = s.icon;
           return (
@@ -94,7 +118,13 @@ export default function SupervisorDashboard() {
               <div className="relative z-10 flex items-center justify-between">
                 <div>
                   <div className="text-xs text-gray-500 font-medium uppercase tracking-wider">{s.label}</div>
-                  <div className="text-3xl font-bold text-gray-900 mt-1">{s.value}</div>
+                  <div className="text-3xl font-bold text-gray-900 mt-1">
+                    {showSkeleton ? (
+                      <div className="h-8 w-16 bg-gray-100 rounded animate-pulse" />
+                    ) : (
+                      s.value
+                    )}
+                  </div>
                 </div>
                 <div className={`w-11 h-11 rounded-xl ${s.bg} ${s.text} flex items-center justify-center`}>
                   <Icon size={20} />
@@ -135,7 +165,7 @@ export default function SupervisorDashboard() {
                       <span className="font-semibold text-sm text-gray-900">{j.title}</span>
                       <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${PRIORITY_COLOR[j.priority]}`}>{j.priority}</span>
                     </div>
-                    <div className="text-xs text-gray-500">{j.id} · {j.client}</div>
+                    <div className="text-xs text-gray-500">{j.number} · {j.client}</div>
                   </div>
                   <div className="flex items-center gap-1 text-xs text-gray-500 shrink-0">
                     <Calendar size={12} /> {j.due}
@@ -165,7 +195,7 @@ export default function SupervisorDashboard() {
               <h3 className="font-bold text-gray-900 flex items-center gap-2"><TrendingUp size={16} className="text-primary" /> My Team Today</h3>
             </div>
             <div className="p-3">
-              {teamP.pageItems.map((t, i) => (
+              {teamP.pageItems.map((t: any, i: number) => (
                 <motion.div
                   key={t.name}
                   initial={{ opacity: 0, x: 10 }}
@@ -192,27 +222,32 @@ export default function SupervisorDashboard() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
-            className="bg-gradient-to-br from-red-50 to-rose-50 border border-red-100 rounded-2xl p-5"
+            className="bg-gradient-to-br from-red-50 to-rose-50 border border-red-100 rounded-2xl"
           >
-            <h3 className="font-bold text-red-900 flex items-center gap-2 mb-3"><AlertCircle size={16} /> Overdue Jobs</h3>
-            {overdueP.pageItems.map((o, i) => (
-              <motion.div
-                key={o.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.6 + i * 0.05 }}
-                whileHover={{ x: 3 }}
-                className="bg-white rounded-xl p-3 mb-2 last:mb-0 cursor-pointer"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 truncate">{o.title}</div>
-                    <div className="text-[11px] text-gray-500">{o.id} · {o.assignee}</div>
+            <div className="p-5 border-b border-red-100">
+              <h3 className="font-bold text-red-900 flex items-center gap-2"><AlertCircle size={16} /> Overdue Jobs</h3>
+            </div>
+            <div className="p-3">
+              {overdueP.pageItems.map((j: any, i: number) => (
+                <motion.div
+                  key={j.id}
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.6 + i * 0.05 }}
+                  className="p-3 rounded-xl border border-red-100 bg-red-50/30 mb-2 last:mb-0"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-bold text-gray-900 truncate">{j.title}</div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">{j.id} · {j.assignee}</div>
+                    </div>
+                    <div className="text-[10px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full whitespace-nowrap">
+                      {j.days}d overdue
+                    </div>
                   </div>
-                  <div className="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded-md">{o.days}d late</div>
-                </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              ))}
+            </div>
             <Pagination page={overdueP.page} totalPages={overdueP.totalPages} total={overdueP.total} pageSize={overdueP.pageSize} onChange={overdueP.setPage} label="jobs" />
           </motion.div>
         </div>

@@ -1,33 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Users, Briefcase, Activity, AlertTriangle, ArrowUpRight, ArrowDownRight,
-  Plus, UserPlus, FileText, MessageSquare,
+  Plus, UserPlus, FileText,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
-
-const STATS = [
-  { label: "Total Users", value: 1284, change: 12.4, trend: "up" as const, icon: Users, color: "from-primary to-sky-700", iconBg: "bg-primary/10", iconText: "text-primary" },
-  { label: "Total Jobs", value: 482, change: 8.2, trend: "up" as const, icon: Briefcase, color: "from-emerald-500 to-emerald-700", iconBg: "bg-emerald-50", iconText: "text-emerald-600" },
-  { label: "Active Jobs", value: 156, change: 5.6, trend: "up" as const, icon: Activity, color: "from-amber-500 to-orange-600", iconBg: "bg-amber-50", iconText: "text-amber-600" },
-  { label: "Overdue Jobs", value: 23, change: 3.1, trend: "down" as const, icon: AlertTriangle, color: "from-red-500 to-rose-700", iconBg: "bg-red-50", iconText: "text-red-600" },
-];
-
-const ACTIVITY = [
-  { user: "Sarah Johnson", action: "completed job", target: "Wilkinson Residence Inspection #482", time: "2m ago", color: "bg-emerald-500" },
-  { user: "Mike Chen", action: "created job", target: "Patel Residence Pre-Purchase", time: "15m ago", color: "bg-primary" },
-  { user: "Emma Wilson", action: "was promoted to", target: "Supervisor", time: "1h ago", color: "bg-amber-500" },
-  { user: "David Park", action: "reported error in", target: "Anderson Compliance Report", time: "2h ago", color: "bg-red-500" },
-  { user: "Lisa Martinez", action: "logged time on", target: "Underpinning Design", time: "3h ago", color: "bg-purple-500" },
-  { user: "Jordan Reed", action: "marked rework on", target: "JOB-2147 Patel Footing Inspection", time: "4h ago", color: "bg-orange-500" },
-  { user: "Olivia Carter", action: "uploaded files to", target: "Slab Design #2120", time: "5h ago", color: "bg-primary" },
-  { user: "Riley Adams", action: "auto-stopped timer on", target: "JOB-2150 (no activity)", time: "6h ago", color: "bg-amber-500" },
-  { user: "James Bennett", action: "joined team", target: "Field Operations - West", time: "Yesterday", color: "bg-emerald-500" },
-  { user: "Mia Wong", action: "exported report", target: "Q1 Performance Summary", time: "Yesterday", color: "bg-purple-500" },
-  { user: "Chris Park", action: "updated checklist on", target: "Annual Engineer Certification", time: "Yesterday", color: "bg-primary" },
-  { user: "Jamie Rivera", action: "changed billing plan to", target: "Enterprise Pro", time: "2 days ago", color: "bg-purple-500" },
-];
+import { useGetDashboardStats, useListJobs, useListUsers, type User } from "@workspace/api-client-react";
+import { useAuth } from "@/lib/auth";
 
 const QUICK_ACTIONS = [
   { label: "Add User", icon: UserPlus, href: "/super-admin/users", color: "bg-emerald-600" },
@@ -36,22 +16,12 @@ const QUICK_ACTIONS = [
   { label: "Generate Report", icon: FileText, href: "/super-admin/reports", color: "bg-amber-600" },
 ];
 
-const PERFORMANCE = [
-  { day: "Mon", jobs: 45, completed: 38 },
-  { day: "Tue", jobs: 52, completed: 47 },
-  { day: "Wed", jobs: 48, completed: 41 },
-  { day: "Thu", jobs: 61, completed: 55 },
-  { day: "Fri", jobs: 73, completed: 64 },
-  { day: "Sat", jobs: 32, completed: 28 },
-  { day: "Sun", jobs: 28, completed: 25 },
-];
-
 function Counter({ value }: { value: number }) {
   const [n, setN] = useState(0);
   useEffect(() => {
     let raf: number;
     const start = performance.now();
-    const dur = 1200;
+    const dur = 600;
     const step = (now: number) => {
       const p = Math.min((now - start) / dur, 1);
       const eased = 1 - Math.pow(1 - p, 3);
@@ -65,15 +35,124 @@ function Counter({ value }: { value: number }) {
 }
 
 export default function SuperAdminDashboard() {
-  const maxJobs = Math.max(...PERFORMANCE.map((d) => d.jobs));
-  const activityP = usePagination(ACTIVITY, 6);
+  const { user } = useAuth();
+  const { data: dashboardData, isLoading } = useGetDashboardStats();
+  const { data: apiJobs } = useListJobs();
+  const { data: apiUsers } = useListUsers();
+  const showSkeleton = isLoading && !dashboardData;
+
+  const parseMs = (iso: string | null | undefined) => {
+    if (!iso) return null;
+    const ms = new Date(iso).getTime();
+    return Number.isFinite(ms) ? ms : null;
+  };
+
+  const pctChange = (current: number, previous: number) => {
+    if (!Number.isFinite(current) || !Number.isFinite(previous)) return 0;
+    if (previous <= 0) return current > 0 ? 100 : 0;
+    return Math.round(((current - previous) / previous) * 100);
+  };
+
+  const performance = useMemo(() => {
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const last7Days: Array<{ key: string; day: string; dateLabel: string; created: number; completed: number }> = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      d.setHours(0, 0, 0, 0);
+      const dayName = days[d.getDay()];
+      const dateLabel = String(d.getDate()).padStart(2, "0");
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${dateLabel}`;
+      const startOfDay = d.getTime();
+      const endOfDay = startOfDay + 24 * 60 * 60 * 1000;
+      
+      const createdInDay = (apiJobs ?? []).filter(j => {
+        const created = new Date(j.createdAt).getTime();
+        return created >= startOfDay && created < endOfDay;
+      }).length;
+      
+      const completedInDay = (apiJobs ?? []).filter(j => {
+        if (j.status !== 'completed' || !j.completedAt) return false;
+        const completed = new Date(j.completedAt).getTime();
+        return completed >= startOfDay && completed < endOfDay;
+      }).length;
+      
+      last7Days.push({ key, day: dayName, dateLabel, created: createdInDay, completed: completedInDay });
+    }
+    return last7Days;
+  }, [apiJobs]);
+
+  const maxCount = Math.max(...performance.map((d) => Math.max(d.created, d.completed)), 1);
+  const hasAnyPerformanceData = performance.some((d) => d.created > 0 || d.completed > 0);
+
+  const stats = useMemo(() => {
+    const nowMs = Date.now();
+    const prevMs = nowMs - 7 * 24 * 60 * 60 * 1000;
+
+    const usersPrev = (apiUsers ?? []).filter((u: User) => {
+      const createdMs = parseMs(u.createdAt as unknown as string);
+      return createdMs != null && createdMs <= prevMs;
+    }).length;
+
+    const jobsPrev = (apiJobs ?? []).filter((j) => {
+      const createdMs = parseMs(j.createdAt);
+      return createdMs != null && createdMs <= prevMs;
+    }).length;
+
+    const activePrev = (apiJobs ?? []).filter((j) => {
+      if (j.status !== "in_progress") return false;
+      const createdMs = parseMs(j.createdAt);
+      if (createdMs == null || createdMs > prevMs) return false;
+      const completedMs = parseMs(j.completedAt);
+      if (completedMs != null && completedMs <= prevMs) return false;
+      return true;
+    }).length;
+
+    const overduePrev = (apiJobs ?? []).filter((j) => {
+      if (j.status === "completed") return false;
+      const createdMs = parseMs(j.createdAt);
+      if (createdMs == null || createdMs > prevMs) return false;
+      const dueMs = parseMs(j.dueDate);
+      if (dueMs == null) return false;
+      return dueMs < prevMs;
+    }).length;
+
+    const totalUsers = dashboardData?.stats.totalUsers ?? 0;
+    const totalJobs = dashboardData?.stats.totalJobs ?? 0;
+    const activeJobs = dashboardData?.stats.activeJobs ?? 0;
+    const overdueJobs = dashboardData?.stats.overdueJobs ?? 0;
+
+    const usersChange = pctChange(totalUsers, usersPrev);
+    const jobsChange = pctChange(totalJobs, jobsPrev);
+    const activeChange = pctChange(activeJobs, activePrev);
+    const overdueChange = pctChange(overdueJobs, overduePrev);
+
+    return [
+      { label: "Total Users", value: totalUsers, change: Math.abs(usersChange), trend: usersChange >= 0 ? "up" as const : "down" as const, icon: Users, color: "from-primary to-sky-700", iconBg: "bg-primary/10", iconText: "text-primary" },
+      { label: "Total Jobs", value: totalJobs, change: Math.abs(jobsChange), trend: jobsChange >= 0 ? "up" as const : "down" as const, icon: Briefcase, color: "from-emerald-500 to-emerald-700", iconBg: "bg-emerald-50", iconText: "text-emerald-600" },
+      { label: "Active Jobs", value: activeJobs, change: Math.abs(activeChange), trend: activeChange >= 0 ? "up" as const : "down" as const, icon: Activity, color: "from-amber-500 to-orange-600", iconBg: "bg-amber-50", iconText: "text-amber-600" },
+      { label: "Overdue Jobs", value: overdueJobs, change: Math.abs(overdueChange), trend: overdueJobs <= overduePrev ? "up" as const : "down" as const, icon: AlertTriangle, color: "from-red-500 to-rose-700", iconBg: "bg-red-50", iconText: "text-red-600" },
+    ];
+  }, [dashboardData, apiJobs, apiUsers]);
+
+  const recentActivity = useMemo(() => dashboardData?.recentJobs.map(job => ({
+    user: job.client,
+    action: "was updated",
+    target: job.title,
+    time: new Date(job.updatedAt).toLocaleTimeString(),
+    color: "bg-primary"
+  })) ?? [], [dashboardData]);
+
+  const activityP = usePagination(recentActivity, 6);
+
   return (
     <DashboardLayout title="Dashboard Overview">
       {/* Welcome banner */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        transition={{ duration: 0.3 }}
         className="relative overflow-hidden bg-gradient-to-br from-black via-gray-900 to-black rounded-2xl p-7 mb-8 border border-gray-800"
       >
         <motion.div
@@ -83,7 +162,7 @@ export default function SuperAdminDashboard() {
         />
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-white mb-1">Welcome back, Alex 👋</h2>
+            <h2 className="text-2xl md:text-3xl font-bold text-white">Welcome back, {user?.name?.split(" ")[0] ?? "Admin"} 👋</h2>
             <p className="text-gray-400 text-sm">Here's what's happening across your organization today.</p>
           </div>
           <div className="flex items-center gap-2">
@@ -99,14 +178,14 @@ export default function SuperAdminDashboard() {
 
       {/* Stats grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-        {STATS.map((stat, i) => {
+        {stats.map((stat, i) => {
           const Icon = stat.icon;
           return (
             <motion.div
               key={stat.label}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: i * 0.08 }}
+              transition={{ duration: 0.3, delay: i * 0.04 }}
               whileHover={{ y: -4, boxShadow: "0 20px 40px rgba(0,0,0,0.08)" }}
               className="relative bg-white rounded-2xl p-6 border border-gray-100 cursor-pointer overflow-hidden group"
             >
@@ -122,7 +201,11 @@ export default function SuperAdminDashboard() {
                   </span>
                 </div>
                 <div className="text-3xl font-bold text-gray-900 mb-1">
-                  <Counter value={stat.value} />
+                  {showSkeleton ? (
+                    <div className="h-8 w-16 bg-gray-100 rounded animate-pulse" />
+                  ) : (
+                    <Counter value={stat.value} />
+                  )}
                 </div>
                 <div className="text-sm text-gray-500">{stat.label}</div>
               </div>
@@ -136,7 +219,7 @@ export default function SuperAdminDashboard() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
+          transition={{ delay: 0.2 }}
           className="lg:col-span-2 bg-white rounded-2xl p-6 border border-gray-100"
         >
           <div className="flex items-center justify-between mb-6">
@@ -155,32 +238,42 @@ export default function SuperAdminDashboard() {
               </div>
             </div>
           </div>
-          <div className="flex items-stretch justify-between gap-3 h-56">
-            {PERFORMANCE.map((d, i) => (
-              <div key={d.day} className="flex-1 flex flex-col items-center gap-2 group h-full">
-                <div className="w-full flex items-end justify-center gap-1 flex-1">
-                  <motion.div
-                    initial={{ height: 0 }}
-                    animate={{ height: `${(d.jobs / maxJobs) * 100}%` }}
-                    transition={{ duration: 0.8, delay: 0.6 + i * 0.06, ease: "easeOut" }}
-                    whileHover={{ scaleY: 1.04 }}
-                    className="w-1/2 bg-gradient-to-t from-primary to-sky-400 rounded-t-lg relative origin-bottom cursor-pointer"
-                  >
-                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap font-semibold">
-                      {d.jobs}
-                    </div>
-                  </motion.div>
-                  <motion.div
-                    initial={{ height: 0 }}
-                    animate={{ height: `${(d.completed / maxJobs) * 100}%` }}
-                    transition={{ duration: 0.8, delay: 0.7 + i * 0.06, ease: "easeOut" }}
-                    whileHover={{ scaleY: 1.04 }}
-                    className="w-1/2 bg-gradient-to-t from-emerald-500 to-emerald-300 rounded-t-lg origin-bottom cursor-pointer"
-                  />
-                </div>
-                <span className="text-xs text-gray-500 font-medium">{d.day}</span>
+          <div className="h-56">
+            {!hasAnyPerformanceData ? (
+              <div className="h-full flex items-center justify-center text-sm text-gray-400">
+                No jobs created or completed in the last 7 days
               </div>
-            ))}
+            ) : (
+              <div className="flex items-stretch justify-between gap-3 h-full">
+                {performance.map((d, i) => (
+                  <div key={d.key} className="flex-1 flex flex-col items-center gap-2 group h-full relative">
+                    <div className="absolute -top-2 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                      <div className="bg-black text-white text-[10px] px-2 py-1 rounded whitespace-nowrap font-semibold">
+                        {d.day} {d.dateLabel} · Created {d.created} · Completed {d.completed}
+                      </div>
+                    </div>
+                    <div className="w-full flex items-end justify-center gap-1 flex-1">
+                      <motion.div
+                        initial={{ height: 0 }}
+                        animate={{ height: `${(d.created / maxCount) * 100}%` }}
+                        transition={{ duration: 0.45, delay: 0.25 + i * 0.03, ease: "easeOut" }}
+                        className="w-1/2 bg-gradient-to-t from-primary to-sky-400 rounded-t-lg origin-bottom"
+                      />
+                      <motion.div
+                        initial={{ height: 0 }}
+                        animate={{ height: `${(d.completed / maxCount) * 100}%` }}
+                        transition={{ duration: 0.45, delay: 0.3 + i * 0.03, ease: "easeOut" }}
+                        className="w-1/2 bg-gradient-to-t from-emerald-500 to-emerald-300 rounded-t-lg origin-bottom"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-gray-500 font-medium">{d.day}</span>
+                      <span className="text-[10px] text-gray-400">{d.dateLabel}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </motion.div>
 
@@ -188,7 +281,7 @@ export default function SuperAdminDashboard() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
+          transition={{ delay: 0.3 }}
           className="bg-white rounded-2xl p-6 border border-gray-100"
         >
           <h3 className="font-bold text-gray-900 mb-1">Quick Actions</h3>
@@ -202,7 +295,7 @@ export default function SuperAdminDashboard() {
                   href={action.href}
                   initial={{ opacity: 0, x: 10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.6 + i * 0.06 }}
+                  transition={{ delay: 0.4 + i * 0.04 }}
                   whileHover={{ x: 4, scale: 1.01 }}
                   whileTap={{ scale: 0.98 }}
                   className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50 hover:bg-white hover:shadow-md border border-transparent hover:border-gray-200 transition-all cursor-pointer group"
@@ -223,7 +316,7 @@ export default function SuperAdminDashboard() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.6 }}
+        transition={{ delay: 0.4 }}
         className="bg-white rounded-2xl p-6 border border-gray-100"
       >
         <div className="flex items-center justify-between mb-5">
@@ -239,7 +332,7 @@ export default function SuperAdminDashboard() {
               key={i}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.7 + i * 0.06 }}
+              transition={{ delay: 0.5 + i * 0.04 }}
               whileHover={{ x: 4, backgroundColor: "rgb(249, 250, 251)" }}
               className="flex items-center gap-4 p-3 rounded-xl cursor-pointer transition-colors"
             >

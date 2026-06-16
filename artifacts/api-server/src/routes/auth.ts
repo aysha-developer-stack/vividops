@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, sessions, users } from "@workspace/db";
 import { LoginBody, ResetPasswordBody } from "@workspace/api-zod";
+import { logger } from "../lib/logger";
 import {
   SESSION_COOKIE,
   SESSION_TTL_DAYS,
@@ -25,33 +26,62 @@ const cookieOpts = {
 router.post("/auth/login", async (req, res) => {
   const parsed = LoginBody.safeParse(req.body);
   if (!parsed.success) {
+    logger.error({ errors: parsed.error.format() }, "Login validation failed");
     return res.status(400).json({ error: "Invalid email or password" });
   }
-  const { email, password } = parsed.data;
+  const { email, password, role } = parsed.data;
+  logger.info({ email, role }, "Login validation success");
 
-  const [user] = await db
-    .select()
-    .from(users)
-    .where(eq(users.email, email.toLowerCase()))
-    .limit(1);
+  let user: typeof users.$inferSelect | undefined;
+  try {
+    [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email.toLowerCase()))
+      .limit(1);
+  } catch (err) {
+    logger.error({ err }, "Login failed: DB query error");
+    return res.status(503).json({ error: "Database connection failed" });
+  }
 
-  if (!user || user.status !== "active") {
+  if (!user) {
+    logger.warn({ email }, "Login failed: User not found");
     return res.status(401).json({ error: "Invalid email or password" });
   }
+
+  // Enforce role-based login
+  if (user.role !== role) {
+    logger.warn({ email, userRole: user.role, requestedRole: role }, "Login failed: Role mismatch");
+    const roleLabel = role === "super-admin" ? "Super Admin" : role.charAt(0).toUpperCase() + role.slice(1);
+    return res.status(401).json({ error: `This account does not have ${roleLabel} access` });
+  }
+  
+  if (user.status !== "active") {
+    logger.warn({ email, status: user.status }, "Login failed: User inactive");
+    return res.status(401).json({ error: "Invalid email or password" });
+  }
+
   const ok = await verifyPassword(password, user.passwordHash);
   if (!ok) {
+    logger.warn({ email }, "Login failed: Password mismatch");
     return res.status(401).json({ error: "Invalid email or password" });
   }
 
-  const [session] = await db
-    .insert(sessions)
-    .values({ userId: user.id, expiresAt: sessionExpiresAt() })
-    .returning();
+  let session: typeof sessions.$inferSelect;
+  try {
+    [session] = await db
+      .insert(sessions)
+      .values({ userId: user.id, expiresAt: sessionExpiresAt() })
+      .returning();
 
-  await db
-    .update(users)
-    .set({ lastSignInAt: new Date() })
-    .where(eq(users.id, user.id));
+    await db
+      .update(users)
+      .set({ lastSignInAt: new Date() })
+      .where(eq(users.id, user.id));
+  } catch (err) {
+    logger.error({ err }, "Login failed: DB write error");
+    return res.status(503).json({ error: "Database connection failed" });
+  }
 
   res.cookie(SESSION_COOKIE, session.id, cookieOpts);
   return res.json({ user: publicUser({ ...user, lastSignInAt: new Date() }) });

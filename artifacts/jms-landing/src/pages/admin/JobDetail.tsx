@@ -1,81 +1,175 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Link, useRoute } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, MapPin, Calendar, User, Briefcase, CheckCircle2, Circle,
   Play, Pause, Square, Upload, FileText, Download, MessageCircle, Send,
   RefreshCw, AlertTriangle, Clock, Users, X, Edit2,
-  Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock,
+  Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock, ListChecks, Search, Eye
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  useGetJob,
+  useUpdateJob,
+  getGetJobQueryKey,
+  getGetTimeLogsQueryKey,
+  getListJobsQueryKey,
+  useCreateTimeLog,
+  useGetTimeLogs,
+  type Job as ApiJob,
+  ApiError,
+} from "@workspace/api-client-react";
+import { statusToUi, priorityToUi, formatShortDate } from "@/lib/jobMappers";
+import { useQueryClient } from "@tanstack/react-query";
 
-interface Props { role?: Role }
+interface Props { role?: Role; id?: string }
 
-const JOB = {
-  number: "JOB-2148",
-  title: "Structural Inspection",
-  client: "Wilkinson Residence",
-  address: "12 Oak Street, Mosman NSW 2088",
-  startDate: "Apr 18, 2026",
-  dueDate: "Apr 20, 2026, 5:00 PM",
-  completedDate: "—",
-  status: "In Progress",
-  priority: "High",
-  description: "Full residential structural inspection covering footings, slab, load-bearing walls, roof framing, and visible cracks. Engineer to deliver a signed inspection report with photos and remedial recommendations.",
+interface ChecklistItem { 
+  id: number; 
+  text: string; 
+  done: boolean; 
+  desc?: string; 
+  attachmentRequired?: boolean; 
+  status: "pending" | "in_progress" | "completed" | "rework";
+  reworkReason?: string;
+}
+
+type ChecklistTemplateItem = {
+  text: string;
+  desc?: string;
+  attachmentRequired?: boolean;
 };
 
-const WORKERS = [
-  { name: "Jordan Reed", avatar: "JR", role: "Lead Engineer", status: "online", hours: 6.5 },
-  { name: "Riley Adams", avatar: "RA", role: "Inspector", status: "online", hours: 4.2 },
-  { name: "Olivia Carter", avatar: "OC", role: "Inspector", status: "away", hours: 3.8 },
-];
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
 
-interface ChecklistItem { id: number; text: string; done: boolean }
-
-const INITIAL_CHECKLIST: ChecklistItem[] = [
-  { id: 1, text: "Site arrival + safety walkaround", done: true },
-  { id: 2, text: "Inspect footings and perimeter slab", done: true },
-  { id: 3, text: "Photograph and measure visible cracks", done: true },
-  { id: 4, text: "Assess load-bearing walls and lintels", done: false },
-  { id: 5, text: "Inspect roof trusses and ceiling structure", done: false },
-  { id: 6, text: "Check subfloor for moisture and movement", done: false },
-  { id: 7, text: "Discuss findings with homeowner on-site", done: false },
-  { id: 8, text: "Draft and sign inspection report", done: false },
-];
+function parseJobMeta(raw: ApiJob["description"]): { descriptionText: string; checklist: ChecklistTemplateItem[] } {
+  if (!raw) return { descriptionText: "", checklist: [] };
+  if (typeof raw !== "string") return { descriptionText: "", checklist: [] };
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return { descriptionText: raw, checklist: [] };
+    const obj = parsed as Record<string, unknown>;
+    const descriptionText = typeof obj.descriptionText === "string" ? obj.descriptionText : raw;
+    const checklistRaw = Array.isArray(obj.checklist) ? obj.checklist : [];
+    const checklist: ChecklistTemplateItem[] = checklistRaw
+      .map((x) => {
+        if (!x || typeof x !== "object") return null;
+        const i = x as Record<string, unknown>;
+        const text = typeof i.text === "string" ? i.text.trim() : "";
+        if (!text) return null;
+        const desc = typeof i.desc === "string" && i.desc.trim() ? i.desc.trim() : undefined;
+        const attachmentRequired = Boolean(i.attachmentRequired);
+        const item: ChecklistTemplateItem = {
+          text,
+          ...(desc ? { desc } : {}),
+          ...(attachmentRequired ? { attachmentRequired: true } : {}),
+        };
+        return item;
+      })
+      .filter((x): x is ChecklistTemplateItem => x != null);
+    return { descriptionText, checklist };
+  } catch {
+    return { descriptionText: raw, checklist: [] };
+  }
+}
 
 interface FileItem { id: number; name: string; size: string; type: "doc" | "image" | "pdf"; uploadedBy: string; uploadedAt: string; tag: "input" | "output"; version?: number; group?: string }
 
-const INITIAL_FILES: FileItem[] = [
-  // INPUT — provided by supervisor at job creation
-  { id: 1, name: "site_plan_v2.pdf", size: "2.4 MB", type: "pdf", uploadedBy: "Sam Carter", uploadedAt: "Yesterday", tag: "input" },
-  { id: 2, name: "client_brief.docx", size: "186 KB", type: "doc", uploadedBy: "Sam Carter", uploadedAt: "Yesterday", tag: "input" },
-  { id: 3, name: "architectural_drawings.pdf", size: "5.8 MB", type: "pdf", uploadedBy: "Sam Carter", uploadedAt: "2 days ago", tag: "input" },
-  // OUTPUT — uploaded by user, with version history
-  { id: 4, name: "inspection_report.docx", size: "298 KB", type: "doc", uploadedBy: "Jordan Reed", uploadedAt: "Today, 10:14am", tag: "output", version: 1, group: "inspection_report" },
-  { id: 5, name: "inspection_report.docx", size: "318 KB", type: "doc", uploadedBy: "Jordan Reed", uploadedAt: "Today, 11:02am", tag: "output", version: 2, group: "inspection_report" },
-  { id: 6, name: "footing_crack_east.jpg", size: "1.4 MB", type: "image", uploadedBy: "Jordan Reed", uploadedAt: "Today, 11:08am", tag: "output", version: 1, group: "footing_crack_east" },
-];
+const INITIAL_FILES: FileItem[] = [];
+
+type AttachmentApi = {
+  id: string;
+  jobId: string;
+  fileName: string;
+  fileKey: string;
+  fileUrl: string;
+  fileType: string | null;
+  fileSize: string | null;
+  uploadedById: string;
+  createdAt: string;
+  uploadedBy: { id: string; name: string; role: Role } | null;
+};
 
 interface FileNote { id: number; author: string; avatar: string; text: string; time: string; kind: "rework" | "comment" }
 
-const INITIAL_NOTES: FileNote[] = [
-  { id: 1, author: "Sam Carter", avatar: "SC", kind: "rework", text: "inspection_report.docx v1 — please add the crack width measurements table for the east footing and re-upload.", time: "Today, 10:42am" },
-  { id: 2, author: "Jordan Reed", avatar: "JR", kind: "comment", text: "Re-uploaded as v2 with the crack measurements table added.", time: "Today, 11:02am" },
-];
+const INITIAL_NOTES: FileNote[] = [];
 
-const INITIAL_MESSAGES = [
-  { id: 1, user: "Sam Carter", avatar: "SC", text: "Pay close attention to the east-side footing — homeowner reported a new crack last week.", time: "9:02am", isMe: false },
-  { id: 2, user: "Jordan Reed", avatar: "JR", text: "Will do. On site now, starting the perimeter walkaround.", time: "9:14am", isMe: true },
-  { id: 3, user: "Riley Adams", avatar: "RA", text: "I've got the crack gauge and moisture meter ready when you need them.", time: "10:48am", isMe: false },
-];
+type JobMessageApi = {
+  id: string;
+  text: string;
+  createdAt: string;
+  isMe: boolean;
+  user: { id: string; name: string };
+};
 
-const INITIAL_TIMER_LOGS = [
-  { id: 1, user: "Jordan Reed", duration: "2:30:15", task: "Site walkaround + footing inspection", date: "Today, 9:00am" },
-  { id: 2, user: "Riley Adams", duration: "1:45:00", task: "Crack measurement + photos", date: "Today, 10:30am" },
-  { id: 3, user: "Jordan Reed", duration: "1:18:42", task: "Inspection report drafting", date: "Today, 11:30am" },
-];
+type JobCliqChannelApi = {
+  channelName: string;
+  channelUrl: string | null;
+  status: string;
+};
+
+type JobMessageUi = { id: string; user: string; avatar: string; text: string; time: string; isMe: boolean };
+
+const INITIAL_MESSAGES: JobMessageUi[] = [];
+
+const INITIAL_TIMER_LOGS: Array<{ id: string; user: string; duration: string; task: string; date: string }> = [];
+
+type LocalChecklistState = {
+  v: 1;
+  items: Array<Pick<ChecklistItem, "id" | "done" | "status"> & { reworkReason?: string }>;
+  uploads: Record<string, number>;
+};
+
+function checklistStorageKey(jobId: string) {
+  return `jfm_job_${jobId}_checklist_v1`;
+}
+
+function readChecklistState(jobId: string): LocalChecklistState | null {
+  try {
+    const raw = localStorage.getItem(checklistStorageKey(jobId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return null;
+    const obj = parsed as Record<string, unknown>;
+    if (obj.v !== 1) return null;
+    if (!Array.isArray(obj.items)) return null;
+    const uploads = (obj.uploads && typeof obj.uploads === "object") ? (obj.uploads as Record<string, number>) : {};
+    const items = obj.items
+      .map((x) => {
+        if (!x || typeof x !== "object") return null;
+        const i = x as Record<string, unknown>;
+        const id = typeof i.id === "number" ? i.id : null;
+        const done = typeof i.done === "boolean" ? i.done : null;
+        const status = i.status === "pending" || i.status === "in_progress" || i.status === "completed" || i.status === "rework" ? i.status : null;
+        const reworkReason = typeof i.reworkReason === "string" && i.reworkReason.trim() ? i.reworkReason.trim() : undefined;
+        if (id == null || done == null || status == null) return null;
+        return { id, done, status, ...(reworkReason ? { reworkReason } : {}) };
+      })
+      .filter((x): x is LocalChecklistState["items"][number] => x != null);
+    return { v: 1, items, uploads };
+  } catch {
+    return null;
+  }
+}
+
+function writeChecklistState(jobId: string, state: LocalChecklistState) {
+  try {
+    localStorage.setItem(checklistStorageKey(jobId), JSON.stringify(state));
+  } catch {
+  }
+}
 
 const TABS = [
   { id: "overview", label: "Overview", icon: Briefcase },
@@ -97,18 +191,98 @@ function formatTime(s: number) {
   return `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export default function JobDetail({ role = "user" }: Props) {
+function formatHoursMinutes(s: number) {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return `${h}h ${String(m).padStart(2, "0")}m`;
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? "";
+  const second = (parts[1]?.[0] ?? parts[0]?.[1] ?? "");
+  return `${first}${second}`.toUpperCase();
+}
+
+export default function JobDetail({ role = "user", id }: Props) {
   const routePath = role === "supervisor" ? "/supervisor/jobs/:id"
     : role === "admin" ? "/admin/jobs/:id"
     : role === "super-admin" ? "/super-admin/jobs/:id"
     : "/user/jobs/:id";
   const [, params] = useRoute(routePath);
-  const jobId = params?.id ?? JOB.number;
+  const jobId = id || params?.id || "";
+  const jobQuery = useGetJob(jobId);
+  const updateJobMutation = useUpdateJob();
+  const timeLogsQuery = useGetTimeLogs();
+  const createTimeLogMutation = useCreateTimeLog();
+  const qc = useQueryClient();
+  const job = jobQuery.data;
+  const meta = parseJobMeta(job?.description);
+  const [attachments, setAttachments] = useState<AttachmentApi[]>([]);
+  const [jobMembers, setJobMembers] = useState<Array<{ id: string; name: string; role: Role }>>([]);
 
-  const [tab, setTab] = useState<TabId>(role === "supervisor" ? "overview" : "checklist");
-  const [checklist, setChecklist] = useState(INITIAL_CHECKLIST);
+  useEffect(() => {
+    if (!job?.id) {
+      setAttachments([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/jobs/${job.id}/attachments`, { credentials: "include" });
+        if (!res.ok) {
+          if (!cancelled) setAttachments([]);
+          return;
+        }
+        const data = (await res.json()) as unknown;
+        if (!Array.isArray(data)) {
+          if (!cancelled) setAttachments([]);
+          return;
+        }
+        if (!cancelled) setAttachments(data as AttachmentApi[]);
+      } catch {
+        if (!cancelled) setAttachments([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [job?.id]);
+
+  useEffect(() => {
+    if (!job?.id) {
+      setJobMembers([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/jobs/${job.id}/members`, { credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as unknown;
+        if (!Array.isArray(data)) return;
+        if (!cancelled) setJobMembers(data as any[]);
+      } catch {
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [job?.id]);
+
+  const tabFromQuery = (() => {
+    try {
+      const v = new URLSearchParams(window.location.search).get("tab");
+      if (v === "overview" || v === "checklist" || v === "files" || v === "communication" || v === "logs") return v as TabId;
+      return null;
+    } catch {
+      return null;
+    }
+  })();
+  const defaultTab: TabId = tabFromQuery ?? (role === "supervisor" ? "overview" : "checklist");
+  const [tab, setTab] = useState<TabId>(defaultTab);
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [files, setFiles] = useState(INITIAL_FILES);
   const [messages, setMessages] = useState(INITIAL_MESSAGES);
+  const [cliqChannel, setCliqChannel] = useState<JobCliqChannelApi | null>(null);
   const [draft, setDraft] = useState("");
   const [running, setRunning] = useState(false);
   const [seconds, setSeconds] = useState(0);
@@ -117,19 +291,292 @@ export default function JobDetail({ role = "user" }: Props) {
   const [approveOpen, setApproveOpen] = useState(false);
   const [jobApproved, setJobApproved] = useState(false);
   const [showActivityPing, setShowActivityPing] = useState(false);
-  const [autoStopCountdown, setAutoStopCountdown] = useState(30);
-  const [savedLogs, setSavedLogs] = useState(INITIAL_TIMER_LOGS);
-  const savedLogsP = usePagination(savedLogs, 6);
+  const [autoStopCountdown, setAutoStopCountdown] = useState(300);
   const [fileSubTab, setFileSubTab] = useState<"input" | "output" | "notes">("input");
+  const [fileSearch, setFileSearch] = useState("");
   const [notes, setNotes] = useState(INITIAL_NOTES);
   const [noteDraft, setNoteDraft] = useState("");
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+  const [selectedChecklistItem, setSelectedChecklistItem] = useState<ChecklistItem | null>(null);
+  const [checklistUploads, setChecklistUploads] = useState<Record<number, number>>({});
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [taskDialogValue, setTaskDialogValue] = useState("");
+  const [taskDialogError, setTaskDialogError] = useState<string | null>(null);
+  const taskDialogResolverRef = useRef<((task: string | null) => void) | null>(null);
   const intervalRef = useRef<number | null>(null);
   const pingTimerRef = useRef<number | null>(null);
   const autoStopRef = useRef<number | null>(null);
-  // Demo timing: 30s instead of 1hr; auto-stop after 30s of no response (real: 5 min)
-  const PING_INTERVAL_S = 30;
-  const AUTO_STOP_S = 30;
+  const uploadChecklistIdRef = useRef<number | null>(null);
+  const autoCompleteRef = useRef<string | null>(null);
+  const PING_INTERVAL_S = 60 * 60;
+  const AUTO_STOP_S = 5 * 60;
+
+  const timerStorageKey = (jid: string) => `job_timer_v1:${jid}`;
+  const readTimerState = (jid: string) => {
+    try {
+      const raw = localStorage.getItem(timerStorageKey(jid));
+      if (!raw) return null;
+      const data = JSON.parse(raw) as any;
+      if (!data || data.v !== 1) return null;
+      return {
+        running: !!data.running,
+        startedAt: typeof data.startedAt === "number" ? data.startedAt : null,
+        accumulated: typeof data.accumulated === "number" ? data.accumulated : 0,
+        task: typeof data.task === "string" ? data.task : "",
+      };
+    } catch {
+      return null;
+    }
+  };
+  const writeTimerState = (jid: string, state: { running: boolean; startedAt: number | null; accumulated: number; task?: string }) => {
+    try {
+      localStorage.setItem(timerStorageKey(jid), JSON.stringify({ v: 1, ...state }));
+    } catch {
+    }
+  };
+  const computeElapsed = (state: { running: boolean; startedAt: number | null; accumulated: number } | null) => {
+    if (!state) return 0;
+    const base = Math.max(0, Math.floor(state.accumulated));
+    if (!state.running || !state.startedAt) return base;
+    const extra = Math.max(0, Math.floor((Date.now() - state.startedAt) / 1000));
+    return base + extra;
+  };
+
+  const readGlobalTimerState = () => {
+    try {
+      const raw = localStorage.getItem("global_timer_v1");
+      if (!raw) return null;
+      const data = JSON.parse(raw) as any;
+      if (!data || data.v !== 1) return null;
+      return {
+        running: !!data.running,
+        startedAt: typeof data.startedAt === "number" ? data.startedAt : null,
+        accumulated: typeof data.accumulated === "number" ? data.accumulated : 0,
+        task: typeof data.task === "string" ? data.task : "",
+        jobId: typeof data.jobId === "string" ? data.jobId : "",
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const writeGlobalTimerState = (state: { running: boolean; startedAt: number | null; accumulated: number; task: string; jobId: string }) => {
+    try {
+      localStorage.setItem("global_timer_v1", JSON.stringify({ v: 1, ...state }));
+    } catch {
+    }
+  };
+
+  const stopOtherRunningTimersAndSave = async () => {
+    const currentJobId = job?.id;
+
+    const g = readGlobalTimerState();
+    if (g?.running) {
+      const elapsed = computeElapsed(g);
+      if (elapsed > 0) {
+        const jid = g.jobId?.trim() ? g.jobId : null;
+        const task =
+          g.task?.trim()
+            ? g.task.trim()
+            : jid
+              ? `Work (Job ${jid.slice(0, 8)}…)`
+              : null;
+        try {
+          if (task) {
+            await createTimeLogMutation.mutateAsync({
+              data: { task, duration: elapsed, jobId: jid },
+            });
+          }
+        } catch {
+        }
+      }
+      writeGlobalTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
+    }
+
+    const runningJobTimers: Array<{ jobId: string; elapsed: number }> = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith("job_timer_v1:")) continue;
+      const jid = key.slice("job_timer_v1:".length);
+      if (!jid || jid === currentJobId) continue;
+      const state = readTimerState(jid);
+      if (!state?.running) continue;
+      const elapsed = computeElapsed(state);
+      if (elapsed > 0) runningJobTimers.push({ jobId: jid, elapsed });
+    }
+
+    for (const jt of runningJobTimers) {
+      const storedTask = readTimerState(jt.jobId)?.task?.trim() ?? "";
+      try {
+        await createTimeLogMutation.mutateAsync({
+          data: {
+            task: storedTask || `Work (Job ${jt.jobId.slice(0, 8)}…)`,
+            duration: jt.elapsed,
+            jobId: jt.jobId,
+          },
+        });
+      } catch {
+      }
+      writeTimerState(jt.jobId, { running: false, startedAt: null, accumulated: 0, task: "" });
+    }
+
+    qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+  };
+
+  const requestTask = () => {
+    setTaskDialogValue("");
+    setTaskDialogError(null);
+    setTaskDialogOpen(true);
+    return new Promise<string | null>((resolve) => {
+      taskDialogResolverRef.current = resolve;
+    });
+  };
+
+  const resolveTaskDialog = (value: string | null) => {
+    const r = taskDialogResolverRef.current;
+    taskDialogResolverRef.current = null;
+    setTaskDialogOpen(false);
+    setTaskDialogValue("");
+    setTaskDialogError(null);
+    r?.(value);
+  };
+
+  const pauseTimer = () => {
+    if (!job?.id) return;
+    const state = readTimerState(job.id) ?? { running: false, startedAt: null, accumulated: 0, task: "" };
+    const elapsed = computeElapsed(state);
+    writeTimerState(job.id, { running: false, startedAt: null, accumulated: elapsed, task: state?.task ?? "" });
+    setRunning(false);
+    setSeconds(elapsed);
+  };
+
+  const startTimer = async () => {
+    if (!job?.id) return;
+    await stopOtherRunningTimersAndSave();
+    const state = readTimerState(job.id) ?? { running: false, startedAt: null, accumulated: 0, task: "" };
+    const existingTask = state.task?.trim() ?? "";
+    const nextTask = existingTask || (await requestTask())?.trim() || "";
+    if (!nextTask) return;
+    const elapsed = computeElapsed(state);
+    writeTimerState(job.id, { running: true, startedAt: Date.now(), accumulated: elapsed, task: nextTask });
+    setRunning(true);
+    setSeconds(elapsed);
+  };
+
+  useEffect(() => {
+    if (job?.status !== "completed") return;
+    setRunning(false);
+    if (job?.id) {
+      const state = readTimerState(job.id);
+      const elapsed = computeElapsed(state);
+      writeTimerState(job.id, { running: false, startedAt: null, accumulated: elapsed, task: state?.task ?? "" });
+    }
+  }, [job?.status]);
+
+  useEffect(() => {
+    if (role !== "user") return;
+    if (!job?.id) return;
+    const state = readTimerState(job.id);
+    const elapsed = computeElapsed(state);
+    setSeconds(elapsed);
+    setRunning(!!state?.running);
+  }, [role, job?.id]);
+
+  useEffect(() => {
+    if (role !== "user") return;
+    if (!job?.id) return;
+    if (job.status === "completed") return;
+    if ((job.progress ?? 0) < 100) return;
+    if (autoCompleteRef.current === job.id) return;
+    autoCompleteRef.current = job.id;
+    updateJobMutation
+      .mutateAsync({ id: job.id, data: { status: "completed" as any } })
+      .then(async () => {
+        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+        await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      })
+      .catch(() => {
+      });
+  }, [role, job?.id, job?.status, job?.progress]);
+
+  useEffect(() => {
+    if (!job?.id) return;
+    const template = meta.checklist;
+    const nextChecklist: ChecklistItem[] = template.map((t, idx) => ({
+      id: idx + 1,
+      text: t.text,
+      done: false,
+      desc: t.desc,
+      attachmentRequired: t.attachmentRequired,
+      status: "pending",
+    }));
+    let cancelled = false;
+    (async () => {
+      try {
+        const userId = role === "user" ? null : (job?.assignee?.id ?? null);
+        const url = userId ? `/api/jobs/${job.id}/checklist-state?userId=${encodeURIComponent(userId)}` : `/api/jobs/${job.id}/checklist-state`;
+        const res = await fetch(url, { credentials: "include" });
+        if (!res.ok) throw new Error("Failed");
+        const data = (await res.json()) as unknown;
+        const api = Array.isArray(data) ? (data as Array<{ itemId: number; status: ChecklistItem["status"]; reworkReason: string | null; attachmentCount: number }>) : [];
+        const byId = new Map<number, { status: ChecklistItem["status"]; reworkReason?: string; attachmentCount: number }>();
+        for (const r of api) {
+          if (typeof r.itemId !== "number") continue;
+          byId.set(r.itemId, {
+            status: r.status,
+            ...(typeof r.reworkReason === "string" && r.reworkReason.trim() ? { reworkReason: r.reworkReason } : {}),
+            attachmentCount: typeof r.attachmentCount === "number" ? r.attachmentCount : 0,
+          });
+        }
+        const hydrated = nextChecklist.map((c) => {
+          const saved = byId.get(c.id);
+          if (!saved) return c;
+          return {
+            ...c,
+            done: saved.status === "completed",
+            status: saved.status,
+            ...(saved.reworkReason ? { reworkReason: saved.reworkReason } : {}),
+          };
+        });
+        const uploads: Record<number, number> = {};
+        for (const [id, v] of byId.entries()) uploads[id] = v.attachmentCount ?? 0;
+        if (!cancelled) {
+          setChecklist(hydrated);
+          setChecklistUploads(uploads);
+          setSelectedChecklistItem(null);
+          uploadChecklistIdRef.current = null;
+        }
+      } catch {
+        const stored = readChecklistState(job.id);
+        const storedById = new Map<number, LocalChecklistState["items"][number]>();
+        for (const it of stored?.items ?? []) storedById.set(it.id, it);
+        const jobProgress = job.progress ?? 0;
+        const jobCompleted = job.status === "completed" || jobProgress >= 100;
+        const approxCompleted = template.length > 0 ? Math.round((Math.max(0, Math.min(100, jobProgress)) / 100) * template.length) : 0;
+        const hydrated = nextChecklist.map((c, idx) => {
+          const saved = storedById.get(c.id);
+          if (saved) {
+            return {
+              ...c,
+              done: saved.done,
+              status: saved.status,
+              ...(saved.reworkReason ? { reworkReason: saved.reworkReason } : {}),
+            };
+          }
+          if (jobCompleted) return { ...c, done: true, status: "completed" as const };
+          if (approxCompleted > 0 && idx < approxCompleted) return { ...c, done: true, status: "completed" as const };
+          return c;
+        });
+        if (!cancelled) {
+          setChecklist(hydrated);
+          setSelectedChecklistItem(null);
+          setChecklistUploads(stored?.uploads ? Object.fromEntries(Object.entries(stored.uploads).map(([k, v]) => [Number(k), v])) as any : {});
+          uploadChecklistIdRef.current = null;
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [job?.id]);
 
   // Trigger hourly check-in: every PING_INTERVAL_S of running time, show popup
   useEffect(() => {
@@ -153,16 +600,37 @@ export default function JobDetail({ role = "user" }: Props) {
     autoStopRef.current = window.setInterval(() => {
       setAutoStopCountdown((c) => {
         if (c <= 1) {
-          // Auto-stop and save log
+          const duration = job?.id ? computeElapsed(readTimerState(job.id)) : seconds;
           setRunning(false);
+          setSeconds(0);
           setShowActivityPing(false);
-          setSavedLogs((logs) => [{
-            id: Date.now(),
-            user: "Jordan Reed",
-            duration: formatTime(seconds),
-            task: "Auto-stopped (no response)",
-            date: "Just now",
-          }, ...logs]);
+          if (job?.id) {
+            writeTimerState(job.id, { running: false, startedAt: null, accumulated: 0, task: "" });
+          }
+          if (duration > 0 && job?.id) {
+            const state = readTimerState(job.id);
+            const t = state?.task?.trim() ? `Auto-stopped: ${state.task.trim()}` : "Auto-stopped (no response)";
+            createTimeLogMutation.mutate(
+              { data: { task: t, duration, jobId: job.id } },
+              {
+                onSettled: () => {
+                  qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+                  if (role === "user") {
+                    fetch("/api/notifications", {
+                      method: "POST",
+                      credentials: "include",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        type: "timer",
+                        title: "Timer auto-stopped",
+                        description: `Your timer was stopped automatically for ${job.number} (no response)`,
+                      }),
+                    }).catch(() => {});
+                  }
+                },
+              },
+            );
+          }
           return 0;
         }
         return c - 1;
@@ -172,19 +640,161 @@ export default function JobDetail({ role = "user" }: Props) {
   }, [showActivityPing, seconds]);
 
   useEffect(() => {
-    if (running) intervalRef.current = window.setInterval(() => setSeconds((s) => s + 1), 1000);
-    else if (intervalRef.current) clearInterval(intervalRef.current);
+    if (!running) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      return;
+    }
+    intervalRef.current = window.setInterval(() => {
+      if (!job?.id) return;
+      const state = readTimerState(job.id);
+      setSeconds(computeElapsed(state));
+    }, 1000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [running]);
+  }, [running, job?.id]);
 
-  const completedCount = checklist.filter((c) => c.done).length;
-  const progress = Math.round((completedCount / checklist.length) * 100);
+  const completedCount = checklist.filter((c) => c.status === "completed").length;
+  const checklistProgress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
+  const progress = Math.max(job?.progress ?? 0, checklistProgress);
 
-  const toggleCheck = (id: number) => setChecklist(checklist.map((c) => c.id === id ? { ...c, done: !c.done } : c));
-  const sendMessage = () => {
-    if (!draft.trim()) return;
-    setMessages([...messages, { id: Date.now(), user: "You", avatar: "JR", text: draft, time: "now", isMe: true }]);
+  const jobTimeLogs = useMemo(() => {
+    const all = timeLogsQuery.data ?? [];
+    const jid = job?.id;
+    if (!jid) return [];
+    return all.filter((l) => l.jobId === jid);
+  }, [timeLogsQuery.data, job?.id]);
+
+  const totalLoggedSeconds = useMemo(() => {
+    return jobTimeLogs.reduce((acc, l) => acc + (typeof l.duration === "number" ? l.duration : 0), 0);
+  }, [jobTimeLogs]);
+
+  const displaySeconds = totalLoggedSeconds + seconds;
+
+  const jobLogRows = useMemo(() => {
+    const assigneeId = job?.assignee?.id;
+    const assigneeName = job?.assignee?.name ?? "User";
+    return jobTimeLogs.map((l) => {
+      const userName = l.userId === assigneeId ? assigneeName : `${l.userId.slice(0, 8)}…`;
+      return {
+        id: l.id,
+        user: userName,
+        duration: formatTime(l.duration ?? 0),
+        task: l.task ?? "Work",
+        date: l.createdAt ? new Date(l.createdAt as any).toLocaleString() : "—",
+      };
+    });
+  }, [jobTimeLogs, job?.assignee?.id, job?.assignee?.name]);
+
+  const jobLogsP = usePagination(jobLogRows, 6);
+
+  useEffect(() => {
+    if (!job?.id || tab !== "communication") return;
+    let cancelled = false;
+
+    const formatMsgTime = (iso: string) => {
+      try {
+        return new Date(iso).toLocaleString();
+      } catch {
+        return "—";
+      }
+    };
+
+    const loadCliqChannel = async () => {
+      try {
+        const res = await fetch(`/api/jobs/${job.id}/cliq/channel`, { credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as unknown;
+        if (!data || typeof data !== "object") return;
+        const obj = data as Partial<JobCliqChannelApi>;
+        if (!obj.channelName || typeof obj.channelName !== "string") return;
+        if (!cancelled) {
+          setCliqChannel({
+            channelName: obj.channelName,
+            channelUrl: typeof obj.channelUrl === "string" ? obj.channelUrl : null,
+            status: typeof obj.status === "string" ? obj.status : "pending",
+          });
+        }
+      } catch {
+      }
+    };
+
+    const loadMessages = async () => {
+      try {
+        const res = await fetch(`/api/jobs/${job.id}/messages`, { credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as unknown;
+        if (!Array.isArray(data)) return;
+        const next = (data as JobMessageApi[])
+          .filter((m) => m && typeof m === "object" && typeof m.id === "string" && typeof m.text === "string" && typeof m.createdAt === "string" && m.user && typeof m.user.name === "string")
+          .map((m) => ({
+            id: m.id,
+            user: m.isMe ? "You" : m.user.name,
+            avatar: initialsOf(m.user.name),
+            text: m.text,
+            time: formatMsgTime(m.createdAt),
+            isMe: !!m.isMe,
+          }));
+        if (!cancelled) setMessages(next);
+      } catch {
+      }
+    };
+
+    void loadCliqChannel();
+    void loadMessages();
+    const poll = window.setInterval(() => {
+      void loadMessages();
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(poll);
+    };
+  }, [job?.id, tab]);
+
+  const persistLocalChecklist = (nextChecklist: ChecklistItem[], nextUploads: Record<number, number>) => {
+    if (!job?.id) return;
+    writeChecklistState(job.id, {
+      v: 1,
+      items: nextChecklist.map((c) => ({ id: c.id, done: c.done, status: c.status, ...(c.reworkReason ? { reworkReason: c.reworkReason } : {}) })),
+      uploads: Object.fromEntries(Object.entries(nextUploads).map(([k, v]) => [String(k), v])),
+    });
+  };
+
+  const toggleCheck = (id: number) => {
+    const next = checklist.map((c) => c.id === id ? { ...c, done: !c.done } : c);
+    setChecklist(next);
+    persistLocalChecklist(next, checklistUploads);
+  };
+  const sendMessage = async () => {
+    const text = draft.trim();
+    if (!text) return;
     setDraft("");
+    if (!job?.id) return;
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/messages`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, pushToCliq: true }),
+      });
+      if (!res.ok) return;
+      const created = (await res.json()) as unknown;
+      if (!created || typeof created !== "object") return;
+      const m = created as JobMessageApi;
+      if (typeof m.id !== "string" || typeof m.text !== "string" || typeof m.createdAt !== "string" || !m.user || typeof m.user.name !== "string") return;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: m.id,
+          user: "You",
+          avatar: initialsOf(m.user.name),
+          text: m.text,
+          time: (() => { try { return new Date(m.createdAt).toLocaleString(); } catch { return "—"; } })(),
+          isMe: true,
+        },
+      ]);
+    } catch {
+    }
   };
   const inputPickerRef = useRef<HTMLInputElement>(null);
   const outputPickerRef = useRef<HTMLInputElement>(null);
@@ -201,10 +811,68 @@ export default function JobDetail({ role = "user" }: Props) {
     if (tag === "input") inputPickerRef.current?.click();
     else outputPickerRef.current?.click();
   };
-  const onPickerChange = (tag: FileItem["tag"]) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChecklistUpload = (checklistId: number) => {
+    uploadChecklistIdRef.current = checklistId;
+    outputPickerRef.current?.click();
+  };
+  const onPickerChange = (tag: FileItem["tag"]) => async (e: React.ChangeEvent<HTMLInputElement>) => {
     const picked = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (picked.length === 0) return;
+    const checklistItemId = tag === "output" && uploadChecklistIdRef.current ? uploadChecklistIdRef.current : null;
+    if (tag === "output" && uploadChecklistIdRef.current) {
+      const id = uploadChecklistIdRef.current;
+      setChecklistUploads((prev) => {
+        const next = { ...prev, [id]: (prev[id] ?? 0) + picked.length };
+        persistLocalChecklist(checklist, next);
+        return next;
+      });
+      uploadChecklistIdRef.current = null;
+    }
+
+    if (job?.id) {
+      try {
+        for (const f of picked) {
+          const fd = new FormData();
+          fd.append("file", f);
+          if (checklistItemId != null) {
+            fd.append("checklistItemId", String(checklistItemId));
+          }
+          const res = await fetch(`/api/jobs/${job.id}/attachments`, {
+            method: "POST",
+            body: fd,
+            credentials: "include",
+          });
+          if (!res.ok) throw new Error("Upload failed");
+        }
+        const res = await fetch(`/api/jobs/${job.id}/attachments`, { credentials: "include" });
+        if (res.ok) {
+          const data = (await res.json()) as unknown;
+          if (Array.isArray(data)) setAttachments(data as AttachmentApi[]);
+        }
+        if (checklistItemId != null) {
+          try {
+            const userId = role === "user" ? null : (job?.assignee?.id ?? null);
+            const url = userId ? `/api/jobs/${job.id}/checklist-state?userId=${encodeURIComponent(userId)}` : `/api/jobs/${job.id}/checklist-state`;
+            const sres = await fetch(url, { credentials: "include" });
+            if (sres.ok) {
+              const sdata = (await sres.json()) as unknown;
+              const api = Array.isArray(sdata) ? (sdata as Array<{ itemId: number; status: ChecklistItem["status"]; reworkReason: string | null; attachmentCount: number }>) : [];
+              const uploads: Record<number, number> = {};
+              for (const r of api) {
+                if (typeof r.itemId !== "number") continue;
+                uploads[r.itemId] = typeof r.attachmentCount === "number" ? r.attachmentCount : 0;
+              }
+              setChecklistUploads((prev) => ({ ...prev, ...uploads }));
+            }
+          } catch {
+          }
+        }
+        return;
+      } catch {
+      }
+    }
+
     const me = role === "user" ? "Jordan Reed" : role === "supervisor" ? "Sam Carter" : "Admin";
     const newItems: FileItem[] = picked.map((f) => {
       const id = Date.now() + Math.random();
@@ -243,10 +911,70 @@ export default function JobDetail({ role = "user" }: Props) {
     reuploadGroupRef.current = null;
   };
 
+  const persistProgress = async (nextChecklist: ChecklistItem[]) => {
+    if (!job?.id) return;
+    const total = nextChecklist.length;
+    const done = nextChecklist.filter((c) => c.status === "completed").length;
+    const nextProgress = total > 0 ? Math.round((done / total) * 100) : 0;
+    const shouldComplete = total > 0 && done === total;
+    const shouldAutoStart =
+      job.status === "pending" && total > 0 && done > 0;
+    const shouldUpdateProgress = (job.progress ?? 0) !== nextProgress;
+    const nextStatus =
+      shouldComplete ? ("completed" as const)
+      : shouldAutoStart ? ("in_progress" as const)
+      : null;
+    const shouldUpdateStatus = nextStatus != null && job.status !== nextStatus;
+    if (!shouldUpdateProgress && !shouldUpdateStatus) return;
+    try {
+      await updateJobMutation.mutateAsync({
+        id: job.id,
+        data: {
+          ...(shouldUpdateProgress ? { progress: nextProgress } : {}),
+          ...(shouldUpdateStatus ? { status: nextStatus as any } : {}),
+        },
+      });
+      await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+      await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Failed to update progress";
+      console.error(msg);
+    }
+  };
+
+  const stopAndSaveTimeLog = async (task: string) => {
+    if (!job?.id) return;
+    const duration = computeElapsed(readTimerState(job.id));
+    const storedTask = readTimerState(job.id)?.task?.trim() ?? "";
+    const t = task.trim() || storedTask || `Work (Job ${job.id.slice(0, 8)}…)`;
+    setRunning(false);
+    setSeconds(0);
+    setShowActivityPing(false);
+    writeTimerState(job.id, { running: false, startedAt: null, accumulated: 0, task: "" });
+    if (duration <= 0) return;
+    try {
+      await createTimeLogMutation.mutateAsync({ data: { task: t, duration, jobId: job.id } });
+      await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+    } catch {
+    }
+  };
+
   return (
     <DashboardLayout title="Job Details" role={role}>
+      <input ref={inputPickerRef} type="file" multiple className="hidden" onChange={onPickerChange("input")} />
+      <input ref={outputPickerRef} type="file" multiple className="hidden" onChange={onPickerChange("output")} />
       {/* Back link */}
-      <Link href={role === "supervisor" ? "/supervisor/jobs" : "/user/jobs"}>
+      <Link
+        href={
+          role === "supervisor"
+            ? "/supervisor/jobs"
+            : role === "admin"
+            ? "/admin/jobs"
+            : role === "super-admin"
+            ? "/super-admin/jobs"
+            : "/user/jobs"
+        }
+      >
         <motion.button whileHover={{ x: -3 }} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-primary mb-4">
           <ArrowLeft size={14} /> Back to jobs
         </motion.button>
@@ -262,12 +990,16 @@ export default function JobDetail({ role = "user" }: Props) {
         <div className="flex items-start justify-between flex-wrap gap-4 mb-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-bold text-primary tracking-wider">{jobId}</span>
-              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20`}>{JOB.status}</span>
-              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200`}>{JOB.priority} Priority</span>
+              <span className="text-xs font-bold text-primary tracking-wider">{job?.number ?? jobId}</span>
+              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20`}>
+                {job ? statusToUi(job) : jobQuery.isLoading ? "Loading" : "—"}
+              </span>
+              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200`}>
+                {job ? priorityToUi(job.priority) : "—"} Priority
+              </span>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">{JOB.title}</h2>
-            <div className="text-sm text-gray-500 mt-1">{JOB.client}</div>
+            <h2 className="text-2xl font-bold text-gray-900">{job?.title ?? (jobQuery.isLoading ? "Loading…" : "Job")}</h2>
+            <div className="text-sm text-gray-500 mt-1">{job?.client ?? "—"}</div>
           </div>
           <div className="flex gap-2">
             {role === "supervisor" && (
@@ -304,11 +1036,11 @@ export default function JobDetail({ role = "user" }: Props) {
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => { setFileSubTab("output"); setTab("files"); }}
-                className="flex items-center gap-2 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-semibold"
-                title="Submit your completed deliverables for supervisor review"
+                onClick={() => handleUpload("output")}
+                className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/30"
+                title="Quick upload completed files"
               >
-                <Upload size={12} /> Submit for Review
+                <Upload size={12} /> Upload Completed Files
               </motion.button>
             )}
           </div>
@@ -316,19 +1048,19 @@ export default function JobDetail({ role = "user" }: Props) {
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 pt-4 border-t border-gray-100">
           <div className="flex items-start gap-2.5"><MapPin size={14} className="text-gray-400 mt-0.5" />
-            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Location</div><div className="text-sm text-gray-900 font-medium">{JOB.address}</div></div>
+            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Location</div><div className="text-sm text-gray-900 font-medium">{job?.address ?? "—"}</div></div>
           </div>
           <div className="flex items-start gap-2.5"><Calendar size={14} className="text-gray-400 mt-0.5" />
-            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Date Created</div><div className="text-sm text-gray-900 font-medium">{JOB.startDate}</div></div>
+            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Date Created</div><div className="text-sm text-gray-900 font-medium">{job?.createdAt ? formatShortDate(job.createdAt as any) : "—"}</div></div>
           </div>
           <div className="flex items-start gap-2.5"><Clock size={14} className="text-amber-500 mt-0.5" />
-            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Est. Completion</div><div className="text-sm text-gray-900 font-medium">{JOB.dueDate}</div></div>
+            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Est. Completion</div><div className="text-sm text-gray-900 font-medium">{job?.dueDate ? new Date(job.dueDate as any).toLocaleString() : "TBD"}</div></div>
           </div>
-          <div className="flex items-start gap-2.5"><CheckCircle2 size={14} className={`mt-0.5 ${JOB.completedDate === "—" ? "text-gray-300" : "text-emerald-500"}`} />
-            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Date Completed</div><div className={`text-sm font-medium ${JOB.completedDate === "—" ? "text-gray-400 italic" : "text-gray-900"}`}>{JOB.completedDate === "—" ? "Not yet completed" : JOB.completedDate}</div></div>
+          <div className="flex items-start gap-2.5"><CheckCircle2 size={14} className={`mt-0.5 ${job?.completedAt ? "text-emerald-500" : "text-gray-300"}`} />
+            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Date Completed</div><div className={`text-sm font-medium ${job?.completedAt ? "text-gray-900" : "text-gray-400 italic"}`}>{job?.completedAt ? new Date(job.completedAt as any).toLocaleString() : "Not yet completed"}</div></div>
           </div>
           <div className="flex items-start gap-2.5"><User size={14} className="text-gray-400 mt-0.5" />
-            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Lead</div><div className="text-sm text-gray-900 font-medium">Jordan Reed</div></div>
+            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Assigned User</div><div className="text-sm text-gray-900 font-medium">{job?.assignee?.name ?? "Unassigned"}</div></div>
           </div>
         </div>
 
@@ -363,14 +1095,19 @@ export default function JobDetail({ role = "user" }: Props) {
                 <div className={`w-2 h-2 rounded-full ${running ? "bg-emerald-300 animate-pulse" : "bg-white/40"}`} />
                 <span className="text-xs font-bold text-white/80 uppercase tracking-wider">{running ? "Tracking time" : "Ready to work"}</span>
               </div>
-              <div className="font-mono text-4xl md:text-5xl font-bold text-white tabular-nums">{formatTime(seconds)}</div>
+              <div className="font-mono text-4xl md:text-5xl font-bold text-white tabular-nums">{formatTime(displaySeconds)}</div>
             </div>
             <div className="flex gap-2">
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => setRunning(!running)}
-                className="flex items-center gap-2 px-5 py-2.5 bg-white text-primary rounded-xl text-sm font-bold shadow-lg"
+                onClick={() => {
+                  if (job?.status === "completed") return;
+                  if (running) pauseTimer();
+                  else void startTimer();
+                }}
+                disabled={job?.status === "completed"}
+                className="flex items-center gap-2 px-5 py-2.5 bg-white text-primary rounded-xl text-sm font-bold shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {running ? <><Pause size={14} /> Pause</> : <><Play size={14} fill="currentColor" /> Start Work</>}
               </motion.button>
@@ -380,7 +1117,7 @@ export default function JobDetail({ role = "user" }: Props) {
                   animate={{ opacity: 1, scale: 1 }}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => { setRunning(false); setSeconds(0); }}
+                  onClick={() => { void stopAndSaveTimeLog("Manually stopped"); }}
                   className="flex items-center gap-2 px-5 py-2.5 bg-white/10 border border-white/20 text-white rounded-xl text-sm font-semibold hover:bg-white/20"
                 >
                   <Square size={12} /> Stop
@@ -415,290 +1152,427 @@ export default function JobDetail({ role = "user" }: Props) {
           <motion.div key="ov" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-6">
               <h3 className="font-bold text-gray-900 mb-2">Description</h3>
-              <p className="text-sm text-gray-600 leading-relaxed">{JOB.description}</p>
+              <p className="text-sm text-gray-600 leading-relaxed">{meta.descriptionText || "—"}</p>
             </div>
             <div className="bg-white rounded-2xl border border-gray-100 p-5">
-              <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><Users size={16} className="text-primary" /> Assigned Workers</h3>
-              {WORKERS.map((w, i) => (
-                <motion.div key={w.name} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
-                  <div className="relative">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-xs font-bold flex items-center justify-center">{w.avatar}</div>
-                    <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-white ${w.status === "online" ? "bg-emerald-400" : "bg-amber-400"}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 truncate">{w.name}</div>
-                    <div className="text-[11px] text-gray-500">{w.role} · {w.hours}h logged</div>
-                  </div>
-                </motion.div>
-              ))}
+              <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><Users size={16} className="text-primary" /> People</h3>
+              {jobMembers.length === 0 ? (
+                <div className="text-xs text-gray-400 py-6 text-center">No people assigned yet</div>
+              ) : (
+                jobMembers.map((w, i) => (
+                  <motion.div key={w.id} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
+                    <div className="relative">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-xs font-bold flex items-center justify-center">{initialsOf(w.name)}</div>
+                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-white bg-gray-300" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 truncate">{w.name}</div>
+                      <div className="text-[11px] text-gray-500">
+                        {w.role === "super-admin" ? "Super Admin"
+                          : w.role === "admin" ? "Admin"
+                          : w.role === "supervisor" ? "Supervisor"
+                          : w.id === job?.assignee?.id ? "Assignee"
+                          : "Worker"}
+                      </div>
+                    </div>
+                  </motion.div>
+                ))
+              )}
             </div>
           </motion.div>
         )}
 
         {tab === "checklist" && (
-          <motion.div key="cl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-gray-900">Task Checklist</h3>
-                <p className="text-xs text-gray-500 mt-0.5">{completedCount} of {checklist.length} tasks completed</p>
+          <motion.div key="cl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 overflow-hidden h-fit">
+              <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-gray-900">Task Checklist</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {checklist.length === 0
+                      ? "No checklist set for this job. Supervisor/Admin creates the checklist in Job Management (Create/Edit Job)."
+                      : `${completedCount} of ${checklist.length} tasks completed`}
+                  </p>
+                </div>
+                <div className="text-2xl font-bold text-primary">{progress}%</div>
               </div>
-              <div className="text-2xl font-bold text-primary">{progress}%</div>
+              <div className="divide-y divide-gray-50">
+                {checklist.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-xs text-gray-400">Checklist will appear here once the job is configured.</div>
+                ) : (
+                  checklist.map((c, i) => (
+                    <motion.button
+                      key={c.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.04 }}
+                      whileHover={{ backgroundColor: "rgb(249,250,251)" }}
+                      onClick={() => setSelectedChecklistItem(c)}
+                      className={`w-full flex items-center gap-4 px-5 py-4 text-left group transition-colors ${selectedChecklistItem?.id === c.id ? "bg-primary/5 border-l-4 border-l-primary" : "border-l-4 border-l-transparent"}`}
+                    >
+                      <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center shrink-0 transition-colors ${c.status === "completed" ? "bg-emerald-500 border-emerald-500" : c.status === "rework" ? "bg-purple-500 border-purple-500" : c.status === "in_progress" ? "bg-primary/10 border-primary" : "border-gray-300"}`}>
+                        {c.status === "completed" ? <CheckCircle2 size={14} className="text-white" /> : c.status === "rework" ? <RefreshCw size={14} className="text-white" /> : c.status === "in_progress" ? <div className="w-2 h-2 rounded-full bg-primary animate-pulse" /> : null}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-sm font-bold transition-colors ${c.status === "completed" ? "text-gray-400 line-through" : "text-gray-900"}`}>{c.text}</div>
+                        <div className="text-[10px] font-bold uppercase tracking-wider mt-0.5 flex items-center gap-2">
+                          <span className={`${c.status === "completed" ? "text-emerald-600" : c.status === "rework" ? "text-purple-600" : c.status === "in_progress" ? "text-primary" : "text-gray-400"}`}>
+                            {c.status.replace("_", " ")}
+                          </span>
+                          {c.attachmentRequired && <span className="text-gray-400 flex items-center gap-1"><Upload size={10} /> File required</span>}
+                        </div>
+                      </div>
+                      <ChevronDown size={16} className="-rotate-90 text-gray-300 group-hover:text-gray-400" />
+                    </motion.button>
+                  ))
+                )}
+              </div>
             </div>
-            <div>
-              {checklist.map((c, i) => (
-                <motion.button
-                  key={c.id}
-                  initial={{ opacity: 0, x: -10 }}
+
+            <AnimatePresence mode="wait">
+              {selectedChecklistItem ? (
+                <motion.div
+                  key={selectedChecklistItem.id}
+                  initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.04 }}
-                  whileHover={{ backgroundColor: "rgb(249,250,251)" }}
-                  onClick={() => toggleCheck(c.id)}
-                  className="w-full flex items-center gap-3 px-5 py-3.5 border-b border-gray-50 last:border-0 text-left group"
+                  exit={{ opacity: 0, x: 20 }}
+                  className="bg-white rounded-2xl border border-gray-100 overflow-hidden flex flex-col h-fit sticky top-6"
                 >
-                  <motion.div whileTap={{ scale: 0.85 }} className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${c.done ? "bg-primary border-primary" : "border-gray-300 group-hover:border-primary"}`}>
-                    <AnimatePresence>
-                      {c.done && (
-                        <motion.svg initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <path d="M2 6l3 3 5-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                        </motion.svg>
+                  <div className="p-5 border-b border-gray-100 bg-gray-50/50">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${selectedChecklistItem.status === "completed" ? "bg-emerald-50 text-emerald-700" : selectedChecklistItem.status === "rework" ? "bg-purple-50 text-purple-700" : "bg-primary/10 text-primary"}`}>
+                        {selectedChecklistItem.status.replace("_", " ")}
+                      </span>
+                      <button onClick={() => setSelectedChecklistItem(null)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+                    </div>
+                    <h4 className="font-bold text-gray-900">{selectedChecklistItem.text}</h4>
+                    <p className="text-xs text-gray-500 mt-1">{selectedChecklistItem.desc}</p>
+                  </div>
+                  
+                  <div className="p-5 space-y-5">
+                    {selectedChecklistItem.status === "rework" && (
+                      <div className="p-3 rounded-xl bg-purple-50 border border-purple-100">
+                        <div className="flex items-center gap-2 text-purple-700 font-bold text-[10px] uppercase mb-1">
+                          <AlertTriangle size={12} /> Rework Reason
+                        </div>
+                        <p className="text-xs text-purple-900 mb-3">{selectedChecklistItem.reworkReason ?? "Please review the requirements and resubmit."}</p>
+                        <button 
+                          onClick={() => handleChecklistUpload(selectedChecklistItem.id)}
+                          className="w-full py-2 bg-purple-600 text-white text-[10px] font-bold rounded-lg shadow-md shadow-purple-600/20 flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors"
+                        >
+                          <Upload size={12} /> Upload Rework File
+                        </button>
+                      </div>
+                    )}
+
+                    <div>
+                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Task Details</div>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-gray-500">Assigned User</span>
+                          <span className="font-bold text-gray-900">{job?.assignee?.name ?? "Unassigned"}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-gray-500">Due Date</span>
+                          <span className="font-bold text-gray-900">{job?.dueDate ? formatShortDate(job.dueDate as any) : "TBD"}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {selectedChecklistItem.attachmentRequired && (
+                      <div>
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Mandatory Attachment</div>
+                        <div className="p-4 border-2 border-dashed border-gray-100 rounded-xl bg-gray-50/50 flex flex-col items-center justify-center text-center">
+                          <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-primary mb-2">
+                            <Upload size={18} />
+                          </div>
+                          <div className="text-xs font-bold text-gray-900">Upload Task File</div>
+                          <p className="text-[10px] text-gray-500 mt-1 max-w-[160px]">Drag & drop or click to browse for the required file.</p>
+                          <div className="mt-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                            Uploaded: {checklistUploads[selectedChecklistItem.id] ?? 0}
+                          </div>
+                          <button onClick={() => handleChecklistUpload(selectedChecklistItem.id)} className="mt-3 px-4 py-1.5 bg-primary text-white text-[11px] font-bold rounded-lg shadow-md shadow-primary/20">Browse Files</button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Comments</div>
+                      <textarea className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl p-3 text-xs focus:outline-none focus:border-primary resize-none h-24" placeholder="Add notes about this task..." />
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                      {selectedChecklistItem.status !== "completed" && (
+                        <button 
+                          onClick={async () => {
+                            const next = checklist.map((i) =>
+                              i.id === selectedChecklistItem.id ? { ...i, status: "completed" as const, done: true } : i
+                            );
+                            setChecklist(next);
+                            setSelectedChecklistItem({ ...selectedChecklistItem, status: "completed" as const, done: true });
+                            persistLocalChecklist(next, checklistUploads);
+                            if (job?.id) {
+                              try {
+                                const res = await fetch(`/api/jobs/${job.id}/checklist-state`, {
+                                  method: "PATCH",
+                                  credentials: "include",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ itemId: selectedChecklistItem.id, status: "completed" }),
+                                });
+                                if (!res.ok) throw new Error("Failed");
+                                await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+                                await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                              } catch {
+                              }
+                            }
+                          }}
+                          disabled={!!selectedChecklistItem.attachmentRequired && (checklistUploads[selectedChecklistItem.id] ?? 0) === 0}
+                          className={`flex-1 py-2.5 text-white text-xs font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-colors ${
+                            !!selectedChecklistItem.attachmentRequired && (checklistUploads[selectedChecklistItem.id] ?? 0) === 0
+                              ? "bg-gray-300 shadow-gray-200 cursor-not-allowed"
+                              : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
+                          }`}
+                        >
+                          <CheckCircle2 size={14} /> Mark Complete
+                        </button>
                       )}
-                    </AnimatePresence>
-                  </motion.div>
-                  <span className={`text-sm flex-1 transition-colors ${c.done ? "text-gray-400 line-through" : "text-gray-900"}`}>{c.text}</span>
-                </motion.button>
-              ))}
-            </div>
+                      {selectedChecklistItem.status === "completed" && role === "supervisor" && (
+                        <button 
+                          onClick={async () => {
+                            const reason = prompt("Reason for rework?");
+                            if (reason) {
+                              const next = checklist.map((i) =>
+                                i.id === selectedChecklistItem.id
+                                  ? { ...i, status: "rework" as const, done: false, reworkReason: reason }
+                                  : i
+                              );
+                              setChecklist(next);
+                              setSelectedChecklistItem({ ...selectedChecklistItem, status: "rework" as const, done: false, reworkReason: reason });
+                              persistLocalChecklist(next, checklistUploads);
+                              if (job?.id) {
+                                try {
+                                  const res = await fetch(`/api/jobs/${job.id}/checklist-state`, {
+                                    method: "PATCH",
+                                    credentials: "include",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ itemId: selectedChecklistItem.id, status: "rework", reworkReason: reason, userId: job.assignee?.id ?? undefined }),
+                                  });
+                                  if (!res.ok) throw new Error("Failed");
+                                  await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+                                  await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                                } catch {
+                                }
+                              }
+                            }
+                          }}
+                          className="flex-1 py-2.5 bg-purple-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-600/20 flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors"
+                        >
+                          <RefreshCw size={14} /> Reject & Rework
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              ) : (
+                <div className="bg-gray-50/50 rounded-2xl border-2 border-dashed border-gray-100 p-8 text-center flex flex-col items-center justify-center h-[400px]">
+                  <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-300 mb-4">
+                    <ListChecks size={32} />
+                  </div>
+                  <h4 className="font-bold text-gray-900">Task Details</h4>
+                  <p className="text-xs text-gray-500 mt-1 max-w-[200px]">Select a task from the checklist to view its requirements and mark it complete.</p>
+                </div>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
 
         {tab === "files" && (() => {
-          const inputFiles = files.filter((f) => f.tag === "input");
-          const outputFiles = files.filter((f) => f.tag === "output");
-          // Group output files by `group` for version history
-          const groups = Array.from(new Set(outputFiles.map((f) => f.group ?? `single-${f.id}`)));
+          const q = fileSearch.toLowerCase();
+          const inputFiles = attachments.filter((a) => (a.uploadedBy?.role ?? "supervisor") !== "user");
+          const outputFiles = attachments.filter((a) => (a.uploadedBy?.role ?? "supervisor") === "user");
+          const filteredInput = inputFiles.filter((a) => a.fileName.toLowerCase().includes(q));
+          const filteredOutputServer = outputFiles.filter((a) => a.fileName.toLowerCase().includes(q));
+
           const canUploadInput = role === "super-admin" || role === "admin" || role === "supervisor";
           const canUploadOutput = role === "user" || role === "super-admin";
-          const canRework = role === "supervisor" || role === "admin" || role === "super-admin";
-
-          const SUB_TABS = [
-            { id: "input" as const, label: "Files Provided", icon: Inbox, count: inputFiles.length, color: "text-primary" },
-            { id: "output" as const, label: role === "user" ? "Your Uploads" : "Completed Files", icon: FolderOpen, count: outputFiles.length, color: "text-emerald-600" },
-            { id: "notes" as const, label: "Comments / Notes", icon: MessageSquare, count: notes.length, color: "text-amber-600" },
-          ];
 
           return (
-          <motion.div key="fl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}>
-            {/* Hidden file inputs — open native OS picker */}
-            <input ref={inputPickerRef} type="file" multiple className="hidden" onChange={onPickerChange("input")} accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.svg,.zip,.dwg,.dxf" />
-            <input ref={outputPickerRef} type="file" multiple className="hidden" onChange={onPickerChange("output")} accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.svg,.zip,.dwg,.dxf" />
-            <input ref={reuploadPickerRef} type="file" className="hidden" onChange={onReuploadChange} accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.svg,.zip,.dwg,.dxf" />
-
-            {/* Sub-tab pills */}
-            <div className="bg-white rounded-2xl border border-gray-100 p-2 mb-5 inline-flex gap-1 relative">
-              {SUB_TABS.map((s) => {
-                const active = fileSubTab === s.id;
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => setFileSubTab(s.id)}
-                    className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${active ? "text-white" : "text-gray-600 hover:text-gray-900"}`}
-                  >
-                    {active && (
-                      <motion.div layoutId="fileSubTabPill" className="absolute inset-0 bg-gradient-to-r from-primary to-sky-700 rounded-xl pointer-events-none" transition={{ type: "spring", stiffness: 300, damping: 28 }} />
-                    )}
-                    <span className="relative flex items-center gap-2">
-                      <s.icon size={14} /> {s.label}
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${active ? "bg-white/25" : "bg-gray-100 text-gray-600"}`}>{s.count}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* INPUT FILES — provided by admin/supervisor at job creation */}
-            {fileSubTab === "input" && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-                <div className="p-5 border-b border-gray-100 bg-blue-50/40 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center"><Inbox size={18} /></div>
-                    <div>
-                      <h3 className="font-bold text-gray-900 flex items-center gap-2">Files Provided <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Input</span></h3>
-                      <p className="text-[11px] text-gray-500 mt-0.5">Reference material from supervisor / admin — design briefs, client docs, equipment manuals.</p>
-                    </div>
-                  </div>
-                  {canUploadInput ? (
-                    <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={() => handleUpload("input")} className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/30 shrink-0">
-                      <Upload size={12} /> Upload Input
-                    </motion.button>
-                  ) : (
-                    <span className="flex items-center gap-1.5 text-[11px] text-gray-500 font-medium px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200 shrink-0"><Lock size={11} /> Read-only</span>
-                  )}
+            <motion.div key="fl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-6">
+              {/* Search and Global Actions */}
+              <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-gray-100">
+                <div className="relative w-full sm:w-96">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <input 
+                    type="text" 
+                    placeholder="Search files..." 
+                    value={fileSearch}
+                    onChange={(e) => setFileSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
                 </div>
-                <AnimatePresence>
-                  {inputFiles.length === 0 && (
-                    <div className="px-5 py-10 text-center text-xs text-gray-400">No input files yet.</div>
-                  )}
-                  {inputFiles.map((f, i) => (
-                    <motion.div key={f.id} layout initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ delay: i * 0.04 }} whileHover={{ backgroundColor: "rgb(249,250,251)" }} className="flex items-center gap-4 px-5 py-3.5 border-b border-gray-50 last:border-0 group">
-                      <div className={`w-10 h-10 rounded-xl ${FILE_ICON[f.type]} flex items-center justify-center shrink-0`}><FileText size={18} /></div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold text-gray-900 truncate">{f.name}</div>
-                        <div className="text-[11px] text-gray-500 mt-0.5">{f.size} · {f.uploadedBy} · {f.uploadedAt}</div>
-                      </div>
-                      <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-primary bg-primary/5 hover:bg-primary/10 border border-primary/20">
-                        <Download size={12} /> Download
-                      </motion.button>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </motion.div>
-            )}
-
-            {/* OUTPUT FILES — uploaded by user, grouped by version history */}
-            {fileSubTab === "output" && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-                <div className="p-5 border-b border-gray-100 bg-emerald-50/40 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center"><FolderOpen size={18} /></div>
-                    <div>
-                      <h3 className="font-bold text-gray-900 flex items-center gap-2">{role === "user" ? "Your Uploads" : "Completed Files"} <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Output</span></h3>
-                      <p className="text-[11px] text-gray-500 mt-0.5">Final deliverables uploaded by the field user. Each file keeps a full version history for rework tracking.</p>
-                    </div>
-                  </div>
+                <div className="flex gap-2 w-full sm:w-auto">
                   {canUploadOutput && (
-                    <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={() => handleUpload("output")} className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/30 shrink-0">
-                      <Upload size={12} /> Upload Completed
-                    </motion.button>
+                    <button onClick={() => handleUpload("output")} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700">
+                      <Upload size={14} /> Upload Completed
+                    </button>
+                  )}
+                  {canUploadInput && (
+                    <button onClick={() => handleUpload("input")} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90">
+                      <Upload size={14} /> Upload Job File
+                    </button>
                   )}
                 </div>
-                <AnimatePresence>
-                  {groups.length === 0 && (
-                    <div className="px-5 py-10 text-center text-xs text-gray-400">No completed files uploaded yet — submit them when the job is done.</div>
-                  )}
-                  {groups.map((g, gi) => {
-                    const versions = outputFiles.filter((f) => (f.group ?? `single-${f.id}`) === g).sort((a, b) => (b.version ?? 1) - (a.version ?? 1));
-                    const latest = versions[0];
-                    const isOpen = expandedGroup === g;
-                    return (
-                      <motion.div key={g} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: gi * 0.05 }} className="border-b border-gray-50 last:border-0">
-                        <div className="flex items-center gap-4 px-5 py-3.5 group hover:bg-gray-50/50">
-                          <div className={`w-10 h-10 rounded-xl ${FILE_ICON[latest.type]} flex items-center justify-center shrink-0`}><FileText size={18} /></div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-semibold text-gray-900 truncate flex items-center gap-2">
-                              {latest.name}
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">v{latest.version ?? 1}</span>
-                            </div>
-                            <div className="text-[11px] text-gray-500 mt-0.5">{latest.size} · {latest.uploadedBy} · {latest.uploadedAt} · {versions.length} version{versions.length > 1 ? "s" : ""}</div>
-                          </div>
-                          {versions.length > 1 && (
-                            <button onClick={() => setExpandedGroup(isOpen ? null : g)} className="flex items-center gap-1 text-[11px] text-gray-600 hover:text-primary font-semibold px-2.5 py-1.5 rounded-lg hover:bg-primary/5">
-                              <History size={12} /> History
-                              <motion.span animate={{ rotate: isOpen ? 180 : 0 }}><ChevronDown size={12} /></motion.span>
-                            </button>
-                          )}
-                          {canUploadOutput && (
-                            <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} onClick={() => reuploadVersion(g)} className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200" title="Upload a new version">
-                              + Re-upload
-                            </motion.button>
-                          )}
-                          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200">
-                            <Download size={12} /> Download
-                          </motion.button>
-                        </div>
-                        <AnimatePresence>
-                          {isOpen && versions.length > 1 && (
-                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden bg-gray-50/60">
-                              <div className="px-5 py-3 border-t border-gray-100">
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Version history</div>
-                                {versions.slice(1).map((v) => (
-                                  <div key={v.id} className="flex items-center gap-3 py-2 text-xs">
-                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-200 text-gray-700">v{v.version}</span>
-                                    <span className="text-gray-700">{v.size}</span>
-                                    <span className="text-gray-500">· {v.uploadedBy} · {v.uploadedAt}</span>
-                                    <button className="ml-auto flex items-center gap-1 text-primary hover:underline"><Download size={11} /> Download</button>
-                                  </div>
-                                ))}
+              </div>
+
+              <div className="grid grid-cols-1 gap-6">
+                {/* Job Files Section (Input) */}
+                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-gray-900">Job Files</h3>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Files uploaded when the job was assigned</p>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary uppercase">{filteredInput.length} Files</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-gray-50">
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">File Name</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Uploaded By</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Upload Date</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Type</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {filteredInput.length === 0 ? (
+                          <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-gray-400">No job files found</td></tr>
+                        ) : filteredInput.map((a) => {
+                          const t = detectType(a.fileName);
+                          const who = a.uploadedBy?.name ?? "—";
+                          const when = a.createdAt ? new Date(a.createdAt).toLocaleString() : "—";
+                          return (
+                          <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-lg ${FILE_ICON[t]} flex items-center justify-center`}><FileText size={14} /></div>
+                                <span className="text-sm font-medium text-gray-900 truncate max-w-[200px]">{a.fileName}</span>
                               </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </motion.div>
-                    );
-                  })}
-                </AnimatePresence>
-              </motion.div>
-            )}
-
-            {/* COMMENTS / NOTES — for rework feedback between supervisor + user */}
-            {fileSubTab === "notes" && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-                <div className="p-5 border-b border-gray-100 bg-amber-50/40 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center"><MessageSquare size={18} /></div>
-                  <div>
-                    <h3 className="font-bold text-gray-900">Comments / Notes</h3>
-                    <p className="text-[11px] text-gray-500 mt-0.5">Rework feedback and review notes on the deliverable files.</p>
+                            </td>
+                            <td className="px-6 py-4 text-xs text-gray-600">{who}</td>
+                            <td className="px-6 py-4 text-xs text-gray-600">{when}</td>
+                            <td className="px-6 py-4 text-xs uppercase font-bold text-gray-400">{t}</td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button onClick={() => window.open(a.fileUrl, "_blank", "noopener,noreferrer")} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="View"><Eye size={14} /></button>
+                                <button onClick={() => window.open(a.fileUrl, "_blank", "noopener,noreferrer")} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
+                              </div>
+                            </td>
+                          </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
-                <div className="p-5 space-y-3 max-h-[440px] overflow-y-auto">
-                  {notes.length === 0 && <div className="text-center text-xs text-gray-400 py-10">No notes yet.</div>}
-                  {notes.map((n, i) => (
-                    <motion.div key={n.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className={`flex gap-3 p-3 rounded-xl border ${n.kind === "rework" ? "bg-amber-50/60 border-amber-200" : "bg-gray-50 border-gray-200"}`}>
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 text-white text-[11px] font-bold flex items-center justify-center shrink-0">{n.avatar}</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-xs font-bold text-gray-900">{n.author}</span>
-                          {n.kind === "rework" && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">Rework</span>}
-                          <span className="text-[10px] text-gray-500">· {n.time}</span>
-                        </div>
-                        <div className="text-sm text-gray-700">{n.text}</div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-                <div className="p-4 border-t border-gray-100 bg-gray-50/60">
-                  <div className="flex gap-2">
-                    <input
-                      value={noteDraft}
-                      onChange={(e) => setNoteDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && noteDraft.trim()) {
-                          setNotes([...notes, { id: Date.now(), author: role === "user" ? "Jordan Reed" : "Sam Carter", avatar: role === "user" ? "JR" : "SC", text: noteDraft, time: "Just now", kind: canRework ? "rework" : "comment" }]);
-                          setNoteDraft("");
-                        }
-                      }}
-                      placeholder={canRework ? "Add a rework comment for the user..." : "Reply to the supervisor..."}
-                      className="flex-1 px-4 py-2.5 bg-white border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary"
-                    />
-                    <motion.button
-                      whileHover={{ scale: 1.04 }}
-                      whileTap={{ scale: 0.97 }}
-                      onClick={() => {
-                        if (!noteDraft.trim()) return;
-                        setNotes([...notes, { id: Date.now(), author: role === "user" ? "Jordan Reed" : "Sam Carter", avatar: role === "user" ? "JR" : "SC", text: noteDraft, time: "Just now", kind: canRework ? "rework" : "comment" }]);
-                        setNoteDraft("");
-                      }}
-                      className="px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold flex items-center gap-2 shadow-md shadow-primary/30"
-                    >
-                      <Send size={14} /> Post
-                    </motion.button>
+
+                {/* Completed Files Section (Output) */}
+                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-100 bg-emerald-50/30 flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-gray-900">Completed Files</h3>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Deliverables uploaded after task completion</p>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 uppercase">{filteredOutputServer.length} Files</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-gray-50">
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">File Name</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Uploaded By</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Completion Date</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {filteredOutputServer.length === 0 ? (
+                          <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-gray-400">No completed files found</td></tr>
+                        ) : (
+                          <>
+                          {filteredOutputServer.map((a) => {
+                            const t = detectType(a.fileName);
+                            const who = a.uploadedBy?.name ?? "—";
+                            const when = a.createdAt ? new Date(a.createdAt).toLocaleString() : "—";
+                            return (
+                            <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-lg ${FILE_ICON[t]} flex items-center justify-center`}><FileText size={14} /></div>
+                                <span className="text-sm font-medium text-gray-900 truncate max-w-[200px]">{a.fileName}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-xs text-gray-600">{who}</td>
+                            <td className="px-6 py-4 text-xs text-gray-600">{when}</td>
+                            <td className="px-6 py-4">
+                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100">Submitted</span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button onClick={() => window.open(a.fileUrl, "_blank", "noopener,noreferrer")} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="View"><Eye size={14} /></button>
+                                <button onClick={() => window.open(a.fileUrl, "_blank", "noopener,noreferrer")} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
+                              </div>
+                            </td>
+                          </tr>
+                            );
+                          })}
+                          </>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
-              </motion.div>
-            )}
-
-            {/* Permissions footer */}
-            <div className="mt-4 px-4 py-3 bg-white rounded-xl border border-gray-100 flex items-center gap-2 text-[11px] text-gray-500">
-              <Lock size={11} className="text-gray-400" />
-              <span><b className="text-gray-700">Your permissions:</b> {role === "user" ? "Download input files · Upload completed files · Reply to comments" : role === "supervisor" ? "Upload input · Review completed · Add rework comments · Approve" : role === "admin" ? "Upload + view all files · Add comments" : "Full access to all files and history"}</span>
-            </div>
-          </motion.div>
+              </div>
+            </motion.div>
           );
         })()}
 
         {tab === "communication" && (() => {
-          const channelName = `job-${JOB.number.toLowerCase().replace(/[^a-z0-9]/g, "-")}-${JOB.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
-          const cliqUrl = `https://cliq.zoho.com/company/vivid-engineering/channels/${channelName}`;
-          const openCliq = () => window.open(cliqUrl, "_blank", "noopener,noreferrer");
+          const cliqWebRoot =
+            (import.meta as any).env?.VITE_ZOHO_CLIQ_WEB_ROOT ||
+            (import.meta as any).env?.VITE_CLIQ_WEB_ROOT ||
+            "https://cliq.zoho.com.au";
+          const fallbackChannelName = `job-${(job?.number ?? `job-${jobId}`).toLowerCase().replace(/[^a-z0-9]/g, "-")}-${(job?.title ?? "job").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`.replace(/^job-job-/, "job-");
+          const channelName = cliqChannel?.channelName ?? fallbackChannelName;
+          const cliqUrl = cliqChannel?.channelUrl ?? `${cliqWebRoot}/channels/${channelName}`;
+          const openCliq = async () => {
+            try {
+              if (job?.id) {
+                await fetch(`/api/jobs/${job.id}/cliq/join`, { method: "POST", credentials: "include" });
+              }
+            } catch {
+            }
+            window.open(cliqUrl, "_blank", "noopener,noreferrer");
+          };
+          const members = (jobMembers.length > 0 ? jobMembers : [
+            job?.supervisor?.name ? { id: job.supervisor.id, name: job.supervisor.name, role: "supervisor" as Role } : null,
+            job?.assignee?.name ? { id: job.assignee.id, name: job.assignee.name, role: "user" as Role } : null,
+          ].filter(Boolean) as Array<{ id: string; name: string; role: Role }>)
+            .map((m) => {
+              const r =
+                m.role === "supervisor" ? "Supervisor"
+                : m.id === job?.assignee?.id ? "Assignee"
+                : "Worker";
+              return {
+                name: m.name,
+                avatar: initialsOf(m.name),
+                role: r,
+                status: "online" as const,
+                hours: 0,
+              };
+            });
           return (
           <motion.div key="cm" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-5">
             {/* Channel hero card */}
@@ -717,7 +1591,7 @@ export default function JobDetail({ role = "user" }: Props) {
                   <h3 className="text-xl font-bold flex items-center gap-2 truncate">
                     <span className="opacity-70">#</span>{channelName}
                   </h3>
-                  <p className="text-xs text-white/70 mt-1">Dedicated job channel · {WORKERS.length + 1} members · Created when job was assigned</p>
+                  <p className="text-xs text-white/70 mt-1">Dedicated job channel · {members.length} members · Created when job was assigned</p>
                 </div>
                 <div className="flex flex-col gap-2 shrink-0">
                   <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={openCliq} className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white text-primary rounded-xl font-bold text-sm shadow-lg">
@@ -741,10 +1615,10 @@ export default function JobDetail({ role = "user" }: Props) {
                       <h3 className="font-bold text-gray-900 flex items-center gap-2"><Users size={16} className="text-primary" /> Channel Members</h3>
                       <p className="text-[11px] text-gray-500 mt-0.5">Auto-added when assigned to the job. They see all messages in Cliq.</p>
                     </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-primary/10 text-primary">{WORKERS.length + 1}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-primary/10 text-primary">{members.length}</span>
                   </div>
                   <div className="divide-y divide-gray-50">
-                    {[{ name: "Sam Carter", avatar: "SC", role: "Supervisor", status: "online" as const, hours: 0 }, ...WORKERS].map((w, i) => (
+                    {members.map((w, i) => (
                       <motion.div key={w.name} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} className="flex items-center gap-3 px-5 py-3">
                         <div className="relative">
                           <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-xs font-bold flex items-center justify-center">{w.avatar}</div>
@@ -803,8 +1677,8 @@ export default function JobDetail({ role = "user" }: Props) {
                   <h3 className="font-bold text-gray-900 text-sm mb-3 flex items-center gap-2"><AlertTriangle size={14} className="text-primary" /> How job channels work</h3>
                   <ol className="space-y-3">
                     {[
-                      "When a job is created, Vivid OPS auto-creates a dedicated Cliq channel.",
-                      "All assigned workers + the supervisor are added as members automatically.",
+                      "When a job is created, Vivid OPS auto-creates a dedicated private Cliq channel.",
+                      "Only assigned workers + the supervisor are added as members automatically.",
                       "Conversation, files and @mentions live inside Zoho Cliq.",
                       "When the job is completed, the channel is archived (kept for audit).",
                     ].map((step, i) => (
@@ -862,11 +1736,11 @@ export default function JobDetail({ role = "user" }: Props) {
                 <p className="text-xs text-gray-500 mt-0.5">All time tracked on this job</p>
               </div>
               <div className="text-right">
-                <div className="text-2xl font-bold text-gray-900 font-mono">5h 33m</div>
+                <div className="text-2xl font-bold text-gray-900 font-mono">{formatHoursMinutes(totalLoggedSeconds)}</div>
                 <div className="text-[10px] text-gray-500 uppercase tracking-wide">Total</div>
               </div>
             </div>
-            {savedLogsP.pageItems.map((l, i) => (
+            {jobLogsP.pageItems.map((l, i) => (
               <motion.div
                 key={l.id}
                 initial={{ opacity: 0, x: -10 }}
@@ -886,7 +1760,7 @@ export default function JobDetail({ role = "user" }: Props) {
                 <div className="font-mono text-sm font-bold text-gray-900 tabular-nums w-20 text-right">{l.duration}</div>
               </motion.div>
             ))}
-            <Pagination page={savedLogsP.page} totalPages={savedLogsP.totalPages} total={savedLogsP.total} pageSize={savedLogsP.pageSize} onChange={savedLogsP.setPage} label="entries" />
+            <Pagination page={jobLogsP.page} totalPages={jobLogsP.totalPages} total={jobLogsP.total} pageSize={jobLogsP.pageSize} onChange={jobLogsP.setPage} label="entries" />
           </motion.div>
         )}
       </AnimatePresence>
@@ -929,9 +1803,7 @@ export default function JobDetail({ role = "user" }: Props) {
                   </button>
                   <button
                     onClick={() => {
-                      setShowActivityPing(false);
-                      setRunning(false);
-                      setSavedLogs((logs) => [{ id: Date.now(), user: "Jordan Reed", duration: formatTime(seconds), task: "Manually stopped", date: "Just now" }, ...logs]);
+                      void stopAndSaveTimeLog("Manually stopped");
                     }}
                     className="flex-1 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-bold hover:bg-gray-200"
                   >
@@ -1009,13 +1881,29 @@ export default function JobDetail({ role = "user" }: Props) {
                 <>
                   <p className="text-sm text-gray-600 mb-4">Confirm that the deliverables, checklist and time logs all look good. The job will be marked <b>Completed</b> and the user notified.</p>
                   <div className="space-y-2 mb-5 text-xs">
-                    <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> Checklist reviewed ({checklist.filter((c) => c.done).length}/{checklist.length} done)</div>
-                    <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> {files.filter((f) => f.tag === "output").length} completed file(s) submitted</div>
+                    <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> Checklist reviewed ({checklist.filter((c) => c.status === "completed").length}/{checklist.length} done)</div>
+                    <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> {attachments.filter((a) => (a.uploadedBy?.role ?? "supervisor") === "user").length} completed file(s) submitted</div>
                     <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> Time logs verified</div>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => setApproveOpen(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200">Cancel</button>
-                    <button onClick={() => { setJobApproved(true); setTimeout(() => { setApproveOpen(false); }, 1400); }} className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2">
+                    <button
+                      onClick={async () => {
+                        if (job?.id) {
+                          try {
+                            await updateJobMutation.mutateAsync({ id: job.id, data: { status: "completed" as any } });
+                            await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+                            await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                          } catch (err) {
+                            const msg = err instanceof ApiError ? err.message : "Failed to complete job";
+                            console.error(msg);
+                          }
+                        }
+                        setJobApproved(true);
+                        setTimeout(() => { setApproveOpen(false); }, 1400);
+                      }}
+                      className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2"
+                    >
                       <CheckCircle2 size={14} /> Approve
                     </button>
                   </div>
@@ -1025,6 +1913,60 @@ export default function JobDetail({ role = "user" }: Props) {
           </motion.div>
         )}
       </AnimatePresence>
+      <Dialog
+        open={taskDialogOpen}
+        onOpenChange={(open) => {
+          if (open) setTaskDialogOpen(true);
+          else resolveTaskDialog(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Start timer</DialogTitle>
+            <DialogDescription>
+              Enter the task you are starting.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <input
+              value={taskDialogValue}
+              onChange={(e) => {
+                setTaskDialogValue(e.target.value);
+                setTaskDialogError(null);
+              }}
+              placeholder="e.g. Checklist + photos"
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
+              autoFocus
+            />
+            {taskDialogError && (
+              <div className="text-xs text-red-600">{taskDialogError}</div>
+            )}
+          </div>
+          <DialogFooter>
+            <button
+              type="button"
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              onClick={() => resolveTaskDialog(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
+              onClick={() => {
+                const t = taskDialogValue.trim();
+                if (!t) {
+                  setTaskDialogError("Task is required");
+                  return;
+                }
+                resolveTaskDialog(t);
+              }}
+            >
+              Start
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

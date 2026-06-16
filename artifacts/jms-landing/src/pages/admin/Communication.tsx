@@ -1,55 +1,200 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  MessageCircle, Hash, Lock, Search, Send, Paperclip, Smile,
+  MessageCircle, Hash, Search, Send, Paperclip, Smile,
   Phone, Video, MoreHorizontal, ExternalLink, Settings, Check,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import type { Role } from "@/lib/roles";
 
-const CHANNELS = [
-  { id: "general", name: "general", icon: Hash, unread: 3, type: "channel" },
-  { id: "ops-team", name: "ops-team", icon: Hash, unread: 0, type: "channel" },
-  { id: "field-supervisors", name: "field-supervisors", icon: Hash, unread: 12, type: "channel" },
-  { id: "announcements", name: "announcements", icon: Lock, unread: 1, type: "private" },
-];
-
-const DMS = [
-  { id: "sarah", name: "Sarah Johnson", status: "online", unread: 2, avatar: "SJ" },
-  { id: "mike", name: "Mike Chen", status: "online", unread: 0, avatar: "MC" },
-  { id: "emma", name: "Emma Wilson", status: "away", unread: 0, avatar: "EW" },
-  { id: "david", name: "David Park", status: "offline", unread: 0, avatar: "DP" },
-];
-
-const MESSAGES = [
-  { id: 1, user: "Sarah Johnson", avatar: "SJ", text: "Hey team — Wilkinson Residence Inspection #482 is at 72% completion. On track for end of day!", time: "10:24 AM", isMe: false },
-  { id: 2, user: "Mike Chen", avatar: "MC", text: "Nice work 🙌 I'll start the inspection report in parallel.", time: "10:26 AM", isMe: false },
-  { id: 3, user: "Alex Morgan", avatar: "AM", text: "Great. Make sure to flag any blockers in the channel.", time: "10:31 AM", isMe: true },
-  { id: 4, user: "Emma Wilson", avatar: "EW", text: "Engineer Compliance Report just got marked complete. All clean!", time: "10:42 AM", isMe: false },
-  { id: 5, user: "Sarah Johnson", avatar: "SJ", text: "Quick question — should we escalate the overdue Underpinning Design?", time: "10:48 AM", isMe: false },
-];
-
-const STATUS_DOT: Record<string, string> = {
-  online: "bg-emerald-500",
-  away: "bg-amber-500",
-  offline: "bg-gray-400",
+type JobApi = {
+  id: string;
+  number: string;
+  title: string;
+  status: string;
+  client: string;
 };
 
-export default function Communication({ role = "super-admin" as Role }: { role?: Role } = {}) {
-  const [activeChannel, setActiveChannel] = useState("general");
-  const [draft, setDraft] = useState("");
-  const [messages, setMessages] = useState(MESSAGES);
-  const [search, setSearch] = useState("");
+type JobMessageApi = {
+  id: string;
+  text: string;
+  createdAt: string;
+  isMe: boolean;
+  user: { id: string; name: string };
+};
 
-  const send = () => {
-    if (!draft.trim()) return;
-    setMessages([...messages, {
-      id: Date.now(),
-      user: "Alex Morgan", avatar: "AM",
-      text: draft, time: new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
-      isMe: true,
-    }]);
+type JobMessageUi = { id: string; user: string; avatar: string; text: string; time: string; isMe: boolean };
+
+type JobCliqChannelApi = {
+  channelName: string;
+  channelUrl: string | null;
+  status: string;
+};
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? "";
+  const second = (parts[1]?.[0] ?? parts[0]?.[1] ?? "");
+  return `${first}${second}`.toUpperCase();
+}
+
+export default function Communication({ role = "super-admin" as Role }: { role?: Role } = {}) {
+  const [jobs, setJobs] = useState<JobApi[]>([]);
+  const [activeJobId, setActiveJobId] = useState<string>("");
+  const [draft, setDraft] = useState("");
+  const [messages, setMessages] = useState<JobMessageUi[]>([]);
+  const [search, setSearch] = useState("");
+  const [cliqChannel, setCliqChannel] = useState<JobCliqChannelApi | null>(null);
+  const pollRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/jobs", { credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as unknown;
+        if (!Array.isArray(data)) return;
+        const next = (data as any[])
+          .map((j) => {
+            if (!j || typeof j !== "object") return null;
+            const obj = j as Partial<JobApi>;
+            if (!obj.id || !obj.number || !obj.title || !obj.status || !obj.client) return null;
+            return { id: obj.id, number: obj.number, title: obj.title, status: obj.status, client: obj.client };
+          })
+          .filter(Boolean) as JobApi[];
+        if (!cancelled) {
+          setJobs(next);
+          if (!activeJobId && next[0]?.id) setActiveJobId(next[0].id);
+        }
+      } catch {
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredJobs = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return jobs;
+    return jobs.filter((j) => `${j.number} ${j.title} ${j.client}`.toLowerCase().includes(q));
+  }, [jobs, search]);
+
+  const activeJob = useMemo(() => jobs.find((j) => j.id === activeJobId) ?? null, [jobs, activeJobId]);
+
+  useEffect(() => {
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (!activeJobId) {
+      setMessages([]);
+      setCliqChannel(null);
+      return;
+    }
+
+    let cancelled = false;
+    const formatMsgTime = (iso: string) => {
+      try {
+        return new Date(iso).toLocaleString();
+      } catch {
+        return "—";
+      }
+    };
+
+    const loadMessages = async () => {
+      try {
+        const res = await fetch(`/api/jobs/${activeJobId}/messages`, { credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as unknown;
+        if (!Array.isArray(data)) return;
+        const next = (data as JobMessageApi[])
+          .filter((m) => m && typeof m === "object" && typeof m.id === "string" && typeof m.text === "string" && typeof m.createdAt === "string" && m.user && typeof m.user.name === "string")
+          .map((m) => ({
+            id: m.id,
+            user: m.isMe ? "You" : m.user.name,
+            avatar: initialsOf(m.user.name),
+            text: m.text,
+            time: formatMsgTime(m.createdAt),
+            isMe: !!m.isMe,
+          }));
+        if (!cancelled) setMessages(next);
+      } catch {
+      }
+    };
+
+    const loadCliqChannel = async () => {
+      try {
+        const res = await fetch(`/api/jobs/${activeJobId}/cliq/channel`, { credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as unknown;
+        if (!data || typeof data !== "object") return;
+        const obj = data as Partial<JobCliqChannelApi>;
+        if (!obj.channelName || typeof obj.channelName !== "string") return;
+        if (!cancelled) {
+          setCliqChannel({
+            channelName: obj.channelName,
+            channelUrl: typeof obj.channelUrl === "string" ? obj.channelUrl : null,
+            status: typeof obj.status === "string" ? obj.status : "pending",
+          });
+        }
+      } catch {
+      }
+    };
+
+    void loadCliqChannel();
+    void loadMessages();
+    pollRef.current = window.setInterval(() => void loadMessages(), 10000);
+
+    return () => {
+      cancelled = true;
+      if (pollRef.current) {
+        window.clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [activeJobId]);
+
+  const openCliq = async () => {
+    const url = cliqChannel?.channelUrl;
+    if (!url || !activeJobId) return;
+    try {
+      await fetch(`/api/jobs/${activeJobId}/cliq/join`, { method: "POST", credentials: "include" });
+    } catch {
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const send = async () => {
+    const text = draft.trim();
+    if (!text || !activeJobId) return;
     setDraft("");
+    try {
+      const res = await fetch(`/api/jobs/${activeJobId}/messages`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, pushToCliq: true }),
+      });
+      if (!res.ok) return;
+      const created = (await res.json()) as unknown;
+      if (!created || typeof created !== "object") return;
+      const m = created as JobMessageApi;
+      if (typeof m.id !== "string" || typeof m.text !== "string" || typeof m.createdAt !== "string" || !m.user || typeof m.user.name !== "string") return;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: m.id,
+          user: "You",
+          avatar: initialsOf(m.user.name),
+          text: m.text,
+          time: (() => { try { return new Date(m.createdAt).toLocaleString(); } catch { return "—"; } })(),
+          isMe: true,
+        },
+      ]);
+    } catch {
+    }
   };
 
   return (
@@ -67,18 +212,22 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
           <div>
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-gray-900">Zoho Cliq Integration</span>
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                <Check size={10} /> Connected
-              </span>
+              {cliqChannel?.status === "active" && (
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                  <Check size={10} /> Active
+                </span>
+              )}
             </div>
-            <div className="text-xs text-gray-500 mt-0.5">All channels and direct messages synced in real time</div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              Job messages are stored in the app and can be pushed to a dedicated Cliq channel.
+            </div>
           </div>
         </div>
         <div className="flex gap-2">
           <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-gray-300">
             <Settings size={12} /> Settings
           </motion.button>
-          <motion.button whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.97 }} className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-medium">
+          <motion.button onClick={openCliq} disabled={!cliqChannel?.channelUrl} whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.97 }} className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed">
             <ExternalLink size={12} /> Open in Cliq
           </motion.button>
         </div>
@@ -95,57 +244,25 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-5">
             <div>
-              <div className="px-3 mb-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Channels</div>
+              <div className="px-3 mb-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Jobs</div>
               <div className="space-y-0.5">
-                {CHANNELS.map((c) => {
-                  const Icon = c.icon;
-                  const active = activeChannel === c.id;
+                {filteredJobs.map((j) => {
+                  const active = activeJobId === j.id;
                   return (
                     <motion.button
-                      key={c.id}
+                      key={j.id}
                       whileHover={{ x: 3 }}
-                      onClick={() => setActiveChannel(c.id)}
+                      onClick={() => setActiveJobId(j.id)}
                       className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${active ? "bg-primary text-white shadow-md shadow-primary/30" : "text-gray-700 hover:bg-white"}`}
                     >
-                      <Icon size={14} className={active ? "text-white" : "text-gray-400"} />
-                      <span className="font-medium flex-1 text-left">{c.name}</span>
-                      {c.unread > 0 && (
-                        <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center ${active ? "bg-white text-primary" : "bg-primary text-white"}`}>
-                          {c.unread}
-                        </span>
-                      )}
+                      <Hash size={14} className={active ? "text-white" : "text-gray-400"} />
+                      <span className="font-medium flex-1 text-left truncate">{j.number} · {j.title}</span>
                     </motion.button>
                   );
                 })}
-              </div>
-            </div>
-            <div>
-              <div className="px-3 mb-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Direct Messages</div>
-              <div className="space-y-0.5">
-                {DMS.map((d) => {
-                  const active = activeChannel === d.id;
-                  return (
-                    <motion.button
-                      key={d.id}
-                      whileHover={{ x: 3 }}
-                      onClick={() => setActiveChannel(d.id)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${active ? "bg-primary text-white shadow-md shadow-primary/30" : "text-gray-700 hover:bg-white"}`}
-                    >
-                      <div className="relative shrink-0">
-                        <div className={`w-7 h-7 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-[10px] font-bold flex items-center justify-center`}>
-                          {d.avatar}
-                        </div>
-                        <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 ${active ? "border-primary" : "border-gray-50"} ${STATUS_DOT[d.status]}`} />
-                      </div>
-                      <span className="font-medium flex-1 text-left truncate">{d.name}</span>
-                      {d.unread > 0 && (
-                        <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center ${active ? "bg-white text-primary" : "bg-primary text-white"}`}>
-                          {d.unread}
-                        </span>
-                      )}
-                    </motion.button>
-                  );
-                })}
+                {filteredJobs.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-gray-500">No jobs found</div>
+                )}
               </div>
             </div>
           </div>
@@ -157,8 +274,10 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Hash size={16} className="text-gray-400" />
-              <span className="font-bold text-gray-900">{activeChannel}</span>
-              <span className="text-xs text-gray-500 ml-2 hidden sm:inline">· 12 members</span>
+              <span className="font-bold text-gray-900">{activeJob?.number ?? "Select a job"}</span>
+              {activeJob?.title && (
+                <span className="text-xs text-gray-500 ml-2 hidden sm:inline truncate">· {activeJob.title}</span>
+              )}
             </div>
             <div className="flex items-center gap-1">
               {[Phone, Video, MoreHorizontal].map((Icon, i) => (
@@ -199,6 +318,12 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                 </motion.div>
               ))}
             </AnimatePresence>
+            {activeJobId && messages.length === 0 && (
+              <div className="text-center text-xs text-gray-500 py-10">No messages yet</div>
+            )}
+            {!activeJobId && (
+              <div className="text-center text-xs text-gray-500 py-10">Select a job to view messages</div>
+            )}
           </div>
 
           {/* Input */}
@@ -209,7 +334,8 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && send()}
-                placeholder={`Message #${activeChannel}…`}
+                placeholder={activeJob ? `Message ${activeJob.number}…` : "Select a job…"}
+                disabled={!activeJobId}
                 className="flex-1 bg-transparent text-sm focus:outline-none py-1.5 placeholder-gray-400"
               />
               <button className="p-1.5 text-gray-400 hover:text-gray-700 transition-colors"><Smile size={16} /></button>
@@ -217,7 +343,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                 whileHover={{ scale: 1.06 }}
                 whileTap={{ scale: 0.94 }}
                 onClick={send}
-                disabled={!draft.trim()}
+                disabled={!draft.trim() || !activeJobId}
                 className="w-9 h-9 rounded-xl bg-primary hover:bg-primary/90 text-white flex items-center justify-center shadow-md shadow-primary/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <Send size={14} />

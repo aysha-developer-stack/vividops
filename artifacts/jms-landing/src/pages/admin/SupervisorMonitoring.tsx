@@ -6,9 +6,11 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
+import { useListUsers, type User } from "@workspace/api-client-react";
+import type { Role } from "@/lib/roles";
 
 interface Supervisor {
-  id: number;
+  id: string;
   name: string;
   avatar: string;
   team: string;
@@ -22,38 +24,57 @@ interface Supervisor {
   lastSeen: string;
 }
 
-const SUPERVISORS: Supervisor[] = [
-  { id: 1, name: "Sam Carter", avatar: "SC", team: "North Region", activeJobs: 12, completedJobs: 48, overdue: 1, avgRating: 4.8, hoursThisWeek: 38.5, status: "online", trend: 8.2, lastSeen: "Active now" },
-  { id: 2, name: "Mia Wong", avatar: "MW", team: "Central Hub", activeJobs: 8, completedJobs: 52, overdue: 0, avgRating: 4.9, hoursThisWeek: 41.0, status: "online", trend: 12.4, lastSeen: "Active now" },
-  { id: 3, name: "Chris Park", avatar: "CP", team: "South Region", activeJobs: 10, completedJobs: 36, overdue: 3, avgRating: 4.4, hoursThisWeek: 35.2, status: "away", trend: -2.1, lastSeen: "12m ago" },
-  { id: 4, name: "Riley Adams", avatar: "RA", team: "West Region", activeJobs: 6, completedJobs: 40, overdue: 0, avgRating: 4.7, hoursThisWeek: 36.8, status: "online", trend: 5.6, lastSeen: "Active now" },
-  { id: 5, name: "Jordan Lee", avatar: "JL", team: "East Region", activeJobs: 9, completedJobs: 31, overdue: 2, avgRating: 4.3, hoursThisWeek: 32.4, status: "offline", trend: -4.8, lastSeen: "2h ago" },
-];
-
 const STATUS_DOT: Record<Supervisor["status"], string> = {
   online: "bg-emerald-400",
   away: "bg-amber-400",
   offline: "bg-gray-400",
 };
 
-export default function SupervisorMonitoring() {
+export default function SupervisorMonitoring({ role = "admin" as Role }: { role?: Role } = {}) {
+  const { data: apiUsers, isLoading } = useListUsers();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Supervisor | null>(null);
 
-  const filtered = SUPERVISORS.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
+  const supervisors: Supervisor[] = (apiUsers ?? [])
+    .filter((u: User) => u.role === "supervisor")
+    .map((u: User) => ({
+      id: u.id,
+      name: u.name,
+      avatar: u.name.split(" ").map(s => s[0]).join("").toUpperCase(),
+      team: "General",
+      activeJobs: 0,
+      completedJobs: 0,
+      overdue: 0,
+      avgRating: 5.0,
+      hoursThisWeek: 0,
+      status: u.status === "active" ? "online" : "offline",
+      trend: 0,
+      lastSeen: "Just now"
+    }));
+
+  const filtered = supervisors.filter((s: Supervisor) => s.name.toLowerCase().includes(search.toLowerCase()));
   const supervisorsP = usePagination(filtered, 6);
 
-  const totalActive = SUPERVISORS.reduce((acc, s) => acc + s.activeJobs, 0);
-  const totalCompleted = SUPERVISORS.reduce((acc, s) => acc + s.completedJobs, 0);
-  const totalOverdue = SUPERVISORS.reduce((acc, s) => acc + s.overdue, 0);
-  const avgHours = (SUPERVISORS.reduce((acc, s) => acc + s.hoursThisWeek, 0) / SUPERVISORS.length).toFixed(1);
+  const totalActive = supervisors.reduce((acc, s) => acc + s.activeJobs, 0);
+  const totalCompleted = supervisors.reduce((acc, s) => acc + s.completedJobs, 0);
+  const totalOverdue = supervisors.reduce((acc, s) => acc + s.overdue, 0);
+
+  if (isLoading && !apiUsers) {
+    return (
+      <DashboardLayout title="Supervisor Monitoring" role={role}>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
-    <DashboardLayout title="Supervisor Monitoring" role="admin">
+    <DashboardLayout title="Supervisor Monitoring" role={role}>
       {/* Top stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
-          { label: "Active Supervisors", value: SUPERVISORS.filter((s) => s.status === "online").length, icon: Activity, color: "from-emerald-500 to-emerald-700", bg: "bg-emerald-50", text: "text-emerald-600" },
+          { label: "Active Supervisors", value: supervisors.filter((s) => s.status === "online").length, icon: Activity, color: "from-emerald-500 to-emerald-700", bg: "bg-emerald-50", text: "text-emerald-600" },
           { label: "Active Jobs", value: totalActive, icon: Briefcase, color: "from-primary to-sky-700", bg: "bg-primary/10", text: "text-primary" },
           { label: "Completed", value: totalCompleted, icon: CheckCircle2, color: "from-purple-500 to-purple-700", bg: "bg-purple-50", text: "text-purple-600" },
           { label: "Overdue", value: totalOverdue, icon: AlertCircle, color: "from-red-500 to-rose-700", bg: "bg-red-50", text: "text-red-600" },
