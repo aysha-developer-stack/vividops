@@ -31,6 +31,12 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Health check must be ABOVE session middleware to avoid DB bottlenecks during startup
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
 app.use(attachSession);
 
 app.use("/api", router);
