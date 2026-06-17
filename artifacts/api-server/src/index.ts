@@ -24,10 +24,10 @@ if (!rawPort) {
   );
 }
 
-const port = Number(rawPort) || 3001;
+const port = Number(process.env.PORT) || 3001;
 
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
+if (process.env.NODE_ENV === "production") {
+  console.log(`Server starting on port ${port} with health check at /api/health`);
 }
 
 const httpServer = createServer(app);
@@ -159,9 +159,9 @@ async function start(): Promise<void> {
     logger.error({ err }, "Failed to start overdue scheduler");
   }
 
-  httpServer.listen(port, () => {
-    logger.info({ port }, "Server listening with Socket.IO");
-  });
+  httpServer.listen(port, "0.0.0.0", () => {
+      logger.info({ port, host: "0.0.0.0" }, "Server listening with Socket.IO");
+    });
 }
 
 void start();

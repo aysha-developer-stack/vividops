@@ -35,6 +35,10 @@ app.use(attachSession);
 
 app.use("/api", router);
 
+app.get("/", (req, res) => {
+  res.json({ status: "ok", message: "Job Flow Manager API" });
+});
+
 // Error handling
 app.use((err: any, req: any, res: any, next: any) => {
   logger.error({ err, url: req.url, method: req.method }, "Unhandled error");
