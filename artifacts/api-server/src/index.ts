@@ -39,6 +39,10 @@ setupSocketIO(httpServer);
 setupWorkers();
 
 async function start(): Promise<void> {
+  httpServer.listen(port, "0.0.0.0", () => {
+    logger.info({ port, host: "0.0.0.0" }, "Server listening with Socket.IO");
+  });
+
   try {
     await seedAdminIfEmpty();
   } catch (err) {
@@ -158,10 +162,6 @@ async function start(): Promise<void> {
   } catch (err) {
     logger.error({ err }, "Failed to start overdue scheduler");
   }
-
-  httpServer.listen(port, "0.0.0.0", () => {
-      logger.info({ port, host: "0.0.0.0" }, "Server listening with Socket.IO");
-    });
 }
 
 void start();
