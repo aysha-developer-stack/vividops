@@ -33,13 +33,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(attachSession);
 
-app.use((req, res, next) => {
-  if (req.url.includes("/auth/login") && req.method === "POST") {
-    console.log("!!! LOGIN POST HIT !!!", req.body);
-  }
-  next();
-});
-
 app.use("/api", router);
 
 // Error handling

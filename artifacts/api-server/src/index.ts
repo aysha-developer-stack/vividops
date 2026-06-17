@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(here, "..", ".env"), override: true });
+const isRailway = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID);
+if (!isRailway && process.env.NODE_ENV !== "production") {
+  dotenv.config({ path: path.join(here, "..", ".env"), override: false });
+}
 
 const { default: app } = await import("./app");
 const { logger } = await import("./lib/logger");

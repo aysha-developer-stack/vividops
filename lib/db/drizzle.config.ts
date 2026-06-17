@@ -26,8 +26,11 @@ const tryLoadEnv = (filePath: string) => {
   }
 };
 
-tryLoadEnv(path.resolve(__dirname, "../../.env"));
-tryLoadEnv(path.resolve(__dirname, "../../artifacts/api-server/.env"));
+const isRailway = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID);
+if (!isRailway && process.env.NODE_ENV !== "production") {
+  tryLoadEnv(path.resolve(__dirname, "../../.env"));
+  tryLoadEnv(path.resolve(__dirname, "../../artifacts/api-server/.env"));
+}
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL, ensure the database is provisioned");
