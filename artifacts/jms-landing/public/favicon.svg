@@ -1,13 +1,10 @@
 <svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Background -->
+  <!-- Black background -->
   <rect width="180" height="180" rx="40" fill="black"/>
   
-  <!-- Roof Outline -->
-  <path d="M30 110L80 50L110 85L135 60L160 90" stroke="#0EA5E9" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Double Peak Roof (matching your logo image) -->
+  <path d="M20 120L75 55L110 95L135 65L165 105" stroke="#38BDF8" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
   
   <!-- Chimney -->
-  <path d="M55 80V65H65V68" stroke="#0EA5E9" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-  
-  <!-- VIVID OPS Text (Simplified for icon) -->
-  <text x="90" y="145" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-weight="bold" font-size="28">VIVID OPS</text>
+  <path d="M45 85V65H58V72" stroke="#38BDF8" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
