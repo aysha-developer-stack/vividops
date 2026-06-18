@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "pnpm -r --if-present run build",
+    "build:landing": "pnpm --filter @workspace/jms-landing build",
     "start": "pnpm --filter @workspace/api-server start",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"

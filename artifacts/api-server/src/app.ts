@@ -1,4 +1,8 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express, { type Express } from "express";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
@@ -27,7 +31,22 @@ app.use(
     },
   }),
 );
-app.use(cors({ origin: true, credentials: true }));
+const allowedOrigins = [
+  "https://vividops.com.au",
+  "https://www.vividops.com.au",
+  process.env.FRONTEND_URL
+].filter(Boolean) as string[];
+
+app.use(cors({ 
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  }, 
+  credentials: true 
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -40,6 +59,18 @@ app.get("/api/health", (req, res) => {
 app.use(attachSession);
 
 app.use("/api", router);
+
+// Serve static frontend files in production
+if (process.env.NODE_ENV === "production") {
+  const frontendPath = path.resolve(__dirname, "../../jms-landing/dist/public");
+  app.use(express.static(frontendPath));
+  
+  // Handle SPA routing
+  app.get("*", (req, res, next) => {
+    if (req.url.startsWith("/api")) return next();
+    res.sendFile(path.join(frontendPath, "index.html"));
+  });
+}
 
 app.get("/", (req, res) => {
   res.json({ status: "ok", message: "Job Flow Manager API" });

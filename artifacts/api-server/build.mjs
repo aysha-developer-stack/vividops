@@ -17,7 +17,7 @@ async function buildAll() {
   await esbuild({
     entryPoints: [path.resolve(artifactDir, "src/index.ts")],
     platform: "node",
-    bundle: true,
+    bundle: false,
     format: "esm",
     outdir: distDir,
     outExtension: { ".js": ".mjs" },
@@ -28,6 +28,22 @@ async function buildAll() {
     // - uses native modules and loads them dynamically (e.g. sharp)
     // - use path traversal to read files (e.g. @google-cloud/secret-manager loads sibling .proto files)
     external: [
+      "express",
+      "cors",
+      "cookie-parser",
+      "pino-http",
+      "pino",
+      "pino-pretty",
+      "dotenv",
+      "bcryptjs",
+      "bullmq",
+      "ioredis",
+      "multer",
+      "multer-s3",
+      "resend",
+      "socket.io",
+      "@aws-sdk/*",
+      "@supabase/supabase-js",
       "*.node",
       "sharp",
       "better-sqlite3",

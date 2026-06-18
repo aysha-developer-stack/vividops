@@ -6,7 +6,7 @@ cmds = ["pnpm install --no-frozen-lockfile"]
 
 [phases.build]
 cmds = [
-  "pnpm --filter @workspace/api-server build"
+  "pnpm build"
 ]
 
 [start]
