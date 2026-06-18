@@ -17,7 +17,7 @@ async function buildAll() {
   await esbuild({
     entryPoints: [path.resolve(artifactDir, "src/index.ts")],
     platform: "node",
-    bundle: false,
+    bundle: true,
     format: "esm",
     outdir: distDir,
     outExtension: { ".js": ".mjs" },

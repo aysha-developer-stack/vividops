@@ -63,6 +63,7 @@ app.use("/api", router);
 // Serve static frontend files in production
 if (process.env.NODE_ENV === "production") {
   const frontendPath = path.resolve(__dirname, "../../jms-landing/dist/public");
+  console.log(`Checking frontend path: ${frontendPath}`);
   app.use(express.static(frontendPath));
   
   // Handle SPA routing
