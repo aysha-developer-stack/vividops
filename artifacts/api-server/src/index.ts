@@ -39,9 +39,21 @@ setupSocketIO(httpServer);
 setupWorkers();
 
 async function start(): Promise<void> {
+  // Try to push DB schema at startup
+  try {
+    console.log("[STARTUP] Syncing database schema...");
+    const { execSync } = await import("node:child_process");
+    execSync("pnpm --filter @workspace/db push", { stdio: "inherit" });
+    console.log("[STARTUP] Database schema synced successfully.");
+  } catch (err) {
+    console.error("[STARTUP] Database schema sync failed, continuing anyway:", err);
+  }
+
   httpServer.listen(port, "0.0.0.0", () => {
-    logger.info({ port, host: "0.0.0.0" }, "Server listening with Socket.IO");
+    console.log(`[STARTUP] HTTP server listening on 0.0.0.0:${port}`);
   });
+
+  console.log("[STARTUP] Starting background tasks...");
 
   try {
     await seedAdminIfEmpty();

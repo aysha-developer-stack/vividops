@@ -67,8 +67,7 @@ if (process.env.NODE_ENV === "production") {
   app.use(express.static(frontendPath));
   
   // Handle SPA routing
-  app.get("*", (req, res, next) => {
-    if (req.url.startsWith("/api")) return next();
+  app.get(/^(?!\/api).*/, (req, res) => {
     res.sendFile(path.join(frontendPath, "index.html"));
   });
 }

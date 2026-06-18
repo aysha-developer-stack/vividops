@@ -4,9 +4,9 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "pnpm --filter @workspace/db push && pnpm start",
-    "healthcheckPath": "/",
-    "healthcheckTimeout": 120,
+    "startCommand": "pnpm start",
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE"
   }
 }
