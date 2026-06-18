@@ -1,7 +1,13 @@
 <svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="40" fill="#2563eb"/>
-<path d="M50 50H130V130H50V50Z" stroke="white" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M70 75H110" stroke="white" stroke-width="8" stroke-linecap="round"/>
-<path d="M70 95H110" stroke="white" stroke-width="8" stroke-linecap="round"/>
-<path d="M70 115H90" stroke="white" stroke-width="8" stroke-linecap="round"/>
+  <!-- Background -->
+  <rect width="180" height="180" rx="40" fill="black"/>
+  
+  <!-- Roof Outline -->
+  <path d="M30 110L80 50L110 85L135 60L160 90" stroke="#0EA5E9" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Chimney -->
+  <path d="M55 80V65H65V68" stroke="#0EA5E9" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- VIVID OPS Text (Simplified for icon) -->
+  <text x="90" y="145" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-weight="bold" font-size="28">VIVID OPS</text>
 </svg>
