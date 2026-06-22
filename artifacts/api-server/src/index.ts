@@ -5,13 +5,34 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const isRailway = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID);
-if (!isRailway && process.env.NODE_ENV !== "production") {
-  dotenv.config({ path: path.join(here, "..", ".env"), override: false });
+for (const envPath of [
+  path.join(here, "..", ".env"),
+  path.join(here, "..", "..", "..", ".env"),
+]) {
+  dotenv.config({ path: envPath });
 }
 
 const { default: app } = await import("./app");
 const { logger } = await import("./lib/logger");
+
+// Validate required environment variables
+const requiredEnvVars = [
+  "DATABASE_URL",
+  "RESEND_API_KEY",
+  "SUPABASE_URL",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "SUPABASE_STORAGE_BUCKET",
+  "SESSION_SECRET"
+];
+
+const missingVars = requiredEnvVars.filter(v => !process.env[v]);
+if (missingVars.length > 0) {
+  console.error(`[CRITICAL] Missing environment variables: ${missingVars.join(", ")}`);
+  logger.error({ missingVars }, "Startup failed: Missing required environment variables");
+} else {
+  console.log("[ENV] All required environment variables are present.");
+}
+
 const { seedAdminIfEmpty } = await import("./lib/seed");
 const { setupSocketIO } = await import("./lib/socket");
 const { setupWorkers } = await import("./lib/queue");
@@ -40,6 +61,7 @@ setupWorkers();
 
 async function start(): Promise<void> {
   // Try to push DB schema at startup
+  /*
   try {
     console.log("[STARTUP] Syncing database schema...");
     const { execSync } = await import("node:child_process");
@@ -48,6 +70,7 @@ async function start(): Promise<void> {
   } catch (err) {
     console.error("[STARTUP] Database schema sync failed, continuing anyway:", err);
   }
+  */
 
   httpServer.listen(port, "0.0.0.0", () => {
     console.log(`[STARTUP] HTTP server listening on 0.0.0.0:${port}`);

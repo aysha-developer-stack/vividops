@@ -673,56 +673,65 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
     return;
   }
 
-  const rawLevel = (process.env.ZOHO_CLIQ_CHANNEL_LEVEL || "private").trim().toLowerCase();
-  const level =
-    rawLevel === "organization" || rawLevel === "team" || rawLevel === "private" || rawLevel === "external"
-      ? rawLevel
-      : "private";
+  // First check if channel already exists in Cliq
+  let existingChannelId = await resolveCliqChannelIdByName(token, channelName);
+  let createdChannelName = channelName;
+  let createdChannelUrl = computeCliqChannelUrl(channelName);
+  let discoveredChannelId: string | null = existingChannelId;
 
-  const createBody: Record<string, unknown> = {
-    level,
-    name: channelName,
-    description: `Job channel for JOB-${job.serial} · ${job.title}`,
-  };
-  if (level === "private" && participantEmails.length > 0) {
-    createBody.email_ids = participantEmails;
+  // Only create new channel if it doesn't exist yet
+  if (!existingChannelId) {
+    const rawLevel = (process.env.ZOHO_CLIQ_CHANNEL_LEVEL || "private").trim().toLowerCase();
+    const level =
+      rawLevel === "organization" || rawLevel === "team" || rawLevel === "private" || rawLevel === "external"
+        ? rawLevel
+        : "private";
+
+    const createBody: Record<string, unknown> = {
+      level,
+      name: channelName,
+      description: `Job channel for JOB-${job.serial} · ${job.title}`,
+    };
+    if (level === "private" && participantEmails.length > 0) {
+      createBody.email_ids = participantEmails;
+    }
+
+    const createRes = await fetch(`${cliqApiRoot()}/channels`, {
+      method: "POST",
+      headers: {
+        Authorization: `Zoho-oauthtoken ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(createBody),
+    });
+    if (!createRes.ok) {
+      const body = await createRes.text().catch(() => "");
+      throw new Error(`Cliq create channel failed (${createRes.status}): ${body}`);
+    }
+
+    const createJson = (await createRes.json().catch(() => null)) as any;
+    discoveredChannelId =
+      pickString(createJson?.data?.channel_id) ??
+      pickString(createJson?.data?.channelId) ??
+      pickString(createJson?.channel_id) ??
+      pickString(createJson?.channelId);
+    const discoveredName =
+      pickString(createJson?.data?.unique_name) ??
+      pickString(createJson?.data?.channel_unique_name) ??
+      pickString(createJson?.data?.name) ??
+      pickString(createJson?.data?.uniqueName) ??
+      pickString(createJson?.unique_name) ??
+      pickString(createJson?.name);
+    createdChannelName = discoveredName ?? channelName;
+
+    const discoveredUrl =
+      pickString(createJson?.data?.permalink) ??
+      pickString(createJson?.data?.channel_url) ??
+      pickString(createJson?.data?.url) ??
+      pickString(createJson?.permalink) ??
+      pickString(createJson?.url);
+    createdChannelUrl = discoveredUrl ?? computeCliqChannelUrl(createdChannelName);
   }
-
-  const createRes = await fetch(`${cliqApiRoot()}/channels`, {
-    method: "POST",
-    headers: {
-      Authorization: `Zoho-oauthtoken ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(createBody),
-  });
-  if (!createRes.ok) {
-    const body = await createRes.text().catch(() => "");
-    throw new Error(`Cliq create channel failed (${createRes.status}): ${body}`);
-  }
-
-  const createJson = (await createRes.json().catch(() => null)) as any;
-  const discoveredChannelId =
-    pickString(createJson?.data?.channel_id) ??
-    pickString(createJson?.data?.channelId) ??
-    pickString(createJson?.channel_id) ??
-    pickString(createJson?.channelId);
-  const discoveredName =
-    pickString(createJson?.data?.unique_name) ??
-    pickString(createJson?.data?.channel_unique_name) ??
-    pickString(createJson?.data?.name) ??
-    pickString(createJson?.data?.uniqueName) ??
-    pickString(createJson?.unique_name) ??
-    pickString(createJson?.name);
-  const createdChannelName = discoveredName ?? channelName;
-
-  const discoveredUrl =
-    pickString(createJson?.data?.permalink) ??
-    pickString(createJson?.data?.channel_url) ??
-    pickString(createJson?.data?.url) ??
-    pickString(createJson?.permalink) ??
-    pickString(createJson?.url);
-  const createdChannelUrl = discoveredUrl ?? computeCliqChannelUrl(createdChannelName);
 
   await db.execute(sql`
     UPDATE job_cliq_channels

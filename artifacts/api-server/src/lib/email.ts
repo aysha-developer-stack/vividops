@@ -9,7 +9,16 @@ function getFromAddress(): string {
 
 function getResend(): Resend | null {
   const apiKey = process.env.RESEND_API_KEY;
+  
+  // Log every time getResend is called if apiKey is missing
   if (!apiKey) {
+    logger.error({
+      msg: "RESEND_API_KEY is missing during getResend() call",
+      envKeysPresent: Object.keys(process.env).length,
+      resendKeyPresent: "RESEND_API_KEY" in process.env,
+      nodeEnv: process.env.NODE_ENV
+    }, "Resend Configuration Error");
+
     if (!warnedMissingKey) {
       warnedMissingKey = true;
       logger.warn(
@@ -43,6 +52,10 @@ export async function sendInviteEmail(
   }
 
   const subject = "Welcome to Vivid OPS — your account is ready";
+  const from = getFromAddress();
+
+  logger.info({ to, from }, "Attempting to send invite email");
+
   const html = `
     <div style="font-family: system-ui, sans-serif; color:#0f172a; max-width:520px; margin:0 auto; padding:24px;">
       <h1 style="color:#0B7EB9; font-size:22px; margin:0 0 8px;">Welcome to Vivid OPS, ${escapeHtml(name)}.</h1>
@@ -66,7 +79,7 @@ export async function sendInviteEmail(
 
   try {
     const { error } = await resend.emails.send({
-      from: getFromAddress(),
+      from,
       to,
       subject,
       html,

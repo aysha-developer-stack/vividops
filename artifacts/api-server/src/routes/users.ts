@@ -42,7 +42,7 @@ function assertCanManage(actor: UserRow, target: UserRow, res: Response): boolea
   return false;
 }
 
-function buildSignInUrl(): string {
+function buildSignInUrl(req?: any): string {
   const explicit =
     process.env.PUBLIC_APP_URL ??
     process.env.APP_URL ??
@@ -52,9 +52,25 @@ function buildSignInUrl(): string {
     const base = explicit.replace(/\/+$/, "");
     return `${base}/login`;
   }
+
+  // If running on Railway/Production, try to detect the host from the request
+  if (req && req.get) {
+    const host = req.get("x-forwarded-host") || req.get("host");
+    const protocol = req.get("x-forwarded-proto") || req.protocol || "https";
+    if (host && !host.includes("localhost") && !host.includes("127.0.0.1")) {
+      return `${protocol}://${host}/login`;
+    }
+  }
+
   const domains = process.env.REPLIT_DOMAINS?.split(",").map((s) => s.trim());
   const host = domains?.[0];
   if (host) return `https://${host}/login`;
+  
+  // FINAL FALLBACK for your specific domain if detection fails
+  if (process.env.NODE_ENV === "production") {
+    return "https://vividops.com.au/login";
+  }
+
   return "http://localhost:5173/login";
 }
 
@@ -116,7 +132,7 @@ router.post("/users", adminOnly, async (req, res) => {
       to: created.email,
       name: created.name,
       tempPassword,
-      signInUrl: buildSignInUrl(),
+      signInUrl: buildSignInUrl(req),
     });
     emailSent = result.sent;
     emailError = result.sent ? null : result.error ?? "Failed to send email";
@@ -236,7 +252,7 @@ router.post("/users/:id/resend-invite", adminOnly, async (req, res) => {
     to: updated.email,
     name: updated.name,
     tempPassword,
-    signInUrl: buildSignInUrl(),
+    signInUrl: buildSignInUrl(req),
   });
 
   return res.json({

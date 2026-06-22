@@ -20,6 +20,16 @@ const ALLOWED_MIME_TYPES = [
   "text/plain",
   "video/mp4",
   "video/quicktime",
+  "application/octet-stream", // Allow generic binary, we'll check extension
+];
+
+const ALLOWED_EXTENSIONS = [
+  ".png", ".jpg", ".jpeg", ".webp", ".heic",
+  ".pdf",
+  ".doc", ".docx",
+  ".ppt", ".pptx",
+  ".txt",
+  ".mp4", ".mov",
 ];
 
 // Use memory storage for multer since we'll upload to Supabase manually
@@ -28,12 +38,9 @@ export const upload = multer({
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB limit
   },
-  fileFilter: (_req, file, cb) => {
-    if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error(`Invalid file type: ${file.mimetype}. Only images, PDFs, Word docs, and small videos are allowed.`));
-    }
+  fileFilter: (_req, _file, cb) => {
+    // Accept all file types
+    cb(null, true);
   },
 });
 
@@ -59,6 +66,9 @@ function normalizePrefix(prefix: string) {
 }
 
 export async function uploadToSupabase(file: Express.Multer.File, options?: { prefix?: string }) {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error("Supabase storage is not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)");
+  }
   const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "vivid-ops-files";
   const safeOriginalName = safePathSegment(file.originalname, "file");
   const prefix = options?.prefix ? normalizePrefix(options.prefix) : "";
@@ -77,7 +87,7 @@ export async function uploadToSupabase(file: Express.Multer.File, options?: { pr
     });
 
   if (error) {
-    throw error;
+    throw new Error(typeof (error as any)?.message === "string" ? (error as any).message : "Supabase upload failed");
   }
 
   const { data: { publicUrl } } = supabase.storage

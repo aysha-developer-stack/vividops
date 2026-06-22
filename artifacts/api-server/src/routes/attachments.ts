@@ -5,7 +5,7 @@ import { db, jobs, users, jobAttachments, jobMembers, type JobRow, type UserRow,
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth";
 import { io } from "../lib/socket";
-import { defaultQueue } from "../lib/queue";
+import { addToQueue } from "../lib/queue";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -27,6 +27,27 @@ const ensureJobMembersSchema = async () => {
   await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_members_user_idx ON job_members (user_id);`);
 };
 
+let attachmentsSchemaEnsured = false;
+const ensureAttachmentsSchema = async () => {
+  if (attachmentsSchemaEnsured) return;
+  attachmentsSchemaEnsured = true;
+  await ensureJobMembersSchema();
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS job_attachments (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      file_name text NOT NULL,
+      file_key text NOT NULL,
+      file_url text NOT NULL,
+      file_type text,
+      file_size text,
+      uploaded_by_id uuid NOT NULL REFERENCES users(id),
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_attachments_job_idx ON job_attachments (job_id);`);
+};
+
 async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
   if (actor.role === "supervisor") {
@@ -44,6 +65,7 @@ async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
 
 router.get("/jobs/:jobId/attachments", requireAuth, async (req, res) => {
   try {
+    await ensureAttachmentsSchema();
     const jobId = Array.isArray(req.params.jobId) ? req.params.jobId[0] : req.params.jobId;
     const actor = req.session!.user;
 
@@ -75,8 +97,10 @@ router.get("/jobs/:jobId/attachments", requireAuth, async (req, res) => {
     );
     return;
   } catch (err) {
-    logger.error({ err }, "Failed to list attachments");
-    res.status(500).json({ message: "Internal server error" });
+    const message =
+      err instanceof Error ? err.message : typeof err === "string" ? err : "Internal server error";
+    logger.error({ err, message }, "Failed to list attachments");
+    res.status(500).json({ message });
     return;
   }
 });
@@ -88,6 +112,7 @@ router.post(
   upload.single("file"),
   async (req, res) => {
     try {
+      await ensureAttachmentsSchema();
       const jobId = Array.isArray(req.params.jobId) ? req.params.jobId[0] : req.params.jobId;
       const file = req.file;
 
@@ -161,8 +186,8 @@ router.post(
         uploadedBy: actor.name,
       });
 
-      // Trigger background job (e.g., virus scan or thumbnail generation)
-      await defaultQueue.add("process-attachment", {
+      // Background processing is optional; do not fail the upload if Redis is over quota.
+      addToQueue("process-attachment", {
         attachmentId: attachment.id,
         jobId,
       });
@@ -173,8 +198,10 @@ router.post(
       });
       return;
     } catch (err) {
-      logger.error({ err }, "Failed to upload attachment");
-      res.status(500).json({ message: "Internal server error" });
+      const message =
+        err instanceof Error ? err.message : typeof err === "string" ? err : "Internal server error";
+      logger.error({ err, message }, "Failed to upload attachment");
+      res.status(500).json({ message });
       return;
     }
   }
