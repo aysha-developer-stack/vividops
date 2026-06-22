@@ -73,16 +73,11 @@ export async function uploadToSupabase(file: Express.Multer.File, options?: { pr
   const safeOriginalName = safePathSegment(file.originalname, "file");
   const prefix = options?.prefix ? normalizePrefix(options.prefix) : "";
   const key = `${prefix ? `${prefix}/` : ""}${Date.now()}-${randomUUID()}-${safeOriginalName}`;
-  const contentType =
-    file.mimetype === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
-    file.mimetype === "application/vnd.ms-powerpoint"
-      ? "application/octet-stream"
-      : file.mimetype;
   
+  // Let Supabase detect content type automatically - don't restrict it
   const { data, error } = await supabase.storage
     .from(bucketName)
     .upload(key, file.buffer, {
-      contentType,
       upsert: false,
     });
 
