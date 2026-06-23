@@ -571,7 +571,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                         <select 
                           value={userSettingsState[f.key as keyof typeof userSettingsState] as string}
                           onChange={(e) => setUserSettingsState({ ...userSettingsState, [f.key]: e.target.value })}
-                          className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
+                          className="w-full bg-white text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
                         >
                           {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
                         </select>
