@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Search, Clock, AlertCircle, TrendingUp, Plus, X, Activity, FileWarning,
+  Search, AlertCircle, Plus, X, Activity, FileWarning,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -12,6 +12,8 @@ import {
   useListJobs,
   useGetTimeLogs,
   type User,
+  type Job,
+  type TimeLog,
   getListUsersQueryKey,
   getListJobsQueryKey,
   getGetTimeLogsQueryKey,
@@ -55,6 +57,79 @@ const SEVERITY: Record<"high" | "medium" | "low", string> = {
   medium: "bg-amber-50 text-amber-700 border-amber-200",
   low: "bg-blue-50 text-blue-700 border-blue-200",
 };
+
+function parseMs(iso: string | null | undefined) {
+  if (!iso) return null;
+  const ms = new Date(iso).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, n));
+}
+
+function getLatestJobNumber(jobs: Job[]) {
+  const latest = [...jobs].sort((a, b) => {
+    const aMs =
+      parseMs(a.completedAt) ??
+      parseMs(a.updatedAt) ??
+      parseMs(a.createdAt) ??
+      0;
+    const bMs =
+      parseMs(b.completedAt) ??
+      parseMs(b.updatedAt) ??
+      parseMs(b.createdAt) ??
+      0;
+    return bMs - aMs;
+  })[0];
+
+  return latest?.number ?? "None";
+}
+
+function getWorkerStatus(user: User, logs: TimeLog[], jobs: Job[]) {
+  if (user.status !== "active") return "offline" as const;
+
+  const latestLogMs = logs.reduce((max, log) => {
+    const ms = parseMs(log.createdAt) ?? 0;
+    return Math.max(max, ms);
+  }, 0);
+  const latestJobMs = jobs.reduce((max, job) => {
+    const ms = parseMs(job.updatedAt) ?? parseMs(job.createdAt) ?? 0;
+    return Math.max(max, ms);
+  }, 0);
+  const latestActivityMs = Math.max(latestLogMs, latestJobMs);
+
+  if (!latestActivityMs) return "idle" as const;
+  if (Date.now() - latestActivityMs <= 8 * 60 * 60 * 1000) return "active" as const;
+  return "idle" as const;
+}
+
+function getPerformanceScore(jobs: Job[]) {
+  if (!jobs.length) return 0;
+
+  const completedJobs = jobs.filter((job) => job.status === "completed");
+  const completedCount = completedJobs.length;
+  const onTimeCount = completedJobs.reduce((acc, job) => {
+    const completedMs = parseMs(job.completedAt);
+    const dueMs = parseMs(job.dueDate);
+    if (completedMs != null && dueMs != null && completedMs <= dueMs) {
+      return acc + 1;
+    }
+    return acc;
+  }, 0);
+  const reworkCount = jobs.filter((job) => job.status === "rework").length;
+
+  const completionRate = completedCount / jobs.length;
+  const onTimeRate = completedCount > 0 ? onTimeCount / completedCount : 0;
+  const reworkRate = reworkCount / jobs.length;
+
+  const score =
+    completionRate * 60 +
+    onTimeRate * 25 +
+    (1 - clamp(reworkRate, 0, 1)) * 15;
+
+  return Math.round(clamp(score, 0, 100));
+}
 
 export default function UserMonitoring(
   { initialTab = "performance", role = "super-admin" }: { initialTab?: "performance" | "errors", role?: Role } = {}
@@ -129,35 +204,62 @@ export default function UserMonitoring(
     qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
   }, [qc]);
 
-  const workers: Worker[] = (apiUsers ?? [])
-    .filter((u: User) => u.role === "user")
-    .map((u: User) => {
-      const userJobs = (apiJobs ?? []).filter(j => j.assignee?.id === u.id);
-      const userLogs = (apiTimeLogs ?? []).filter(l => l.userId === u.id);
-      const lastJob = userJobs[0]?.number ?? "None";
-      
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const hoursToday = userLogs
-        .filter(l => new Date(l.createdAt) >= today)
-        .reduce((sum, l) => sum + (l.duration / 3600), 0);
-      
-      const hoursWeek = userLogs
-        .reduce((sum, l) => sum + (l.duration / 3600), 0);
+  const workers: Worker[] = useMemo(() => {
+    const now = new Date();
+    const startOfTodayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const dayOffset = (now.getDay() + 6) % 7;
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOffset);
+    const startOfWeekMs = startOfWeek.getTime();
+    const scoreWindowMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
-      return {
-        id: u.id,
-        name: u.name,
-        avatar: u.name.split(" ").map(s => s[0]).join("").toUpperCase(),
-        hoursToday: Number(hoursToday.toFixed(1)),
-        hoursWeek: Number(hoursWeek.toFixed(1)),
-        jobsCompleted: userJobs.filter(j => j.status === 'completed').length,
-        errors: userJobs.filter(j => j.isOverdue).length,
-        efficiency: 100,
-        status: u.status === "active" ? "active" : "offline",
-        lastJob
-      };
-    });
+    return (apiUsers ?? [])
+      .filter((u: User) => u.role === "user")
+      .map((u: User) => {
+        const userJobs = (apiJobs ?? []).filter((job) => job.assignee?.id === u.id);
+        const userLogs = (apiTimeLogs ?? []).filter((log) => log.userId === u.id);
+        const userErrors = errors.filter((error) => error.userId === u.id && error.status !== "resolved");
+
+        const hoursToday = userLogs
+          .filter((log) => {
+            const createdMs = parseMs(log.createdAt);
+            return createdMs != null && createdMs >= startOfTodayMs;
+          })
+          .reduce((sum, log) => sum + (log.duration / 3600), 0);
+
+        const hoursWeek = userLogs
+          .filter((log) => {
+            const createdMs = parseMs(log.createdAt);
+            return createdMs != null && createdMs >= startOfWeekMs;
+          })
+          .reduce((sum, log) => sum + (log.duration / 3600), 0);
+
+        const scoreJobs = userJobs.filter((job) => {
+          const createdMs = parseMs(job.createdAt);
+          const updatedMs = parseMs(job.updatedAt);
+          const completedMs = parseMs(job.completedAt);
+          const dueMs = parseMs(job.dueDate);
+          return (
+            (createdMs != null && createdMs >= scoreWindowMs) ||
+            (updatedMs != null && updatedMs >= scoreWindowMs) ||
+            (completedMs != null && completedMs >= scoreWindowMs) ||
+            (dueMs != null && dueMs >= scoreWindowMs)
+          );
+        });
+
+        return {
+          id: u.id,
+          name: u.name,
+          avatar: u.name.split(" ").map((s) => s[0]).join("").toUpperCase().slice(0, 2),
+          hoursToday: Number(hoursToday.toFixed(1)),
+          hoursWeek: Number(hoursWeek.toFixed(1)),
+          jobsCompleted: userJobs.filter((job) => job.status === "completed").length,
+          errors: userErrors.length,
+          efficiency: getPerformanceScore(scoreJobs),
+          status: getWorkerStatus(u, userLogs, userJobs),
+          lastJob: getLatestJobNumber(userJobs),
+        };
+      });
+  }, [apiJobs, apiTimeLogs, apiUsers, errors]);
 
   const filtered = workers.filter((w: Worker) => w.name.toLowerCase().includes(search.toLowerCase()));
   const workersP = usePagination(filtered, 6);
@@ -266,7 +368,7 @@ export default function UserMonitoring(
             {/* Search */}
             <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 max-w-md mb-5 focus-within:border-primary transition-colors">
               <Search size={16} className="text-gray-400" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search team members…" className="bg-transparent text-sm flex-1 focus:outline-none" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search team members…" className="bg-transparent text-gray-900 placeholder:text-gray-400 text-sm flex-1 focus:outline-none" />
             </div>
 
             {/* Workers grid */}
@@ -302,7 +404,7 @@ export default function UserMonitoring(
                       <span className="font-bold">{w.hoursToday}h / 8h</span>
                     </div>
                     <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <motion.div initial={{ width: 0 }} animate={{ width: `${(w.hoursToday / 8) * 100}%` }} transition={{ duration: 0.6 + i * 0.04 }} className="h-full bg-primary rounded-full" />
+                      <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min((w.hoursToday / 8) * 100, 100)}%` }} transition={{ duration: 0.6 + i * 0.04 }} className="h-full bg-primary rounded-full" />
                     </div>
                   </div>
 
@@ -344,7 +446,7 @@ export default function UserMonitoring(
             <div className="px-5 py-4 border-b border-gray-100">
               <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 max-w-md focus-within:border-primary transition-colors">
                 <Search size={16} className="text-gray-400" />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search errors…" className="bg-transparent text-sm flex-1 focus:outline-none" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search errors…" className="bg-transparent text-gray-900 placeholder:text-gray-400 text-sm flex-1 focus:outline-none" />
               </div>
             </div>
             {errorsP.pageItems.map((e, i) => (
@@ -499,7 +601,7 @@ export default function UserMonitoring(
                       const userId = job?.assignee?.id ?? "";
                       setDraft({ ...draft, jobId, userId });
                     }}
-                    className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                    className="w-full bg-white text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
                   >
                     <option value="">Select a job</option>
                     {(apiJobs ?? []).map((j) => (
@@ -512,7 +614,7 @@ export default function UserMonitoring(
                   <select
                     value={draft.userId}
                     onChange={(e) => setDraft({ ...draft, userId: e.target.value })}
-                    className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                    className="w-full bg-white text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
                   >
                     <option value="">Select a worker</option>
                     {workers.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -520,7 +622,7 @@ export default function UserMonitoring(
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Title</label>
-                  <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary" placeholder="Missing dimensions" />
+                  <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="w-full bg-white text-gray-900 placeholder:text-gray-400 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary" placeholder="Missing dimensions" />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Severity</label>
@@ -532,7 +634,7 @@ export default function UserMonitoring(
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Description</label>
-                  <textarea value={draft.desc} onChange={(e) => setDraft({ ...draft, desc: e.target.value })} rows={3} className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary resize-none" placeholder="Describe the error…" />
+                  <textarea value={draft.desc} onChange={(e) => setDraft({ ...draft, desc: e.target.value })} rows={3} className="w-full bg-white text-gray-900 placeholder:text-gray-400 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary resize-none" placeholder="Describe the error…" />
                 </div>
                 <button
                   onClick={submitError}
