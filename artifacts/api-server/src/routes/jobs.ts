@@ -157,7 +157,14 @@ async function loadJob(id: string): Promise<JobWithRefs | null> {
 async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
   if (actor.role === "supervisor") {
-    return job.supervisorId === actor.id || job.createdById === actor.id;
+    if (job.supervisorId === actor.id || job.createdById === actor.id) return true;
+    await ensureJobMembersSchema();
+    const [row] = await db
+      .select({ id: jobMembers.id })
+      .from(jobMembers)
+      .where(and(eq(jobMembers.jobId, job.id), eq(jobMembers.userId, actor.id)))
+      .limit(1);
+    return !!row;
   }
   if (job.assigneeId === actor.id) return true;
   await ensureJobMembersSchema();
@@ -784,14 +791,31 @@ router.get("/jobs", requireAuth, async (req, res) => {
   if (actor.role === "super-admin" || actor.role === "admin") {
     rows = await q.orderBy(desc(jobs.createdAt));
   } else if (actor.role === "supervisor") {
-    rows = await q
-      .where(
-        or(
-          eq(jobs.supervisorId, actor.id),
-          eq(jobs.createdById, actor.id),
-        ),
-      )
-      .orderBy(desc(jobs.createdAt));
+    await ensureJobMembersSchema();
+    const memberRows = await db
+      .select({ jobId: jobMembers.jobId })
+      .from(jobMembers)
+      .where(eq(jobMembers.userId, actor.id));
+    const memberJobIds = memberRows.map((r) => r.jobId);
+    rows =
+      memberJobIds.length === 0
+        ? await q
+            .where(
+              or(
+                eq(jobs.supervisorId, actor.id),
+                eq(jobs.createdById, actor.id),
+              ),
+            )
+            .orderBy(desc(jobs.createdAt))
+        : await q
+            .where(
+              or(
+                eq(jobs.supervisorId, actor.id),
+                eq(jobs.createdById, actor.id),
+                inArray(jobs.id, memberJobIds),
+              ),
+            )
+            .orderBy(desc(jobs.createdAt));
   } else {
     await ensureJobMembersSchema();
     const memberRows = await db
