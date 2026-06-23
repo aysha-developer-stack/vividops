@@ -2,7 +2,6 @@ import { Router } from "express";
 import { db, users, jobs, timeLogs, sql, desc, eq, and, or, lt, ne, inArray } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { requireAuth } from "../middlewares/requireAuth";
-import { publicUser } from "../lib/serialize";
 
 const router = Router();
 
@@ -33,7 +32,7 @@ router.get("/dashboard/stats", requireAuth, async (req, res) => {
         .limit(5),
     ]);
 
-    res.json({
+    return res.json({
       stats: {
         totalUsers: Number(totalUsers[0].count),
         totalJobs: Number(jobCounts[0].totalJobs),
@@ -44,7 +43,7 @@ router.get("/dashboard/stats", requireAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error({ err }, "Failed to fetch dashboard stats");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -114,7 +113,7 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
 
     // 4. Get overdue jobs
     const overdueJobsList = await db.select({
-      id: jobs.number,
+      id: sql<string>`'JOB-' || ${jobs.serial}::text`,
       title: jobs.title,
       dueDate: jobs.dueDate,
       assigneeId: jobs.assigneeId
@@ -145,7 +144,7 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
       };
     }));
 
-    res.json({
+    return res.json({
       stats: {
         activeJobs: Number(statsResult.activeJobs),
         teamSize: teamIds.length,
@@ -158,7 +157,7 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
     });
   } catch (err) {
     logger.error({ err }, "Failed to fetch supervisor dashboard");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
