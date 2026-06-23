@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  User as UserIcon, Bell, Shield, Palette, Globe, Database, Check, Camera, Save, Loader2
+  User as UserIcon, Bell, Shield, Globe, Database, Check, Camera, Save, Loader2
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import type { Role } from "@/lib/roles";
@@ -13,7 +13,8 @@ import {
   useUpdateUserSettings,
   useGetSystemSettings,
   useUpdateSystemSettings,
-  useGetSystemMetrics
+  useGetSystemMetrics,
+  getGetSystemMetricsQueryKey
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -67,6 +68,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
   const { data: apiSystemSettings, refetch: refetchSystemSettings } = useGetSystemSettings();
   const { data: apiSystemMetrics } = useGetSystemMetrics({
     query: {
+      queryKey: getGetSystemMetricsQueryKey(),
       enabled: role === "super-admin" && tab === "system",
       refetchInterval: 30000, // Refresh every 30s
     }
@@ -168,7 +170,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
           }
         });
         await refresh();
-      } else if (tab === "notifications" || tab === "appearance" || tab === "regional" || tab === "security") {
+      } else if (tab === "notifications" || tab === "regional" || tab === "security") {
         await updateUserSettingsMutation.mutateAsync({
           data: userSettingsState
         });
