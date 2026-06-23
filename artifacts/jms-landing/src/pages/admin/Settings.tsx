@@ -454,7 +454,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                     {[
                       { label: "Storage used", value: apiSystemMetrics?.storageUsed || "...", sub: `of ${apiSystemMetrics?.storageTotal || "..."}` },
                       { label: "API calls today", value: apiSystemMetrics?.apiCallsToday?.toLocaleString() || "...", sub: apiSystemMetrics?.apiCallsTrend || "..." },
-                      { label: "Active users", value: apiSystemMetrics?.activeUsers?.toString() || "...", sub: "live now" },
+                      { label: "Users", value: apiSystemMetrics?.totalUsers?.toString() || "...", sub: `${apiSystemMetrics?.activeUsers || "0"} active now` },
                     ].map((m) => (
                       <div key={m.label} className="p-4 rounded-xl bg-gray-50">
                         <div className="text-xs text-gray-500 font-medium">{m.label}</div>

@@ -146,6 +146,7 @@ export const GetSystemMetricsResponse = zod.object({
   apiCallsToday: zod.number(),
   apiCallsTrend: zod.string(),
   activeUsers: zod.number(),
+  totalUsers: zod.number(),
 });
 
 /**

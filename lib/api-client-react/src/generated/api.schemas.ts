@@ -127,6 +127,7 @@ export interface SystemMetrics {
   apiCallsToday: number;
   apiCallsTrend: string;
   activeUsers: number;
+  totalUsers: number;
 }
 
 export type CreateUserResultDelivery =

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, count } from "drizzle-orm";
+import { eq, count, sql } from "drizzle-orm";
 import { db, userSettings, systemSettings, users, sessions } from "@workspace/db";
 import { UpdateUserSettingsBody, UpdateSystemSettingsBody } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
@@ -78,7 +78,11 @@ router.get("/settings/system/metrics", requireAuth, async (req, res) => {
 
   // Calculate real metrics
   const [userCountResult] = await db.select({ value: count() }).from(users);
-  const [activeSessionsResult] = await db.select({ value: count() }).from(sessions);
+  
+  // Count unique users who have at least one active session
+  const [activeSessionsResult] = await db
+    .select({ value: sql<number>`count(DISTINCT ${sessions.userId})` })
+    .from(sessions);
 
   // For storage and API calls, we'll return realistic system values since we don't have a direct probe here
   // but they are now driven by the backend instead of static frontend values.
@@ -87,7 +91,8 @@ router.get("/settings/system/metrics", requireAuth, async (req, res) => {
     storageTotal: "100 GB",
     apiCallsToday: 12408,
     apiCallsTrend: "+8.2% vs yesterday",
-    activeUsers: activeSessionsResult.value || 0,
+    activeUsers: Number(activeSessionsResult.value) || 0,
+    totalUsers: Number(userCountResult.value) || 0,
   };
 
   return res.json(metrics);
