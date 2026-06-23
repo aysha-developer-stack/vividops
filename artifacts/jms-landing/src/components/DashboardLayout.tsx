@@ -198,7 +198,8 @@ export default function DashboardLayout({
 
   const prefetchForPath = (path: string) => {
     prefetchCodeForPath(path);
-    prefetchDataForPath(path);
+    // Data prefetching disabled to prevent API congestion on mount
+    // prefetchDataForPath(path);
   };
 
   useEffect(() => {

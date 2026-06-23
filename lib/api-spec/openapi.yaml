@@ -424,6 +424,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/DashboardStats"
 
+  /dashboard/supervisor:
+    get:
+      operationId: getDashboardSupervisor
+      tags: [dashboard]
+      summary: Get supervisor-specific dashboard data
+      responses:
+        "200":
+          description: Supervisor dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupervisorDashboardData"
+        "401":
+          description: Not signed in
+
   /posts:
     get:
       operationId: getPosts
@@ -809,6 +824,43 @@ components:
         recentJobs:
           type: array
           items: { $ref: "#/components/schemas/Job" }
+
+    SupervisorDashboardData:
+      type: object
+      required: [stats, activeJobs, team, overdue]
+      properties:
+        stats:
+          type: object
+          required: [activeJobs, teamSize, totalJobs, overdueJobs]
+          properties:
+            activeJobs: { type: integer }
+            teamSize: { type: integer }
+            totalJobs: { type: integer }
+            overdueJobs: { type: integer }
+        activeJobs:
+          type: array
+          items: { $ref: "#/components/schemas/Job" }
+        team:
+          type: array
+          items:
+            type: object
+            required: [name, avatar, jobsToday, hoursToday, status]
+            properties:
+              name: { type: string }
+              avatar: { type: string }
+              jobsToday: { type: integer }
+              hoursToday: { type: number }
+              status: { type: string, enum: [online, offline] }
+        overdue:
+          type: array
+          items:
+            type: object
+            required: [id, title, days, assignee]
+            properties:
+              id: { type: string }
+              title: { type: string }
+              days: { type: integer }
+              assignee: { type: string }
 
     Post:
       type: object

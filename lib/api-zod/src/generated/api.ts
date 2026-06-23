@@ -586,6 +586,79 @@ export const GetDashboardStatsResponse = zod.object({
 });
 
 /**
+ * @summary Get supervisor-specific dashboard data
+ */
+export const getDashboardSupervisorResponseActiveJobsItemProgressMin = 0;
+export const getDashboardSupervisorResponseActiveJobsItemProgressMax = 100;
+
+export const GetDashboardSupervisorResponse = zod.object({
+  stats: zod.object({
+    activeJobs: zod.number(),
+    teamSize: zod.number(),
+    totalJobs: zod.number(),
+    overdueJobs: zod.number(),
+  }),
+  activeJobs: zod.array(
+    zod.object({
+      id: zod.string().uuid(),
+      number: zod.string().describe("Display number e.g. JOB-1042"),
+      title: zod.string(),
+      client: zod.string(),
+      address: zod.string().nullish(),
+      description: zod.string().nullish(),
+      status: zod.enum(["pending", "in_progress", "completed", "cancelled"]),
+      priority: zod.enum(["low", "medium", "high"]),
+      progress: zod
+        .number()
+        .min(getDashboardSupervisorResponseActiveJobsItemProgressMin)
+        .max(getDashboardSupervisorResponseActiveJobsItemProgressMax),
+      isOverdue: zod.boolean(),
+      assignee: zod
+        .union([
+          zod.object({
+            id: zod.string().uuid(),
+            name: zod.string(),
+            role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+          }),
+          zod.null(),
+        ])
+        .optional(),
+      supervisor: zod
+        .union([
+          zod.object({
+            id: zod.string().uuid(),
+            name: zod.string(),
+            role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+          }),
+          zod.null(),
+        ])
+        .optional(),
+      dueDate: zod.coerce.date().nullish(),
+      completedAt: zod.coerce.date().nullish(),
+      createdAt: zod.coerce.date(),
+      updatedAt: zod.coerce.date(),
+    }),
+  ),
+  team: zod.array(
+    zod.object({
+      name: zod.string(),
+      avatar: zod.string(),
+      jobsToday: zod.number(),
+      hoursToday: zod.number(),
+      status: zod.enum(["online", "offline"]),
+    }),
+  ),
+  overdue: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      days: zod.number(),
+      assignee: zod.string(),
+    }),
+  ),
+});
+
+/**
  * @summary Get all training/update posts
  */
 export const GetPostsResponseItem = zod.object({

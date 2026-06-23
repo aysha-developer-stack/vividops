@@ -284,6 +284,43 @@ export interface DashboardStats {
   recentJobs: Job[];
 }
 
+export type SupervisorDashboardDataStats = {
+  activeJobs: number;
+  teamSize: number;
+  totalJobs: number;
+  overdueJobs: number;
+};
+
+export type SupervisorDashboardDataTeamItemStatus =
+  (typeof SupervisorDashboardDataTeamItemStatus)[keyof typeof SupervisorDashboardDataTeamItemStatus];
+
+export const SupervisorDashboardDataTeamItemStatus = {
+  online: "online",
+  offline: "offline",
+} as const;
+
+export type SupervisorDashboardDataTeamItem = {
+  name: string;
+  avatar: string;
+  jobsToday: number;
+  hoursToday: number;
+  status: SupervisorDashboardDataTeamItemStatus;
+};
+
+export type SupervisorDashboardDataOverdueItem = {
+  id: string;
+  title: string;
+  days: number;
+  assignee: string;
+};
+
+export interface SupervisorDashboardData {
+  stats: SupervisorDashboardDataStats;
+  activeJobs: Job[];
+  team: SupervisorDashboardDataTeamItem[];
+  overdue: SupervisorDashboardDataOverdueItem[];
+}
+
 export interface Post {
   id: string;
   title: string;

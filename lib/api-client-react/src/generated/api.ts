@@ -32,6 +32,7 @@ import type {
   Post,
   PostInput,
   ResetPasswordInput,
+  SupervisorDashboardData,
   SystemMetrics,
   SystemSettings,
   SystemSettingsUpdate,
@@ -1947,6 +1948,82 @@ export function useGetDashboardStats<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetDashboardStatsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get supervisor-specific dashboard data
+ */
+export const getGetDashboardSupervisorUrl = () => {
+  return `/api/dashboard/supervisor`;
+};
+
+export const getDashboardSupervisor = async (
+  options?: RequestInit,
+): Promise<SupervisorDashboardData> => {
+  return customFetch<SupervisorDashboardData>(getGetDashboardSupervisorUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetDashboardSupervisorQueryKey = () => {
+  return [`/api/dashboard/supervisor`] as const;
+};
+
+export const getGetDashboardSupervisorQueryOptions = <
+  TData = Awaited<ReturnType<typeof getDashboardSupervisor>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDashboardSupervisor>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetDashboardSupervisorQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getDashboardSupervisor>>
+  > = ({ signal }) => getDashboardSupervisor({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getDashboardSupervisor>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetDashboardSupervisorQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getDashboardSupervisor>>
+>;
+export type GetDashboardSupervisorQueryError = ErrorType<void>;
+
+/**
+ * @summary Get supervisor-specific dashboard data
+ */
+
+export function useGetDashboardSupervisor<
+  TData = Awaited<ReturnType<typeof getDashboardSupervisor>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getDashboardSupervisor>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetDashboardSupervisorQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

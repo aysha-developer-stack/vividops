@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
-import { useGetDashboardStats, useListUsers, useGetTimeLogs, useListJobs, type User } from "@workspace/api-client-react";
+import { useGetDashboardSupervisor } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 
 const PRIORITY_COLOR: Record<string, string> = {
@@ -18,13 +18,15 @@ const PRIORITY_COLOR: Record<string, string> = {
 
 export default function SupervisorDashboard() {
   const { user: currentUser } = useAuth();
-  const { data: dashboardData, isLoading: statsLoading } = useGetDashboardStats();
-  const { data: apiUsers } = useListUsers();
-  const { data: apiTimeLogs } = useGetTimeLogs();
-  const { data: apiJobs } = useListJobs();
-  const showSkeleton = statsLoading && !dashboardData;
+  const { data: dashboard, isLoading: statsLoading } = useGetDashboardSupervisor({
+    query: {
+      refetchInterval: 60000,
+    }
+  });
+  
+  const showSkeleton = statsLoading && !dashboard;
 
-  const assignedJobs = useMemo(() => (apiJobs ?? []).map(j => ({
+  const assignedJobs = useMemo(() => (dashboard?.activeJobs ?? []).map(j => ({
     id: j.id,
     number: j.number,
     title: j.title,
@@ -32,39 +34,10 @@ export default function SupervisorDashboard() {
     due: j.dueDate ? new Date(j.dueDate).toLocaleDateString() : "No date",
     priority: j.priority.charAt(0).toUpperCase() + j.priority.slice(1),
     progress: j.progress
-  })), [apiJobs]);
+  })), [dashboard?.activeJobs]);
 
-  const team = useMemo(() => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    return (apiUsers ?? []).filter((u: User) => u.role === "user").map((u: User) => {
-      const userLogs = (apiTimeLogs ?? []).filter(l => l.userId === u.id && new Date(l.createdAt) >= today);
-      const userJobs = (apiJobs ?? []).filter(j => j.assignee?.id === u.id && new Date(j.createdAt) >= today);
-      const hours = userLogs.reduce((sum, l) => sum + (l.duration / 3600), 0);
-      
-      return {
-        name: u.name,
-        avatar: u.name.split(" ").map(s => s[0]).join("").toUpperCase(),
-        jobsToday: userJobs.length,
-        hoursToday: Number(hours.toFixed(1)),
-        status: u.status === "active" ? "online" : "offline"
-      };
-    });
-  }, [apiUsers, apiTimeLogs, apiJobs]);
-
-  const overdue = useMemo(() => {
-    return (apiJobs ?? []).filter(j => j.isOverdue).map((j: any) => {
-      const due = j.dueDate ? new Date(j.dueDate) : new Date();
-      const diff = Math.max(0, Math.floor((new Date().getTime() - due.getTime()) / (1000 * 60 * 60 * 24)));
-      return {
-        id: j.number,
-        title: j.title,
-        days: diff,
-        assignee: j.assignee?.name ?? "Unassigned"
-      };
-    });
-  }, [apiJobs]);
+  const team = useMemo(() => dashboard?.team ?? [], [dashboard?.team]);
+  const overdue = useMemo(() => dashboard?.overdue ?? [], [dashboard?.overdue]);
 
   const assignedP = usePagination(assignedJobs, 5);
   const teamP = usePagination(team, 5);
@@ -86,7 +59,7 @@ export default function SupervisorDashboard() {
         <div className="relative z-10 flex items-start justify-between flex-wrap gap-4">
           <div>
             <h2 className="text-2xl md:text-3xl font-bold text-white">Hey {currentUser?.name?.split(" ")[0] ?? "Supervisor"}, ready to lead today? 💪</h2>
-            <p className="text-sm text-gray-400 mt-1">You have {dashboardData?.stats.activeJobs} active jobs and a team of {team.length} reporting to you.</p>
+            <p className="text-sm text-gray-400 mt-1">You have {dashboard?.stats.activeJobs ?? 0} active jobs and a team of {dashboard?.stats.teamSize ?? 0} reporting to you.</p>
           </div>
           <Link href="/supervisor/jobs">
             <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-primary/30">
@@ -99,10 +72,10 @@ export default function SupervisorDashboard() {
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
-          { label: "My Active Jobs", value: dashboardData?.stats.activeJobs ?? 0, icon: Briefcase, color: "from-primary to-sky-700", bg: "bg-primary/10", text: "text-primary" },
-          { label: "Team Size", value: team.length, icon: Users, color: "from-emerald-500 to-emerald-700", bg: "bg-emerald-50", text: "text-emerald-600" },
-          { label: "Total Jobs", value: dashboardData?.stats.totalJobs ?? 0, icon: CheckCircle2, color: "from-purple-500 to-purple-700", bg: "bg-purple-50", text: "text-purple-600" },
-          { label: "Overdue", value: dashboardData?.stats.overdueJobs ?? 0, icon: AlertCircle, color: "from-red-500 to-rose-700", bg: "bg-red-50", text: "text-red-600" },
+          { label: "My Active Jobs", value: dashboard?.stats.activeJobs ?? 0, icon: Briefcase, color: "from-primary to-sky-700", bg: "bg-primary/10", text: "text-primary" },
+          { label: "Team Size", value: dashboard?.stats.teamSize ?? 0, icon: Users, color: "from-emerald-500 to-emerald-700", bg: "bg-emerald-50", text: "text-emerald-600" },
+          { label: "Total Jobs", value: dashboard?.stats.totalJobs ?? 0, icon: CheckCircle2, color: "from-purple-500 to-purple-700", bg: "bg-purple-50", text: "text-purple-600" },
+          { label: "Overdue", value: dashboard?.stats.overdueJobs ?? 0, icon: AlertCircle, color: "from-red-500 to-rose-700", bg: "bg-red-50", text: "text-red-600" },
         ].map((s, i) => {
           const Icon = s.icon;
           return (
