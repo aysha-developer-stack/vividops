@@ -8,11 +8,6 @@ import {
   getMe,
   type User,
   ApiError,
-  getGetDashboardStatsQueryOptions,
-  getGetNotificationsQueryOptions,
-  getGetPostsQueryOptions,
-  getListUsersQueryOptions,
-  getGetTimeLogsQueryOptions,
 } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
 
@@ -62,22 +57,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setCachedUser(meQuery.data ?? null);
   }, [meQuery.data]);
-
-  useEffect(() => {
-    const u = meQuery.data ?? null;
-    if (!u) return;
-    qc.prefetchQuery(getGetDashboardStatsQueryOptions());
-    qc.prefetchQuery(getGetNotificationsQueryOptions());
-    qc.prefetchQuery(getGetPostsQueryOptions());
-    if (u.role === "super-admin" || u.role === "admin") {
-      qc.prefetchQuery(getListUsersQueryOptions());
-      qc.prefetchQuery(getGetTimeLogsQueryOptions());
-    }
-    if (u.role === "supervisor") {
-      qc.prefetchQuery(getListUsersQueryOptions());
-      qc.prefetchQuery(getGetTimeLogsQueryOptions());
-    }
-  }, [qc, meQuery.data]);
 
   const value: AuthContextValue = {
     user: meQuery.data ?? null,
