@@ -36,9 +36,11 @@ type JobAttachmentApi = {
   id: string;
   fileName: string;
   fileUrl: string;
+  fileType?: string | null;
 };
 
 const QUICK_EMOJIS = ["😀", "👍", "🎉", "✅", "🔥", "🙂", "🙏", "😄"];
+const IMAGE_FILE_RE = /\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?.*)?$/i;
 
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -53,6 +55,22 @@ function formatMsgTime(iso: string) {
   } catch {
     return "—";
   }
+}
+
+function parseAttachmentMessage(text: string) {
+  const [titleLine, ...rest] = text.split("\n");
+  const fileNameMatch = /^Shared attachment:\s*(.+)$/i.exec(titleLine.trim());
+  const url = rest.join("\n").trim();
+  if (!fileNameMatch || !/^https?:\/\/\S+$/.test(url)) {
+    return null;
+  }
+
+  const fileName = fileNameMatch[1].trim();
+  return {
+    fileName,
+    url,
+    isImage: IMAGE_FILE_RE.test(fileName) || IMAGE_FILE_RE.test(url),
+  };
 }
 
 function renderMessageText(text: string) {
@@ -79,6 +97,40 @@ function renderMessageText(text: string) {
       })}
     </span>
   ));
+}
+
+function renderMessageBody(text: string, isMe: boolean) {
+  const attachment = parseAttachmentMessage(text);
+  if (!attachment) {
+    return renderMessageText(text);
+  }
+
+  const mediaBorder = isMe ? "border-white/20" : "border-gray-200";
+
+  if (attachment.isImage) {
+    return (
+      <div className="space-y-2">
+        <div className="text-xs font-semibold opacity-90">{attachment.fileName}</div>
+        <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="block">
+          <img
+            src={attachment.url}
+            alt={attachment.fileName}
+            className={`block max-h-72 w-auto max-w-full rounded-xl border ${mediaBorder} object-cover bg-white/10`}
+            loading="lazy"
+          />
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="text-xs font-semibold opacity-90">{attachment.fileName}</div>
+      <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 break-all">
+        Open attachment
+      </a>
+    </div>
+  );
 }
 
 export default function Communication({ role = "super-admin" as Role }: { role?: Role } = {}) {
@@ -398,7 +450,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                         whileHover={{ scale: 1.01 }}
                         className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${m.isMe ? "bg-primary text-white rounded-br-sm" : "bg-gray-100 text-gray-800 rounded-bl-sm"}`}
                       >
-                        {renderMessageText(m.text)}
+                        {renderMessageBody(m.text, m.isMe)}
                       </motion.div>
                     </div>
                   </motion.div>
