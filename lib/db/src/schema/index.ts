@@ -9,3 +9,5 @@ export * from "./checklist_attachments";
 export * from "./posts";
 export * from "./notifications";
 export * from "./time_logs";
+export * from "./user_settings";
+export * from "./system_settings";

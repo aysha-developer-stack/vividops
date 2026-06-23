@@ -75,6 +75,50 @@ export interface UserUpdate {
   status?: UserStatus;
 }
 
+export interface UserSettings {
+  userId: string;
+  emailNotifications: boolean;
+  pushNotifications: boolean;
+  smsNotifications: boolean;
+  weeklyDigest: boolean;
+  mentions: boolean;
+  theme: string;
+  accentColor: string;
+  compactMode: boolean;
+  language: string;
+  timezone: string;
+  dateFormat: string;
+  currency: string;
+}
+
+export interface UserSettingsUpdate {
+  emailNotifications?: boolean;
+  pushNotifications?: boolean;
+  smsNotifications?: boolean;
+  weeklyDigest?: boolean;
+  mentions?: boolean;
+  theme?: string;
+  accentColor?: string;
+  compactMode?: boolean;
+  language?: string;
+  timezone?: string;
+  dateFormat?: string;
+  currency?: string;
+}
+
+export interface SystemSettings {
+  id: string;
+  autoBackup: boolean;
+  maintenanceMode: boolean;
+  apiLogging: boolean;
+}
+
+export interface SystemSettingsUpdate {
+  autoBackup?: boolean;
+  maintenanceMode?: boolean;
+  apiLogging?: boolean;
+}
+
 export type CreateUserResultDelivery =
   (typeof CreateUserResultDelivery)[keyof typeof CreateUserResultDelivery];
 

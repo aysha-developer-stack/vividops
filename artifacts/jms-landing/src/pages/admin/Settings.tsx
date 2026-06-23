@@ -6,7 +6,14 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import type { Role } from "@/lib/roles";
 import { useAuth } from "@/lib/auth";
-import { useUpdateProfile, useResetPassword } from "@workspace/api-client-react";
+import { 
+  useUpdateProfile, 
+  useResetPassword,
+  useGetUserSettings,
+  useUpdateUserSettings,
+  useGetSystemSettings,
+  useUpdateSystemSettings
+} from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 
 const TABS = [
@@ -20,11 +27,12 @@ const TABS = [
 
 type TabId = typeof TABS[number]["id"];
 
-function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
+function Toggle({ on, onChange, disabled }: { on: boolean; onChange: () => void; disabled?: boolean }) {
   return (
     <button
       onClick={onChange}
-      className={`relative w-11 h-6 rounded-full transition-colors ${on ? "bg-primary" : "bg-gray-300"}`}
+      disabled={disabled}
+      className={`relative w-11 h-6 rounded-full transition-colors ${on ? "bg-primary" : "bg-gray-300"} ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
     >
       <motion.div
         layout
@@ -53,6 +61,15 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
   const [tab, setTab] = useState<TabId>("profile");
   const [saved, setSaved] = useState(false);
   
+  // API Hooks
+  const { data: apiUserSettings, refetch: refetchUserSettings } = useGetUserSettings();
+  const { data: apiSystemSettings, refetch: refetchSystemSettings } = useGetSystemSettings();
+  
+  const updateProfileMutation = useUpdateProfile();
+  const resetPasswordMutation = useResetPassword();
+  const updateUserSettingsMutation = useUpdateUserSettings();
+  const updateSystemSettingsMutation = useUpdateSystemSettings();
+
   // Profile state
   const [profile, setProfile] = useState({
     name: "",
@@ -67,10 +84,28 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
     new: "",
   });
 
-  // Dummy states for other tabs
-  const [notif, setNotif] = useState({ email: true, push: true, sms: false, weekly: true, mentions: true });
-  const [appearance, setAppearance] = useState({ theme: "light", accent: "#0B7EB9", compact: false });
-  const [security, setSecurity] = useState({ twoFA: true, sessionAlerts: true });
+  // User Settings states (Notification, Appearance, Regional)
+  const [userSettingsState, setUserSettingsState] = useState({
+    emailNotifications: true,
+    pushNotifications: true,
+    smsNotifications: false,
+    weeklyDigest: true,
+    mentions: true,
+    theme: "light",
+    accentColor: "#0B7EB9",
+    compactMode: false,
+    language: "English (US)",
+    timezone: "UTC",
+    dateFormat: "MM/DD/YYYY",
+    currency: "USD ($)",
+  });
+
+  // System Settings state
+  const [systemSettingsState, setSystemSettingsState] = useState({
+    autoBackup: true,
+    maintenanceMode: false,
+    apiLogging: true,
+  });
 
   useEffect(() => {
     if (user) {
@@ -83,27 +118,66 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
     }
   }, [user]);
 
-  const updateProfileMutation = useUpdateProfile();
-  const resetPasswordMutation = useResetPassword();
-
-  const handleSaveProfile = async () => {
-    try {
-      await updateProfileMutation.mutateAsync({
-        data: {
-          name: profile.name,
-          email: profile.email,
-          phone: profile.phone,
-          bio: profile.bio,
-        }
+  useEffect(() => {
+    if (apiUserSettings) {
+      setUserSettingsState({
+        emailNotifications: apiUserSettings.emailNotifications,
+        pushNotifications: apiUserSettings.pushNotifications,
+        smsNotifications: apiUserSettings.smsNotifications,
+        weeklyDigest: apiUserSettings.weeklyDigest,
+        mentions: apiUserSettings.mentions,
+        theme: apiUserSettings.theme,
+        accentColor: apiUserSettings.accentColor,
+        compactMode: apiUserSettings.compactMode,
+        language: apiUserSettings.language,
+        timezone: apiUserSettings.timezone,
+        dateFormat: apiUserSettings.dateFormat,
+        currency: apiUserSettings.currency,
       });
-      await refresh();
+    }
+  }, [apiUserSettings]);
+
+  useEffect(() => {
+    if (apiSystemSettings) {
+      setSystemSettingsState({
+        autoBackup: apiSystemSettings.autoBackup,
+        maintenanceMode: apiSystemSettings.maintenanceMode,
+        apiLogging: apiSystemSettings.apiLogging,
+      });
+    }
+  }, [apiSystemSettings]);
+
+  const handleSave = async () => {
+    try {
+      if (tab === "profile") {
+        await updateProfileMutation.mutateAsync({
+          data: {
+            name: profile.name,
+            email: profile.email,
+            phone: profile.phone,
+            bio: profile.bio,
+          }
+        });
+        await refresh();
+      } else if (tab === "notifications" || tab === "appearance" || tab === "regional") {
+        await updateUserSettingsMutation.mutateAsync({
+          data: userSettingsState
+        });
+        await refetchUserSettings();
+      } else if (tab === "system") {
+        await updateSystemSettingsMutation.mutateAsync({
+          data: systemSettingsState
+        });
+        await refetchSystemSettings();
+      }
+      
       setSaved(true);
-      toast({ title: "Profile updated", description: "Your changes have been saved successfully." });
+      toast({ title: "Settings updated", description: "Your changes have been saved successfully." });
       setTimeout(() => setSaved(false), 2000);
     } catch (err: any) {
       toast({ 
         title: "Update failed", 
-        description: err.info?.error || "Could not update profile.",
+        description: err.info?.error || "Could not update settings.",
         variant: "destructive" 
       });
     }
@@ -114,11 +188,6 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
       toast({ title: "Missing info", description: "Please enter both current and new passwords.", variant: "destructive" });
       return;
     }
-    if (passwords.new.length < 8) {
-      toast({ title: "Weak password", description: "New password must be at least 8 characters.", variant: "destructive" });
-      return;
-    }
-
     try {
       await resetPasswordMutation.mutateAsync({
         data: {
@@ -129,15 +198,14 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
       setPasswords({ current: "", new: "" });
       toast({ title: "Password updated", description: "Your password has been changed." });
     } catch (err: any) {
-      toast({ 
-        title: "Update failed", 
-        description: err.info?.error || "Could not update password.",
-        variant: "destructive" 
-      });
+      toast({ title: "Update failed", description: err.info?.error || "Could not update password.", variant: "destructive" });
     }
   };
 
-  const isPending = updateProfileMutation.isPending || resetPasswordMutation.isPending;
+  const isPending = updateProfileMutation.isPending || 
+                    resetPasswordMutation.isPending || 
+                    updateUserSettingsMutation.isPending || 
+                    updateSystemSettingsMutation.isPending;
 
   return (
     <DashboardLayout title="Settings" role={role}>
@@ -199,7 +267,6 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                         value={profile.name}
                         onChange={(e) => setProfile({ ...profile, name: e.target.value })}
                         className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
-                        placeholder="Your full name"
                       />
                     </div>
                     <div>
@@ -208,7 +275,6 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                         value={profile.email}
                         onChange={(e) => setProfile({ ...profile, email: e.target.value })}
                         className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
-                        placeholder="email@example.com"
                       />
                     </div>
                     <div>
@@ -217,7 +283,6 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                         value={profile.phone}
                         onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
                         className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
-                        placeholder="+1 (555) 000-0000"
                       />
                     </div>
                     <div>
@@ -235,7 +300,6 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                         onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
                         rows={3}
                         className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors resize-none"
-                        placeholder="A short bio about yourself"
                       />
                     </div>
                   </div>
@@ -246,11 +310,21 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                 <>
                   <h3 className="text-lg font-bold text-gray-900 mb-1">Notification preferences</h3>
                   <p className="text-sm text-gray-500 mb-4">Choose which notifications you want to receive.</p>
-                  <Row title="Email notifications" desc="Job updates, comments, and mentions"><Toggle on={notif.email} onChange={() => setNotif({ ...notif, email: !notif.email })} /></Row>
-                  <Row title="Push notifications" desc="Real-time alerts in the browser"><Toggle on={notif.push} onChange={() => setNotif({ ...notif, push: !notif.push })} /></Row>
-                  <Row title="SMS notifications" desc="Critical alerts only"><Toggle on={notif.sms} onChange={() => setNotif({ ...notif, sms: !notif.sms })} /></Row>
-                  <Row title="Weekly digest" desc="Performance summary every Monday"><Toggle on={notif.weekly} onChange={() => setNotif({ ...notif, weekly: !notif.weekly })} /></Row>
-                  <Row title="@ mentions" desc="When someone tags you in chat"><Toggle on={notif.mentions} onChange={() => setNotif({ ...notif, mentions: !notif.mentions })} /></Row>
+                  <Row title="Email notifications" desc="Job updates, comments, and mentions">
+                    <Toggle on={userSettingsState.emailNotifications} onChange={() => setUserSettingsState({ ...userSettingsState, emailNotifications: !userSettingsState.emailNotifications })} />
+                  </Row>
+                  <Row title="Push notifications" desc="Real-time alerts in the browser">
+                    <Toggle on={userSettingsState.pushNotifications} onChange={() => setUserSettingsState({ ...userSettingsState, pushNotifications: !userSettingsState.pushNotifications })} />
+                  </Row>
+                  <Row title="SMS notifications" desc="Critical alerts only">
+                    <Toggle on={userSettingsState.smsNotifications} onChange={() => setUserSettingsState({ ...userSettingsState, smsNotifications: !userSettingsState.smsNotifications })} />
+                  </Row>
+                  <Row title="Weekly digest" desc="Performance summary every Monday">
+                    <Toggle on={userSettingsState.weeklyDigest} onChange={() => setUserSettingsState({ ...userSettingsState, weeklyDigest: !userSettingsState.weeklyDigest })} />
+                  </Row>
+                  <Row title="@ mentions" desc="When someone tags you in chat">
+                    <Toggle on={userSettingsState.mentions} onChange={() => setUserSettingsState({ ...userSettingsState, mentions: !userSettingsState.mentions })} />
+                  </Row>
                 </>
               )}
 
@@ -258,8 +332,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                 <>
                   <h3 className="text-lg font-bold text-gray-900 mb-1">Security & privacy</h3>
                   <p className="text-sm text-gray-500 mb-4">Manage your account security.</p>
-                  <Row title="Two-factor authentication" desc="Require a code on every sign-in"><Toggle on={security.twoFA} onChange={() => setSecurity({ ...security, twoFA: !security.twoFA })} /></Row>
-                  <Row title="New sign-in alerts" desc="Email me when a new device signs in"><Toggle on={security.sessionAlerts} onChange={() => setSecurity({ ...security, sessionAlerts: !security.sessionAlerts })} /></Row>
+                  <Row title="Two-factor authentication" desc="Require a code on every sign-in"><Toggle on={true} onChange={() => {}} disabled /></Row>
                   <div className="pt-6 mt-2 border-t border-gray-100">
                     <h4 className="text-sm font-bold text-gray-900 mb-3">Change password</h4>
                     <div className="grid sm:grid-cols-2 gap-3 mb-4">
@@ -301,10 +374,10 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                         <motion.button
                           key={t}
                           whileTap={{ scale: 0.97 }}
-                          onClick={() => setAppearance({ ...appearance, theme: t })}
-                          className={`relative p-4 rounded-xl border-2 transition-colors capitalize text-sm font-semibold ${appearance.theme === t ? "border-primary bg-primary/5 text-primary" : "border-gray-200 hover:border-gray-300 text-gray-700"}`}
+                          onClick={() => setUserSettingsState({ ...userSettingsState, theme: t })}
+                          className={`relative p-4 rounded-xl border-2 transition-colors capitalize text-sm font-semibold ${userSettingsState.theme === t ? "border-primary bg-primary/5 text-primary" : "border-gray-200 hover:border-gray-300 text-gray-700"}`}
                         >
-                          {appearance.theme === t && (
+                          {userSettingsState.theme === t && (
                             <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute top-2 right-2 w-5 h-5 rounded-full bg-primary text-white flex items-center justify-center">
                               <Check size={12} />
                             </motion.div>
@@ -324,17 +397,19 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                           key={c}
                           whileHover={{ scale: 1.15 }}
                           whileTap={{ scale: 0.9 }}
-                          onClick={() => setAppearance({ ...appearance, accent: c })}
-                          className={`w-9 h-9 rounded-full border-2 flex items-center justify-center ${appearance.accent === c ? "border-gray-900" : "border-transparent"}`}
+                          onClick={() => setUserSettingsState({ ...userSettingsState, accentColor: c })}
+                          className={`w-9 h-9 rounded-full border-2 flex items-center justify-center ${userSettingsState.accentColor === c ? "border-gray-900" : "border-transparent"}`}
                           style={{ backgroundColor: c }}
                         >
-                          {appearance.accent === c && <Check size={14} className="text-white" />}
+                          {userSettingsState.accentColor === c && <Check size={14} className="text-white" />}
                         </motion.button>
                       ))}
                     </div>
                   </div>
 
-                  <Row title="Compact mode" desc="Reduce spacing and padding"><Toggle on={appearance.compact} onChange={() => setAppearance({ ...appearance, compact: !appearance.compact })} /></Row>
+                  <Row title="Compact mode" desc="Reduce spacing and padding">
+                    <Toggle on={userSettingsState.compactMode} onChange={() => setUserSettingsState({ ...userSettingsState, compactMode: !userSettingsState.compactMode })} />
+                  </Row>
                 </>
               )}
 
@@ -342,9 +417,27 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                 <>
                   <h3 className="text-lg font-bold text-gray-900 mb-1">System</h3>
                   <p className="text-sm text-gray-500 mb-4">Platform configuration and maintenance.</p>
-                  <Row title="Auto-backup" desc="Daily database backup at 2:00 AM UTC"><Toggle on={true} onChange={() => {}} /></Row>
-                  <Row title="Maintenance mode" desc="Temporarily disable user access"><Toggle on={false} onChange={() => {}} /></Row>
-                  <Row title="API access logging" desc="Record all API requests"><Toggle on={true} onChange={() => {}} /></Row>
+                  <Row title="Auto-backup" desc="Daily database backup at 2:00 AM UTC">
+                    <Toggle 
+                      on={systemSettingsState.autoBackup} 
+                      onChange={() => setSystemSettingsState({ ...systemSettingsState, autoBackup: !systemSettingsState.autoBackup })} 
+                      disabled={user?.role !== "super-admin"}
+                    />
+                  </Row>
+                  <Row title="Maintenance mode" desc="Temporarily disable user access">
+                    <Toggle 
+                      on={systemSettingsState.maintenanceMode} 
+                      onChange={() => setSystemSettingsState({ ...systemSettingsState, maintenanceMode: !systemSettingsState.maintenanceMode })} 
+                      disabled={user?.role !== "super-admin"}
+                    />
+                  </Row>
+                  <Row title="API access logging" desc="Record all API requests">
+                    <Toggle 
+                      on={systemSettingsState.apiLogging} 
+                      onChange={() => setSystemSettingsState({ ...systemSettingsState, apiLogging: !systemSettingsState.apiLogging })} 
+                      disabled={user?.role !== "super-admin"}
+                    />
+                  </Row>
                   <div className="grid sm:grid-cols-3 gap-3 mt-6">
                     {[
                       { label: "Storage used", value: "47.2 GB", sub: "of 100 GB" },
@@ -367,15 +460,19 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                   <p className="text-sm text-gray-500 mb-6">Language, time zone, and date format.</p>
                   <div className="grid sm:grid-cols-2 gap-4">
                     {[
-                      { label: "Language", options: ["English (US)", "English (UK)", "Spanish", "French", "German"] },
-                      { label: "Time zone", options: ["UTC", "America/New_York", "America/Los_Angeles", "Europe/London", "Asia/Singapore"] },
-                      { label: "Date format", options: ["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD"] },
-                      { label: "Currency", options: ["USD ($)", "EUR (€)", "GBP (£)", "JPY (¥)"] },
+                      { label: "Language", key: "language", options: ["English (US)", "English (UK)", "Spanish", "French", "German"] },
+                      { label: "Time zone", key: "timezone", options: ["UTC", "America/New_York", "America/Los_Angeles", "Europe/London", "Asia/Singapore"] },
+                      { label: "Date format", key: "dateFormat", options: ["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD"] },
+                      { label: "Currency", key: "currency", options: ["USD ($)", "EUR (€)", "GBP (£)", "JPY (¥)"] },
                     ].map((f) => (
                       <div key={f.label}>
                         <label className="text-xs font-semibold text-gray-700 mb-1.5 block">{f.label}</label>
-                        <select className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors">
-                          {f.options.map((o) => <option key={o}>{o}</option>)}
+                        <select 
+                          value={userSettingsState[f.key as keyof typeof userSettingsState] as string}
+                          onChange={(e) => setUserSettingsState({ ...userSettingsState, [f.key]: e.target.value })}
+                          className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
+                        >
+                          {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
                         </select>
                       </div>
                     ))}
@@ -386,12 +483,15 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
               {/* Save bar */}
               <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t border-gray-100">
                 <button 
-                  onClick={() => tab === "profile" && user && setProfile({
-                    name: user.name,
-                    email: user.email,
-                    phone: (user as any).phone || "",
-                    bio: (user as any).bio || "",
-                  })}
+                  onClick={() => {
+                    if (tab === "profile" && user) {
+                      setProfile({ name: user.name, email: user.email, phone: (user as any).phone || "", bio: (user as any).bio || "" });
+                    } else if (apiUserSettings) {
+                      setUserSettingsState(apiUserSettings as any);
+                    } else if (apiSystemSettings) {
+                      setSystemSettingsState(apiSystemSettings as any);
+                    }
+                  }}
                   className="px-5 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
                 >
                   Cancel
@@ -399,7 +499,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                 <motion.button
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
-                  onClick={tab === "profile" ? handleSaveProfile : () => setSaved(true)}
+                  onClick={handleSave}
                   disabled={isPending}
                   className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-sm font-semibold shadow-md shadow-primary/30 disabled:opacity-50"
                 >

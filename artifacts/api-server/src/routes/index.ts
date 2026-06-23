@@ -13,6 +13,7 @@ import jobMembersRouter from "./job-members";
 import checklistRouter from "./checklist";
 import cliqRouter from "./cliq";
 import zohoRouter from "./zoho";
+import settingsRouter from "./settings";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(jobMembersRouter);
 router.use(checklistRouter);
 router.use(cliqRouter);
 router.use(zohoRouter);
+router.use(settingsRouter);
 
 export default router;

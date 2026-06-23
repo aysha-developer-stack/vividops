@@ -56,6 +56,85 @@ export const GetMeResponse = zod.object({
 });
 
 /**
+ * @summary Get current user settings
+ */
+export const GetUserSettingsResponse = zod.object({
+  userId: zod.string().uuid(),
+  emailNotifications: zod.boolean(),
+  pushNotifications: zod.boolean(),
+  smsNotifications: zod.boolean(),
+  weeklyDigest: zod.boolean(),
+  mentions: zod.boolean(),
+  theme: zod.string(),
+  accentColor: zod.string(),
+  compactMode: zod.boolean(),
+  language: zod.string(),
+  timezone: zod.string(),
+  dateFormat: zod.string(),
+  currency: zod.string(),
+});
+
+/**
+ * @summary Update current user settings
+ */
+export const UpdateUserSettingsBody = zod.object({
+  emailNotifications: zod.boolean().optional(),
+  pushNotifications: zod.boolean().optional(),
+  smsNotifications: zod.boolean().optional(),
+  weeklyDigest: zod.boolean().optional(),
+  mentions: zod.boolean().optional(),
+  theme: zod.string().optional(),
+  accentColor: zod.string().optional(),
+  compactMode: zod.boolean().optional(),
+  language: zod.string().optional(),
+  timezone: zod.string().optional(),
+  dateFormat: zod.string().optional(),
+  currency: zod.string().optional(),
+});
+
+export const UpdateUserSettingsResponse = zod.object({
+  userId: zod.string().uuid(),
+  emailNotifications: zod.boolean(),
+  pushNotifications: zod.boolean(),
+  smsNotifications: zod.boolean(),
+  weeklyDigest: zod.boolean(),
+  mentions: zod.boolean(),
+  theme: zod.string(),
+  accentColor: zod.string(),
+  compactMode: zod.boolean(),
+  language: zod.string(),
+  timezone: zod.string(),
+  dateFormat: zod.string(),
+  currency: zod.string(),
+});
+
+/**
+ * @summary Get global system settings
+ */
+export const GetSystemSettingsResponse = zod.object({
+  id: zod.string(),
+  autoBackup: zod.boolean(),
+  maintenanceMode: zod.boolean(),
+  apiLogging: zod.boolean(),
+});
+
+/**
+ * @summary Update global system settings
+ */
+export const UpdateSystemSettingsBody = zod.object({
+  autoBackup: zod.boolean().optional(),
+  maintenanceMode: zod.boolean().optional(),
+  apiLogging: zod.boolean().optional(),
+});
+
+export const UpdateSystemSettingsResponse = zod.object({
+  id: zod.string(),
+  autoBackup: zod.boolean(),
+  maintenanceMode: zod.boolean(),
+  apiLogging: zod.boolean(),
+});
+
+/**
  * @summary Update current user profile
  */
 
