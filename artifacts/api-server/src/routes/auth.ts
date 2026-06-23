@@ -128,6 +128,7 @@ router.patch("/auth/profile", requireAuth, async (req, res) => {
   if (parsed.data.email !== undefined) patch.email = parsed.data.email.toLowerCase();
   if (parsed.data.phone !== undefined) patch.phone = parsed.data.phone;
   if (parsed.data.bio !== undefined) patch.bio = parsed.data.bio;
+  if (parsed.data.avatarUrl !== undefined) patch.avatarUrl = parsed.data.avatarUrl;
 
   // Normal users cannot change their role or status via this endpoint
   // That must be done by an admin via /api/users/:id

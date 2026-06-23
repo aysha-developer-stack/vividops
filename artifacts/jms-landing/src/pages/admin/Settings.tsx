@@ -64,6 +64,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
   const [saved, setSaved] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarRemoving, setAvatarRemoving] = useState(false);
   
   // API Hooks
   const { data: apiUserSettings, refetch: refetchUserSettings } = useGetUserSettings();
@@ -253,6 +254,27 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
     }
   };
 
+  const removeAvatar = async () => {
+    setAvatarRemoving(true);
+    try {
+      await updateProfileMutation.mutateAsync({
+        data: {
+          avatarUrl: null,
+        }
+      });
+      await refresh();
+      toast({ title: "Photo removed", description: "Your profile photo has been removed." });
+    } catch (err: any) {
+      toast({
+        title: "Remove failed",
+        description: err?.info?.error || err?.message || "Could not remove photo.",
+        variant: "destructive",
+      });
+    } finally {
+      setAvatarRemoving(false);
+    }
+  };
+
   return (
     <DashboardLayout title="Settings" role={role}>
       <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6">
@@ -310,9 +332,18 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                     <div>
                       <div className="font-semibold text-gray-900">{profile.name || "User"}</div>
                       <div className="text-xs text-gray-500 capitalize">{user?.role || "User"}</div>
-                      <button onClick={pickAvatar} disabled={avatarUploading} className="text-xs text-primary font-semibold mt-2 hover:underline disabled:opacity-50">
+                      <button onClick={pickAvatar} disabled={avatarUploading || avatarRemoving} className="text-xs text-primary font-semibold mt-2 hover:underline disabled:opacity-50">
                         {avatarUploading ? "Uploading..." : "Upload new photo"}
                       </button>
+                      {avatarUrl && (
+                        <button
+                          onClick={() => void removeAvatar()}
+                          disabled={avatarUploading || avatarRemoving}
+                          className="block text-xs text-red-600 font-semibold mt-2 hover:underline disabled:opacity-50"
+                        >
+                          {avatarRemoving ? "Removing..." : "Remove photo"}
+                        </button>
+                      )}
                       <input
                         ref={avatarInputRef}
                         type="file"
