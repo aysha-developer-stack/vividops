@@ -5,7 +5,11 @@ import { ArrowLeft, Check, Filter as FilterIcon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
-import { NOTIF_STYLE, type NotifType } from "@/lib/notifications";
+import {
+  NOTIF_STYLE,
+  getNotifStyle,
+  type NotifType,
+} from "@/lib/notifications";
 import type { Role } from "@/lib/roles";
 import { ROLES } from "@/lib/roles";
 import {
@@ -157,7 +161,7 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
 
           <div className="divide-y divide-gray-50">
             {pageItems.map((n, i) => {
-              const style = NOTIF_STYLE[n.type];
+              const style = getNotifStyle(n.type);
               const NIcon = style.icon;
               return (
                 <motion.div

@@ -1,4 +1,4 @@
-import { Briefcase, Edit3, AlertTriangle, Clock, RefreshCw, type LucideIcon } from "lucide-react";
+import { Briefcase, Edit3, AlertTriangle, Clock, RefreshCw, Bell, type LucideIcon } from "lucide-react";
 import type { Role } from "./roles";
 
 export type NotifType = "assigned" | "updated" | "overdue" | "timer" | "rework";
@@ -12,13 +12,17 @@ export interface Notif {
   unread: boolean;
 }
 
-export const NOTIF_STYLE: Record<NotifType, { icon: LucideIcon; color: string; label: string }> = {
+const defaultNotifStyle = { icon: Bell, color: "bg-gray-100 text-gray-600", label: "Notification" };
+
+export const NOTIF_STYLE: Record<string, { icon: LucideIcon; color: string; label: string }> = {
   assigned: { icon: Briefcase, color: "bg-primary/10 text-primary", label: "Assignment" },
   updated: { icon: Edit3, color: "bg-purple-50 text-purple-600", label: "Update" },
   overdue: { icon: AlertTriangle, color: "bg-red-50 text-red-600", label: "Overdue" },
   timer: { icon: Clock, color: "bg-amber-50 text-amber-600", label: "Timer" },
   rework: { icon: RefreshCw, color: "bg-orange-50 text-orange-600", label: "Rework" },
 };
+
+export const getNotifStyle = (type: string) => NOTIF_STYLE[type] || defaultNotifStyle;
 
 export const NOTIFICATIONS_BY_ROLE: Record<Role, Notif[]> = {
   "super-admin": [
