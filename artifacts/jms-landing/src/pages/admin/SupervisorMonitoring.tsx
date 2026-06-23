@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, Activity, Briefcase, Clock, AlertCircle, CheckCircle2,
@@ -6,7 +6,8 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
-import { useListUsers, type User } from "@workspace/api-client-react";
+import { useAuth } from "@/lib/auth";
+import { useGetTimeLogs, useListJobs, useListUsers, type Job, type TimeLog, type User } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
 
 interface Supervisor {
@@ -17,7 +18,7 @@ interface Supervisor {
   activeJobs: number;
   completedJobs: number;
   overdue: number;
-  avgRating: number;
+  completionRate: number;
   hoursThisWeek: number;
   status: "online" | "away" | "offline";
   trend: number;
@@ -30,27 +31,113 @@ const STATUS_DOT: Record<Supervisor["status"], string> = {
   offline: "bg-gray-400",
 };
 
+function parseMs(iso: string | null | undefined) {
+  if (!iso) return null;
+  const ms = new Date(iso).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function formatLastSeen(ms: number | null, status: Supervisor["status"]) {
+  if (status === "offline") return "Offline";
+  if (!ms) return status === "away" ? "No recent activity" : "Just now";
+  const diffMinutes = Math.max(0, Math.floor((Date.now() - ms) / 60000));
+  if (diffMinutes < 2) return "Just now";
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const hours = Math.floor(diffMinutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export default function SupervisorMonitoring({ role = "admin" as Role }: { role?: Role } = {}) {
-  const { data: apiUsers, isLoading } = useListUsers();
+  const { user: currentUser } = useAuth();
+  const { data: apiUsers, isLoading: usersLoading } = useListUsers();
+  const { data: apiJobs, isLoading: jobsLoading } = useListJobs();
+  const { data: apiTimeLogs, isLoading: logsLoading } = useGetTimeLogs();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Supervisor | null>(null);
 
-  const supervisors: Supervisor[] = (apiUsers ?? [])
-    .filter((u: User) => u.role === "supervisor")
-    .map((u: User) => ({
-      id: u.id,
-      name: u.name,
-      avatar: u.name.split(" ").map(s => s[0]).join("").toUpperCase(),
-      team: "General",
-      activeJobs: 0,
-      completedJobs: 0,
-      overdue: 0,
-      avgRating: 5.0,
-      hoursThisWeek: 0,
-      status: u.status === "active" ? "online" : "offline",
-      trend: 0,
-      lastSeen: "Just now"
-    }));
+  const supervisors: Supervisor[] = useMemo(() => {
+    const baseSupervisors = (apiUsers ?? []).filter((u: User) => u.role === "supervisor");
+    const supervisorMap = new Map(baseSupervisors.map((u) => [u.id, u]));
+    if (role === "supervisor" && currentUser?.role === "supervisor" && !supervisorMap.has(currentUser.id)) {
+      supervisorMap.set(currentUser.id, currentUser as User);
+    }
+
+    const now = Date.now();
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const weekStartMs = now - sevenDaysMs;
+    const prevWeekStartMs = now - 2 * sevenDaysMs;
+
+    return Array.from(supervisorMap.values()).map((u) => {
+      const visibleJobs = (apiJobs ?? []).filter(
+        (job: Job) => job.supervisor?.id === u.id || ((job as any).createdById != null && (job as any).createdById === u.id),
+      );
+      const teamMembers = new Set(
+        visibleJobs
+          .map((job) => job.assignee?.name ?? "")
+          .filter((name) => !!name),
+      );
+      const weekLogs = (apiTimeLogs ?? []).filter((log: TimeLog) => {
+        const createdMs = parseMs(log.createdAt);
+        if (createdMs == null || createdMs < weekStartMs) return false;
+        const visibleJob = log.jobId ? visibleJobs.some((job) => job.id === log.jobId) : false;
+        return log.userId === u.id || visibleJob;
+      });
+      const hoursThisWeek = weekLogs.reduce((sum, log) => sum + (log.duration / 3600), 0);
+      const activeJobs = visibleJobs.filter((job) => job.status !== "completed" && job.status !== "cancelled").length;
+      const completedJobs = visibleJobs.filter((job) => job.status === "completed").length;
+      const overdue = visibleJobs.filter((job) => job.isOverdue).length;
+      const totalTrackedJobs = activeJobs + completedJobs;
+      const completionRate = totalTrackedJobs > 0 ? Math.round((completedJobs / totalTrackedJobs) * 100) : 0;
+
+      const currentWeekCompleted = visibleJobs.filter((job) => {
+        const completedMs = parseMs(job.completedAt);
+        return completedMs != null && completedMs >= weekStartMs;
+      }).length;
+      const previousWeekCompleted = visibleJobs.filter((job) => {
+        const completedMs = parseMs(job.completedAt);
+        return completedMs != null && completedMs >= prevWeekStartMs && completedMs < weekStartMs;
+      }).length;
+      const trend =
+        previousWeekCompleted === 0
+          ? currentWeekCompleted > 0 ? 100 : 0
+          : Math.round(((currentWeekCompleted - previousWeekCompleted) / previousWeekCompleted) * 100);
+
+      const latestJobActivityMs = visibleJobs.reduce((max, job) => {
+        const ms = parseMs(job.updatedAt) ?? parseMs(job.createdAt) ?? 0;
+        return Math.max(max, ms);
+      }, 0);
+      const latestLogMs = weekLogs.reduce((max, log) => {
+        const ms = parseMs(log.createdAt) ?? 0;
+        return Math.max(max, ms);
+      }, 0);
+      const lastActivityMs = Math.max(latestJobActivityMs, latestLogMs);
+      const status: Supervisor["status"] =
+        u.status !== "active"
+          ? "offline"
+          : !lastActivityMs
+            ? "away"
+            : now - lastActivityMs <= 8 * 60 * 60 * 1000
+              ? "online"
+              : "away";
+
+      return {
+        id: u.id,
+        name: u.name,
+        avatar: u.name.split(" ").map((s) => s[0]).join("").toUpperCase().slice(0, 2),
+        team: `${teamMembers.size} worker${teamMembers.size === 1 ? "" : "s"}`,
+        activeJobs,
+        completedJobs,
+        overdue,
+        completionRate,
+        hoursThisWeek: Number(hoursThisWeek.toFixed(1)),
+        status,
+        trend,
+        lastSeen: formatLastSeen(lastActivityMs || null, status),
+      };
+    });
+  }, [apiJobs, apiTimeLogs, apiUsers, currentUser, role]);
 
   const filtered = supervisors.filter((s: Supervisor) => s.name.toLowerCase().includes(search.toLowerCase()));
   const supervisorsP = usePagination(filtered, 6);
@@ -59,7 +146,7 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
   const totalCompleted = supervisors.reduce((acc, s) => acc + s.completedJobs, 0);
   const totalOverdue = supervisors.reduce((acc, s) => acc + s.overdue, 0);
 
-  if (isLoading && !apiUsers) {
+  if ((usersLoading || jobsLoading || logsLoading) && !apiUsers && !apiJobs && !apiTimeLogs) {
     return (
       <DashboardLayout title="Supervisor Monitoring" role={role}>
         <div className="flex items-center justify-center h-64">
@@ -107,7 +194,7 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
       {/* Search */}
       <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 max-w-md mb-6 focus-within:border-primary transition-colors">
         <Search size={16} className="text-gray-400" />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search supervisors…" className="bg-transparent text-sm flex-1 focus:outline-none" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search supervisors…" className="bg-transparent text-gray-900 placeholder:text-gray-400 text-sm flex-1 focus:outline-none" />
       </div>
 
       {/* Supervisor cards */}
@@ -201,15 +288,15 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
                   <div className="text-sm text-gray-500">{selected.team}</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-amber-500">★ {selected.avgRating}</div>
-                  <div className="text-[10px] text-gray-500">Avg rating</div>
+                  <div className="text-2xl font-bold text-primary">{selected.completionRate}%</div>
+                  <div className="text-[10px] text-gray-500">Completion</div>
                 </div>
               </div>
 
               <div className="space-y-3">
                 {[
                   { label: "Hours this week", val: `${selected.hoursThisWeek}h`, max: 40 },
-                  { label: "Job completion rate", val: `${Math.round(selected.completedJobs / (selected.completedJobs + selected.activeJobs) * 100)}%`, max: 100 },
+                  { label: "Job completion rate", val: `${selected.completionRate}%`, max: 100 },
                 ].map((m) => (
                   <div key={m.label}>
                     <div className="flex justify-between text-xs mb-1">
@@ -217,7 +304,7 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
                       <span className="font-bold text-gray-900">{m.val}</span>
                     </div>
                     <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <motion.div initial={{ width: 0 }} animate={{ width: m.val }} transition={{ duration: 0.6 }} className="h-full bg-primary rounded-full" />
+                      <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(m.max, Number.parseFloat(m.val)) / m.max * 100}%` }} transition={{ duration: 0.6 }} className="h-full bg-primary rounded-full" />
                     </div>
                   </div>
                 ))}

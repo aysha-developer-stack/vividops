@@ -122,6 +122,10 @@ export default function DashboardLayout({
     try {
       if (path.includes("/users")) {
         qc.prefetchQuery(getListUsersQueryOptions());
+        if (path.includes("/users-monitoring") || path.startsWith("/supervisor/users")) {
+          qc.prefetchQuery(getListJobsQueryOptions());
+          qc.prefetchQuery(getGetTimeLogsQueryOptions());
+        }
       }
       if (path.includes("/jobs")) {
         qc.prefetchQuery(getListJobsQueryOptions());
@@ -133,8 +137,21 @@ export default function DashboardLayout({
         qc.prefetchQuery(getGetDashboardStatsQueryOptions());
         qc.prefetchQuery(getListUsersQueryOptions());
         qc.prefetchQuery(getGetTimeLogsQueryOptions());
+        qc.prefetchQuery(getListJobsQueryOptions());
       }
       if (path.endsWith("/error-reports") || path.includes("/error-reports")) {
+        qc.prefetchQuery(getListUsersQueryOptions());
+        qc.prefetchQuery(getListJobsQueryOptions());
+        qc.prefetchQuery(getGetTimeLogsQueryOptions());
+      }
+      if (path.endsWith("/communication") || path.includes("/communication")) {
+        qc.prefetchQuery(getListJobsQueryOptions());
+      }
+      if (path.endsWith("/timer") || path.includes("/timer")) {
+        qc.prefetchQuery(getListJobsQueryOptions());
+        qc.prefetchQuery(getGetTimeLogsQueryOptions());
+      }
+      if (path.endsWith("/monitoring") || path.includes("/monitoring")) {
         qc.prefetchQuery(getListUsersQueryOptions());
         qc.prefetchQuery(getListJobsQueryOptions());
         qc.prefetchQuery(getGetTimeLogsQueryOptions());
@@ -200,7 +217,7 @@ export default function DashboardLayout({
 
     const warmRouteChunks = () => {
       if (cancelled) return;
-      pathsToWarm.forEach((path) => prefetchCodeForPath(path));
+      pathsToWarm.forEach((path) => prefetchForPath(path));
     };
 
     if (typeof idleWindow.requestIdleCallback === "function") {

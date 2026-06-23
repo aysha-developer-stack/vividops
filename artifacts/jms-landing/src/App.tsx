@@ -146,7 +146,7 @@ function AppRouter() {
         <Route path="/supervisor/users"><RequireSignedIn><UserMonitoring role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/jobs/:id">{(params) => <RequireSignedIn><JobDetail id={params.id} role="supervisor" /></RequireSignedIn>}</Route>
         <Route path="/supervisor/jobs"><RequireSignedIn><JobManagement role="supervisor" /></RequireSignedIn></Route>
-        <Route path="/supervisor/monitoring"><RequireSignedIn><SupervisorMonitoring /></RequireSignedIn></Route>
+        <Route path="/supervisor/monitoring"><RequireSignedIn><SupervisorMonitoring role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/reports"><RequireSignedIn><Reports role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/communication"><RequireSignedIn><Communication role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/settings"><RequireSignedIn><Settings role="supervisor" /></RequireSignedIn></Route>

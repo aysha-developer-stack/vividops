@@ -9,7 +9,6 @@ import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 import logoImg from "@assets/vv_1778503190047.png";
-import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import {
   useGetDashboardStats,
@@ -17,10 +16,6 @@ import {
   useGetTimeLogs,
   useListJobs,
   type User,
-  getGetDashboardStatsQueryKey,
-  getListUsersQueryKey,
-  getGetTimeLogsQueryKey,
-  getListJobsQueryKey,
 } from "@workspace/api-client-react";
 
 type UserRoleLabel = "Super Admin" | "Admin" | "Supervisor" | "User";
@@ -48,7 +43,6 @@ const SEV_COLOR: Record<string, string> = {
 
 export default function Reports({ role = "super-admin" as Role }: { role?: Role } = {}) {
   const { user: currentUser } = useAuth();
-  const qc = useQueryClient();
   const { data: dashboardData, isLoading: statsLoading } = useGetDashboardStats();
   const { data: apiUsers, isLoading: usersLoading } = useListUsers();
   const { data: apiTimeLogs, isLoading: logsLoading } = useGetTimeLogs();
@@ -93,13 +87,6 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   ];
 
   const ACTIVE_TABS = isUser ? USER_TABS : ADMIN_TABS;
-
-  useEffect(() => {
-    qc.invalidateQueries({ queryKey: getGetDashboardStatsQueryKey() });
-    qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
-    qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
-    qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-  }, [qc]);
 
   useEffect(() => {
     let cancelled = false;
