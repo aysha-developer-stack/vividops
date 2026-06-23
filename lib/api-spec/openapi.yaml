@@ -149,6 +149,23 @@ paths:
         "403":
           description: Forbidden - Super Admin only
 
+  /settings/system/metrics:
+    get:
+      operationId: getSystemMetrics
+      tags: [settings]
+      summary: Get live system metrics
+      responses:
+        "200":
+          description: System metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemMetrics"
+        "401":
+          description: Not signed in
+        "403":
+          description: Forbidden - Super Admin only
+
   /auth/profile:
     patch:
       operationId: updateProfile
@@ -584,7 +601,7 @@ components:
 
     UserSettings:
       type: object
-      required: [userId, emailNotifications, pushNotifications, smsNotifications, weeklyDigest, mentions, theme, accentColor, compactMode, language, timezone, dateFormat, currency]
+      required: [userId, emailNotifications, pushNotifications, smsNotifications, weeklyDigest, mentions, twoFactorEnabled, theme, accentColor, compactMode, language, timezone, dateFormat, currency]
       properties:
         userId: { type: string, format: uuid }
         emailNotifications: { type: boolean }
@@ -592,6 +609,7 @@ components:
         smsNotifications: { type: boolean }
         weeklyDigest: { type: boolean }
         mentions: { type: boolean }
+        twoFactorEnabled: { type: boolean }
         theme: { type: string }
         accentColor: { type: string }
         compactMode: { type: boolean }
@@ -608,6 +626,7 @@ components:
         smsNotifications: { type: boolean }
         weeklyDigest: { type: boolean }
         mentions: { type: boolean }
+        twoFactorEnabled: { type: boolean }
         theme: { type: string }
         accentColor: { type: string }
         compactMode: { type: boolean }
@@ -631,6 +650,16 @@ components:
         autoBackup: { type: boolean }
         maintenanceMode: { type: boolean }
         apiLogging: { type: boolean }
+
+    SystemMetrics:
+      type: object
+      required: [storageUsed, storageTotal, apiCallsToday, apiCallsTrend, activeUsers]
+      properties:
+        storageUsed: { type: string }
+        storageTotal: { type: string }
+        apiCallsToday: { type: number }
+        apiCallsTrend: { type: string }
+        activeUsers: { type: number }
 
     CreateUserResult:
       type: object

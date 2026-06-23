@@ -39,10 +39,27 @@ export function priorityToUi(p: JobPriority): UiPriority {
   return PRIORITY_API_TO_UI[p];
 }
 
-export function formatShortDate(iso: string | null | undefined): string {
+export function formatShortDate(iso: string | null | undefined, format: string = "MM/DD/YYYY"): string {
   if (!iso) return "—";
   const d = new Date(iso);
+  
+  if (format === "DD/MM/YYYY") {
+    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  } else if (format === "YYYY-MM-DD") {
+    return d.toISOString().split('T')[0];
+  }
+  
   return d.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+}
+
+export function formatCurrency(amount: number, currency: string = "USD ($)"): string {
+  const symbol = currency.includes("($)") ? "$" : currency.includes("(Γé¼)") ? "Γé¼" : currency.includes("(┬ú)") ? "┬ú" : currency.includes("(┬Ñ)") ? "┬Ñ" : "$";
+  const code = currency.split(' ')[0];
+  
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: code,
+  }).format(amount);
 }
 
 export function daysUntil(iso: string | null | undefined): number {

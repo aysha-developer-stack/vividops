@@ -12,6 +12,7 @@ export interface UserSettingsUpdate {
   smsNotifications?: boolean;
   weeklyDigest?: boolean;
   mentions?: boolean;
+  twoFactorEnabled?: boolean;
   theme?: string;
   accentColor?: string;
   compactMode?: boolean;

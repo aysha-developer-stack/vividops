@@ -37,6 +37,8 @@ const { seedAdminIfEmpty } = await import("./lib/seed");
 const { setupSocketIO } = await import("./lib/socket");
 const { setupWorkers } = await import("./lib/queue");
 
+import { shouldSendNotification } from "./lib/notifications";
+
 const rawPort = process.env["PORT"] || "3000";
 
 if (!rawPort) {
@@ -166,14 +168,16 @@ async function start(): Promise<void> {
               .limit(1);
             if (existing.length > 0) continue;
 
-            await db.insert(notifications).values({
-              id: randomUUID(),
-              userId,
-              title,
-              description,
-              type: "overdue",
-              isRead: false,
-            } as any);
+            if (await shouldSendNotification(userId, 'push')) {
+              await db.insert(notifications).values({
+                id: randomUUID(),
+                userId,
+                title,
+                description,
+                type: "overdue",
+                isRead: false,
+              } as any);
+            }
           }
 
           if (cliqWebhookUrl) {

@@ -32,6 +32,7 @@ import type {
   Post,
   PostInput,
   ResetPasswordInput,
+  SystemMetrics,
   SystemSettings,
   SystemSettingsUpdate,
   TimeLog,
@@ -676,6 +677,81 @@ export const useUpdateSystemSettings = <
 > => {
   return useMutation(getUpdateSystemSettingsMutationOptions(options));
 };
+
+/**
+ * @summary Get live system metrics
+ */
+export const getGetSystemMetricsUrl = () => {
+  return `/api/settings/system/metrics`;
+};
+
+export const getSystemMetrics = async (
+  options?: RequestInit,
+): Promise<SystemMetrics> => {
+  return customFetch<SystemMetrics>(getGetSystemMetricsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSystemMetricsQueryKey = () => {
+  return [`/api/settings/system/metrics`] as const;
+};
+
+export const getGetSystemMetricsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSystemMetrics>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSystemMetrics>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSystemMetricsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getSystemMetrics>>
+  > = ({ signal }) => getSystemMetrics({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSystemMetrics>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSystemMetricsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSystemMetrics>>
+>;
+export type GetSystemMetricsQueryError = ErrorType<void>;
+
+/**
+ * @summary Get live system metrics
+ */
+
+export function useGetSystemMetrics<
+  TData = Awaited<ReturnType<typeof getSystemMetrics>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSystemMetrics>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSystemMetricsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Update current user profile

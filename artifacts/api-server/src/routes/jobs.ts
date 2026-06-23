@@ -9,6 +9,8 @@ import { requireAuth, requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { getZohoCliqAccessToken } from "../lib/zoho";
 
+import { shouldSendNotification } from "../lib/notifications";
+
 const router: IRouter = Router();
 
 const assigneeAlias = alias(users, "assignee");
@@ -484,10 +486,12 @@ async function createStoredJobMessage({
         type: "job_message",
       }));
     for (const v of values) {
-      await db.execute(sql`
-        INSERT INTO notifications (id, user_id, title, description, type, is_read)
-        VALUES (${v.id}, ${v.userId}, ${v.title}, ${v.description}, ${v.type}, false)
-      `);
+      if (await shouldSendNotification(v.userId, 'push')) {
+        await db.execute(sql`
+          INSERT INTO notifications (id, user_id, title, description, type, is_read)
+          VALUES (${v.id}, ${v.userId}, ${v.title}, ${v.description}, ${v.type}, false)
+        `);
+      }
     }
   } catch (err) {
     logger.warn({ err, jobId: job.id }, "Failed to create in-app message notifications");

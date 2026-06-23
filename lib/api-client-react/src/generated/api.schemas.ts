@@ -82,6 +82,7 @@ export interface UserSettings {
   smsNotifications: boolean;
   weeklyDigest: boolean;
   mentions: boolean;
+  twoFactorEnabled: boolean;
   theme: string;
   accentColor: string;
   compactMode: boolean;
@@ -97,6 +98,7 @@ export interface UserSettingsUpdate {
   smsNotifications?: boolean;
   weeklyDigest?: boolean;
   mentions?: boolean;
+  twoFactorEnabled?: boolean;
   theme?: string;
   accentColor?: string;
   compactMode?: boolean;
@@ -117,6 +119,14 @@ export interface SystemSettingsUpdate {
   autoBackup?: boolean;
   maintenanceMode?: boolean;
   apiLogging?: boolean;
+}
+
+export interface SystemMetrics {
+  storageUsed: string;
+  storageTotal: string;
+  apiCallsToday: number;
+  apiCallsTrend: string;
+  activeUsers: number;
 }
 
 export type CreateUserResultDelivery =

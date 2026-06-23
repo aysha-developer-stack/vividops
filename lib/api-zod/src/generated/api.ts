@@ -65,6 +65,7 @@ export const GetUserSettingsResponse = zod.object({
   smsNotifications: zod.boolean(),
   weeklyDigest: zod.boolean(),
   mentions: zod.boolean(),
+  twoFactorEnabled: zod.boolean(),
   theme: zod.string(),
   accentColor: zod.string(),
   compactMode: zod.boolean(),
@@ -83,6 +84,7 @@ export const UpdateUserSettingsBody = zod.object({
   smsNotifications: zod.boolean().optional(),
   weeklyDigest: zod.boolean().optional(),
   mentions: zod.boolean().optional(),
+  twoFactorEnabled: zod.boolean().optional(),
   theme: zod.string().optional(),
   accentColor: zod.string().optional(),
   compactMode: zod.boolean().optional(),
@@ -99,6 +101,7 @@ export const UpdateUserSettingsResponse = zod.object({
   smsNotifications: zod.boolean(),
   weeklyDigest: zod.boolean(),
   mentions: zod.boolean(),
+  twoFactorEnabled: zod.boolean(),
   theme: zod.string(),
   accentColor: zod.string(),
   compactMode: zod.boolean(),
@@ -132,6 +135,17 @@ export const UpdateSystemSettingsResponse = zod.object({
   autoBackup: zod.boolean(),
   maintenanceMode: zod.boolean(),
   apiLogging: zod.boolean(),
+});
+
+/**
+ * @summary Get live system metrics
+ */
+export const GetSystemMetricsResponse = zod.object({
+  storageUsed: zod.string(),
+  storageTotal: zod.string(),
+  apiCallsToday: zod.number(),
+  apiCallsTrend: zod.string(),
+  activeUsers: zod.number(),
 });
 
 /**

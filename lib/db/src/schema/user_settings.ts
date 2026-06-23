@@ -16,6 +16,9 @@ export const userSettings = pgTable("user_settings", {
   smsNotifications: boolean("sms_notifications").notNull().default(false),
   weeklyDigest: boolean("weekly_digest").notNull().default(true),
   mentions: boolean("mentions").notNull().default(true),
+
+  // Security
+  twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
   
   // Appearance
   theme: text("theme").notNull().default("light"), // light, dark, system

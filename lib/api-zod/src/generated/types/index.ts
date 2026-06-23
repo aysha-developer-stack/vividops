@@ -26,6 +26,7 @@ export * from "./notification";
 export * from "./post";
 export * from "./postInput";
 export * from "./resetPasswordInput";
+export * from "./systemMetrics";
 export * from "./systemSettings";
 export * from "./systemSettingsUpdate";
 export * from "./timeLog";

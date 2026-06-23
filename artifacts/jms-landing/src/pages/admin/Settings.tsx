@@ -12,7 +12,8 @@ import {
   useGetUserSettings,
   useUpdateUserSettings,
   useGetSystemSettings,
-  useUpdateSystemSettings
+  useUpdateSystemSettings,
+  useGetSystemMetrics
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -20,7 +21,7 @@ const TABS = [
   { id: "profile", label: "Profile", icon: UserIcon },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "security", label: "Security", icon: Shield },
-  { id: "appearance", label: "Appearance", icon: Palette },
+  // { id: "appearance", label: "Appearance", icon: Palette },
   { id: "system", label: "System", icon: Database },
   { id: "regional", label: "Regional", icon: Globe },
 ] as const;
@@ -64,6 +65,12 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
   // API Hooks
   const { data: apiUserSettings, refetch: refetchUserSettings } = useGetUserSettings();
   const { data: apiSystemSettings, refetch: refetchSystemSettings } = useGetSystemSettings();
+  const { data: apiSystemMetrics } = useGetSystemMetrics({
+    query: {
+      enabled: role === "super-admin" && tab === "system",
+      refetchInterval: 30000, // Refresh every 30s
+    }
+  });
   
   const updateProfileMutation = useUpdateProfile();
   const resetPasswordMutation = useResetPassword();
@@ -91,6 +98,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
     smsNotifications: false,
     weeklyDigest: true,
     mentions: true,
+    twoFactorEnabled: false,
     theme: "light",
     accentColor: "#0B7EB9",
     compactMode: false,
@@ -126,6 +134,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
         smsNotifications: apiUserSettings.smsNotifications,
         weeklyDigest: apiUserSettings.weeklyDigest,
         mentions: apiUserSettings.mentions,
+        twoFactorEnabled: apiUserSettings.twoFactorEnabled,
         theme: apiUserSettings.theme,
         accentColor: apiUserSettings.accentColor,
         compactMode: apiUserSettings.compactMode,
@@ -159,7 +168,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
           }
         });
         await refresh();
-      } else if (tab === "notifications" || tab === "appearance" || tab === "regional") {
+      } else if (tab === "notifications" || tab === "appearance" || tab === "regional" || tab === "security") {
         await updateUserSettingsMutation.mutateAsync({
           data: userSettingsState
         });
@@ -332,7 +341,9 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                 <>
                   <h3 className="text-lg font-bold text-gray-900 mb-1">Security & privacy</h3>
                   <p className="text-sm text-gray-500 mb-4">Manage your account security.</p>
-                  <Row title="Two-factor authentication" desc="Require a code on every sign-in"><Toggle on={true} onChange={() => {}} disabled /></Row>
+                  <Row title="Two-factor authentication" desc="Require a code on every sign-in">
+                    <Toggle on={userSettingsState.twoFactorEnabled} onChange={() => setUserSettingsState({ ...userSettingsState, twoFactorEnabled: !userSettingsState.twoFactorEnabled })} />
+                  </Row>
                   <div className="pt-6 mt-2 border-t border-gray-100">
                     <h4 className="text-sm font-bold text-gray-900 mb-3">Change password</h4>
                     <div className="grid sm:grid-cols-2 gap-3 mb-4">
@@ -362,7 +373,8 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                 </>
               )}
 
-              {tab === "appearance" && (
+              {/* Appearance Tab (Logic kept, UI removed from app) */}
+              {/* {tab === "appearance" && (
                 <>
                   <h3 className="text-lg font-bold text-gray-900 mb-1">Appearance</h3>
                   <p className="text-sm text-gray-500 mb-6">Customize how Vivid OPS looks to you.</p>
@@ -411,7 +423,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                     <Toggle on={userSettingsState.compactMode} onChange={() => setUserSettingsState({ ...userSettingsState, compactMode: !userSettingsState.compactMode })} />
                   </Row>
                 </>
-              )}
+              )} */}
 
               {tab === "system" && (
                 <>
@@ -440,9 +452,9 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                   </Row>
                   <div className="grid sm:grid-cols-3 gap-3 mt-6">
                     {[
-                      { label: "Storage used", value: "47.2 GB", sub: "of 100 GB" },
-                      { label: "API calls today", value: "12,408", sub: "+8.2% vs yesterday" },
-                      { label: "Active users", value: "243", sub: "live now" },
+                      { label: "Storage used", value: apiSystemMetrics?.storageUsed || "...", sub: `of ${apiSystemMetrics?.storageTotal || "..."}` },
+                      { label: "API calls today", value: apiSystemMetrics?.apiCallsToday?.toLocaleString() || "...", sub: apiSystemMetrics?.apiCallsTrend || "..." },
+                      { label: "Active users", value: apiSystemMetrics?.activeUsers?.toString() || "...", sub: "live now" },
                     ].map((m) => (
                       <div key={m.label} className="p-4 rounded-xl bg-gray-50">
                         <div className="text-xs text-gray-500 font-medium">{m.label}</div>

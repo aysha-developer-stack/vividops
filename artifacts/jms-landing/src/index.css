@@ -17,6 +17,60 @@
   }
 }
 
+/* Compact Mode */
+:root.compact-mode {
+  --compact-gap: 0.5rem;
+  --compact-padding: 0.75rem;
+}
+
+.compact-mode body {
+  font-size: 0.8125rem;
+}
+
+.compact-mode .p-6 {
+  padding: 1rem !important;
+}
+
+.compact-mode .p-8 {
+  padding: 1.5rem !important;
+}
+
+.compact-mode .gap-6 {
+  gap: 1rem !important;
+}
+
+.compact-mode .gap-8 {
+  gap: 1.5rem !important;
+}
+
+.compact-mode .py-12 {
+  padding-top: 1.5rem !important;
+  padding-bottom: 1.5rem !important;
+}
+
+.compact-mode .mb-8 {
+  margin-bottom: 1.5rem !important;
+}
+
+.compact-mode .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 1rem !important;
+}
+
+.compact-mode .grid-cols-1,
+.compact-mode .grid-cols-2,
+.compact-mode .grid-cols-3,
+.compact-mode .grid-cols-4 {
+  gap: 0.75rem !important;
+}
+
+.compact-mode .rounded-2xl {
+  border-radius: 0.75rem !important;
+}
+
+.compact-mode .rounded-3xl {
+  border-radius: 1rem !important;
+}
+
 :root {
   --button-outline: rgba(0,0,0, .10);
   --badge-outline: rgba(0,0,0, .05);
