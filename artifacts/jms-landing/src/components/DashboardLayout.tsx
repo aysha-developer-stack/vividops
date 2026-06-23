@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import logoImg from "@assets/vv_1778503190047.png";
 import { getName, getEmail, clearSession } from "@/lib/auth";
-import { NOTIF_STYLE, NOTIFICATIONS_BY_ROLE, type Notif } from "@/lib/notifications";
+import { NOTIF_STYLE, getNotifStyle, type Notif } from "@/lib/notifications";
 import { ROLES, Role } from "@/lib/roles";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -15,6 +15,9 @@ import {
   getGetTimeLogsQueryOptions,
   getGetPostsQueryOptions,
   getGetNotificationsQueryOptions,
+  getGetNotificationsQueryKey,
+  useGetNotifications,
+  useMarkNotificationRead,
   getListJobsQueryOptions,
 } from "@workspace/api-client-react";
 
@@ -60,11 +63,56 @@ export default function DashboardLayout({
     setLocation("/");
   };
 
-  const [notifications, setNotifications] = useState<Notif[]>(NOTIFICATIONS_BY_ROLE[role]);
-  useEffect(() => { setNotifications(NOTIFICATIONS_BY_ROLE[role]); }, [role]);
+  const { data: apiNotifications } = useGetNotifications();
+  const markReadMutation = useMarkNotificationRead();
+
+  const notifications = apiNotifications?.map(n => ({
+    id: n.id, // Now using string id from API
+    type: n.type as any,
+    title: n.title,
+    desc: n.description,
+    time: new Date(n.createdAt).toLocaleString(),
+    unread: !n.isRead
+  })) || [];
+
   const unreadCount = notifications.filter((n) => n.unread).length;
-  const markAllRead = () => setNotifications((ns) => ns.map((n) => ({ ...n, unread: false })));
-  const markOneRead = (id: number) => setNotifications((ns) => ns.map((n) => n.id === id ? { ...n, unread: false } : n));
+
+  const markAllRead = async () => {
+    const unreadIds = notifications.filter((n) => n.unread).map(n => n.id as string);
+    if (unreadIds.length === 0) return;
+
+    // Optimistically update cache
+    const key = getGetNotificationsQueryKey();
+    qc.setQueryData(key, (prev: any) => {
+      if (!prev) return prev;
+      return prev.map((n: any) => ({ ...n, isRead: true }));
+    });
+
+    try {
+      await Promise.all(unreadIds.map(id => markReadMutation.mutateAsync({ id })));
+    } catch (err) {
+      console.error("Failed to mark all as read", err);
+      // Invalidate on error
+      qc.invalidateQueries({ queryKey: key });
+    }
+  };
+
+  const markOneRead = async (id: string | number) => {
+    const notifId = String(id);
+    // Optimistically update cache
+    const key = getGetNotificationsQueryKey();
+    qc.setQueryData(key, (prev: any) => {
+      if (!prev) return prev;
+      return prev.map((n: any) => n.id === notifId ? { ...n, isRead: true } : n);
+    });
+
+    try {
+      await markReadMutation.mutateAsync({ id: notifId });
+    } catch (err) {
+      console.error("Failed to mark as read", err);
+      qc.invalidateQueries({ queryKey: key });
+    }
+  };
 
   const prefetchDataForPath = (path: string) => {
     try {
@@ -320,7 +368,7 @@ export default function DashboardLayout({
                     </div>
                     <div className="max-h-96 overflow-y-auto">
                       {notifications.map((n, i) => {
-                        const style = NOTIF_STYLE[n.type];
+                        const style = getNotifStyle(n.type);
                         const NIcon = style.icon;
                         return (
                           <motion.div
