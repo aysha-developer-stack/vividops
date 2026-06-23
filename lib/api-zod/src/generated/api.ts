@@ -142,7 +142,7 @@ export const UpdateSystemSettingsResponse = zod.object({
  */
 export const GetSystemMetricsResponse = zod.object({
   storageUsed: zod.string(),
-  storageTotal: zod.string(),
+  storageFiles: zod.number(),
   apiCallsToday: zod.number(),
   apiCallsTrend: zod.string(),
   activeUsers: zod.number(),

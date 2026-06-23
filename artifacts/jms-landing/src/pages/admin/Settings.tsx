@@ -454,7 +454,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                   </Row>
                   <div className="grid sm:grid-cols-3 gap-3 mt-6">
                     {[
-                      { label: "Storage used", value: apiSystemMetrics?.storageUsed || "...", sub: `of ${apiSystemMetrics?.storageTotal || "..."}` },
+                      { label: "Storage used", value: apiSystemMetrics?.storageUsed || "...", sub: `across ${apiSystemMetrics?.storageFiles?.toLocaleString() || "..."} uploaded files` },
                       { label: "API calls today", value: apiSystemMetrics?.apiCallsToday?.toLocaleString() || "...", sub: apiSystemMetrics?.apiCallsTrend || "..." },
                       { label: "Users", value: apiSystemMetrics?.totalUsers?.toString() || "...", sub: `${apiSystemMetrics?.activeUsers || "0"} active now` },
                     ].map((m) => (

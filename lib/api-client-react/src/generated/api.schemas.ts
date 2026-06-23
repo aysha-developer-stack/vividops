@@ -123,7 +123,7 @@ export interface SystemSettingsUpdate {
 
 export interface SystemMetrics {
   storageUsed: string;
-  storageTotal: string;
+  storageFiles: number;
   apiCallsToday: number;
   apiCallsTrend: string;
   activeUsers: number;

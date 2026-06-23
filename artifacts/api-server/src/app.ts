@@ -9,8 +9,22 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { attachSession } from "./middlewares/session";
+import { db, sql } from "@workspace/db";
 
 const app: Express = express();
+let apiMetricsSchemaEnsured = false;
+
+async function ensureApiMetricsSchema() {
+  if (apiMetricsSchemaEnsured) return;
+  apiMetricsSchemaEnsured = true;
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS api_request_daily (
+      day date PRIMARY KEY,
+      count bigint NOT NULL DEFAULT 0,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+}
 
 app.use(
   pinoHttp({
@@ -57,6 +71,35 @@ app.get("/api/health", (req, res) => {
 });
 
 app.use(attachSession);
+
+app.use("/api", (req, res, next) => {
+  const pathOnly = req.path || "";
+  const shouldSkip =
+    pathOnly === "/health" ||
+    pathOnly === "/settings/system/metrics";
+
+  if (!shouldSkip) {
+    res.on("finish", () => {
+      void (async () => {
+        try {
+          await ensureApiMetricsSchema();
+          await db.execute(sql`
+            INSERT INTO api_request_daily (day, count, updated_at)
+            VALUES (current_date, 1, now())
+            ON CONFLICT (day)
+            DO UPDATE SET
+              count = api_request_daily.count + 1,
+              updated_at = now();
+          `);
+        } catch (err) {
+          logger.warn({ err, path: pathOnly }, "Failed to record API request metric");
+        }
+      })();
+    });
+  }
+
+  next();
+});
 
 app.use("/api", router);
 

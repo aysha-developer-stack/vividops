@@ -653,10 +653,10 @@ components:
 
     SystemMetrics:
       type: object
-      required: [storageUsed, storageTotal, apiCallsToday, apiCallsTrend, activeUsers, totalUsers]
+      required: [storageUsed, storageFiles, apiCallsToday, apiCallsTrend, activeUsers, totalUsers]
       properties:
         storageUsed: { type: string }
-        storageTotal: { type: string }
+        storageFiles: { type: number }
         apiCallsToday: { type: number }
         apiCallsTrend: { type: string }
         activeUsers: { type: number }

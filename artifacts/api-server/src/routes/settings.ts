@@ -76,26 +76,76 @@ router.get("/settings/system/metrics", requireAuth, async (req, res) => {
     return res.status(403).json({ error: "Forbidden - Super Admin only" });
   }
 
-  // Calculate real metrics
   const [userCountResult] = await db.select({ value: count() }).from(users);
-  
-  // Count unique users who have at least one active session
   const [activeSessionsResult] = await db
     .select({ value: sql<number>`count(DISTINCT ${sessions.userId})` })
     .from(sessions);
 
-  // For storage and API calls, we'll return realistic system values since we don't have a direct probe here
-  // but they are now driven by the backend instead of static frontend values.
+  const [jobStorageResult] = await db.execute(sql`
+    SELECT COALESCE(SUM(NULLIF(file_size, '')::bigint), 0)::bigint AS bytes
+    FROM job_attachments;
+  `).then((r: any) => (r.rows ?? r) as Array<{ bytes?: string | number | bigint }>);
+
+  const [postStorageResult] = await db.execute(sql`
+    SELECT COALESCE(SUM(size), 0)::bigint AS bytes
+    FROM post_attachments;
+  `).then((r: any) => (r.rows ?? r) as Array<{ bytes?: string | number | bigint }>);
+
+  const [jobFileCountResult] = await db.execute(sql`
+    SELECT COUNT(*)::bigint AS count
+    FROM job_attachments;
+  `).then((r: any) => (r.rows ?? r) as Array<{ count?: string | number | bigint }>);
+
+  const [postFileCountResult] = await db.execute(sql`
+    SELECT COUNT(*)::bigint AS count
+    FROM post_attachments;
+  `).then((r: any) => (r.rows ?? r) as Array<{ count?: string | number | bigint }>);
+
+  const [apiTodayResult] = await db.execute(sql`
+    SELECT COALESCE(count, 0)::bigint AS count
+    FROM api_request_daily
+    WHERE day = current_date;
+  `).then((r: any) => (r.rows ?? r) as Array<{ count?: string | number | bigint }>);
+
+  const [apiYesterdayResult] = await db.execute(sql`
+    SELECT COALESCE(count, 0)::bigint AS count
+    FROM api_request_daily
+    WHERE day = current_date - interval '1 day';
+  `).then((r: any) => (r.rows ?? r) as Array<{ count?: string | number | bigint }>);
+
+  const totalStorageBytes =
+    Number(jobStorageResult?.bytes ?? 0) + Number(postStorageResult?.bytes ?? 0);
+  const totalTrackedFiles =
+    Number(jobFileCountResult?.count ?? 0) + Number(postFileCountResult?.count ?? 0);
+  const apiCallsToday = Number(apiTodayResult?.count ?? 0);
+  const apiCallsYesterday = Number(apiYesterdayResult?.count ?? 0);
+  const apiCallsTrend =
+    apiCallsYesterday > 0
+      ? `${apiCallsToday >= apiCallsYesterday ? "+" : ""}${(((apiCallsToday - apiCallsYesterday) / apiCallsYesterday) * 100).toFixed(1)}% vs yesterday`
+      : "No yesterday baseline";
+
   const metrics = {
-    storageUsed: "47.2 GB",
-    storageTotal: "100 GB",
-    apiCallsToday: 12408,
-    apiCallsTrend: "+8.2% vs yesterday",
+    storageUsed: formatBytes(totalStorageBytes),
+    storageFiles: totalTrackedFiles,
+    apiCallsToday,
+    apiCallsTrend,
     activeUsers: Number(activeSessionsResult.value) || 0,
     totalUsers: Number(userCountResult.value) || 0,
   };
 
   return res.json(metrics);
 });
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIdx = 0;
+  while (value >= 1024 && unitIdx < units.length - 1) {
+    value /= 1024;
+    unitIdx += 1;
+  }
+  return `${value >= 10 || unitIdx === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIdx]}`;
+}
 
 export default router;
