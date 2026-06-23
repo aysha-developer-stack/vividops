@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, inArray, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { db, timeLogs, type TimeLogRow } from "@workspace/db";
+import { db, jobs, timeLogs, type TimeLogRow } from "@workspace/db";
 import { CreateTimeLogBody } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -34,7 +34,18 @@ router.get("/time-logs", requireAuth, async (req, res) => {
 
     let query = db.select().from(timeLogs);
 
-    if (actor.role !== "super-admin" && actor.role !== "admin" && actor.role !== "supervisor") {
+    if (actor.role === "supervisor") {
+      const visibleJobs = await db
+        .select({ id: jobs.id })
+        .from(jobs)
+        .where(or(eq(jobs.supervisorId, actor.id), eq(jobs.createdById, actor.id)));
+      const visibleJobIds = visibleJobs.map((job) => job.id);
+
+      (query as any) =
+        visibleJobIds.length > 0
+          ? query.where(or(eq(timeLogs.userId, actor.id), inArray(timeLogs.jobId, visibleJobIds)))
+          : query.where(eq(timeLogs.userId, actor.id));
+    } else if (actor.role !== "super-admin" && actor.role !== "admin") {
       (query as any) = query.where(eq(timeLogs.userId, actor.id));
     }
 

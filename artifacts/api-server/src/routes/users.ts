@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Response } from "express";
-import { eq } from "drizzle-orm";
-import { db, sessions, users, type UserRow } from "@workspace/db";
+import { eq, inArray, or } from "drizzle-orm";
+import { db, sessions, users, jobs, type UserRow } from "@workspace/db";
 import { CreateUserBody, UpdateUserBody } from "@workspace/api-zod";
 import { generateTempPassword, hashPassword } from "../lib/auth";
 import { publicUser } from "../lib/serialize";
@@ -78,12 +78,25 @@ router.get("/users", listUsersAllowed, async (req, res) => {
   const actor = req.session!.user;
   const rows = await db.select().from(users).orderBy(users.createdAt);
 
-  const visible =
-    actor.role === "super-admin"
-      ? rows
-      : actor.role === "admin"
-        ? rows.filter((u) => u.role === "supervisor" || u.role === "user")
-        : rows.filter((u) => u.role === "user");
+  let visible = rows;
+  if (actor.role === "admin") {
+    visible = rows.filter((u) => u.role === "supervisor" || u.role === "user");
+  } else if (actor.role === "supervisor") {
+    const relatedJobs = await db
+      .select({ assigneeId: jobs.assigneeId })
+      .from(jobs)
+      .where(or(eq(jobs.supervisorId, actor.id), eq(jobs.createdById, actor.id)));
+    const visibleIds = new Set(
+      relatedJobs
+        .map((job) => job.assigneeId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    );
+    if (visibleIds.size === 0) {
+      visible = [];
+    } else {
+      visible = rows.filter((u) => u.role === "user" && visibleIds.has(u.id));
+    }
+  }
 
   return res.json(visible.map(publicUser));
 });

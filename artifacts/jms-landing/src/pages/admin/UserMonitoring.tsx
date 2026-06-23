@@ -5,7 +5,6 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
-import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import {
   useListUsers,
@@ -14,9 +13,6 @@ import {
   type User,
   type Job,
   type TimeLog,
-  getListUsersQueryKey,
-  getListJobsQueryKey,
-  getGetTimeLogsQueryKey,
 } from "@workspace/api-client-react";
 
 import type { Role } from "@/lib/roles";
@@ -134,7 +130,6 @@ function getPerformanceScore(jobs: Job[]) {
 export default function UserMonitoring(
   { initialTab = "performance", role = "super-admin" }: { initialTab?: "performance" | "errors", role?: Role } = {}
 ) {
-  const qc = useQueryClient();
   const { user: currentUser } = useAuth();
   const { data: apiUsers, isLoading: usersLoading } = useListUsers();
   const { data: apiJobs, isLoading: jobsLoading } = useListJobs();
@@ -197,12 +192,6 @@ export default function UserMonitoring(
       setUpdatingError(false);
     }
   };
-
-  useEffect(() => {
-    qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
-    qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-    qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
-  }, [qc]);
 
   const workers: Worker[] = useMemo(() => {
     const now = new Date();
