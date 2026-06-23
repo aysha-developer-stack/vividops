@@ -2,11 +2,11 @@ import { useState, useEffect, useRef, ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Settings, Bell, ChevronLeft, LogOut, Search, Menu, Check,
+  Settings, Bell, ChevronLeft, LogOut, Search, Menu,
 } from "lucide-react";
 import logoImg from "@assets/vv_1778503190047.png";
 import { clearSession, useAuth } from "@/lib/auth";
-import { NOTIF_STYLE, getNotifStyle, type Notif } from "@/lib/notifications";
+import { getNotifStyle } from "@/lib/notifications";
 import { ROLES, Role } from "@/lib/roles";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -184,6 +184,42 @@ export default function DashboardLayout({
     prefetchDataForPath(path);
   };
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const pathsToWarm = NAV_ITEMS.map((item) => item.path).filter((path) => path !== location);
+    if (pathsToWarm.length === 0) return;
+
+    let cancelled = false;
+    let idleId: number | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+
+    const warmRouteChunks = () => {
+      if (cancelled) return;
+      pathsToWarm.forEach((path) => prefetchCodeForPath(path));
+    };
+
+    if (typeof idleWindow.requestIdleCallback === "function") {
+      idleId = idleWindow.requestIdleCallback(() => warmRouteChunks(), { timeout: 1200 });
+    } else {
+      timeoutId = setTimeout(warmRouteChunks, 250);
+    }
+
+    return () => {
+      cancelled = true;
+      if (idleId !== null && typeof idleWindow.cancelIdleCallback === "function") {
+        idleWindow.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [NAV_ITEMS, location]);
+
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Mobile overlay */}
@@ -244,8 +280,10 @@ export default function DashboardLayout({
                     isActive ? "bg-primary text-white shadow-lg shadow-primary/30" : "text-gray-400 hover:bg-white/5 hover:text-white"
                   }`}
                   onClick={() => setMobileOpen(false)}
+                  onMouseDown={() => prefetchCodeForPath(item.path)}
                   onMouseEnter={() => prefetchForPath(item.path)}
                   onFocus={() => prefetchForPath(item.path)}
+                  onTouchStart={() => prefetchCodeForPath(item.path)}
                 >
                   {isActive && (
                     <motion.div
