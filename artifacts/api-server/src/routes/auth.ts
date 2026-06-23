@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, sessions, users } from "@workspace/db";
+import { db, sessions, users, sql } from "@workspace/db";
 import { LoginBody, ResetPasswordBody, UpdateUserBody } from "@workspace/api-zod";
 import { logger } from "../lib/logger";
+import { upload, uploadToSupabase } from "../lib/storage";
 import {
   SESSION_COOKIE,
   SESSION_TTL_DAYS,
@@ -12,8 +13,21 @@ import {
 } from "../lib/auth";
 import { publicUser } from "../lib/serialize";
 import { requireAuth } from "../middlewares/requireAuth";
+import { updateSessionCacheUser } from "../middlewares/session";
 
 const router: IRouter = Router();
+let userColumnsEnsured = false;
+
+async function ensureUserColumns() {
+  if (userColumnsEnsured) return;
+  userColumnsEnsured = true;
+  await db.execute(sql`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS phone text,
+      ADD COLUMN IF NOT EXISTS bio text,
+      ADD COLUMN IF NOT EXISTS avatar_url text;
+  `);
+}
 
 const cookieOpts = {
   httpOnly: true,
@@ -24,6 +38,7 @@ const cookieOpts = {
 };
 
 router.post("/auth/login", async (req, res) => {
+  await ensureUserColumns();
   const parsed = LoginBody.safeParse(req.body);
   if (!parsed.success) {
     logger.error({ errors: parsed.error.format() }, "Login validation failed");
@@ -101,6 +116,7 @@ router.get("/auth/me", requireAuth, (req, res) => {
 });
 
 router.patch("/auth/profile", requireAuth, async (req, res) => {
+  await ensureUserColumns();
   const parsed = UpdateUserBody.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid profile data" });
@@ -121,7 +137,32 @@ router.patch("/auth/profile", requireAuth, async (req, res) => {
     .set(patch)
     .where(eq(users.id, user.id))
     .returning();
+  req.session!.user = updated;
+  updateSessionCacheUser(req.session!.sessionId, updated);
   return res.json(publicUser(updated));
+});
+
+router.post("/auth/profile/avatar", requireAuth, upload.single("file"), async (req, res) => {
+  await ensureUserColumns();
+  const actor = req.session!.user;
+  const file = req.file;
+  if (!file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+  if (!file.mimetype.startsWith("image/")) {
+    return res.status(400).json({ error: "Only image files are allowed" });
+  }
+
+  const { location } = await uploadToSupabase(file, { prefix: `avatars/${actor.id}` });
+  const [updated] = await db
+    .update(users)
+    .set({ avatarUrl: location, updatedAt: new Date() })
+    .where(eq(users.id, actor.id))
+    .returning();
+
+  req.session!.user = updated;
+  updateSessionCacheUser(req.session!.sessionId, updated);
+  return res.json({ avatarUrl: updated.avatarUrl });
 });
 
 router.post("/auth/reset-password", requireAuth, async (req, res) => {

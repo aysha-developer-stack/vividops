@@ -13,6 +13,8 @@ export interface UserUpdate {
   name?: string;
   email?: string;
   /** @nullable */
+  avatarUrl?: string | null;
+  /** @nullable */
   phone?: string | null;
   /** @nullable */
   bio?: string | null;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   User as UserIcon, Bell, Shield, Globe, Database, Check, Camera, Save, Loader2
@@ -62,6 +62,8 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
   const { toast } = useToast();
   const [tab, setTab] = useState<TabId>("profile");
   const [saved, setSaved] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   
   // API Hooks
   const { data: apiUserSettings, refetch: refetchUserSettings } = useGetUserSettings();
@@ -86,6 +88,8 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
     phone: "",
     bio: "",
   });
+
+  const avatarUrl = typeof (user as any)?.avatarUrl === "string" ? (user as any).avatarUrl : "";
 
   // Password state
   const [passwords, setPasswords] = useState({
@@ -218,6 +222,37 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                     updateUserSettingsMutation.isPending || 
                     updateSystemSettingsMutation.isPending;
 
+  const pickAvatar = () => {
+    avatarInputRef.current?.click();
+  };
+
+  const uploadAvatar = async (file: File) => {
+    setAvatarUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/auth/profile/avatar", {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Upload failed (${res.status})`);
+      }
+      await refresh();
+      toast({ title: "Photo updated", description: "Your profile photo has been updated." });
+    } catch (err: any) {
+      toast({
+        title: "Upload failed",
+        description: err?.message || "Could not upload photo.",
+        variant: "destructive",
+      });
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
   return (
     <DashboardLayout title="Settings" role={role}>
       <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6">
@@ -258,16 +293,37 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                   <p className="text-sm text-gray-500 mb-6">Update your personal details and how others see you.</p>
 
                   <div className="flex items-center gap-5 mb-8">
-                    <motion.div whileHover={{ scale: 1.05 }} className="relative w-20 h-20 rounded-full bg-gradient-to-br from-primary to-sky-700 flex items-center justify-center text-white font-bold text-2xl shadow-lg cursor-pointer group">
-                      {profile.name.split(" ").map(s => s[0]).join("").toUpperCase().slice(0, 2) || "U"}
+                    <motion.div
+                      whileHover={{ scale: 1.05 }}
+                      onClick={pickAvatar}
+                      className="relative w-20 h-20 rounded-full bg-gradient-to-br from-primary to-sky-700 flex items-center justify-center text-white font-bold text-2xl shadow-lg cursor-pointer group overflow-hidden"
+                    >
+                      {avatarUrl ? (
+                        <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
+                      ) : (
+                        profile.name.split(" ").map(s => s[0]).join("").toUpperCase().slice(0, 2) || "U"
+                      )}
                       <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Camera size={20} className="text-white" />
+                        {avatarUploading ? <Loader2 size={20} className="text-white animate-spin" /> : <Camera size={20} className="text-white" />}
                       </div>
                     </motion.div>
                     <div>
                       <div className="font-semibold text-gray-900">{profile.name || "User"}</div>
                       <div className="text-xs text-gray-500 capitalize">{user?.role || "User"}</div>
-                      <button className="text-xs text-primary font-semibold mt-2 hover:underline">Upload new photo</button>
+                      <button onClick={pickAvatar} disabled={avatarUploading} className="text-xs text-primary font-semibold mt-2 hover:underline disabled:opacity-50">
+                        {avatarUploading ? "Uploading..." : "Upload new photo"}
+                      </button>
+                      <input
+                        ref={avatarInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          e.target.value = "";
+                          if (f) void uploadAvatar(f);
+                        }}
+                      />
                     </div>
                   </div>
 
@@ -277,7 +333,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                       <input
                         value={profile.name}
                         onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-                        className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
+                        className="w-full bg-white text-gray-900 placeholder:text-gray-400 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
                       />
                     </div>
                     <div>
@@ -285,7 +341,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                       <input
                         value={profile.email}
                         onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                        className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
+                        className="w-full bg-white text-gray-900 placeholder:text-gray-400 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
                       />
                     </div>
                     <div>
@@ -293,7 +349,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                       <input
                         value={profile.phone}
                         onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                        className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
+                        className="w-full bg-white text-gray-900 placeholder:text-gray-400 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors"
                       />
                     </div>
                     <div>
@@ -310,7 +366,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                         value={profile.bio}
                         onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
                         rows={3}
-                        className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors resize-none"
+                        className="w-full bg-white text-gray-900 placeholder:text-gray-400 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary transition-colors resize-none"
                       />
                     </div>
                   </div>
@@ -354,14 +410,14 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                         placeholder="Current password" 
                         value={passwords.current}
                         onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
-                        className="bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary" 
+                        className="bg-white text-gray-900 placeholder:text-gray-400 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary" 
                       />
                       <input 
                         type="password" 
                         placeholder="New password" 
                         value={passwords.new}
                         onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
-                        className="bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary" 
+                        className="bg-white text-gray-900 placeholder:text-gray-400 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary" 
                       />
                     </div>
                     <button

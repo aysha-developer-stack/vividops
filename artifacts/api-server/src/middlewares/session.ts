@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, sessions, users, type UserRow } from "@workspace/db";
 import { SESSION_COOKIE } from "../lib/auth";
 
@@ -12,6 +12,23 @@ const sessionCache = new Map<
   string,
   { cacheUntilMs: number; value: SessionContext }
 >();
+let userColumnsEnsured = false;
+
+async function ensureUserColumns() {
+  if (userColumnsEnsured) return;
+  userColumnsEnsured = true;
+  await db.execute(sql`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS phone text,
+      ADD COLUMN IF NOT EXISTS bio text,
+      ADD COLUMN IF NOT EXISTS avatar_url text;
+  `);
+}
+
+export function updateSessionCacheUser(sessionId: string, user: UserRow) {
+  const value = { sessionId, user };
+  sessionCache.set(sessionId, { cacheUntilMs: Date.now() + 30_000, value });
+}
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -39,6 +56,7 @@ export async function attachSession(
   }
 
   try {
+    await ensureUserColumns();
     const rows = await db
       .select({ session: sessions, user: users })
       .from(sessions)

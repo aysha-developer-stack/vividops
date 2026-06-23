@@ -34,6 +34,8 @@ export interface User {
   email: string;
   name: string;
   /** @nullable */
+  avatarUrl?: string | null;
+  /** @nullable */
   phone?: string | null;
   /** @nullable */
   bio?: string | null;
@@ -67,6 +69,8 @@ export interface UserUpdate {
   /** @minLength 1 */
   name?: string;
   email?: string;
+  /** @nullable */
+  avatarUrl?: string | null;
   /** @nullable */
   phone?: string | null;
   /** @nullable */
