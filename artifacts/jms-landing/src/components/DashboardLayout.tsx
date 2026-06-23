@@ -5,7 +5,7 @@ import {
   Settings, Bell, ChevronLeft, LogOut, Search, Menu, Check,
 } from "lucide-react";
 import logoImg from "@assets/vv_1778503190047.png";
-import { getName, getEmail, clearSession } from "@/lib/auth";
+import { clearSession, useAuth } from "@/lib/auth";
 import { NOTIF_STYLE, getNotifStyle, type Notif } from "@/lib/notifications";
 import { ROLES, Role } from "@/lib/roles";
 import { useQueryClient } from "@tanstack/react-query";
@@ -38,16 +38,10 @@ export default function DashboardLayout({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [name, setName] = useState("Alex Morgan");
-  const [email, setEmail] = useState("admin@gmail.com");
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
-
-  useEffect(() => {
-    setName(getName());
-    setEmail(getEmail());
-  }, []);
+  const { user } = useAuth();
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -62,6 +56,16 @@ export default function DashboardLayout({
     clearSession();
     setLocation("/");
   };
+
+  const name = user?.name ?? "Guest";
+  const email = user?.email ?? "";
+  const avatarUrl = typeof user?.avatarUrl === "string" ? user.avatarUrl : "";
+  const initials = name
+    .split(" ")
+    .map((s) => s[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   const { data: apiNotifications } = useGetNotifications();
   const markReadMutation = useMarkNotificationRead();
@@ -422,8 +426,12 @@ export default function DashboardLayout({
                 onClick={() => setProfileOpen(!profileOpen)}
                 className="flex items-center gap-3 pl-2 pr-3 py-1.5 hover:bg-gray-100 rounded-xl transition-colors"
               >
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-sm font-bold flex items-center justify-center">
-                  {name.split(" ").map((s) => s[0]).join("").slice(0, 2)}
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-sm font-bold flex items-center justify-center overflow-hidden">
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt={name} className="w-full h-full object-cover" />
+                  ) : (
+                    initials
+                  )}
                 </div>
                 <div className="hidden md:block text-left">
                   <div className="text-sm font-semibold text-gray-900 leading-tight">{name}</div>
