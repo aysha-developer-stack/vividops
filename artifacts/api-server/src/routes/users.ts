@@ -179,6 +179,8 @@ router.patch("/users/:id", adminOnly, async (req, res) => {
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (parsed.data.name !== undefined) patch.name = parsed.data.name;
   if (parsed.data.email !== undefined) patch.email = parsed.data.email.toLowerCase();
+  if (parsed.data.phone !== undefined) patch.phone = parsed.data.phone;
+  if (parsed.data.bio !== undefined) patch.bio = parsed.data.bio;
   if (parsed.data.role !== undefined) patch.role = parsed.data.role;
   if (parsed.data.status !== undefined) patch.status = parsed.data.status;
 

@@ -12,6 +12,10 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  bio?: string | null;
   role: UserRole;
   status: UserStatus;
   mustResetPassword: boolean;

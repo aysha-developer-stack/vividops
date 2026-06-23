@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, sessions, users } from "@workspace/db";
-import { LoginBody, ResetPasswordBody } from "@workspace/api-zod";
+import { LoginBody, ResetPasswordBody, UpdateUserBody } from "@workspace/api-zod";
 import { logger } from "../lib/logger";
 import {
   SESSION_COOKIE,
@@ -98,6 +98,30 @@ router.post("/auth/logout", async (req, res) => {
 
 router.get("/auth/me", requireAuth, (req, res) => {
   return res.json(publicUser(req.session!.user));
+});
+
+router.patch("/auth/profile", requireAuth, async (req, res) => {
+  const parsed = UpdateUserBody.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid profile data" });
+  }
+  const user = req.session!.user;
+
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  if (parsed.data.name !== undefined) patch.name = parsed.data.name;
+  if (parsed.data.email !== undefined) patch.email = parsed.data.email.toLowerCase();
+  if (parsed.data.phone !== undefined) patch.phone = parsed.data.phone;
+  if (parsed.data.bio !== undefined) patch.bio = parsed.data.bio;
+
+  // Normal users cannot change their role or status via this endpoint
+  // That must be done by an admin via /api/users/:id
+
+  const [updated] = await db
+    .update(users)
+    .set(patch)
+    .where(eq(users.id, user.id))
+    .returning();
+  return res.json(publicUser(updated));
 });
 
 router.post("/auth/reset-password", requireAuth, async (req, res) => {

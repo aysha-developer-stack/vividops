@@ -12,6 +12,10 @@ export interface UserUpdate {
   /** @minLength 1 */
   name?: string;
   email?: string;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  bio?: string | null;
   role?: UserRole;
   status?: UserStatus;
 }

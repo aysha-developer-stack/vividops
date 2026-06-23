@@ -5,6 +5,8 @@ export function publicUser(u: UserRow) {
     id: u.id,
     email: u.email,
     name: u.name,
+    phone: u.phone,
+    bio: u.bio,
     role: u.role,
     status: u.status,
     mustResetPassword: u.mustResetPassword,

@@ -29,6 +29,8 @@ export const LoginResponse = zod.object({
     id: zod.string().uuid(),
     email: zod.string().email(),
     name: zod.string(),
+    phone: zod.string().nullish(),
+    bio: zod.string().nullish(),
     role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
     status: zod.enum(["active", "inactive"]),
     mustResetPassword: zod.boolean(),
@@ -44,6 +46,34 @@ export const GetMeResponse = zod.object({
   id: zod.string().uuid(),
   email: zod.string().email(),
   name: zod.string(),
+  phone: zod.string().nullish(),
+  bio: zod.string().nullish(),
+  role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+  status: zod.enum(["active", "inactive"]),
+  mustResetPassword: zod.boolean(),
+  lastSignInAt: zod.coerce.date().nullish(),
+  createdAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Update current user profile
+ */
+
+export const UpdateProfileBody = zod.object({
+  name: zod.string().min(1).optional(),
+  email: zod.string().email().optional(),
+  phone: zod.string().nullish(),
+  bio: zod.string().nullish(),
+  role: zod.enum(["super-admin", "admin", "supervisor", "user"]).optional(),
+  status: zod.enum(["active", "inactive"]).optional(),
+});
+
+export const UpdateProfileResponse = zod.object({
+  id: zod.string().uuid(),
+  email: zod.string().email(),
+  name: zod.string(),
+  phone: zod.string().nullish(),
+  bio: zod.string().nullish(),
   role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
@@ -66,6 +96,8 @@ export const ResetPasswordResponse = zod.object({
   id: zod.string().uuid(),
   email: zod.string().email(),
   name: zod.string(),
+  phone: zod.string().nullish(),
+  bio: zod.string().nullish(),
   role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
@@ -92,6 +124,8 @@ export const ListUsersResponseItem = zod.object({
   id: zod.string().uuid(),
   email: zod.string().email(),
   name: zod.string(),
+  phone: zod.string().nullish(),
+  bio: zod.string().nullish(),
   role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
@@ -107,6 +141,8 @@ export const ListUsersResponse = zod.array(ListUsersResponseItem);
 export const CreateUserBody = zod.object({
   name: zod.string().min(1),
   email: zod.string().email(),
+  phone: zod.string().optional(),
+  bio: zod.string().optional(),
   role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
   delivery: zod.enum(["email-invite", "temp-password"]),
 });
@@ -122,6 +158,8 @@ export const GetUserResponse = zod.object({
   id: zod.string().uuid(),
   email: zod.string().email(),
   name: zod.string(),
+  phone: zod.string().nullish(),
+  bio: zod.string().nullish(),
   role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
@@ -139,6 +177,8 @@ export const UpdateUserParams = zod.object({
 export const UpdateUserBody = zod.object({
   name: zod.string().min(1).optional(),
   email: zod.string().email().optional(),
+  phone: zod.string().nullish(),
+  bio: zod.string().nullish(),
   role: zod.enum(["super-admin", "admin", "supervisor", "user"]).optional(),
   status: zod.enum(["active", "inactive"]).optional(),
 });
@@ -147,6 +187,8 @@ export const UpdateUserResponse = zod.object({
   id: zod.string().uuid(),
   email: zod.string().email(),
   name: zod.string(),
+  phone: zod.string().nullish(),
+  bio: zod.string().nullish(),
   role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
@@ -364,6 +406,8 @@ export const ResendInviteResponse = zod.object({
     id: zod.string().uuid(),
     email: zod.string().email(),
     name: zod.string(),
+    phone: zod.string().nullish(),
+    bio: zod.string().nullish(),
     role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
     status: zod.enum(["active", "inactive"]),
     mustResetPassword: zod.boolean(),

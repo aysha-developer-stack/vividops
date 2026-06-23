@@ -33,6 +33,10 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  bio?: string | null;
   role: UserRole;
   status: UserStatus;
   mustResetPassword: boolean;
@@ -53,6 +57,8 @@ export interface UserInput {
   /** @minLength 1 */
   name: string;
   email: string;
+  phone?: string;
+  bio?: string;
   role: UserRole;
   delivery: UserInputDelivery;
 }
@@ -61,6 +67,10 @@ export interface UserUpdate {
   /** @minLength 1 */
   name?: string;
   email?: string;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  bio?: string | null;
   role?: UserRole;
   status?: UserStatus;
 }
