@@ -1,4 +1,8 @@
-import { Briefcase, Edit3, AlertTriangle, Clock, RefreshCw, Bell, type LucideIcon } from "lucide-react";
+import { 
+  Briefcase, Edit3, AlertTriangle, Clock, RefreshCw, Bell, 
+  ListChecks, Folder, GraduationCap, BarChart3,
+  type LucideIcon 
+} from "lucide-react";
 import type { Role } from "./roles";
 
 export type NotifType =
@@ -27,6 +31,11 @@ export const NOTIF_STYLE: Record<string, { icon: LucideIcon; color: string; labe
   timer: { icon: Clock, color: "bg-amber-50 text-amber-600", label: "Timer" },
   rework: { icon: RefreshCw, color: "bg-orange-50 text-orange-600", label: "Rework" },
   job_message: { icon: Bell, color: "bg-sky-50 text-sky-600", label: "Message" },
+  checklist: { icon: ListChecks, color: "bg-emerald-50 text-emerald-600", label: "Checklist" },
+  file: { icon: Folder, color: "bg-indigo-50 text-indigo-600", label: "File" },
+  training: { icon: GraduationCap, color: "bg-rose-50 text-rose-600", label: "Training" },
+  error: { icon: AlertTriangle, color: "bg-red-100 text-red-700", label: "Error" },
+  progress: { icon: BarChart3, color: "bg-blue-50 text-blue-600", label: "Progress" },
 };
 
 export const getNotifStyle = (type: string) => NOTIF_STYLE[type] || defaultNotifStyle;

@@ -115,11 +115,26 @@ export default function DashboardLayout({
         }
       } catch {
       }
+      
+      // On first load, only allow UNREAD messages to be toasted if they aren't in session storage
+      // This ensures "unread messages" show up on login without flooding other alerts
+      const unreadMessages = notifications.filter(
+        n => n.unread && n.type === "job_message" && !mergedIds.has(String(n.id))
+      );
+
       seenNotificationIdsRef.current = mergedIds;
       initializedNotificationsRef.current = true;
+      
       try {
         window.sessionStorage.setItem(storageKey, JSON.stringify(Array.from(mergedIds)));
       } catch {
+      }
+
+      if (unreadMessages.length > 0) {
+        void playNotificationTone();
+        unreadMessages.slice(0, 5).forEach(m => {
+          toast({ title: m.title, description: m.desc });
+        });
       }
       return;
     }
@@ -144,10 +159,22 @@ export default function DashboardLayout({
     }
 
     void playNotificationTone();
-    newNotifications.slice(0, 3).forEach((notification) => {
+
+    // Separate messages from other alerts to ensure they always show
+    const messages = newNotifications.filter(n => n.type === "job_message");
+    const otherAlerts = newNotifications.filter(n => n.type !== "job_message");
+
+    // Show up to 5 messages and up to 3 other alerts
+    const toToast = [
+      ...messages.slice(0, 5),
+      ...otherAlerts.slice(0, 3)
+    ];
+
+    toToast.forEach((notification) => {
       toast({
         title: notification.title,
         description: notification.desc,
+        variant: notification.type === "overdue" ? "destructive" : "default",
       });
     });
   }, [notifications, toast, user?.id]);
