@@ -5,6 +5,7 @@ import { ArrowLeft, Check, Filter as FilterIcon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
+import { useAuth } from "@/lib/auth";
 import {
   NOTIF_STYLE,
   getNotifStyle,
@@ -32,9 +33,11 @@ const FILTERS: Array<{ id: "all" | "unread" | NotifType; label: string }> = [
 
 export default function Notifications({ role = "super-admin" }: { role?: Role }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const notificationsQueryKey = [...getGetNotificationsQueryKey(), user?.id ?? "anonymous"];
   const { data: apiNotifications, isLoading } = useGetNotifications({
     query: {
-      queryKey: getGetNotificationsQueryKey(),
+      queryKey: notificationsQueryKey,
       staleTime: 0,
       refetchOnMount: true,
       refetchOnWindowFocus: true,
@@ -70,7 +73,7 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
 
   const setReadInCache = (ids: string[]) => {
     if (ids.length === 0) return;
-    const key = getGetNotificationsQueryKey();
+    const key = notificationsQueryKey;
     qc.setQueryData(key, (prev: Notification[] | undefined) => {
       if (!prev) return prev;
       const set = new Set(ids);
@@ -88,7 +91,7 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
     } catch (err) {
       console.error("Failed to mark all notifications as read:", err);
     } finally {
-      await qc.invalidateQueries({ queryKey: getGetNotificationsQueryKey() });
+      await qc.invalidateQueries({ queryKey: notificationsQueryKey });
     }
   };
 
@@ -99,7 +102,7 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
     } catch (err) {
       console.error("Failed to mark notification as read:", err);
     } finally {
-      await qc.invalidateQueries({ queryKey: getGetNotificationsQueryKey() });
+      await qc.invalidateQueries({ queryKey: notificationsQueryKey });
     }
   };
 

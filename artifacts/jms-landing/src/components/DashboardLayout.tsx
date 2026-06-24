@@ -56,7 +56,10 @@ export default function DashboardLayout({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  const notificationsQueryKey = [...getGetNotificationsQueryKey(), user?.id ?? "anonymous"];
+
   const handleLogout = () => {
+    qc.clear();
     clearSession();
     setLocation("/");
   };
@@ -73,7 +76,7 @@ export default function DashboardLayout({
 
   const { data: apiNotifications } = useGetNotifications({
     query: {
-      queryKey: getGetNotificationsQueryKey(),
+      queryKey: notificationsQueryKey,
       staleTime: 0,
       refetchOnMount: true,
       refetchOnWindowFocus: true,
@@ -184,7 +187,7 @@ export default function DashboardLayout({
     if (unreadIds.length === 0) return;
 
     // Optimistically update cache
-    const key = getGetNotificationsQueryKey();
+    const key = notificationsQueryKey;
     qc.setQueryData(key, (prev: any) => {
       if (!prev) return prev;
       return prev.map((n: any) => ({ ...n, isRead: true }));
@@ -202,7 +205,7 @@ export default function DashboardLayout({
   const markOneRead = async (id: string | number) => {
     const notifId = String(id);
     // Optimistically update cache
-    const key = getGetNotificationsQueryKey();
+    const key = notificationsQueryKey;
     qc.setQueryData(key, (prev: any) => {
       if (!prev) return prev;
       return prev.map((n: any) => n.id === notifId ? { ...n, isRead: true } : n);
