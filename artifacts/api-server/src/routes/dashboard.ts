@@ -74,6 +74,10 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
       .from(jobs)
       .where(or(eq(jobs.supervisorId, supervisorId), eq(jobs.createdById, supervisorId)));
     
+    // Fallback: also include any user who has this supervisor as their primary supervisor
+    // (Assuming there might be a supervisorId on the users table, though not explicitly in current schema view)
+    // For now, we'll stick to jobs-based team discovery but ensure it's robust.
+    
     const teamIds = [...new Set(teamMembersJobs.map(j => j.assigneeId).filter((id): id is string => !!id))];
     
     let teamData: any[] = [];
@@ -92,6 +96,7 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
         const hours = uLogs.reduce((sum, l) => sum + (l.duration / 3600), 0);
         
         return {
+          id: u.id,
           name: u.name,
           avatar: u.name.split(" ").map(s => s[0]).join("").toUpperCase(),
           jobsToday: uJobs.length,

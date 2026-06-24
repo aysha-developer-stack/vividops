@@ -182,7 +182,9 @@ export default function SupervisorDashboard() {
                     <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-white ${t.status === "online" ? "bg-emerald-400" : "bg-amber-400"}`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 truncate">{t.name}</div>
+                    <Link href={`/supervisor/monitoring?id=${t.id}`}>
+                      <div className="text-sm font-semibold text-gray-900 truncate hover:text-primary transition-colors cursor-pointer">{t.name}</div>
+                    </Link>
                     <div className="text-[11px] text-gray-500">{t.jobsToday} jobs · {t.hoursToday}h today</div>
                   </div>
                 </motion.div>
