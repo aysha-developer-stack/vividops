@@ -8,6 +8,7 @@ import { publicJob } from "../lib/serialize";
 import { requireAuth, requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { getZohoCliqAccessToken } from "../lib/zoho";
+import { ensureLegacySupervisorAssignments } from "../lib/schema-init";
 
 import { shouldSendNotification } from "../lib/notifications";
 
@@ -712,6 +713,9 @@ router.get("/jobs", requireAuth, async (req, res) => {
   const forCommunication = scope === "communication";
   const q = selectJoined();
   let rows;
+  if (actor.role === "supervisor") {
+    await ensureLegacySupervisorAssignments();
+  }
   if (actor.role === "super-admin" || actor.role === "admin") {
     rows = await q.orderBy(desc(jobs.createdAt));
   } else if (actor.role === "supervisor") {

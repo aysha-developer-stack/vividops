@@ -2,6 +2,32 @@ import { db, sql } from "@workspace/db";
 import { logger } from "./logger";
 
 let initialized = false;
+let legacySupervisorAssignmentsPromise: Promise<void> | null = null;
+
+export async function ensureLegacySupervisorAssignments() {
+  if (legacySupervisorAssignmentsPromise) return legacySupervisorAssignmentsPromise;
+
+  legacySupervisorAssignmentsPromise = (async () => {
+    try {
+      await db.execute(sql`
+        UPDATE jobs AS j
+        SET supervisor_id = j.created_by_id,
+            updated_at = now()
+        FROM users AS u
+        WHERE j.supervisor_id IS NULL
+          AND j.created_by_id IS NOT NULL
+          AND u.id = j.created_by_id
+          AND u.role = 'supervisor'
+      `);
+      logger.info("Legacy supervisor job assignments backfilled.");
+    } catch (err) {
+      legacySupervisorAssignmentsPromise = null;
+      logger.error({ err }, "Legacy supervisor assignment backfill failed");
+    }
+  })();
+
+  return legacySupervisorAssignmentsPromise;
+}
 
 export async function ensureAllSchemas() {
   if (initialized) return;
@@ -131,6 +157,8 @@ export async function ensureAllSchemas() {
         updated_at timestamptz NOT NULL DEFAULT now()
       );
     `);
+
+    await ensureLegacySupervisorAssignments();
     
     initialized = true;
     logger.info("Database schemas initialized successfully.");

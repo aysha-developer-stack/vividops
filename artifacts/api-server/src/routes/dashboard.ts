@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, users, jobs, jobMembers, timeLogs, sql, desc, eq, and, lt, ne, inArray } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { requireAuth } from "../middlewares/requireAuth";
+import { ensureLegacySupervisorAssignments } from "../lib/schema-init";
 
 const router = Router();
 
@@ -11,6 +12,9 @@ router.get("/dashboard/stats", requireAuth, async (req, res) => {
     
     // For supervisor, only show stats for their jobs
     const isSupervisor = actor.role === "supervisor";
+    if (isSupervisor) {
+      await ensureLegacySupervisorAssignments();
+    }
     const jobFilter = isSupervisor 
       ? eq(jobs.supervisorId, actor.id)
       : undefined;
@@ -76,6 +80,8 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
     if (actor.role !== "supervisor" && actor.role !== "admin" && actor.role !== "super-admin") {
       return res.status(403).json({ error: "Forbidden" });
     }
+
+    await ensureLegacySupervisorAssignments();
 
     const supervisorId = actor.id;
     const now = new Date();
