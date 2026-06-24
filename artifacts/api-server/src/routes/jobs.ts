@@ -176,6 +176,13 @@ async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   return !!row;
 }
 
+function canViewJobCommunication(actor: UserRow, job: JobRow): boolean {
+  if (actor.role === "super-admin" || actor.role === "admin" || actor.role === "supervisor") {
+    return true;
+  }
+  return job.assigneeId === actor.id;
+}
+
 /**
  * Mutation rules:
  *  - super-admin / admin: full edit on any job
@@ -786,11 +793,16 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
 
 router.get("/jobs", requireAuth, async (req, res) => {
   const actor = req.session!.user;
+  const scope = typeof (req.query as any)?.for === "string" ? String((req.query as any).for) : "";
+  const forCommunication = scope === "communication";
   const q = selectJoined();
   let rows;
   if (actor.role === "super-admin" || actor.role === "admin") {
     rows = await q.orderBy(desc(jobs.createdAt));
   } else if (actor.role === "supervisor") {
+    if (forCommunication) {
+      rows = await q.orderBy(desc(jobs.createdAt));
+    } else {
     await ensureJobMembersSchema();
     const memberRows = await db
       .select({ jobId: jobMembers.jobId })
@@ -816,7 +828,11 @@ router.get("/jobs", requireAuth, async (req, res) => {
               ),
             )
             .orderBy(desc(jobs.createdAt));
+    }
   } else {
+    if (forCommunication) {
+      rows = await q.where(eq(jobs.assigneeId, actor.id)).orderBy(desc(jobs.createdAt));
+    } else {
     await ensureJobMembersSchema();
     const memberRows = await db
       .select({ jobId: jobMembers.jobId })
@@ -829,6 +845,7 @@ router.get("/jobs", requireAuth, async (req, res) => {
         : await q
             .where(or(eq(jobs.assigneeId, actor.id), inArray(jobs.id, memberJobIds)))
             .orderBy(desc(jobs.createdAt));
+    }
   }
   return res.json(
     rows.map((r: any) =>
@@ -1038,7 +1055,7 @@ router.post("/zoho/cliq/messages/incoming", async (req, res) => {
       return res.status(404).json({ error: "Cliq sender not mapped to an app user" });
     }
 
-    if (!(await canViewJob(actor, full.job))) {
+    if (!canViewJobCommunication(actor, full.job)) {
       await markJobCliqStatus(full.job.id, "active", `Cliq sync sender ${message.senderEmail} is not assigned to the job`);
       return res.status(403).json({ error: "Cliq sender is not assigned to this job" });
     }
@@ -1075,8 +1092,8 @@ router.get("/jobs/:id/messages", requireAuth, async (req, res) => {
 
     const full = await loadJob(id);
     if (!full) return res.status(404).json({ error: "Job not found" });
-    if (!(await canViewJob(actor, full.job))) {
-      return res.status(403).json({ error: "You cannot view this job" });
+    if (!canViewJobCommunication(actor, full.job)) {
+      return res.status(403).json({ error: "Forbidden" });
     }
 
     await ensureJobMessagesSchema();
@@ -1126,8 +1143,8 @@ router.post("/jobs/:id/messages", requireAuth, async (req, res) => {
 
     const full = await loadJob(id);
     if (!full) return res.status(404).json({ error: "Job not found" });
-    if (!(await canViewJob(actor, full.job))) {
-      return res.status(403).json({ error: "You cannot view this job" });
+    if (!canViewJobCommunication(actor, full.job)) {
+      return res.status(403).json({ error: "Forbidden" });
     }
 
     const created = await createStoredJobMessage({
@@ -1157,8 +1174,8 @@ router.get("/jobs/:id/cliq/channel", requireAuth, async (req, res) => {
 
     const full = await loadJob(id);
     if (!full) return res.status(404).json({ error: "Job not found" });
-    if (!(await canViewJob(actor, full.job))) {
-      return res.status(403).json({ error: "You cannot view this job" });
+    if (!canViewJobCommunication(actor, full.job)) {
+      return res.status(403).json({ error: "Forbidden" });
     }
 
     const ch = await getOrCreateJobCliqChannel(full.job);
@@ -1176,8 +1193,8 @@ router.post("/jobs/:id/cliq/join", requireAuth, async (req, res) => {
 
     const full = await loadJob(id);
     if (!full) return res.status(404).json({ error: "Job not found" });
-    if (!(await canViewJob(actor, full.job))) {
-      return res.status(403).json({ error: "You cannot view this job" });
+    if (!canViewJobCommunication(actor, full.job)) {
+      return res.status(403).json({ error: "Forbidden" });
     }
 
     const email = typeof actor.email === "string" ? actor.email.trim() : "";

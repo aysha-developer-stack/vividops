@@ -150,7 +150,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/jobs", { credentials: "include" });
+        const res = await fetch("/api/jobs?for=communication", { credentials: "include" });
         if (!res.ok) return;
         const data = (await res.json()) as unknown;
         if (!Array.isArray(data)) return;
