@@ -591,11 +591,15 @@ export default function JobManagement(
                                     Mark Completed
                                   </DropdownMenuItem>
                                 )}
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => remove(j.id)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
-                                  <Trash2 size={14} className="mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
+                                {(role === "admin" || role === "super-admin") && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => remove(j.id)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                                      <Trash2 size={14} className="mr-2" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
                               </>
                             )}
                           </DropdownMenuContent>

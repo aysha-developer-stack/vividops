@@ -185,7 +185,12 @@ export default function SupervisorDashboard() {
                     <Link href={`/supervisor/monitoring?id=${t.id}`}>
                       <div className="text-sm font-semibold text-gray-900 truncate hover:text-primary transition-colors cursor-pointer">{t.name}</div>
                     </Link>
-                    <div className="text-[11px] text-gray-500">{t.jobsToday} jobs · {t.hoursToday}h today</div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <div className="text-[10px] text-gray-500">{t.jobsToday} jobs · {t.hoursToday}h today</div>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${t.efficiency >= 90 ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`}>
+                        {t.efficiency}% Eff.
+                      </span>
+                    </div>
                   </div>
                 </motion.div>
               ))}

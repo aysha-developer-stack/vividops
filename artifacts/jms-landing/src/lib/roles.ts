@@ -65,11 +65,12 @@ export const ROLES: Record<Role, RoleConfig> = {
     nav: [
       { label: "Dashboard", icon: LayoutDashboard, path: "/supervisor" },
       { label: "Jobs", icon: Briefcase, path: "/supervisor/jobs" },
-      { label: "Timer Monitor", icon: Eye, path: "/supervisor/users" },
-      { label: "Error Reports", icon: AlertTriangle, path: "/supervisor/error-reports" },
+      { label: "Users", icon: Users, path: "/supervisor/users" },
+      { label: "Communication", icon: MessageCircle, path: "/supervisor/communication" },
       { label: "Reports", icon: BarChart3, path: "/supervisor/reports" },
       { label: "Training", icon: GraduationCap, path: "/supervisor/training" },
-      { label: "Communication", icon: MessageCircle, path: "/supervisor/communication" },
+      { label: "Notifications", icon: Bell, path: "/supervisor/notifications" },
+      { label: "Settings", icon: Settings, path: "/supervisor/settings" },
     ],
   },
   user: {
