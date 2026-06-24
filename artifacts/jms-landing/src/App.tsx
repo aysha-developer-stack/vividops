@@ -113,7 +113,6 @@ function AppRouter() {
         <Route path="/super-admin/users-monitoring"><RequireSignedIn><UserMonitoring role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/supervisors"><RequireSignedIn><SupervisorMonitoring role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/error-reports"><RequireSignedIn><UserMonitoring role="super-admin" initialTab="errors" /></RequireSignedIn></Route>
-        <Route path="/super-admin/roles"><RequireSignedIn><SuperAdminRolesPermissions /></RequireSignedIn></Route>
         <Route path="/super-admin/assignments"><RequireSignedIn><JobManagement role="super-admin" initialTab="assignments" /></RequireSignedIn></Route>
         <Route path="/super-admin/rework-requests"><RequireSignedIn><JobManagement role="super-admin" initialTab="rework" /></RequireSignedIn></Route>
         <Route path="/super-admin/files"><RequireSignedIn><SuperAdminFiles /></RequireSignedIn></Route>

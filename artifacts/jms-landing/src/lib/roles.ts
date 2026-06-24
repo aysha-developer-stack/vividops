@@ -29,7 +29,6 @@ export const ROLES: Record<Role, RoleConfig> = {
     nav: [
       { label: "Dashboard", icon: LayoutDashboard, path: "/super-admin" },
       { label: "Users", icon: Users, path: "/super-admin/users" },
-      { label: "Roles & Permissions", icon: CheckSquare, path: "/super-admin/roles" },
       { label: "Jobs", icon: Briefcase, path: "/super-admin/jobs" },
       { label: "Reports", icon: BarChart3, path: "/super-admin/reports" },
       { label: "System Monitoring", icon: Activity, path: "/super-admin/monitoring" },
