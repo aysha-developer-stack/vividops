@@ -27,6 +27,14 @@ const ensureSchema = async () => {
       created_at timestamptz NOT NULL DEFAULT now()
     );
   `);
+  
+  // Ensure columns exist for older tables
+  await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS job_id uuid REFERENCES jobs(id) ON DELETE SET NULL;`);
+  await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS channel text NOT NULL DEFAULT 'in_app';`);
+  await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at timestamptz;`);
+  await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS delivery_status text NOT NULL DEFAULT 'sent';`);
+  await db.execute(sql`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS escalation_status text NOT NULL DEFAULT 'none';`);
+
   await db.execute(sql`CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id);`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS notifications_job_idx ON notifications (job_id);`);
 };
