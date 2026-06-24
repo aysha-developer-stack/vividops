@@ -84,7 +84,7 @@ async function start(): Promise<void> {
   console.log("[STARTUP] Starting background tasks...");
 
   try {
-    const { db, jobs, users, notifications, jobMembers, timeLogs, and, eq, inArray, sql, gte } = await import("@workspace/db");
+    const { db, jobs, users, notifications, jobMembers, timeLogs, posts, and, eq, inArray, sql, gte, lt } = await import("@workspace/db");
 
     const cliqWebhookUrl = process.env.ZOHO_CLIQ_WEBHOOK_URL;
 
@@ -258,9 +258,9 @@ async function start(): Promise<void> {
         for (const post of recentPosts) {
           const allActive = await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.status, "active"));
           for (const u of allActive) {
-            const [liked] = await db.execute(sql`SELECT 1 FROM post_likes WHERE post_id = ${post.id} AND user_id = ${u.id} LIMIT 1`);
-            const likedRows = (liked as any)?.rows ?? liked;
-            if (Array.isArray(likedRows) && likedRows.length > 0) continue;
+            const liked = await db.execute(sql`SELECT 1 FROM post_likes WHERE post_id = ${post.id} AND user_id = ${u.id} LIMIT 1`);
+            const likedRows = (liked as any)?.rows ?? (Array.isArray(liked) ? liked : []);
+            if (likedRows.length > 0) continue;
 
             // Notify User
             await db.insert(notifications).values({
@@ -273,8 +273,9 @@ async function start(): Promise<void> {
             } as any);
 
             // Notify Supervisor (approximate via first job found)
-            const [sup] = await db.execute(sql`(select supervisor_id from jobs where assignee_id = ${u.id} limit 1)`);
-            const supId = (sup as any)?.rows?.[0]?.supervisor_id;
+            const sup = await db.execute(sql`(select supervisor_id from jobs where assignee_id = ${u.id} limit 1)`);
+            const supRows = (sup as any)?.rows ?? (Array.isArray(sup) ? sup : []);
+            const supId = supRows[0]?.supervisor_id;
             if (supId) {
               await db.insert(notifications).values({
                 id: randomUUID(),
