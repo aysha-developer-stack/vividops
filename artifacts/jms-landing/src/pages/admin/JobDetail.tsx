@@ -1298,7 +1298,7 @@ export default function JobDetail({ role = "user", id }: Props) {
 
                     <div>
                       <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Comments</div>
-                      <textarea className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl p-3 text-xs focus:outline-none focus:border-primary resize-none h-24" placeholder="Add notes about this task..." />
+                      <textarea className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl p-3 text-xs !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary resize-none h-24" placeholder="Add notes about this task..." />
                     </div>
 
                     <div className="flex gap-2 pt-2">
@@ -1407,7 +1407,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                     placeholder="Search files..." 
                     value={fileSearch}
                     onChange={(e) => setFileSearch(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
                 <div className="flex gap-2 w-full sm:w-auto">
@@ -1715,7 +1715,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                       onChange={(e) => setDraft(e.target.value)}
                       placeholder="Type a quick update..."
                       rows={2}
-                      className="w-full bg-white rounded-xl px-3 py-2 text-xs border border-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300 resize-none"
+                      className="w-full bg-white rounded-xl px-3 py-2 text-xs !text-gray-900 !placeholder:text-gray-400 border border-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-300 resize-none"
                     />
                     <motion.button type="submit" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600">
                       <Send size={11} /> Post to channel
@@ -1850,7 +1850,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 onChange={(e) => setReworkReason(e.target.value)}
                 rows={4}
                 placeholder="What needs to be redone?"
-                className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary resize-none mb-4"
+                className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary resize-none mb-4"
               />
               <div className="flex gap-2">
                 <button onClick={() => setReworkOpen(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200">Cancel</button>
