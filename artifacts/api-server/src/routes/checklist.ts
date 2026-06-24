@@ -17,52 +17,7 @@ import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
-let schemaEnsured = false;
-const ensureSchema = async () => {
-  if (schemaEnsured) return;
-  schemaEnsured = true;
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS job_members (
-      id uuid PRIMARY KEY,
-      job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      created_at timestamptz NOT NULL DEFAULT now(),
-      CONSTRAINT job_members_job_user_uniq UNIQUE (job_id, user_id)
-    );
-  `);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS job_members_job_idx ON job_members (job_id);`);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS job_members_user_idx ON job_members (user_id);`);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS job_checklist_state (
-      id uuid PRIMARY KEY,
-      job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      item_id integer NOT NULL,
-      status text NOT NULL,
-      rework_reason text,
-      updated_at timestamptz NOT NULL DEFAULT now(),
-      created_at timestamptz NOT NULL DEFAULT now(),
-      CONSTRAINT job_checklist_state_job_user_item_uniq UNIQUE (job_id, user_id, item_id)
-    );
-  `);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS job_checklist_state_job_idx ON job_checklist_state (job_id);`);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS job_checklist_state_user_idx ON job_checklist_state (user_id);`);
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS job_checklist_attachments (
-      id uuid PRIMARY KEY,
-      job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      item_id integer NOT NULL,
-      attachment_id uuid NOT NULL REFERENCES job_attachments(id) ON DELETE CASCADE,
-      created_at timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS job_checklist_attachments_job_idx ON job_checklist_attachments (job_id);`);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS job_checklist_attachments_user_idx ON job_checklist_attachments (user_id);`);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS job_checklist_attachments_item_idx ON job_checklist_attachments (job_id, user_id, item_id);`);
-};
+const ensureSchema = async () => {};
 
 async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (actor.role === "super-admin" || actor.role === "admin") return true;

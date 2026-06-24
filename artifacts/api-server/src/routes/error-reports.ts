@@ -17,39 +17,7 @@ const router: IRouter = Router();
 const targetUserAlias = alias(users, "target_user");
 const creatorAlias = alias(users, "creator_user");
 
-let schemaEnsured = false;
-const ensureSchema = async () => {
-  if (schemaEnsured) return;
-  schemaEnsured = true;
-  await db.execute(sql`DO $$ BEGIN
-    CREATE TYPE error_severity AS ENUM ('low', 'medium', 'high');
-  EXCEPTION
-    WHEN duplicate_object THEN NULL;
-  END $$;`);
-  await db.execute(sql`DO $$ BEGIN
-    CREATE TYPE error_report_status AS ENUM ('open', 'resolved');
-  EXCEPTION
-    WHEN duplicate_object THEN NULL;
-  END $$;`);
-  await db.execute(sql`CREATE TABLE IF NOT EXISTS error_reports (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    job_id uuid REFERENCES jobs(id) ON DELETE SET NULL,
-    user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_by_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    title text NOT NULL,
-    description text NOT NULL,
-    severity error_severity NOT NULL DEFAULT 'medium',
-    status error_report_status NOT NULL DEFAULT 'open',
-    resolved_at timestamptz,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now()
-  );`);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS error_reports_job_idx ON error_reports(job_id);`);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS error_reports_user_idx ON error_reports(user_id);`);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS error_reports_created_by_idx ON error_reports(created_by_id);`);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS error_reports_status_idx ON error_reports(status);`);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS error_reports_severity_idx ON error_reports(severity);`);
-};
+const ensureSchema = async () => {};
 
 function canViewJob(actor: UserRow, job: JobRow): boolean {
   if (actor.role === "super-admin" || actor.role === "admin") return true;

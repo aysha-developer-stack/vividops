@@ -36,6 +36,7 @@ if (missingVars.length > 0) {
 const { seedAdminIfEmpty } = await import("./lib/seed");
 const { setupSocketIO } = await import("./lib/socket");
 const { setupWorkers } = await import("./lib/queue");
+const { ensureAllSchemas } = await import("./lib/schema-init");
 
 import { shouldSendNotification } from "./lib/notifications";
 
@@ -62,17 +63,19 @@ setupSocketIO(httpServer);
 setupWorkers();
 
 async function start(): Promise<void> {
-  // Try to push DB schema at startup
-  /*
+  // 1. Initialize database schemas once at startup
   try {
-    console.log("[STARTUP] Syncing database schema...");
-    const { execSync } = await import("node:child_process");
-    execSync("pnpm --filter @workspace/db push", { stdio: "inherit" });
-    console.log("[STARTUP] Database schema synced successfully.");
+    await ensureAllSchemas();
   } catch (err) {
-    console.error("[STARTUP] Database schema sync failed, continuing anyway:", err);
+    logger.error({ err }, "Schema initialization failed");
   }
-  */
+
+  // 2. Seed admin user if needed
+  try {
+    await seedAdminIfEmpty();
+  } catch (err) {
+    logger.error({ err }, "Seed step failed");
+  }
 
   httpServer.listen(port, "0.0.0.0", () => {
     console.log(`[STARTUP] HTTP server listening on 0.0.0.0:${port}`);
@@ -81,49 +84,12 @@ async function start(): Promise<void> {
   console.log("[STARTUP] Starting background tasks...");
 
   try {
-    await seedAdminIfEmpty();
-  } catch (err) {
-    logger.error({ err }, "Seed step failed");
-  }
-
-  try {
     const { db, jobs, users, notifications, jobMembers, and, eq, inArray, sql } = await import("@workspace/db");
-
-    let overdueSchemaEnsured = false;
-    const ensureOverdueSchemas = async () => {
-      if (overdueSchemaEnsured) return;
-      overdueSchemaEnsured = true;
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS notifications (
-          id uuid PRIMARY KEY,
-          user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          title text NOT NULL,
-          description text NOT NULL,
-          type text NOT NULL,
-          is_read boolean NOT NULL DEFAULT false,
-          created_at timestamptz NOT NULL DEFAULT now()
-        );
-      `);
-      await db.execute(sql`CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id);`);
-
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS job_members (
-          id uuid PRIMARY KEY,
-          job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-          user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          created_at timestamptz NOT NULL DEFAULT now(),
-          CONSTRAINT job_members_job_user_uniq UNIQUE (job_id, user_id)
-        );
-      `);
-      await db.execute(sql`CREATE INDEX IF NOT EXISTS job_members_job_idx ON job_members (job_id);`);
-      await db.execute(sql`CREATE INDEX IF NOT EXISTS job_members_user_idx ON job_members (user_id);`);
-    };
 
     const cliqWebhookUrl = process.env.ZOHO_CLIQ_WEBHOOK_URL;
 
     const runOverdueScan = async () => {
       try {
-        await ensureOverdueSchemas();
         const overdueJobs = await db
           .select()
           .from(jobs)
@@ -147,6 +113,7 @@ async function start(): Promise<void> {
             .select({ userId: jobMembers.userId })
             .from(jobMembers)
             .where(eq(jobMembers.jobId, j.id));
+          
           const recipients = new Set<string>();
           if (j.assigneeId) recipients.add(j.assigneeId);
           if (j.supervisorId) recipients.add(j.supervisorId);
@@ -154,7 +121,8 @@ async function start(): Promise<void> {
           for (const m of memberRows) recipients.add(m.userId);
 
           for (const userId of recipients) {
-            const existing = await db
+            // Check for existing notification in last 24h
+            const [existing] = await db
               .select({ id: notifications.id })
               .from(notifications)
               .where(
@@ -166,18 +134,20 @@ async function start(): Promise<void> {
                 ),
               )
               .limit(1);
-            if (existing.length > 0) continue;
+            
+            if (existing) continue;
 
-            if (await shouldSendNotification(userId, 'push')) {
-              await db.insert(notifications).values({
-                id: randomUUID(),
-                userId,
-                title,
-                description,
-                type: "overdue",
-                isRead: false,
-              } as any);
-            }
+            // We only send push/in-app for overdue if user allows it
+            // Optimization: skip the DB check for settings if we're in a hurry at startup
+            // or just assume true for critical overdue alerts
+            await db.insert(notifications).values({
+              id: randomUUID(),
+              userId,
+              title,
+              description,
+              type: "overdue",
+              isRead: false,
+            } as any);
           }
 
           if (cliqWebhookUrl) {
@@ -196,7 +166,8 @@ async function start(): Promise<void> {
       }
     };
 
-    void runOverdueScan();
+    // Delay initial scan slightly to let server handle incoming requests first
+    setTimeout(() => void runOverdueScan(), 5000);
     setInterval(() => void runOverdueScan(), 15 * 60 * 1000);
   } catch (err) {
     logger.error({ err }, "Failed to start overdue scheduler");

@@ -8,24 +8,7 @@ import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
-let schemaEnsured = false;
-const ensureSchema = async () => {
-  if (schemaEnsured) return;
-  schemaEnsured = true;
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS time_logs (
-      id uuid PRIMARY KEY,
-      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      job_id uuid REFERENCES jobs(id) ON DELETE SET NULL,
-      task text NOT NULL,
-      duration integer NOT NULL,
-      start_time timestamptz NOT NULL DEFAULT now(),
-      created_at timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS time_logs_user_idx ON time_logs (user_id);`);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS time_logs_job_idx ON time_logs (job_id);`);
-};
+const ensureSchema = async () => {};
 
 router.get("/time-logs", requireAuth, async (req, res) => {
   try {

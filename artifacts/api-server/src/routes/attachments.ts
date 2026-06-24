@@ -11,42 +11,8 @@ import { logger } from "../lib/logger";
 const router: IRouter = Router();
 
 let jobMembersSchemaEnsured = false;
-const ensureJobMembersSchema = async () => {
-  if (jobMembersSchemaEnsured) return;
-  jobMembersSchemaEnsured = true;
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS job_members (
-      id uuid PRIMARY KEY,
-      job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      created_at timestamptz NOT NULL DEFAULT now(),
-      CONSTRAINT job_members_job_user_uniq UNIQUE (job_id, user_id)
-    );
-  `);
-  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_members_job_idx ON job_members (job_id);`);
-  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_members_user_idx ON job_members (user_id);`);
-};
-
-let attachmentsSchemaEnsured = false;
-const ensureAttachmentsSchema = async () => {
-  if (attachmentsSchemaEnsured) return;
-  attachmentsSchemaEnsured = true;
-  await ensureJobMembersSchema();
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS job_attachments (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-      file_name text NOT NULL,
-      file_key text NOT NULL,
-      file_url text NOT NULL,
-      file_type text,
-      file_size text,
-      uploaded_by_id uuid NOT NULL REFERENCES users(id),
-      created_at timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_attachments_job_idx ON job_attachments (job_id);`);
-};
+const ensureJobMembersSchema = async () => {};
+const ensureAttachmentsSchema = async () => {};
 
 async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (actor.role === "super-admin" || actor.role === "admin") return true;

@@ -16,98 +16,11 @@ const router: IRouter = Router();
 const assigneeAlias = alias(users, "assignee");
 const supervisorAlias = alias(users, "supervisor");
 
-let jobMembersSchemaEnsured = false;
-const ensureJobMembersSchema = async () => {
-  if (jobMembersSchemaEnsured) return;
-  jobMembersSchemaEnsured = true;
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS job_members (
-      id uuid PRIMARY KEY,
-      job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      created_at timestamptz NOT NULL DEFAULT now(),
-      CONSTRAINT job_members_job_user_uniq UNIQUE (job_id, user_id)
-    );
-  `);
-  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_members_job_idx ON job_members (job_id);`);
-  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_members_user_idx ON job_members (user_id);`);
-};
-
-let jobMessagesSchemaEnsured = false;
-const ensureJobMessagesSchema = async () => {
-  if (jobMessagesSchemaEnsured) return;
-  jobMessagesSchemaEnsured = true;
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS job_messages (
-      id uuid PRIMARY KEY,
-      job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      text text NOT NULL,
-      created_at timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_messages_job_idx ON job_messages (job_id);`);
-  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_messages_job_created_idx ON job_messages (job_id, created_at);`);
-};
-
-let jobMessageSyncSchemaEnsured = false;
-const ensureJobMessageSyncSchema = async () => {
-  if (jobMessageSyncSchemaEnsured) return;
-  jobMessageSyncSchemaEnsured = true;
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS job_message_sync (
-      id uuid PRIMARY KEY,
-      job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-      source text NOT NULL,
-      external_message_id text,
-      sender_email text,
-      payload text,
-      created_at timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(
-    dsql`CREATE UNIQUE INDEX IF NOT EXISTS job_message_sync_source_external_idx ON job_message_sync (source, external_message_id) WHERE external_message_id IS NOT NULL;`,
-  );
-  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_message_sync_job_idx ON job_message_sync (job_id, created_at);`);
-};
-
-let notificationsSchemaEnsured = false;
-const ensureNotificationsSchema = async () => {
-  if (notificationsSchemaEnsured) return;
-  notificationsSchemaEnsured = true;
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS notifications (
-      id uuid PRIMARY KEY,
-      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      title text NOT NULL,
-      description text NOT NULL,
-      type text NOT NULL,
-      is_read boolean NOT NULL DEFAULT false,
-      created_at timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(dsql`CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id);`);
-};
-
-let jobCliqSchemaEnsured = false;
-const ensureJobCliqSchema = async () => {
-  if (jobCliqSchemaEnsured) return;
-  jobCliqSchemaEnsured = true;
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS job_cliq_channels (
-      job_id uuid PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
-      channel_name text NOT NULL,
-      channel_id text,
-      channel_url text,
-      status text NOT NULL DEFAULT 'pending',
-      last_error text,
-      created_at timestamptz NOT NULL DEFAULT now(),
-      updated_at timestamptz NOT NULL DEFAULT now()
-    );
-  `);
-  await db.execute(dsql`ALTER TABLE job_cliq_channels ADD COLUMN IF NOT EXISTS channel_id text;`);
-  await db.execute(dsql`CREATE INDEX IF NOT EXISTS job_cliq_channels_status_idx ON job_cliq_channels (status);`);
-};
+const ensureJobMembersSchema = async () => {};
+const ensureJobMessagesSchema = async () => {};
+const ensureJobMessageSyncSchema = async () => {};
+const ensureNotificationsSchema = async () => {};
+const ensureJobCliqSchema = async () => {};
 
 type JobWithRefs = {
   job: JobRow;
