@@ -635,16 +635,16 @@ export default function JobManagement(
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Job Details</div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Title</label>
-                    <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Structural Inspection" className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                    <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Structural Inspection" className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Client</label>
-                      <input value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} placeholder="e.g. Anderson Residence" className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                      <input value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} placeholder="e.g. Anderson Residence" className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assignee</label>
-                      <select value={form.assigneeId} onChange={(e) => setForm({ ...form, assigneeId: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors">
+                      <select value={form.assigneeId} onChange={(e) => setForm({ ...form, assigneeId: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors">
                         <option value="">Unassigned</option>
                         {assignables.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </select>
@@ -678,15 +678,15 @@ export default function JobManagement(
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Address</label>
-                    <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="e.g. 120 Park Avenue, Sydney NSW 2000" className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                    <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="e.g. 120 Park Avenue, Sydney NSW 2000" className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Description</label>
-                    <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief job scope..." rows={3} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
+                    <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief job scope..." rows={3} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Estimated Completion</label>
-                    <input type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                    <input type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Priority</label>
@@ -740,11 +740,11 @@ export default function JobManagement(
                   <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4 space-y-3">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Task Name</label>
-                      <input value={checkText} onChange={(e) => setCheckText(e.target.value)} placeholder="e.g. Review Site Photos" className="w-full px-3 py-2.5 bg-white border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary" />
+                      <input value={checkText} onChange={(e) => setCheckText(e.target.value)} placeholder="e.g. Review Site Photos" className="w-full px-3 py-2.5 bg-white border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary" />
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Description (optional)</label>
-                      <textarea value={checkDesc} onChange={(e) => setCheckDesc(e.target.value)} placeholder="What does success look like for this task?" rows={3} className="w-full px-3 py-2.5 bg-white border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary resize-none" />
+                      <textarea value={checkDesc} onChange={(e) => setCheckDesc(e.target.value)} placeholder="What does success look like for this task?" rows={3} className="w-full px-3 py-2.5 bg-white border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary resize-none" />
                     </div>
                     <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
                       <input type="checkbox" checked={checkNeedsFile} onChange={(e) => setCheckNeedsFile(e.target.checked)} className="h-4 w-4" />
@@ -843,7 +843,7 @@ export default function JobManagement(
               </div>
               <div className="px-6 py-5 space-y-3 overflow-y-auto">
                 <label className="block text-xs font-semibold text-gray-700">New Assignee</label>
-                <select value={reassignTo} onChange={(e) => setReassignTo(e.target.value)} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white">
+                <select value={reassignTo} onChange={(e) => setReassignTo(e.target.value)} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white">
                   <option value="">Unassigned</option>
                   {assignables.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
