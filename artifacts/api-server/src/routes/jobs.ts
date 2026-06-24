@@ -6,13 +6,7 @@ import { createNotification } from "../lib/notifications";
 import { randomUUID } from "node:crypto";
 import { CreateJobBody, UpdateJobBody } from "@workspace/api-zod";
 import { publicJob } from "../lib/serialize";
-import {
-  requireAuth,
-  requireRole,
-  canViewJob,
-  canManageJob,
-  canViewJobCommunication,
-} from "../lib/auth";
+import { requireAuth, requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { getZohoCliqAccessToken } from "../lib/zoho";
 import { ensureLegacySupervisorAssignments } from "../lib/schema-init";
