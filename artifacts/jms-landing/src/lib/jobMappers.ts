@@ -64,6 +64,14 @@ export function formatCurrency(amount: number, currency: string = "USD ($)"): st
 
 export function daysUntil(iso: string | null | undefined): number {
   if (!iso) return 9999;
-  const ms = new Date(iso).getTime() - Date.now();
-  return Math.round(ms / (1000 * 60 * 60 * 24));
+  
+  // Normalize both dates to the start of the day for accurate calendar day comparison
+  const target = new Date(iso);
+  target.setHours(0, 0, 0, 0);
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const diffTime = target.getTime() - today.getTime();
+  return Math.floor(diffTime / (1000 * 60 * 60 * 24));
 }
