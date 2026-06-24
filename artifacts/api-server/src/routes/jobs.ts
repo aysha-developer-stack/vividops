@@ -42,17 +42,7 @@ function selectJoined() {
         id: assigneeAlias.id,
         name: assigneeAlias.name,
         role: assigneeAlias.role,
-        // Notify Admin on reassignment
-      const admins = await db.select({ id: users.id }).from(users).where(inArray(users.role, ["admin", "super-admin"]));
-      for (const admin of admins) {
-        await createNotification(
-          admin.id,
-          `Job Reassigned: ${after.job.title}`,
-          `Assignee changed from ${full.assignee?.name ?? "None"} to ${after.assignee?.name ?? "None"}`,
-          "updated"
-        );
-      }
-    },
+      },
       supervisor: {
         id: supervisorAlias.id,
         name: supervisorAlias.name,
