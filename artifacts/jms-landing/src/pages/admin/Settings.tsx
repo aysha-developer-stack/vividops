@@ -61,6 +61,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
   const { user, refresh } = useAuth();
   const { toast } = useToast();
   const [tab, setTab] = useState<TabId>("profile");
+  const [, setLocation] = useLocation();
   const [saved, setSaved] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -100,11 +101,17 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
 
   // User Settings states (Notification, Appearance, Regional)
   const [userSettingsState, setUserSettingsState] = useState({
+    inAppNotifications: true,
     emailNotifications: true,
     pushNotifications: true,
     smsNotifications: false,
+    zohoCliqNotifications: true,
     weeklyDigest: true,
     mentions: true,
+    notificationFrequency: "instant",
+    quietHoursStart: "",
+    quietHoursEnd: "",
+    soundEnabled: true,
     twoFactorEnabled: false,
     theme: "light",
     accentColor: "#0B7EB9",
@@ -120,6 +127,9 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
     autoBackup: true,
     maintenanceMode: false,
     apiLogging: true,
+    notifRetentionDays: 90,
+    overdueEscalationDays: 7,
+    reminderSchedule: "3,1,0",
   });
 
   useEffect(() => {
@@ -136,11 +146,17 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
   useEffect(() => {
     if (apiUserSettings) {
       setUserSettingsState({
+        inAppNotifications: apiUserSettings.inAppNotifications ?? true,
         emailNotifications: apiUserSettings.emailNotifications,
         pushNotifications: apiUserSettings.pushNotifications,
         smsNotifications: apiUserSettings.smsNotifications,
+        zohoCliqNotifications: apiUserSettings.zohoCliqNotifications ?? true,
         weeklyDigest: apiUserSettings.weeklyDigest,
         mentions: apiUserSettings.mentions,
+        notificationFrequency: apiUserSettings.notificationFrequency ?? "instant",
+        quietHoursStart: apiUserSettings.quietHoursStart ?? "",
+        quietHoursEnd: apiUserSettings.quietHoursEnd ?? "",
+        soundEnabled: apiUserSettings.soundEnabled ?? true,
         twoFactorEnabled: apiUserSettings.twoFactorEnabled,
         theme: apiUserSettings.theme,
         accentColor: apiUserSettings.accentColor,
@@ -159,6 +175,9 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
         autoBackup: apiSystemSettings.autoBackup,
         maintenanceMode: apiSystemSettings.maintenanceMode,
         apiLogging: apiSystemSettings.apiLogging,
+        notifRetentionDays: apiSystemSettings.notifRetentionDays ?? 90,
+        overdueEscalationDays: apiSystemSettings.overdueEscalationDays ?? 7,
+        reminderSchedule: apiSystemSettings.reminderSchedule ?? "3,1,0",
       });
     }
   }, [apiSystemSettings]);
@@ -407,22 +426,78 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
               {tab === "notifications" && (
                 <>
                   <h3 className="text-lg font-bold text-gray-900 mb-1">Notification preferences</h3>
-                  <p className="text-sm text-gray-500 mb-4">Choose which notifications you want to receive.</p>
-                  <Row title="Email notifications" desc="Job updates, comments, and mentions">
-                    <Toggle on={userSettingsState.emailNotifications} onChange={() => setUserSettingsState({ ...userSettingsState, emailNotifications: !userSettingsState.emailNotifications })} />
-                  </Row>
-                  <Row title="Push notifications" desc="Real-time alerts in the browser">
-                    <Toggle on={userSettingsState.pushNotifications} onChange={() => setUserSettingsState({ ...userSettingsState, pushNotifications: !userSettingsState.pushNotifications })} />
-                  </Row>
-                  <Row title="SMS notifications" desc="Critical alerts only">
-                    <Toggle on={userSettingsState.smsNotifications} onChange={() => setUserSettingsState({ ...userSettingsState, smsNotifications: !userSettingsState.smsNotifications })} />
-                  </Row>
-                  <Row title="Weekly digest" desc="Performance summary every Monday">
-                    <Toggle on={userSettingsState.weeklyDigest} onChange={() => setUserSettingsState({ ...userSettingsState, weeklyDigest: !userSettingsState.weeklyDigest })} />
-                  </Row>
-                  <Row title="@ mentions" desc="When someone tags you in chat">
-                    <Toggle on={userSettingsState.mentions} onChange={() => setUserSettingsState({ ...userSettingsState, mentions: !userSettingsState.mentions })} />
-                  </Row>
+                  <p className="text-sm text-gray-500 mb-4">Choose which notifications you want to receive and how.</p>
+                  
+                  <div className="mb-6">
+                    <h4 className="text-sm font-bold text-gray-900 mb-3">Channels</h4>
+                    <Row title="In-App notifications" desc="Real-time alerts in the dashboard">
+                      <Toggle on={userSettingsState.inAppNotifications} onChange={() => setUserSettingsState({ ...userSettingsState, inAppNotifications: !userSettingsState.inAppNotifications })} />
+                    </Row>
+                    <Row title="Email notifications" desc="Job updates, comments, and mentions">
+                      <Toggle on={userSettingsState.emailNotifications} onChange={() => setUserSettingsState({ ...userSettingsState, emailNotifications: !userSettingsState.emailNotifications })} />
+                    </Row>
+                    <Row title="Zoho Cliq notifications" desc="Direct messages in Zoho Cliq">
+                      <Toggle on={userSettingsState.zohoCliqNotifications} onChange={() => setUserSettingsState({ ...userSettingsState, zohoCliqNotifications: !userSettingsState.zohoCliqNotifications })} />
+                    </Row>
+                    <Row title="Push notifications" desc="Browser-level desktop notifications">
+                      <Toggle on={userSettingsState.pushNotifications} onChange={() => setUserSettingsState({ ...userSettingsState, pushNotifications: !userSettingsState.pushNotifications })} />
+                    </Row>
+                  </div>
+
+                  <div className="mb-6 pt-6 border-t border-gray-100">
+                    <h4 className="text-sm font-bold text-gray-900 mb-3">Schedule & Delivery</h4>
+                    <div className="grid sm:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Notification frequency</label>
+                        <select
+                          value={userSettingsState.notificationFrequency}
+                          onChange={(e) => setUserSettingsState({ ...userSettingsState, notificationFrequency: e.target.value })}
+                          className="w-full bg-white text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                        >
+                          <option value="instant">Instant</option>
+                          <option value="hourly">Hourly Digest</option>
+                          <option value="daily">Daily Digest</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Notification sound</label>
+                        <div className="flex items-center h-[46px]">
+                          <Toggle on={userSettingsState.soundEnabled} onChange={() => setUserSettingsState({ ...userSettingsState, soundEnabled: !userSettingsState.soundEnabled })} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Quiet hours start</label>
+                        <input
+                          type="time"
+                          value={userSettingsState.quietHoursStart}
+                          onChange={(e) => setUserSettingsState({ ...userSettingsState, quietHoursStart: e.target.value })}
+                          className="w-full bg-white text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Quiet hours end</label>
+                        <input
+                          type="time"
+                          value={userSettingsState.quietHoursEnd}
+                          onChange={(e) => setUserSettingsState({ ...userSettingsState, quietHoursEnd: e.target.value })}
+                          className="w-full bg-white text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-2 pt-6 border-t border-gray-100">
+                    <h4 className="text-sm font-bold text-gray-900 mb-3">Event Settings</h4>
+                    <Row title="Weekly digest" desc="Performance summary every Monday">
+                      <Toggle on={userSettingsState.weeklyDigest} onChange={() => setUserSettingsState({ ...userSettingsState, weeklyDigest: !userSettingsState.weeklyDigest })} />
+                    </Row>
+                    <Row title="@ mentions" desc="When someone tags you in chat">
+                      <Toggle on={userSettingsState.mentions} onChange={() => setUserSettingsState({ ...userSettingsState, mentions: !userSettingsState.mentions })} />
+                    </Row>
+                  </div>
                 </>
               )}
 
@@ -539,6 +614,53 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                       disabled={user?.role !== "super-admin"}
                     />
                   </Row>
+
+                  {user?.role === "super-admin" && (
+                    <div className="mt-6 pt-6 border-t border-gray-100">
+                      <h4 className="text-sm font-bold text-gray-900 mb-3">Global Notification Settings</h4>
+                      <div className="grid sm:grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Notification retention (days)</label>
+                          <input
+                            type="number"
+                            value={systemSettingsState.notifRetentionDays}
+                            onChange={(e) => setSystemSettingsState({ ...systemSettingsState, notifRetentionDays: parseInt(e.target.value) || 0 })}
+                            className="w-full bg-white text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Overdue escalation (days)</label>
+                          <input
+                            type="number"
+                            value={systemSettingsState.overdueEscalationDays}
+                            onChange={(e) => setSystemSettingsState({ ...systemSettingsState, overdueEscalationDays: parseInt(e.target.value) || 0 })}
+                            className="w-full bg-white text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Reminder schedule (days before due date)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 3,1,0"
+                          value={systemSettingsState.reminderSchedule}
+                          onChange={(e) => setSystemSettingsState({ ...systemSettingsState, reminderSchedule: e.target.value })}
+                          className="w-full bg-white text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                        />
+                        <p className="text-[10px] text-gray-400 mt-1">Comma-separated days before the job is due.</p>
+                      </div>
+
+                      <div className="mt-6">
+                        <button 
+                          onClick={() => setLocation("/super-admin/notification-templates")}
+                          className="flex items-center gap-2 text-sm font-bold text-primary hover:underline"
+                        >
+                          <Bell size={16} /> Manage Notification Templates
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid sm:grid-cols-3 gap-3 mt-6">
                     {[
                       { label: "Storage used", value: apiSystemMetrics?.storageUsed || "...", sub: `across ${apiSystemMetrics?.storageFiles?.toLocaleString() || "..."} uploaded files` },

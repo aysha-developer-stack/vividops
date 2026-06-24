@@ -190,12 +190,12 @@ router.post("/posts", requireRole("super-admin", "admin", "supervisor"), async (
     const activeUsers = await db.select({ id: users.id }).from(users).where(eq(users.status, "active"));
     for (const u of activeUsers) {
       if (u.id === user.id) continue;
-      await createNotification(
-        u.id,
-        `Daily Training Assignment: ${title}`,
-        `A new daily training assignment has been added: ${title}. Please complete it within 24 hours.`,
-        "training"
-      );
+      await createNotification({
+        userId: u.id,
+        title: `Daily Training Assignment: ${title}`,
+        description: `A new daily training assignment has been added: ${title}. Please complete it within 24 hours.`,
+        type: "training"
+      });
     }
 
     res.status(201).json(newPost);
@@ -325,12 +325,12 @@ router.post("/posts/:id/likes", requireAuth, async (req, res) => {
       // Notify Author on "Completion" (Like)
       const [postRow] = await db.select({ authorId: posts.authorId, title: posts.title }).from(posts).where(eq(posts.id, postId)).limit(1);
       if (postRow && postRow.authorId !== actor.id) {
-        await createNotification(
-          postRow.authorId,
-          `Training Completed: ${postRow.title}`,
-          `${actor.name} has completed/acknowledged the training: ${postRow.title}`,
-          "training"
-        );
+        await createNotification({
+          userId: postRow.authorId,
+          title: `Training Completed: ${postRow.title}`,
+          description: `${actor.name} has completed/acknowledged the training: ${postRow.title}`,
+          type: "training"
+        });
       }
     }
 

@@ -135,14 +135,14 @@ async function start(): Promise<void> {
             
             if (existing) continue;
 
-            await db.insert(notifications).values({
-              id: randomUUID(),
+            await createNotification({
               userId,
+              jobId: j.id,
               title,
               description,
               type: "overdue",
-              isRead: false,
-            } as any);
+              channel: "email" // Also send email for overdue
+            });
           }
         }
 
@@ -193,14 +193,14 @@ async function start(): Promise<void> {
             
             if (existing) continue;
 
-            await db.insert(notifications).values({
-              id: randomUUID(),
+            await createNotification({
               userId,
+              jobId: j.id,
               title,
               description,
               type: "updated",
-              isRead: false,
-            } as any);
+              channel: diffDays <= 1 ? "email" : "in_app" // Send email for 1 day and today reminders
+            });
           }
         }
       } catch (err) {
@@ -226,27 +226,23 @@ async function start(): Promise<void> {
           const summary = `Today's work time: ${hours}h ${minutes}m`;
 
           // Notify User
-          await db.insert(notifications).values({
-            id: randomUUID(),
+          await createNotification({
             userId,
             title: "Daily Time Summary",
             description: summary,
-            type: "timer",
-            isRead: false,
-          } as any);
+            type: "timer"
+          });
 
           // Notify Supervisor
           const [userRow] = await db.select({ name: users.name, supervisorId: sql<string>`(select supervisor_id from jobs where assignee_id = ${userId} limit 1)` }).from(users).where(eq(users.id, userId)).limit(1);
           const supervisorId = (userRow as any)?.supervisorId;
           if (supervisorId) {
-            await db.insert(notifications).values({
-              id: randomUUID(),
+            await createNotification({
               userId: supervisorId,
               title: `Daily Summary: ${userRow.name}`,
               description: `${userRow.name} worked for ${hours}h ${minutes}m today.`,
-              type: "timer",
-              isRead: false,
-            } as any);
+              type: "timer"
+            });
           }
         }
 
@@ -263,33 +259,58 @@ async function start(): Promise<void> {
             if (likedRows.length > 0) continue;
 
             // Notify User
-            await db.insert(notifications).values({
-              id: randomUUID(),
+            await createNotification({
               userId: u.id,
               title: `Training Not Completed: ${post.title}`,
               description: `You have not completed the training "${post.title}" assigned yesterday.`,
-              type: "training",
-              isRead: false,
-            } as any);
+              type: "training"
+            });
 
             // Notify Supervisor (approximate via first job found)
             const sup = await db.execute(sql`(select supervisor_id from jobs where assignee_id = ${u.id} limit 1)`);
             const supRows = (sup as any)?.rows ?? (Array.isArray(sup) ? sup : []);
             const supId = supRows[0]?.supervisor_id;
             if (supId) {
-              await db.insert(notifications).values({
-                id: randomUUID(),
+              await createNotification({
                 userId: supId,
                 title: `Training Incomplete: ${u.name}`,
                 description: `${u.name} has not completed the training: ${post.title}`,
-                type: "training",
-                isRead: false,
-              } as any);
+                type: "training"
+              });
             }
           }
         }
       } catch (err) {
         logger.error({ err }, "Daily summary failed");
+      }
+    };
+
+    const runReportNotifications = async (type: "weekly" | "monthly") => {
+      try {
+        const activeUsers = await db.select({ id: users.id }).from(users).where(eq(users.status, "active"));
+        const period = type === "weekly" ? "last week" : "last month";
+        
+        for (const u of activeUsers) {
+          await createNotification({
+            userId: u.id,
+            title: `${type.charAt(0).toUpperCase() + type.slice(1)} Report Available`,
+            description: `Your ${type} performance report for ${period} is now available in the Reports section.`,
+            type: "progress"
+          });
+        }
+
+        // Notify supervisors/admins about team reports
+        const managers = await db.select({ id: users.id }).from(users).where(inArray(users.role, ["super-admin", "admin", "supervisor"]));
+        for (const m of managers) {
+          await createNotification({
+            userId: m.id,
+            title: `Team ${type.charAt(0).toUpperCase() + type.slice(1)} Report Generated`,
+            description: `The team ${type} report for ${period} has been generated. View insights in the Reports dashboard.`,
+            type: "progress"
+          });
+        }
+      } catch (err) {
+        logger.error({ err }, `${type} report notification failed`);
       }
     };
 
@@ -310,6 +331,28 @@ async function start(): Promise<void> {
       }, next.getTime() - now.getTime());
     };
     scheduleDaily();
+
+    // Schedule weekly/monthly report notifications
+    const scheduleReports = () => {
+      const now = new Date();
+      
+      // Weekly: Monday 9:00 AM
+      const nextMonday = new Date(now);
+      nextMonday.setDate(now.getDate() + (1 + 7 - now.getDay()) % 7);
+      nextMonday.setHours(9, 0, 0, 0);
+      if (nextMonday.getTime() <= now.getTime()) nextMonday.setDate(nextMonday.getDate() + 7);
+      
+      setTimeout(() => {
+        void runReportNotifications("weekly");
+      }, nextMonday.getTime() - now.getTime());
+
+      // Monthly: 1st of month 9:00 AM
+      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 9, 0, 0, 0);
+      setTimeout(() => {
+        void runReportNotifications("monthly");
+      }, nextMonth.getTime() - now.getTime());
+    };
+    scheduleReports();
   } catch (err) {
     logger.error({ err }, "Failed to start overdue scheduler");
   }

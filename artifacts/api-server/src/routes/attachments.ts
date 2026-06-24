@@ -157,22 +157,24 @@ router.post(
       if (actor.role === "user") {
         // Completion file upload notification
         if (jobRow.supervisorId) {
-          await createNotification(
-            jobRow.supervisorId,
-            `Completion File Uploaded: ${jobRow.title}`,
-            `${actor.name} has uploaded a completion file for ${jobRow.title}: ${file.originalname}`,
-            "file"
-          );
+          await createNotification({
+            userId: jobRow.supervisorId,
+            jobId: jobId,
+            title: `Completion File Uploaded: ${jobRow.title}`,
+            description: `${actor.name} has uploaded a completion file for ${jobRow.title}: ${file.originalname}`,
+            type: "file"
+          });
         }
         // Notify Admins
         const admins = await db.select({ id: users.id }).from(users).where(inArray(users.role, ["admin", "super-admin"]));
         for (const admin of admins) {
-          await createNotification(
-            admin.id,
-            `Completion File Uploaded: ${jobRow.title}`,
-            `${actor.name} uploaded a file for ${jobRow.title}.`,
-            "file"
-          );
+          await createNotification({
+            userId: admin.id,
+            jobId: jobId,
+            title: `Completion File Uploaded: ${jobRow.title}`,
+            description: `${actor.name} uploaded a file for ${jobRow.title}.`,
+            type: "file"
+          });
         }
       } else {
         // Job file upload notification
@@ -185,21 +187,23 @@ router.post(
 
         for (const rid of recipients) {
           if (rid === actor.id) continue;
-          await createNotification(
-            rid,
-            `New Job File: ${jobRow.title}`,
-            `${actor.name} uploaded a file for ${jobRow.title}: ${file.originalname}`,
-            "file"
-          );
+          await createNotification({
+            userId: rid,
+            jobId: jobId,
+            title: `New Job File: ${jobRow.title}`,
+            description: `${actor.name} uploaded a file for ${jobRow.title}: ${file.originalname}`,
+            type: "file"
+          });
         }
 
         if (jobRow.supervisorId && actor.id !== jobRow.supervisorId) {
-          await createNotification(
-            jobRow.supervisorId,
-            `Job File Uploaded: ${jobRow.title}`,
-            `${actor.name} uploaded a file for ${jobRow.title}: ${file.originalname}`,
-            "file"
-          );
+          await createNotification({
+            userId: jobRow.supervisorId,
+            jobId: jobId,
+            title: `Job File Uploaded: ${jobRow.title}`,
+            description: `${actor.name} uploaded a file for ${jobRow.title}: ${file.originalname}`,
+            type: "file"
+          });
         }
       }
 

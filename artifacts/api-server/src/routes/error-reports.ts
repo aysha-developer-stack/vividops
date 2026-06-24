@@ -172,12 +172,13 @@ router.post("/error-reports", creatorOnly, async (req, res) => {
     .returning();
 
   // Notify User about New Error Report
-  await createNotification(
-    created.userId,
-    `New Error Report: ${created.title}`,
-    `An error report has been added for you: ${created.title}. Description: ${created.description}`,
-    "error"
-  );
+  await createNotification({
+    userId: created.userId,
+    jobId: created.jobId ?? undefined,
+    title: `New Error Report: ${created.title}`,
+    description: `An error report has been added for you: ${created.title}. Description: ${created.description}`,
+    type: "error"
+  });
 
   const userRow = await db
     .select({ id: users.id, name: users.name, role: users.role })
@@ -270,12 +271,13 @@ router.post("/error-reports/:id/acknowledge", requireAuth, async (req, res) => {
   }
 
   // Notify Creator (Supervisor/Admin)
-  await createNotification(
-    existing.createdById,
-    `Error Report Acknowledged: ${existing.title}`,
-    `${actor.name} has viewed the error report: ${existing.title}.`,
-    "error"
-  );
+  await createNotification({
+    userId: existing.createdById,
+    jobId: existing.jobId ?? undefined,
+    title: `Error Report Acknowledged: ${existing.title}`,
+    description: `${actor.name} has viewed the error report: ${existing.title}.`,
+    type: "error"
+  });
 
   return res.status(204).end();
 });

@@ -819,21 +819,23 @@ router.post("/jobs", creatorRole, async (req, res) => {
   if (full) {
     // Notify Assignee
     if (full.job.assigneeId) {
-      await createNotification(
-        full.job.assigneeId,
-        `New Job Assigned: ${full.job.title}`,
-        `You have been assigned to a new job: ${full.job.title} for ${full.job.client}. Due Date: ${full.job.dueDate ? new Date(full.job.dueDate).toLocaleDateString() : "Not set"}`,
-        "assigned"
-      );
+      await createNotification({
+        userId: full.job.assigneeId,
+        jobId: full.job.id,
+        title: `New Job Assigned: ${full.job.title}`,
+        description: `You have been assigned to a new job: ${full.job.title} for ${full.job.client}. Due Date: ${full.job.dueDate ? new Date(full.job.dueDate).toLocaleDateString() : "Not set"}`,
+        type: "assigned"
+      });
     }
     // Notify Supervisor
     if (full.job.supervisorId) {
-      await createNotification(
-        full.job.supervisorId,
-        `New Job for Supervision: ${full.job.title}`,
-        `A new job has been assigned to your team: ${full.job.title} for ${full.job.client}. Assigned to: ${full.assignee?.name ?? "Unassigned"}`,
-        "assigned"
-      );
+      await createNotification({
+        userId: full.job.supervisorId,
+        jobId: full.job.id,
+        title: `New Job for Supervision: ${full.job.title}`,
+        description: `A new job has been assigned to your team: ${full.job.title} for ${full.job.client}. Assigned to: ${full.assignee?.name ?? "Unassigned"}`,
+        type: "assigned"
+      });
     }
 
     void getOrCreateJobCliqChannel(full.job).catch((err) => {
@@ -947,50 +949,55 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     // Check for reassignment
     if (body.assigneeId !== undefined && body.assigneeId !== oldAssigneeId) {
       if (oldAssigneeId) {
-        await createNotification(
-          oldAssigneeId,
-          `Job Reassigned: ${after.job.title}`,
-          `You have been removed from the job: ${after.job.title}.`,
-          "updated"
-        );
+        await createNotification({
+          userId: oldAssigneeId,
+          jobId: after.job.id,
+          title: `Job Reassigned: ${after.job.title}`,
+          description: `You have been removed from the job: ${after.job.title}.`,
+          type: "updated"
+        });
       }
       if (body.assigneeId) {
-        await createNotification(
-          body.assigneeId,
-          `New Job Assigned: ${after.job.title}`,
-          `You have been assigned to a new job: ${after.job.title} for ${after.job.client}. Due Date: ${after.job.dueDate ? new Date(after.job.dueDate).toLocaleDateString() : "Not set"}`,
-          "assigned"
-        );
+        await createNotification({
+          userId: body.assigneeId,
+          jobId: after.job.id,
+          title: `New Job Assigned: ${after.job.title}`,
+          description: `You have been assigned to a new job: ${after.job.title} for ${after.job.client}. Due Date: ${after.job.dueDate ? new Date(after.job.dueDate).toLocaleDateString() : "Not set"}`,
+          type: "assigned"
+        });
       }
       // Notify Supervisor and Admin on reassignment
       if (after.job.supervisorId) {
-        await createNotification(
-          after.job.supervisorId,
-          `Job Reassigned: ${after.job.title}`,
-          `Assignee changed from ${full.assignee?.name ?? "None"} to ${after.assignee?.name ?? "None"}`,
-          "updated"
-        );
+        await createNotification({
+          userId: after.job.supervisorId,
+          jobId: after.job.id,
+          title: `Job Reassigned: ${after.job.title}`,
+          description: `Assignee changed from ${full.assignee?.name ?? "None"} to ${after.assignee?.name ?? "None"}`,
+          type: "updated"
+        });
       }
       const admins = await db.select({ id: users.id }).from(users).where(inArray(users.role, ["admin", "super-admin"]));
       for (const admin of admins) {
-        await createNotification(
-          admin.id,
-          `Job Reassigned: ${after.job.title}`,
-          `Assignee changed from ${full.assignee?.name ?? "None"} to ${after.assignee?.name ?? "None"}`,
-          "updated"
-        );
+        await createNotification({
+          userId: admin.id,
+          jobId: after.job.id,
+          title: `Job Reassigned: ${after.job.title}`,
+          description: `Assignee changed from ${full.assignee?.name ?? "None"} to ${after.assignee?.name ?? "None"}`,
+          type: "updated"
+        });
       }
     }
 
     // Check for supervisor change
     if (body.supervisorId !== undefined && body.supervisorId !== oldSupervisorId) {
       if (body.supervisorId) {
-        await createNotification(
-          body.supervisorId,
-          `New Job for Supervision: ${after.job.title}`,
-          `You are now supervising this job: ${after.job.title}.`,
-          "assigned"
-        );
+        await createNotification({
+          userId: body.supervisorId,
+          jobId: after.job.id,
+          title: `New Job for Supervision: ${after.job.title}`,
+          description: `You are now supervising this job: ${after.job.title}.`,
+          type: "assigned"
+        });
       }
     }
 
@@ -1089,21 +1096,23 @@ router.post("/zoho/cliq/messages/incoming", async (req, res) => {
       if (mentionedNames.length > 0) {
         const [target] = await db.select({ name: users.name }).from(users).where(eq(users.id, rid)).limit(1);
         if (target && mentionedNames.some(name => target.name.toLowerCase().includes(name))) {
-          await createNotification(
-            rid,
-            `Mentioned in ${full.job.title}`,
-            `${actor.name} mentioned you in a message for ${full.job.title}: ${normalizedText}`,
-            "job_message"
-          );
+          await createNotification({
+            userId: rid,
+            jobId: full.job.id,
+            title: `Mentioned in ${full.job.title}`,
+            description: `${actor.name} mentioned you in a message for ${full.job.title}: ${normalizedText}`,
+            type: "job_message"
+          });
         }
       } else {
         // Normal message notification
-        await createNotification(
-          rid,
-          `New Message: ${full.job.title}`,
-          `${actor.name}: ${normalizedText}`,
-          "job_message"
-        );
+        await createNotification({
+          userId: rid,
+          jobId: full.job.id,
+          title: `New Message: ${full.job.title}`,
+          description: `${actor.name}: ${normalizedText}`,
+          type: "job_message"
+        });
       }
     }
 

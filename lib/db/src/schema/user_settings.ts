@@ -11,11 +11,18 @@ export const userSettings = pgTable("user_settings", {
   userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
   
   // Notifications
+  inAppNotifications: boolean("in_app_notifications").notNull().default(true),
   emailNotifications: boolean("email_notifications").notNull().default(true),
   pushNotifications: boolean("push_notifications").notNull().default(true),
   smsNotifications: boolean("sms_notifications").notNull().default(false),
+  zohoCliqNotifications: boolean("zoho_cliq_notifications").notNull().default(true),
   weeklyDigest: boolean("weekly_digest").notNull().default(true),
   mentions: boolean("mentions").notNull().default(true),
+  
+  notificationFrequency: text("notification_frequency").notNull().default("instant"), // instant, hourly, daily
+  quietHoursStart: text("quiet_hours_start"), // HH:mm
+  quietHoursEnd: text("quiet_hours_end"), // HH:mm
+  soundEnabled: boolean("sound_enabled").notNull().default(true),
 
   // Security
   twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),

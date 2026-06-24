@@ -31,6 +31,7 @@ const SuperAdminRolesPermissions = lazy(() => import("./pages/admin/SuperAdminRo
 const MyJobs = lazy(() => import("@/pages/admin/MyJobs"));
 const JobDetail = lazy(() => import("@/pages/admin/JobDetail"));
 const Notifications = lazy<FC<RolePageProps>>(() => import("@/pages/admin/Notifications"));
+const NotificationTemplates = lazy(() => import("@/pages/admin/NotificationTemplates"));
 const SystemMonitoring = lazy<FC<RolePageProps>>(() => import("@/pages/admin/SystemMonitoring"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
@@ -121,6 +122,8 @@ function AppRouter() {
         <Route path="/super-admin/monitoring"><RequireSignedIn><SystemMonitoring role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/reports"><RequireSignedIn><Reports role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/settings"><RequireSignedIn><Settings role="super-admin" /></RequireSignedIn></Route>
+        <Route path="/super-admin/notification-templates"><RequireSignedIn><NotificationTemplates /></RequireSignedIn></Route>
+        <Route path="/super-admin/roles-permissions"><RequireSignedIn><SuperAdminRolesPermissions /></RequireSignedIn></Route>
         <Route path="/super-admin/training"><RequireSignedIn><Training role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/notifications"><RequireSignedIn><Notifications role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/communication"><RequireSignedIn><Communication role="super-admin" /></RequireSignedIn></Route>
