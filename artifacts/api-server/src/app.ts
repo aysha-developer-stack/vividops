@@ -103,9 +103,18 @@ app.use("/api", (req, res, next) => {
 
 app.use("/api", router);
 
-// Serve static frontend files in production
+// SEO routes - must be BEFORE express.static and SPA catch-all
 if (process.env.NODE_ENV === "production") {
   const frontendPath = path.resolve(__dirname, "../../jms-landing/dist/public");
+  
+  app.get("/robots.txt", (req, res) => {
+    res.sendFile(path.join(frontendPath, "robots.txt"));
+  });
+  
+  app.get("/sitemap.xml", (req, res) => {
+    res.sendFile(path.join(frontendPath, "sitemap.xml"));
+  });
+
   console.log(`Checking frontend path: ${frontendPath}`);
   app.use(express.static(frontendPath));
   
