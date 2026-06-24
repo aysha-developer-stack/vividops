@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
-import { desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
   db,
   errorReports,
   jobs,
+  jobMembers,
   users,
   type ErrorReportRow,
   type JobRow,
@@ -22,7 +23,7 @@ const ensureSchema = async () => {};
 function canViewJob(actor: UserRow, job: JobRow): boolean {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
   if (actor.role === "supervisor") {
-    return job.supervisorId === actor.id || job.createdById === actor.id;
+    return job.supervisorId === actor.id;
   }
   return job.assigneeId === actor.id;
 }
@@ -30,7 +31,7 @@ function canViewJob(actor: UserRow, job: JobRow): boolean {
 function canManageJob(actor: UserRow, job: JobRow): boolean {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
   if (actor.role === "supervisor") {
-    return job.supervisorId === actor.id || job.createdById === actor.id;
+    return job.supervisorId === actor.id;
   }
   return false;
 }
@@ -84,21 +85,15 @@ router.get("/error-reports", requireAuth, async (req, res) => {
     const managedJobs = await db
       .select({ id: jobs.id })
       .from(jobs)
-      .where(or(eq(jobs.supervisorId, actor.id), eq(jobs.createdById, actor.id)));
+      .where(eq(jobs.supervisorId, actor.id));
     const jobIds = managedJobs.map((j) => j.id);
 
     if (jobIds.length === 0) {
-      const rows = await q.where(eq(errorReports.createdById, actor.id));
-      res.json(rows.map(toPublic));
+      res.json([]);
       return;
     }
 
-    const rows = await q.where(
-      or(
-        inArray(errorReports.jobId, jobIds),
-        eq(errorReports.createdById, actor.id),
-      ),
-    );
+    const rows = await q.where(inArray(errorReports.jobId, jobIds));
     res.json(rows.map(toPublic));
     return;
   }
@@ -142,9 +137,18 @@ router.post("/error-reports", creatorOnly, async (req, res) => {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
-    if (actor.role === "supervisor" && j.assigneeId !== body.userId) {
-      res.status(400).json({ error: "userId must match the job assignee" });
-      return;
+    if (actor.role === "supervisor") {
+      const assignedIds = new Set<string>();
+      if (j.assigneeId) assignedIds.add(j.assigneeId);
+      const members = await db
+        .select({ userId: jobMembers.userId })
+        .from(jobMembers)
+        .where(eq(jobMembers.jobId, j.id));
+      for (const member of members) assignedIds.add(member.userId);
+      if (!assignedIds.has(body.userId)) {
+        res.status(400).json({ error: "userId must belong to the selected job" });
+        return;
+      }
     }
     jobRow = j;
   } else if (actor.role === "supervisor") {

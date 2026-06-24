@@ -18,13 +18,17 @@ const PRIORITY_COLOR: Record<string, string> = {
 
 export default function SupervisorDashboard() {
   const { user: currentUser } = useAuth();
-  const { data: dashboard, isLoading: statsLoading } = useGetDashboardSupervisor({
-    query: {
-      refetchInterval: 60000,
-    }
-  });
+  const { data: dashboard, isLoading: statsLoading } = useGetDashboardSupervisor();
   
   const showSkeleton = statsLoading && !dashboard;
+  const stats = (dashboard?.stats ?? {}) as {
+    activeJobs?: number;
+    teamSize?: number;
+    totalJobs?: number;
+    overdueJobs?: number;
+    pendingReworkTasks?: number;
+    activeTimers?: number;
+  };
 
   const assignedJobs = useMemo(() => (dashboard?.activeJobs ?? []).map(j => ({
     id: j.id,
@@ -38,6 +42,10 @@ export default function SupervisorDashboard() {
 
   const team = useMemo(() => dashboard?.team ?? [], [dashboard?.team]);
   const overdue = useMemo(() => dashboard?.overdue ?? [], [dashboard?.overdue]);
+  const avgProductivity = useMemo(() => {
+    if (team.length === 0) return 0;
+    return Math.round(team.reduce((sum: number, member: any) => sum + (member.efficiency ?? 0), 0) / team.length);
+  }, [team]);
 
   const assignedP = usePagination(assignedJobs, 5);
   const teamP = usePagination(team, 5);
@@ -59,7 +67,7 @@ export default function SupervisorDashboard() {
         <div className="relative z-10 flex items-start justify-between flex-wrap gap-4">
           <div>
             <h2 className="text-2xl md:text-3xl font-bold text-white">Hey {currentUser?.name?.split(" ")[0] ?? "Supervisor"}, ready to lead today? 💪</h2>
-            <p className="text-sm text-gray-400 mt-1">You have {dashboard?.stats.activeJobs ?? 0} active jobs and a team of {dashboard?.stats.teamSize ?? 0} reporting to you.</p>
+            <p className="text-sm text-gray-400 mt-1">You have {stats.activeJobs ?? 0} active jobs and a team of {stats.teamSize ?? 0} reporting to you.</p>
           </div>
           <Link href="/supervisor/jobs">
             <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-primary/30">
@@ -70,12 +78,14 @@ export default function SupervisorDashboard() {
       </motion.div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 xl:grid-cols-6 gap-4 mb-6">
         {[
-          { label: "My Active Jobs", value: dashboard?.stats.activeJobs ?? 0, icon: Briefcase, color: "from-primary to-sky-700", bg: "bg-primary/10", text: "text-primary" },
-          { label: "Team Size", value: dashboard?.stats.teamSize ?? 0, icon: Users, color: "from-emerald-500 to-emerald-700", bg: "bg-emerald-50", text: "text-emerald-600" },
-          { label: "Total Jobs", value: dashboard?.stats.totalJobs ?? 0, icon: CheckCircle2, color: "from-purple-500 to-purple-700", bg: "bg-purple-50", text: "text-purple-600" },
-          { label: "Overdue", value: dashboard?.stats.overdueJobs ?? 0, icon: AlertCircle, color: "from-red-500 to-rose-700", bg: "bg-red-50", text: "text-red-600" },
+          { label: "Active Jobs", value: stats.activeJobs ?? 0, icon: Briefcase, color: "from-primary to-sky-700", bg: "bg-primary/10", text: "text-primary" },
+          { label: "Team Members", value: stats.teamSize ?? 0, icon: Users, color: "from-emerald-500 to-emerald-700", bg: "bg-emerald-50", text: "text-emerald-600" },
+          { label: "Total Jobs", value: stats.totalJobs ?? 0, icon: CheckCircle2, color: "from-purple-500 to-purple-700", bg: "bg-purple-50", text: "text-purple-600" },
+          { label: "Overdue Jobs", value: stats.overdueJobs ?? 0, icon: AlertCircle, color: "from-red-500 to-rose-700", bg: "bg-red-50", text: "text-red-600" },
+          { label: "Pending Rework", value: stats.pendingReworkTasks ?? 0, icon: ArrowUpRight, color: "from-amber-500 to-orange-700", bg: "bg-amber-50", text: "text-amber-600" },
+          { label: "Active Timers", value: stats.activeTimers ?? 0, icon: Clock, color: "from-cyan-500 to-blue-700", bg: "bg-cyan-50", text: "text-cyan-600" },
         ].map((s, i) => {
           const Icon = s.icon;
           return (
@@ -166,6 +176,7 @@ export default function SupervisorDashboard() {
           >
             <div className="p-5 border-b border-gray-100">
               <h3 className="font-bold text-gray-900 flex items-center gap-2"><TrendingUp size={16} className="text-primary" /> My Team Today</h3>
+              <p className="text-xs text-gray-500 mt-1">Average productivity: {avgProductivity}% across supervised workers.</p>
             </div>
             <div className="p-3">
               {teamP.pageItems.map((t: any, i: number) => (

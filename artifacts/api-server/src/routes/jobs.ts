@@ -63,49 +63,51 @@ async function loadJob(id: string): Promise<JobWithRefs | null> {
   };
 }
 
-/**
- * Returns true if actor may view a job. Admins/super-admins see all.
- * Supervisors see jobs they supervise or created. Users see jobs assigned to them.
- */
-async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
-  if (actor.role === "super-admin" || actor.role === "admin") return true;
-  if (actor.role === "supervisor") {
-    if (job.supervisorId === actor.id || job.createdById === actor.id) return true;
-    await ensureJobMembersSchema();
-    const [row] = await db
-      .select({ id: jobMembers.id })
-      .from(jobMembers)
-      .where(and(eq(jobMembers.jobId, job.id), eq(jobMembers.userId, actor.id)))
-      .limit(1);
-    return !!row;
-  }
-  if (job.assigneeId === actor.id) return true;
+async function isAdditionalJobMember(jobId: string, userId: string): Promise<boolean> {
   await ensureJobMembersSchema();
   const [row] = await db
     .select({ id: jobMembers.id })
     .from(jobMembers)
-    .where(and(eq(jobMembers.jobId, job.id), eq(jobMembers.userId, actor.id)))
+    .where(and(eq(jobMembers.jobId, jobId), eq(jobMembers.userId, userId)))
     .limit(1);
   return !!row;
 }
 
-function canViewJobCommunication(actor: UserRow, job: JobRow): boolean {
-  if (actor.role === "super-admin" || actor.role === "admin" || actor.role === "supervisor") {
+/**
+ * Returns true if actor may view a job. Admins/super-admins see all.
+ * Supervisors only see jobs explicitly assigned to them. Users see jobs assigned
+ * to them directly or as additional workers.
+ */
+async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
+  if (actor.role === "super-admin" || actor.role === "admin") return true;
+  if (actor.role === "supervisor") {
+    return job.supervisorId === actor.id;
+  }
+  if (job.assigneeId === actor.id) return true;
+  return isAdditionalJobMember(job.id, actor.id);
+}
+
+async function canViewJobCommunication(actor: UserRow, job: JobRow): Promise<boolean> {
+  if (actor.role === "super-admin" || actor.role === "admin") {
     return true;
   }
-  return job.assigneeId === actor.id;
+  if (actor.role === "supervisor") {
+    return job.supervisorId === actor.id;
+  }
+  if (job.assigneeId === actor.id) return true;
+  return isAdditionalJobMember(job.id, actor.id);
 }
 
 /**
  * Mutation rules:
  *  - super-admin / admin: full edit on any job
- *  - supervisor: edit only jobs they supervise or created
+ *  - supervisor: edit only jobs they supervise
  *  - user (assignee): may only update progress + status (handled separately)
  */
 function canManageJob(actor: UserRow, job: JobRow): boolean {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
   if (actor.role === "supervisor") {
-    return job.supervisorId === actor.id || job.createdById === actor.id;
+    return job.supervisorId === actor.id;
   }
   return false;
 }
@@ -713,51 +715,28 @@ router.get("/jobs", requireAuth, async (req, res) => {
   if (actor.role === "super-admin" || actor.role === "admin") {
     rows = await q.orderBy(desc(jobs.createdAt));
   } else if (actor.role === "supervisor") {
-    if (forCommunication) {
-      rows = await q.orderBy(desc(jobs.createdAt));
-    } else {
-    await ensureJobMembersSchema();
-    const memberRows = await db
-      .select({ jobId: jobMembers.jobId })
-      .from(jobMembers)
-      .where(eq(jobMembers.userId, actor.id));
-    const memberJobIds = memberRows.map((r) => r.jobId);
-    rows =
-      memberJobIds.length === 0
-        ? await q
-            .where(
-              or(
-                eq(jobs.supervisorId, actor.id),
-                eq(jobs.createdById, actor.id),
-              ),
-            )
-            .orderBy(desc(jobs.createdAt))
-        : await q
-            .where(
-              or(
-                eq(jobs.supervisorId, actor.id),
-                eq(jobs.createdById, actor.id),
-                inArray(jobs.id, memberJobIds),
-              ),
-            )
-            .orderBy(desc(jobs.createdAt));
-    }
+    rows = await q.where(eq(jobs.supervisorId, actor.id)).orderBy(desc(jobs.createdAt));
   } else {
-    if (forCommunication) {
-      rows = await q.where(eq(jobs.assigneeId, actor.id)).orderBy(desc(jobs.createdAt));
-    } else {
     await ensureJobMembersSchema();
     const memberRows = await db
       .select({ jobId: jobMembers.jobId })
       .from(jobMembers)
       .where(eq(jobMembers.userId, actor.id));
     const memberJobIds = memberRows.map((r) => r.jobId);
-    rows =
-      memberJobIds.length === 0
-        ? await q.where(eq(jobs.assigneeId, actor.id)).orderBy(desc(jobs.createdAt))
-        : await q
-            .where(or(eq(jobs.assigneeId, actor.id), inArray(jobs.id, memberJobIds)))
-            .orderBy(desc(jobs.createdAt));
+    if (forCommunication) {
+      rows =
+        memberJobIds.length === 0
+          ? await q.where(eq(jobs.assigneeId, actor.id)).orderBy(desc(jobs.createdAt))
+          : await q
+              .where(or(eq(jobs.assigneeId, actor.id), inArray(jobs.id, memberJobIds)))
+              .orderBy(desc(jobs.createdAt));
+    } else {
+      rows =
+        memberJobIds.length === 0
+          ? await q.where(eq(jobs.assigneeId, actor.id)).orderBy(desc(jobs.createdAt))
+          : await q
+              .where(or(eq(jobs.assigneeId, actor.id), inArray(jobs.id, memberJobIds)))
+              .orderBy(desc(jobs.createdAt));
     }
   }
   return res.json(
@@ -787,7 +766,7 @@ router.post("/jobs", creatorRole, async (req, res) => {
   );
   if (refIds.length > 0) {
     const found = await db
-      .select({ id: users.id, status: users.status })
+      .select({ id: users.id, status: users.status, role: users.role })
       .from(users)
       .where(inArray(users.id, refIds));
     if (found.length !== new Set(refIds).size) {
@@ -797,6 +776,18 @@ router.post("/jobs", creatorRole, async (req, res) => {
       return res
         .status(400)
         .json({ error: "Cannot assign an inactive user" });
+    }
+    if (
+      body.assigneeId &&
+      found.some((u) => u.id === body.assigneeId && u.role !== "user")
+    ) {
+      return res.status(400).json({ error: "Assignee must be a worker" });
+    }
+    if (
+      body.supervisorId &&
+      found.some((u) => u.id === body.supervisorId && u.role !== "supervisor")
+    ) {
+      return res.status(400).json({ error: "Supervisor must have supervisor role" });
     }
   }
 
@@ -876,7 +867,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   );
   if (refIds.length > 0) {
     const found = await db
-      .select({ id: users.id, status: users.status })
+      .select({ id: users.id, status: users.status, role: users.role })
       .from(users)
       .where(inArray(users.id, refIds));
     if (found.length !== new Set(refIds).size) {
@@ -886,6 +877,18 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
       return res
         .status(400)
         .json({ error: "Cannot assign an inactive user" });
+    }
+    if (
+      body.assigneeId &&
+      found.some((u) => u.id === body.assigneeId && u.role !== "user")
+    ) {
+      return res.status(400).json({ error: "Assignee must be a worker" });
+    }
+    if (
+      body.supervisorId &&
+      found.some((u) => u.id === body.supervisorId && u.role !== "supervisor")
+    ) {
+      return res.status(400).json({ error: "Supervisor must have supervisor role" });
     }
   }
 
@@ -968,7 +971,7 @@ router.post("/zoho/cliq/messages/incoming", async (req, res) => {
       return res.status(404).json({ error: "Cliq sender not mapped to an app user" });
     }
 
-    if (!canViewJobCommunication(actor, full.job)) {
+    if (!(await canViewJobCommunication(actor, full.job))) {
       await markJobCliqStatus(full.job.id, "active", `Cliq sync sender ${message.senderEmail} is not assigned to the job`);
       return res.status(403).json({ error: "Cliq sender is not assigned to this job" });
     }
@@ -1005,7 +1008,7 @@ router.get("/jobs/:id/messages", requireAuth, async (req, res) => {
 
     const full = await loadJob(id);
     if (!full) return res.status(404).json({ error: "Job not found" });
-    if (!canViewJobCommunication(actor, full.job)) {
+    if (!(await canViewJobCommunication(actor, full.job))) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -1056,7 +1059,7 @@ router.post("/jobs/:id/messages", requireAuth, async (req, res) => {
 
     const full = await loadJob(id);
     if (!full) return res.status(404).json({ error: "Job not found" });
-    if (!canViewJobCommunication(actor, full.job)) {
+    if (!(await canViewJobCommunication(actor, full.job))) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -1087,7 +1090,7 @@ router.get("/jobs/:id/cliq/channel", requireAuth, async (req, res) => {
 
     const full = await loadJob(id);
     if (!full) return res.status(404).json({ error: "Job not found" });
-    if (!canViewJobCommunication(actor, full.job)) {
+    if (!(await canViewJobCommunication(actor, full.job))) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -1106,7 +1109,7 @@ router.post("/jobs/:id/cliq/join", requireAuth, async (req, res) => {
 
     const full = await loadJob(id);
     if (!full) return res.status(404).json({ error: "Job not found" });
-    if (!canViewJobCommunication(actor, full.job)) {
+    if (!(await canViewJobCommunication(actor, full.job))) {
       return res.status(403).json({ error: "Forbidden" });
     }
 

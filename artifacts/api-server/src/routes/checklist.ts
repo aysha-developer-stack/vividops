@@ -22,7 +22,7 @@ const ensureSchema = async () => {};
 async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
   if (actor.role === "supervisor") {
-    return job.supervisorId === actor.id || job.createdById === actor.id;
+    return job.supervisorId === actor.id;
   }
   if (job.assigneeId === actor.id) return true;
   const [row] = await db
@@ -36,7 +36,7 @@ async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
 function canManageJob(actor: UserRow, job: JobRow): boolean {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
   if (actor.role === "supervisor") {
-    return job.supervisorId === actor.id || job.createdById === actor.id;
+    return job.supervisorId === actor.id;
   }
   return false;
 }

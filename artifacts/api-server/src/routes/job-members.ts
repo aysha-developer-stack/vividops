@@ -27,7 +27,7 @@ const ensureSchema = async () => {
 async function canViewJob(actor: UserRow, job: typeof jobs.$inferSelect): Promise<boolean> {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
   if (actor.role === "supervisor") {
-    return job.supervisorId === actor.id || job.createdById === actor.id;
+    return job.supervisorId === actor.id;
   }
   if (job.assigneeId === actor.id) return true;
   const [row] = await db
@@ -41,7 +41,7 @@ async function canViewJob(actor: UserRow, job: typeof jobs.$inferSelect): Promis
 function canManageJob(actor: UserRow, job: typeof jobs.$inferSelect): boolean {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
   if (actor.role === "supervisor") {
-    return job.supervisorId === actor.id || job.createdById === actor.id;
+    return job.supervisorId === actor.id;
   }
   return false;
 }
@@ -92,6 +92,7 @@ router.post("/jobs/:jobId/members", requireAuth, async (req, res) => {
 
     const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!u) return res.status(400).json({ error: "User not found" });
+    if (u.role !== "user") return res.status(400).json({ error: "Only workers can be added to jobs" });
 
     await db
       .insert(jobMembers)

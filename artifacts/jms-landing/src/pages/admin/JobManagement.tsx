@@ -8,6 +8,7 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
+import { useAuth } from "@/lib/auth";
 import {
   useListJobs,
   useCreateJob,
@@ -84,6 +85,7 @@ interface FormState {
   client: string;
   address: string;
   description: string;
+  supervisorId: string;
   assigneeId: string;
   priority: UiPriority;
   due: string;
@@ -94,6 +96,7 @@ const EMPTY_FORM: FormState = {
   client: "",
   address: "",
   description: "",
+  supervisorId: "",
   assigneeId: "",
   priority: "Medium",
   due: "",
@@ -139,6 +142,7 @@ function parseJobMeta(raw: ApiJob["description"]): { descriptionText: string; ch
 export default function JobManagement(
   { role = "super-admin" as Role, initialTab }: { role?: Role; initialTab?: "assignments" | "rework" } = {},
 ) {
+  const { user: currentUser } = useAuth();
   const [, setLocation] = useLocation();
   const basePath =
     role === "supervisor" ? "/supervisor/jobs"
@@ -160,6 +164,14 @@ export default function JobManagement(
     [jobsQuery.data],
   );
   const assignables = assignablesQuery.data ?? [];
+  const supervisors = useMemo(
+    () => assignables.filter((u) => u.role === "supervisor"),
+    [assignables],
+  );
+  const workers = useMemo(
+    () => assignables.filter((u) => u.role === "user"),
+    [assignables],
+  );
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"All" | UiStatus>(initialTab === "rework" ? "Rework" : "All");
@@ -189,6 +201,9 @@ export default function JobManagement(
       client: j.client,
       address: raw?.address ?? "",
       description: meta.descriptionText,
+      supervisorId:
+        raw?.supervisor?.id ??
+        (role === "supervisor" ? (currentUser?.id ?? "") : ""),
       assigneeId: j.assigneeId ?? "",
       priority: j.priority,
       due: raw?.dueDate ? String(raw.dueDate).slice(0, 10) : "",
@@ -300,6 +315,12 @@ export default function JobManagement(
       setError("Title and client are required");
       return;
     }
+    const effectiveSupervisorId =
+      role === "supervisor" ? (currentUser?.id ?? "") : form.supervisorId;
+    if ((role === "super-admin" || role === "admin") && !effectiveSupervisorId) {
+      setError("Supervisor is required");
+      return;
+    }
     setError(null);
     const descriptionPayload =
       form.description.trim() || checklistTemplate.length > 0
@@ -314,6 +335,7 @@ export default function JobManagement(
       address: form.address || undefined,
       description: descriptionPayload,
       priority: PRIORITY_UI_TO_API[form.priority],
+      supervisorId: effectiveSupervisorId || null,
       assigneeId: form.assigneeId || null,
       dueDate: form.due ? new Date(form.due).toISOString() : null,
     };
@@ -471,7 +493,26 @@ export default function JobManagement(
             <motion.button
               whileHover={{ scale: 1.04, y: -1 }}
               whileTap={{ scale: 0.97 }}
-              onClick={() => { setForm({ ...EMPTY_FORM, assigneeId: assignables[0]?.id ?? "" }); setEditingId(null); setChecklistTemplate([]); setCheckText(""); setCheckDesc(""); setCheckNeedsFile(false); setJobFiles([]); setMemberIds([]); setUploadingFiles(false); setError(null); setModalOpen(true); }}
+              onClick={() => {
+                setForm({
+                  ...EMPTY_FORM,
+                  supervisorId:
+                    role === "supervisor"
+                      ? (currentUser?.id ?? "")
+                      : (supervisors[0]?.id ?? ""),
+                  assigneeId: workers[0]?.id ?? "",
+                });
+                setEditingId(null);
+                setChecklistTemplate([]);
+                setCheckText("");
+                setCheckDesc("");
+                setCheckNeedsFile(false);
+                setJobFiles([]);
+                setMemberIds([]);
+                setUploadingFiles(false);
+                setError(null);
+                setModalOpen(true);
+              }}
               className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30 transition-colors"
             >
               <Plus size={16} /> Create Job
@@ -647,21 +688,43 @@ export default function JobManagement(
                       <input value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} placeholder="e.g. Anderson Residence" className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                     </div>
                     <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Supervisor</label>
+                      {role === "supervisor" ? (
+                        <input
+                          value={currentUser?.name ?? "Current Supervisor"}
+                          readOnly
+                          className="w-full px-3 py-2.5 bg-gray-100 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 cursor-not-allowed"
+                        />
+                      ) : (
+                        <select
+                          value={form.supervisorId}
+                          onChange={(e) => setForm({ ...form, supervisorId: e.target.value })}
+                          className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                        >
+                          <option value="">Select supervisor</option>
+                          {supervisors.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assignee</label>
                       <select value={form.assigneeId} onChange={(e) => setForm({ ...form, assigneeId: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors">
                         <option value="">Unassigned</option>
-                        {assignables.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                        {workers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </select>
                     </div>
+                    <div />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Additional Workers</label>
                     <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-2 max-h-40 overflow-y-auto">
-                      {assignables.filter((u) => u.role === "user").length === 0 ? (
+                      {workers.length === 0 ? (
                         <div className="px-2 py-4 text-xs text-gray-400 text-center">No workers available</div>
                       ) : (
                         <div className="space-y-1">
-                          {assignables.filter((u) => u.role === "user").map((u) => (
+                          {workers.map((u) => (
                             <label key={u.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white cursor-pointer">
                               <input
                                 type="checkbox"

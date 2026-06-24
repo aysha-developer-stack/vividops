@@ -65,6 +65,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const [errorsLoading, setErrorsLoading] = useState(false);
   const [selectedError, setSelectedError] = useState<(typeof errorReports)[number] | null>(null);
   const [updatingError, setUpdatingError] = useState(false);
+  const [jobMemberships, setJobMemberships] = useState<Record<string, string[]>>({});
 
   const isUser = role === "user";
   const jobBase =
@@ -105,6 +106,40 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     })();
     return () => { cancelled = true; };
   }, [role]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const jobs = apiJobs ?? [];
+    if (jobs.length === 0) {
+      setJobMemberships({});
+      return () => { cancelled = true; };
+    }
+
+    (async () => {
+      try {
+        const entries = await Promise.all(
+          jobs.map(async (job) => {
+            const res = await fetch(`/api/jobs/${job.id}/members`, { credentials: "include" });
+            if (!res.ok) return [job.id, []] as const;
+            const data = (await res.json()) as Array<{ id: string; role: string }>;
+            const userIds = Array.isArray(data)
+              ? data
+                  .filter((member) => member?.role === "user" && typeof member.id === "string")
+                  .map((member) => member.id)
+              : [];
+            return [job.id, userIds] as const;
+          }),
+        );
+        if (!cancelled) {
+          setJobMemberships(Object.fromEntries(entries));
+        }
+      } catch {
+        if (!cancelled) setJobMemberships({});
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [apiJobs]);
 
   const updateErrorStatus = async (id: string, status: "open" | "resolved") => {
     setUpdatingError(true);
@@ -158,7 +193,9 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
 
   const userPerformance: UserPerf[] = useMemo(() => {
     return (apiUsers ?? []).map((u: User) => {
-      const userJobsAll = (apiJobs ?? []).filter(j => j.assignee?.id === u.id);
+      const userJobsAll = (apiJobs ?? []).filter(
+        (j) => j.assignee?.id === u.id || (jobMemberships[j.id] ?? []).includes(u.id),
+      );
 
       const isJobInPeriod = (j: any) => {
         if (!periodStartMs) return true;
@@ -246,7 +283,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
         overdue,
       };
     });
-  }, [apiUsers, apiJobs, apiTimeLogs, periodStartMs]);
+  }, [apiUsers, apiJobs, apiTimeLogs, periodStartMs, jobMemberships]);
 
   const userNameById = useMemo(() => {
     const map: Record<string, string> = {};

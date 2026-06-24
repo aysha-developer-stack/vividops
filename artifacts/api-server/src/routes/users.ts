@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Response } from "express";
-import { eq, inArray, or } from "drizzle-orm";
-import { db, sessions, users, jobs, type UserRow } from "@workspace/db";
+import { eq, inArray } from "drizzle-orm";
+import { db, sessions, users, jobs, jobMembers, type UserRow } from "@workspace/db";
 import { CreateUserBody, UpdateUserBody } from "@workspace/api-zod";
 import { generateTempPassword, hashPassword } from "../lib/auth";
 import { publicUser } from "../lib/serialize";
@@ -82,15 +82,25 @@ router.get("/users", listUsersAllowed, async (req, res) => {
   if (actor.role === "admin") {
     visible = rows.filter((u) => u.role === "supervisor" || u.role === "user");
   } else if (actor.role === "supervisor") {
-    const relatedJobs = await db
-      .select({ assigneeId: jobs.assigneeId })
+    const supervisedJobs = await db
+      .select({ id: jobs.id, assigneeId: jobs.assigneeId })
       .from(jobs)
-      .where(or(eq(jobs.supervisorId, actor.id), eq(jobs.createdById, actor.id)));
+      .where(eq(jobs.supervisorId, actor.id));
+    const supervisedJobIds = supervisedJobs.map((job) => job.id);
     const visibleIds = new Set(
-      relatedJobs
+      supervisedJobs
         .map((job) => job.assigneeId)
         .filter((id): id is string => typeof id === "string" && id.length > 0),
     );
+    if (supervisedJobIds.length > 0) {
+      const members = await db
+        .select({ userId: jobMembers.userId })
+        .from(jobMembers)
+        .where(inArray(jobMembers.jobId, supervisedJobIds));
+      for (const member of members) {
+        if (member.userId) visibleIds.add(member.userId);
+      }
+    }
     if (visibleIds.size === 0) {
       visible = [];
     } else {

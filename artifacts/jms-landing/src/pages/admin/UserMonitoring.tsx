@@ -139,6 +139,7 @@ export default function UserMonitoring(
   const [tab, setTab] = useState<"performance" | "errors">(initialTab);
   const [errorModal, setErrorModal] = useState(false);
   const [errors, setErrors] = useState<ApiErrorReport[]>([]);
+  const [jobMemberships, setJobMemberships] = useState<Record<string, string[]>>({});
   const [selectedError, setSelectedError] = useState<ApiErrorReport | null>(null);
   const [updatingError, setUpdatingError] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -168,6 +169,40 @@ export default function UserMonitoring(
     })();
     return () => { cancelled = true; };
   }, [tab]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const jobs = apiJobs ?? [];
+    if (jobs.length === 0) {
+      setJobMemberships({});
+      return () => { cancelled = true; };
+    }
+
+    (async () => {
+      try {
+        const entries = await Promise.all(
+          jobs.map(async (job) => {
+            const res = await fetch(`/api/jobs/${job.id}/members`, { credentials: "include" });
+            if (!res.ok) return [job.id, []] as const;
+            const data = (await res.json()) as Array<{ id: string; role: string }>;
+            const userIds = Array.isArray(data)
+              ? data
+                  .filter((member) => member?.role === "user" && typeof member.id === "string")
+                  .map((member) => member.id)
+              : [];
+            return [job.id, userIds] as const;
+          }),
+        );
+        if (!cancelled) {
+          setJobMemberships(Object.fromEntries(entries));
+        }
+      } catch {
+        if (!cancelled) setJobMemberships({});
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [apiJobs]);
 
   const jobBase =
     role === "super-admin" ? "/super-admin/jobs"
@@ -204,7 +239,9 @@ export default function UserMonitoring(
     return (apiUsers ?? [])
       .filter((u: User) => u.role === "user")
       .map((u: User) => {
-        const userJobs = (apiJobs ?? []).filter((job) => job.assignee?.id === u.id);
+        const userJobs = (apiJobs ?? []).filter((job) =>
+          job.assignee?.id === u.id || (jobMemberships[job.id] ?? []).includes(u.id),
+        );
         const userLogs = (apiTimeLogs ?? []).filter((log) => log.userId === u.id);
         const userErrors = errors.filter((error) => error.userId === u.id && error.status !== "resolved");
 
@@ -248,7 +285,7 @@ export default function UserMonitoring(
           lastJob: getLatestJobNumber(userJobs),
         };
       });
-  }, [apiJobs, apiTimeLogs, apiUsers, errors]);
+  }, [apiJobs, apiTimeLogs, apiUsers, errors, jobMemberships]);
 
   const filtered = workers.filter((w: Worker) => w.name.toLowerCase().includes(search.toLowerCase()));
   const workersP = usePagination(filtered, 6);

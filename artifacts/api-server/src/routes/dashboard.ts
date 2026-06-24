@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, users, jobs, timeLogs, sql, desc, eq, and, or, lt, ne, inArray } from "@workspace/db";
+import { db, users, jobs, jobMembers, timeLogs, sql, desc, eq, and, lt, ne, inArray } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { requireAuth } from "../middlewares/requireAuth";
 
@@ -12,11 +12,34 @@ router.get("/dashboard/stats", requireAuth, async (req, res) => {
     // For supervisor, only show stats for their jobs
     const isSupervisor = actor.role === "supervisor";
     const jobFilter = isSupervisor 
-      ? or(eq(jobs.supervisorId, actor.id), eq(jobs.createdById, actor.id))
+      ? eq(jobs.supervisorId, actor.id)
       : undefined;
 
+    const totalUsersPromise = isSupervisor
+      ? (async () => {
+          const scopedJobs = await db
+            .select({ id: jobs.id, assigneeId: jobs.assigneeId })
+            .from(jobs)
+            .where(eq(jobs.supervisorId, actor.id));
+          const jobIds = scopedJobs.map((job) => job.id);
+          const visibleIds = new Set(
+            scopedJobs
+              .map((job) => job.assigneeId)
+              .filter((id): id is string => typeof id === "string" && id.length > 0),
+          );
+          if (jobIds.length > 0) {
+            const members = await db
+              .select({ userId: jobMembers.userId })
+              .from(jobMembers)
+              .where(inArray(jobMembers.jobId, jobIds));
+            for (const member of members) visibleIds.add(member.userId);
+          }
+          return [{ count: visibleIds.size }];
+        })()
+      : db.select({ count: sql<number>`count(*)` }).from(users);
+
     const [totalUsers, jobCounts, recentJobs] = await Promise.all([
-      db.select({ count: sql<number>`count(*)` }).from(users),
+      totalUsersPromise,
       db
         .select({
           totalJobs: sql<number>`count(*)`,
@@ -58,53 +81,85 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
+    const supervisedJobs = await db
+      .select()
+      .from(jobs)
+      .where(eq(jobs.supervisorId, supervisorId));
+    const supervisedJobIds = supervisedJobs.map((job) => job.id);
+
     // 1. Get stats
     const [statsResult] = await db
       .select({
         totalJobs: sql<number>`count(*)`,
         activeJobs: sql<number>`count(*) filter (where ${jobs.status} = 'in_progress')`,
         overdueJobs: sql<number>`count(*) filter (where ${jobs.status} <> 'completed' and ${jobs.dueDate} < now())`,
+        pendingReworkTasks: sql<number>`count(*) filter (where ${jobs.status} = 'rework')`,
       })
       .from(jobs)
-      .where(or(eq(jobs.supervisorId, supervisorId), eq(jobs.createdById, supervisorId)));
+      .where(eq(jobs.supervisorId, supervisorId));
 
-    // 2. Get team members (workers on supervisor's jobs)
-    const teamMembersJobs = await db
-      .select({ assigneeId: jobs.assigneeId })
-      .from(jobs)
-      .where(or(eq(jobs.supervisorId, supervisorId), eq(jobs.createdById, supervisorId)));
-    
-    // Fallback: also include any user who has this supervisor as their primary supervisor
-    // (Assuming there might be a supervisorId on the users table, though not explicitly in current schema view)
-    // For now, we'll stick to jobs-based team discovery but ensure it's robust.
-    
-    const teamIds = [...new Set(teamMembersJobs.map(j => j.assigneeId).filter((id): id is string => !!id))];
+    // 2. Get team members (main assignees + additional workers on supervised jobs)
+    const memberRows = supervisedJobIds.length > 0
+      ? await db
+          .select({ jobId: jobMembers.jobId, userId: jobMembers.userId })
+          .from(jobMembers)
+          .where(inArray(jobMembers.jobId, supervisedJobIds))
+      : [];
+
+    const membershipByUserId = new Map<string, Set<string>>();
+    for (const member of memberRows) {
+      const current = membershipByUserId.get(member.userId) ?? new Set<string>();
+      current.add(member.jobId);
+      membershipByUserId.set(member.userId, current);
+    }
+
+    const teamIds = [
+      ...new Set(
+        [
+          ...supervisedJobs
+            .map((job) => job.assigneeId)
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
+          ...memberRows.map((row) => row.userId),
+        ],
+      ),
+    ];
     
     let teamData: any[] = [];
     if (teamIds.length > 0) {
-      const teamUsers = await db.select().from(users).where(inArray(users.id, teamIds));
+      const teamUsers = await db
+        .select()
+        .from(users)
+        .where(inArray(users.id, teamIds));
       const todayLogs = await db.select()
         .from(timeLogs)
-        .where(and(inArray(timeLogs.userId, teamIds), sql`${timeLogs.createdAt} >= ${todayStart}`));
-      const todayJobs = await db.select()
-        .from(jobs)
-        .where(and(inArray(jobs.assigneeId, teamIds), sql`${jobs.createdAt} >= ${todayStart}`));
+        .where(
+          and(
+            inArray(timeLogs.userId, teamIds),
+            supervisedJobIds.length > 0 ? inArray(timeLogs.jobId, supervisedJobIds) : sql`false`,
+            sql`${timeLogs.createdAt} >= ${todayStart}`,
+          ),
+        );
 
       teamData = teamUsers.map(u => {
         const uLogs = todayLogs.filter(l => l.userId === u.id);
-        const uJobs = todayJobs.filter(j => j.assigneeId === u.id);
+        const uJobs = supervisedJobs.filter(
+          (job) =>
+            job.assigneeId === u.id ||
+            membershipByUserId.get(u.id)?.has(job.id) === true,
+        );
         const hours = uLogs.reduce((sum, l) => sum + (l.duration / 3600), 0);
-        
-        // Calculate efficiency/performance score (simplified version of the one in UserMonitoring)
-        const allUserJobs = teamMembersJobs.filter(j => j.assigneeId === u.id);
-        const completed = allUserJobs.length; // Simplified for dashboard
-        const efficiency = allUserJobs.length > 0 ? 85 : 0; // Placeholder or simplified logic
+        const completedCount = uJobs.filter((job) => job.status === "completed").length;
+        const reworkCount = uJobs.filter((job) => job.status === "rework").length;
+        const efficiency =
+          uJobs.length > 0
+            ? Math.max(0, Math.min(100, Math.round((completedCount / uJobs.length) * 100 - reworkCount * 10)))
+            : 0;
 
         return {
           id: u.id,
           name: u.name,
           avatar: u.name.split(" ").map(s => s[0]).join("").toUpperCase(),
-          jobsToday: uJobs.length,
+          jobsToday: uJobs.filter((job) => job.status === "in_progress" || job.status === "rework").length,
           hoursToday: Number(hours.toFixed(1)),
           efficiency: efficiency,
           status: u.status === "active" ? "online" : "offline"
@@ -116,7 +171,7 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
     const activeJobsList = await db.select()
       .from(jobs)
       .where(and(
-        or(eq(jobs.supervisorId, supervisorId), eq(jobs.createdById, supervisorId)),
+        eq(jobs.supervisorId, supervisorId),
         eq(jobs.status, "in_progress")
       ))
       .orderBy(desc(jobs.updatedAt))
@@ -131,7 +186,7 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
     })
       .from(jobs)
       .where(and(
-        or(eq(jobs.supervisorId, supervisorId), eq(jobs.createdById, supervisorId)),
+        eq(jobs.supervisorId, supervisorId),
         ne(jobs.status, "completed"),
         lt(jobs.dueDate, now)
       ))
@@ -155,12 +210,20 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
       };
     }));
 
+    const activeTimers = new Set(
+      teamData
+        .filter((member) => member.hoursToday > 0 && member.status === "online")
+        .map((member) => member.id),
+    ).size;
+
     return res.json({
       stats: {
         activeJobs: Number(statsResult.activeJobs),
         teamSize: teamIds.length,
         totalJobs: Number(statsResult.totalJobs),
         overdueJobs: Number(statsResult.overdueJobs),
+        pendingReworkTasks: Number(statsResult.pendingReworkTasks),
+        activeTimers,
       },
       activeJobs: activeJobsList,
       team: teamData,
