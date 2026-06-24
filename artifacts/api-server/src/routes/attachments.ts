@@ -176,14 +176,23 @@ router.post(
         }
       } else {
         // Job file upload notification
-        if (jobRow.assigneeId) {
+        const recipients = new Set<string>();
+        if (jobRow.assigneeId) recipients.add(jobRow.assigneeId);
+        
+        // Add additional members
+        const members = await db.select({ userId: jobMembers.userId }).from(jobMembers).where(eq(jobMembers.jobId, jobRow.id));
+        for (const m of members) recipients.add(m.userId);
+
+        for (const rid of recipients) {
+          if (rid === actor.id) continue;
           await createNotification(
-            jobRow.assigneeId,
+            rid,
             `New Job File: ${jobRow.title}`,
             `${actor.name} uploaded a file for ${jobRow.title}: ${file.originalname}`,
             "file"
           );
         }
+
         if (jobRow.supervisorId && actor.id !== jobRow.supervisorId) {
           await createNotification(
             jobRow.supervisorId,

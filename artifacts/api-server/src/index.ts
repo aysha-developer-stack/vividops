@@ -213,6 +213,7 @@ async function start(): Promise<void> {
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
+        // 1. Time Summary
         const logs = await db.select().from(timeLogs).where(gte(timeLogs.createdAt, todayStart));
         const userTimes = new Map<string, number>();
         for (const l of logs) {
@@ -246,6 +247,44 @@ async function start(): Promise<void> {
               type: "timer",
               isRead: false,
             } as any);
+          }
+        }
+
+        // 2. Training Not Completed Reminder (After 24 hours)
+        const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+        const yesterdayEnd = new Date(todayStart.getTime());
+        const recentPosts = await db.select().from(posts).where(and(gte(posts.createdAt, yesterdayStart), lt(posts.createdAt, yesterdayEnd)));
+        
+        for (const post of recentPosts) {
+          const allActive = await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.status, "active"));
+          for (const u of allActive) {
+            const [liked] = await db.execute(sql`SELECT 1 FROM post_likes WHERE post_id = ${post.id} AND user_id = ${u.id} LIMIT 1`);
+            const likedRows = (liked as any)?.rows ?? liked;
+            if (Array.isArray(likedRows) && likedRows.length > 0) continue;
+
+            // Notify User
+            await db.insert(notifications).values({
+              id: randomUUID(),
+              userId: u.id,
+              title: `Training Not Completed: ${post.title}`,
+              description: `You have not completed the training "${post.title}" assigned yesterday.`,
+              type: "training",
+              isRead: false,
+            } as any);
+
+            // Notify Supervisor (approximate via first job found)
+            const [sup] = await db.execute(sql`(select supervisor_id from jobs where assignee_id = ${u.id} limit 1)`);
+            const supId = (sup as any)?.rows?.[0]?.supervisor_id;
+            if (supId) {
+              await db.insert(notifications).values({
+                id: randomUUID(),
+                userId: supId,
+                title: `Training Incomplete: ${u.name}`,
+                description: `${u.name} has not completed the training: ${post.title}`,
+                type: "training",
+                isRead: false,
+              } as any);
+            }
           }
         }
       } catch (err) {

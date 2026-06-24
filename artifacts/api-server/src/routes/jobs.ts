@@ -42,7 +42,17 @@ function selectJoined() {
         id: assigneeAlias.id,
         name: assigneeAlias.name,
         role: assigneeAlias.role,
-      },
+        // Notify Admin on reassignment
+      const admins = await db.select({ id: users.id }).from(users).where(inArray(users.role, ["admin", "super-admin"]));
+      for (const admin of admins) {
+        await createNotification(
+          admin.id,
+          `Job Reassigned: ${after.job.title}`,
+          `Assignee changed from ${full.assignee?.name ?? "None"} to ${after.assignee?.name ?? "None"}`,
+          "updated"
+        );
+      }
+    },
       supervisor: {
         id: supervisorAlias.id,
         name: supervisorAlias.name,
@@ -958,7 +968,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
         await createNotification(
           body.assigneeId,
           `New Job Assigned: ${after.job.title}`,
-          `You have been assigned to a new job: ${after.job.title} for ${after.job.client}.`,
+          `You have been assigned to a new job: ${after.job.title} for ${after.job.client}. Due Date: ${after.job.dueDate ? new Date(after.job.dueDate).toLocaleDateString() : "Not set"}`,
           "assigned"
         );
       }
@@ -966,6 +976,15 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
       if (after.job.supervisorId) {
         await createNotification(
           after.job.supervisorId,
+          `Job Reassigned: ${after.job.title}`,
+          `Assignee changed from ${full.assignee?.name ?? "None"} to ${after.assignee?.name ?? "None"}`,
+          "updated"
+        );
+      }
+      const admins = await db.select({ id: users.id }).from(users).where(inArray(users.role, ["admin", "super-admin"]));
+      for (const admin of admins) {
+        await createNotification(
+          admin.id,
           `Job Reassigned: ${after.job.title}`,
           `Assignee changed from ${full.assignee?.name ?? "None"} to ${after.assignee?.name ?? "None"}`,
           "updated"

@@ -192,8 +192,8 @@ router.post("/posts", requireRole("super-admin", "admin", "supervisor"), async (
       if (u.id === user.id) continue;
       await createNotification(
         u.id,
-        `New Training Assignment: ${title}`,
-        `A new training update has been posted: ${title}. Category: ${category}`,
+        `Daily Training Assignment: ${title}`,
+        `A new daily training assignment has been added: ${title}. Please complete it within 24 hours.`,
         "training"
       );
     }
