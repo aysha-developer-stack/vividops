@@ -194,7 +194,7 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
       {/* Search */}
       <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 max-w-md mb-6 focus-within:border-primary transition-colors">
         <Search size={16} className="text-gray-400" />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search supervisors…" className="bg-transparent text-gray-900 placeholder:text-gray-400 text-sm flex-1 focus:outline-none" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search supervisors…" className="bg-transparent !text-gray-900 !placeholder:text-gray-400 text-sm flex-1 focus:outline-none" />
       </div>
 
       {/* Supervisor cards */}

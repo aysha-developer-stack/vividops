@@ -263,7 +263,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search users by name or email…"
-                className="bg-transparent text-sm flex-1 focus:outline-none"
+                className="bg-transparent !text-[#111827] !placeholder:text-gray-400 text-sm flex-1 focus:outline-none"
               />
             </div>
             <div className="flex gap-1 bg-gray-100 p-1 rounded-xl flex-wrap">
@@ -421,11 +421,11 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                 )}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1.5">Full Name</label>
-                  <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="John Doe" className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                  <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="John Doe" className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-[#111827] !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1.5">Email Address</label>
-                  <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="john@company.com" className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                  <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="john@company.com" className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-[#111827] !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assign Role</label>
