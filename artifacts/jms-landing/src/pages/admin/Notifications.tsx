@@ -13,9 +13,9 @@ import {
 import type { Role } from "@/lib/roles";
 import { ROLES } from "@/lib/roles";
 import {
-  getGetNotificationsQueryKey,
   useGetNotifications,
   useMarkNotificationRead,
+  getGetNotificationsQueryKey,
   type Notification,
 } from "@workspace/api-client-react";
 
@@ -23,6 +23,7 @@ const FILTERS: Array<{ id: "all" | "unread" | NotifType; label: string }> = [
   { id: "all", label: "All" },
   { id: "unread", label: "Unread" },
   { id: "assigned", label: "Assignments" },
+  { id: "job_message", label: "Messages" },
   { id: "updated", label: "Updates" },
   { id: "overdue", label: "Overdue" },
   { id: "timer", label: "Timer" },
@@ -31,7 +32,16 @@ const FILTERS: Array<{ id: "all" | "unread" | NotifType; label: string }> = [
 
 export default function Notifications({ role = "super-admin" }: { role?: Role }) {
   const qc = useQueryClient();
-  const { data: apiNotifications, isLoading } = useGetNotifications();
+  const { data: apiNotifications, isLoading } = useGetNotifications({
+    query: {
+      queryKey: getGetNotificationsQueryKey(),
+      staleTime: 0,
+      refetchOnMount: true,
+      refetchOnWindowFocus: true,
+      refetchInterval: 15000,
+      refetchIntervalInBackground: true,
+    },
+  });
   const markReadMutation = useMarkNotificationRead();
   const [filter, setFilter] = useState<"all" | "unread" | NotifType>("all");
   const config = ROLES[role];

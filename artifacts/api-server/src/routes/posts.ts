@@ -5,6 +5,7 @@ import { db, posts, users, sql } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { requireAuth, requireRole } from "../middlewares/requireAuth";
 import { supabase, upload, uploadToSupabase } from "../lib/storage";
+import { createNotification } from "../lib/notifications";
 
 const router = Router();
 
@@ -185,6 +186,18 @@ router.post("/posts", requireRole("super-admin", "admin", "supervisor"), async (
       attachments: "[]",
     }).returning();
 
+    // Notify all active users about new training/update
+    const activeUsers = await db.select({ id: users.id }).from(users).where(eq(users.status, "active"));
+    for (const u of activeUsers) {
+      if (u.id === user.id) continue;
+      await createNotification(
+        u.id,
+        `New Training Assignment: ${title}`,
+        `A new training update has been posted: ${title}. Category: ${category}`,
+        "training"
+      );
+    }
+
     res.status(201).json(newPost);
   } catch (err) {
     logger.error({ err }, "Failed to create post");
@@ -308,6 +321,17 @@ router.post("/posts/:id/likes", requireAuth, async (req, res) => {
       await db.execute(sql`DELETE FROM post_likes WHERE post_id = ${postId} AND user_id = ${actor.id};`);
     } else {
       await db.execute(sql`INSERT INTO post_likes (post_id, user_id) VALUES (${postId}, ${actor.id}) ON CONFLICT DO NOTHING;`);
+
+      // Notify Author on "Completion" (Like)
+      const [postRow] = await db.select({ authorId: posts.authorId, title: posts.title }).from(posts).where(eq(posts.id, postId)).limit(1);
+      if (postRow && postRow.authorId !== actor.id) {
+        await createNotification(
+          postRow.authorId,
+          `Training Completed: ${postRow.title}`,
+          `${actor.name} has completed/acknowledged the training: ${postRow.title}`,
+          "training"
+        );
+      }
     }
 
     const countRes = await db.execute(sql`SELECT count(*)::int AS count FROM post_likes WHERE post_id = ${postId};`);

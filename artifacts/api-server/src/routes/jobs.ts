@@ -2,10 +2,17 @@ import { Router, type IRouter } from "express";
 import { and, eq, or, desc, inArray, sql as dsql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, jobs, users, jobMembers, type JobRow, type UserRow, sql } from "@workspace/db";
+import { createNotification } from "../lib/notifications";
 import { randomUUID } from "node:crypto";
 import { CreateJobBody, UpdateJobBody } from "@workspace/api-zod";
 import { publicJob } from "../lib/serialize";
-import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import {
+  requireAuth,
+  requireRole,
+  canViewJob,
+  canManageJob,
+  canViewJobCommunication,
+} from "../lib/auth";
 import { logger } from "../lib/logger";
 import { getZohoCliqAccessToken } from "../lib/zoho";
 import { ensureLegacySupervisorAssignments } from "../lib/schema-init";
@@ -816,6 +823,25 @@ router.post("/jobs", creatorRole, async (req, res) => {
 
   const full = await loadJob(created.id);
   if (full) {
+    // Notify Assignee
+    if (full.job.assigneeId) {
+      await createNotification(
+        full.job.assigneeId,
+        `New Job Assigned: ${full.job.title}`,
+        `You have been assigned to a new job: ${full.job.title} for ${full.job.client}. Due Date: ${full.job.dueDate ? new Date(full.job.dueDate).toLocaleDateString() : "Not set"}`,
+        "assigned"
+      );
+    }
+    // Notify Supervisor
+    if (full.job.supervisorId) {
+      await createNotification(
+        full.job.supervisorId,
+        `New Job for Supervision: ${full.job.title}`,
+        `A new job has been assigned to your team: ${full.job.title} for ${full.job.client}. Assigned to: ${full.assignee?.name ?? "Unassigned"}`,
+        "assigned"
+      );
+    }
+
     void getOrCreateJobCliqChannel(full.job).catch((err) => {
       logger.warn({ err, jobId: full.job.id }, "Failed to initialize job Cliq channel metadata");
     });
@@ -918,9 +944,53 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   }
   if (body.progress !== undefined) patch.progress = body.progress;
 
+  const oldAssigneeId = full.job.assigneeId;
+  const oldSupervisorId = full.job.supervisorId;
+
   await db.update(jobs).set(patch).where(eq(jobs.id, id));
   const after = await loadJob(id);
   if (after) {
+    // Check for reassignment
+    if (body.assigneeId !== undefined && body.assigneeId !== oldAssigneeId) {
+      if (oldAssigneeId) {
+        await createNotification(
+          oldAssigneeId,
+          `Job Reassigned: ${after.job.title}`,
+          `You have been removed from the job: ${after.job.title}.`,
+          "updated"
+        );
+      }
+      if (body.assigneeId) {
+        await createNotification(
+          body.assigneeId,
+          `New Job Assigned: ${after.job.title}`,
+          `You have been assigned to a new job: ${after.job.title} for ${after.job.client}.`,
+          "assigned"
+        );
+      }
+      // Notify Supervisor and Admin on reassignment
+      if (after.job.supervisorId) {
+        await createNotification(
+          after.job.supervisorId,
+          `Job Reassigned: ${after.job.title}`,
+          `Assignee changed from ${full.assignee?.name ?? "None"} to ${after.assignee?.name ?? "None"}`,
+          "updated"
+        );
+      }
+    }
+
+    // Check for supervisor change
+    if (body.supervisorId !== undefined && body.supervisorId !== oldSupervisorId) {
+      if (body.supervisorId) {
+        await createNotification(
+          body.supervisorId,
+          `New Job for Supervision: ${after.job.title}`,
+          `You are now supervising this job: ${after.job.title}.`,
+          "assigned"
+        );
+      }
+    }
+
     void getOrCreateJobCliqChannel(after.job).catch((err) => {
       logger.warn({ err, jobId: after.job.id }, "Failed to refresh job Cliq channel metadata");
     });
@@ -996,6 +1066,43 @@ router.post("/zoho/cliq/messages/incoming", async (req, res) => {
       senderEmail: message.senderEmail,
       rawPayload: message.rawPayload,
     });
+
+    // Notify participants and handle @mentions
+    const mentions = normalizedText.match(/@(\w+)/g);
+    const mentionedNames = mentions ? mentions.map(m => m.slice(1).toLowerCase()) : [];
+    
+    const recipients = new Set<string>();
+    if (full.job.assigneeId) recipients.add(full.job.assigneeId);
+    if (full.job.supervisorId) recipients.add(full.job.supervisorId);
+    
+    // Add additional members
+    const members = await db.select({ userId: jobMembers.userId }).from(jobMembers).where(eq(jobMembers.jobId, full.job.id));
+    for (const m of members) recipients.add(m.userId);
+
+    for (const rid of recipients) {
+      if (rid === actor.id) continue;
+
+      // If there are mentions, only notify mentioned users
+      if (mentionedNames.length > 0) {
+        const [target] = await db.select({ name: users.name }).from(users).where(eq(users.id, rid)).limit(1);
+        if (target && mentionedNames.some(name => target.name.toLowerCase().includes(name))) {
+          await createNotification(
+            rid,
+            `Mentioned in ${full.job.title}`,
+            `${actor.name} mentioned you in a message for ${full.job.title}: ${normalizedText}`,
+            "job_message"
+          );
+        }
+      } else {
+        // Normal message notification
+        await createNotification(
+          rid,
+          `New Message: ${full.job.title}`,
+          `${actor.name}: ${normalizedText}`,
+          "job_message"
+        );
+      }
+    }
 
     await markJobCliqStatus(full.job.id, "active", null);
     return res.json({ ok: true, duplicate: created.duplicate, id: created.id });

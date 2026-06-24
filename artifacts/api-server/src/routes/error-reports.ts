@@ -12,6 +12,7 @@ import {
   type UserRow,
 } from "@workspace/db";
 import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import { createNotification } from "../lib/notifications";
 
 const router: IRouter = Router();
 
@@ -170,6 +171,14 @@ router.post("/error-reports", creatorOnly, async (req, res) => {
     })
     .returning();
 
+  // Notify User about New Error Report
+  await createNotification(
+    created.userId,
+    `New Error Report: ${created.title}`,
+    `An error report has been added for you: ${created.title}. Description: ${created.description}`,
+    "error"
+  );
+
   const userRow = await db
     .select({ id: users.id, name: users.name, role: users.role })
     .from(users)
@@ -246,6 +255,29 @@ router.patch("/error-reports/:id", requireAuth, async (req, res) => {
     .then((r) => r[0] ?? null);
 
   res.json(toPublic({ report: updated, job: job?.id ? job : null, user: userRow, createdBy: creatorRow }));
+});
+
+router.post("/error-reports/:id/acknowledge", requireAuth, async (req, res) => {
+  await ensureSchema();
+  const actor = req.session!.user;
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+  const [existing] = await db.select().from(errorReports).where(eq(errorReports.id, id)).limit(1);
+  if (!existing) return res.status(404).json({ error: "Not found" });
+
+  if (existing.userId !== actor.id) {
+    return res.status(403).json({ error: "Only the target user can acknowledge" });
+  }
+
+  // Notify Creator (Supervisor/Admin)
+  await createNotification(
+    existing.createdById,
+    `Error Report Acknowledged: ${existing.title}`,
+    `${actor.name} has viewed the error report: ${existing.title}.`,
+    "error"
+  );
+
+  return res.status(204).end();
 });
 
 export default router;

@@ -1,4 +1,15 @@
-import { db, userSettings, eq } from "@workspace/db";
+import { db, userSettings, eq, notifications } from "@workspace/db";
+
+export type NotificationType = "assigned" | "updated" | "overdue" | "timer" | "rework" | "job_message" | "checklist" | "file" | "training" | "progress" | "error";
+
+export async function createNotification(userId: string, title: string, description: string, type: NotificationType) {
+  return await db.insert(notifications).values({
+    userId,
+    title,
+    description,
+    type,
+  });
+}
 
 export async function shouldSendNotification(userId: string, type: 'email' | 'push' | 'sms' | 'weekly' | 'mentions'): Promise<boolean> {
   const settings = await db.query.userSettings.findFirst({

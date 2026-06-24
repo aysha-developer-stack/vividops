@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Users, Briefcase, Activity, AlertTriangle, ArrowUpRight, ArrowDownRight,
-  Plus, UserPlus, FileText,
+  Plus, UserPlus, FileText, Clock,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -122,6 +122,7 @@ export default function SuperAdminDashboard() {
     const totalJobs = dashboardData?.stats.totalJobs ?? 0;
     const activeJobs = dashboardData?.stats.activeJobs ?? 0;
     const overdueJobs = dashboardData?.stats.overdueJobs ?? 0;
+    const dueToday = (dashboardData?.stats as any)?.dueToday ?? 0;
 
     const usersChange = pctChange(totalUsers, usersPrev);
     const jobsChange = pctChange(totalJobs, jobsPrev);
@@ -131,7 +132,7 @@ export default function SuperAdminDashboard() {
     return [
       { label: "Total Users", value: totalUsers, change: Math.abs(usersChange), trend: usersChange >= 0 ? "up" as const : "down" as const, icon: Users, color: "from-primary to-sky-700", iconBg: "bg-primary/10", iconText: "text-primary" },
       { label: "Total Jobs", value: totalJobs, change: Math.abs(jobsChange), trend: jobsChange >= 0 ? "up" as const : "down" as const, icon: Briefcase, color: "from-emerald-500 to-emerald-700", iconBg: "bg-emerald-50", iconText: "text-emerald-600" },
-      { label: "Active Jobs", value: activeJobs, change: Math.abs(activeChange), trend: activeChange >= 0 ? "up" as const : "down" as const, icon: Activity, color: "from-amber-500 to-orange-600", iconBg: "bg-amber-50", iconText: "text-amber-600" },
+      { label: "Due Today", value: dueToday, change: 0, trend: "up" as const, icon: Clock, color: "from-purple-500 to-purple-700", iconBg: "bg-purple-50", iconText: "text-purple-600" },
       { label: "Overdue Jobs", value: overdueJobs, change: Math.abs(overdueChange), trend: overdueJobs <= overduePrev ? "up" as const : "down" as const, icon: AlertTriangle, color: "from-red-500 to-rose-700", iconBg: "bg-red-50", iconText: "text-red-600" },
     ];
   }, [dashboardData, apiJobs, apiUsers]);

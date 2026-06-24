@@ -84,44 +84,42 @@ async function start(): Promise<void> {
   console.log("[STARTUP] Starting background tasks...");
 
   try {
-    const { db, jobs, users, notifications, jobMembers, and, eq, inArray, sql } = await import("@workspace/db");
+    const { db, jobs, users, notifications, jobMembers, timeLogs, and, eq, inArray, sql, gte } = await import("@workspace/db");
 
     const cliqWebhookUrl = process.env.ZOHO_CLIQ_WEBHOOK_URL;
 
     const runOverdueScan = async () => {
       try {
+        // 1. Overdue Jobs Scan
         const overdueJobs = await db
           .select()
           .from(jobs)
           .where(sql`${jobs.dueDate} is not null and ${jobs.dueDate} < now() and ${jobs.status} <> 'completed' and ${jobs.status} <> 'cancelled'`);
 
-        if (overdueJobs.length === 0) return;
-
         const admins = await db
-          .select({ id: users.id })
+          .select({ id: users.id, role: users.role })
           .from(users)
           .where(inArray(users.role, ["super-admin", "admin"] as any));
         const adminIds = admins.map((a: any) => a.id);
+        const superAdminIds = admins.filter(a => a.role === "super-admin").map(a => a.id);
 
         for (const j of overdueJobs) {
           const due = j.dueDate ? new Date(j.dueDate) : new Date();
           const daysOverdue = Math.max(1, Math.floor((Date.now() - due.getTime()) / (1000 * 60 * 60 * 24)));
-          const title = `Job overdue: JOB-${j.serial}`;
-          const description = `${title} · ${j.title} · ${daysOverdue} day(s) overdue`;
+          const title = `Job Overdue: JOB-${j.serial}`;
+          const description = `Job ${j.title} for ${j.client} is overdue by ${daysOverdue} day(s).`;
 
-          const memberRows = await db
-            .select({ userId: jobMembers.userId })
-            .from(jobMembers)
-            .where(eq(jobMembers.jobId, j.id));
-          
           const recipients = new Set<string>();
           if (j.assigneeId) recipients.add(j.assigneeId);
           if (j.supervisorId) recipients.add(j.supervisorId);
           for (const a of adminIds) recipients.add(a);
-          for (const m of memberRows) recipients.add(m.userId);
+          
+          // Escalation: 7+ days overdue notify super admins
+          if (daysOverdue >= 7) {
+            for (const s of superAdminIds) recipients.add(s);
+          }
 
           for (const userId of recipients) {
-            // Check for existing notification in last 24h
             const [existing] = await db
               .select({ id: notifications.id })
               .from(notifications)
@@ -137,9 +135,6 @@ async function start(): Promise<void> {
             
             if (existing) continue;
 
-            // We only send push/in-app for overdue if user allows it
-            // Optimization: skip the DB check for settings if we're in a hurry at startup
-            // or just assume true for critical overdue alerts
             await db.insert(notifications).values({
               id: randomUUID(),
               userId,
@@ -149,26 +144,132 @@ async function start(): Promise<void> {
               isRead: false,
             } as any);
           }
+        }
 
-          if (cliqWebhookUrl) {
-            try {
-              await fetch(cliqWebhookUrl, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: description }),
-              });
-            } catch {
-            }
+        // 2. Due Date Reminders (3 days, 1 day, today)
+        const upcomingJobs = await db
+          .select()
+          .from(jobs)
+          .where(sql`${jobs.dueDate} is not null and ${jobs.dueDate} >= now() and ${jobs.dueDate} <= now() + interval '4 days' and ${jobs.status} <> 'completed' and ${jobs.status} <> 'cancelled'`);
+
+        for (const j of upcomingJobs) {
+          const due = new Date(j.dueDate!);
+          const diffDays = Math.ceil((due.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          
+          let title = "";
+          let description = "";
+          const recipients = new Set<string>();
+          if (j.assigneeId) recipients.add(j.assigneeId);
+          if (j.supervisorId) recipients.add(j.supervisorId);
+
+          if (diffDays === 3) {
+            title = `Job Due in 3 Days: JOB-${j.serial}`;
+            description = `Job ${j.title} is due on ${due.toLocaleDateString()}.`;
+          } else if (diffDays === 1) {
+            title = `Job Due Tomorrow: JOB-${j.serial}`;
+            description = `Job ${j.title} is due tomorrow (${due.toLocaleDateString()}).`;
+            for (const a of adminIds) recipients.add(a);
+          } else if (diffDays === 0) {
+            title = `Job Due Today: JOB-${j.serial}`;
+            description = `Job ${j.title} is due today!`;
+            for (const a of adminIds) recipients.add(a);
+          }
+
+          if (!title) continue;
+
+          for (const userId of recipients) {
+            const [existing] = await db
+              .select({ id: notifications.id })
+              .from(notifications)
+              .where(
+                and(
+                  eq(notifications.userId, userId),
+                  eq(notifications.type, "updated"),
+                  eq(notifications.title, title),
+                  sql`${notifications.createdAt} > now() - interval '24 hours'`,
+                ),
+              )
+              .limit(1);
+            
+            if (existing) continue;
+
+            await db.insert(notifications).values({
+              id: randomUUID(),
+              userId,
+              title,
+              description,
+              type: "updated",
+              isRead: false,
+            } as any);
           }
         }
       } catch (err) {
-        logger.error({ err }, "Overdue scan failed");
+        logger.error({ err }, "Overdue/Reminder scan failed");
+      }
+    };
+
+    const runDailySummary = async () => {
+      try {
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        const logs = await db.select().from(timeLogs).where(gte(timeLogs.createdAt, todayStart));
+        const userTimes = new Map<string, number>();
+        for (const l of logs) {
+          userTimes.set(l.userId, (userTimes.get(l.userId) || 0) + l.duration);
+        }
+
+        for (const [userId, totalSeconds] of userTimes.entries()) {
+          const hours = Math.floor(totalSeconds / 3600);
+          const minutes = Math.floor((totalSeconds % 3600) / 60);
+          const summary = `Today's work time: ${hours}h ${minutes}m`;
+
+          // Notify User
+          await db.insert(notifications).values({
+            id: randomUUID(),
+            userId,
+            title: "Daily Time Summary",
+            description: summary,
+            type: "timer",
+            isRead: false,
+          } as any);
+
+          // Notify Supervisor
+          const [userRow] = await db.select({ name: users.name, supervisorId: sql<string>`(select supervisor_id from jobs where assignee_id = ${userId} limit 1)` }).from(users).where(eq(users.id, userId)).limit(1);
+          const supervisorId = (userRow as any)?.supervisorId;
+          if (supervisorId) {
+            await db.insert(notifications).values({
+              id: randomUUID(),
+              userId: supervisorId,
+              title: `Daily Summary: ${userRow.name}`,
+              description: `${userRow.name} worked for ${hours}h ${minutes}m today.`,
+              type: "timer",
+              isRead: false,
+            } as any);
+          }
+        }
+      } catch (err) {
+        logger.error({ err }, "Daily summary failed");
       }
     };
 
     // Delay initial scan slightly to let server handle incoming requests first
-    setTimeout(() => void runOverdueScan(), 5000);
+    setTimeout(() => {
+      void runOverdueScan();
+    }, 5000);
     setInterval(() => void runOverdueScan(), 15 * 60 * 1000);
+
+    // Run daily summary at 11:55 PM
+    const scheduleDaily = () => {
+      const now = new Date();
+      const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 55, 0);
+      if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
+      setTimeout(() => {
+        void runDailySummary();
+        scheduleDaily();
+      }, next.getTime() - now.getTime());
+    };
+    scheduleDaily();
   } catch (err) {
     logger.error({ err }, "Failed to start overdue scheduler");
   }

@@ -28,6 +28,8 @@ export default function SupervisorDashboard() {
     overdueJobs?: number;
     pendingReworkTasks?: number;
     activeTimers?: number;
+    dueToday?: number;
+    waitingReview?: number;
   };
 
   const assignedJobs = useMemo(() => (dashboard?.activeJobs ?? []).map(j => ({
@@ -82,7 +84,7 @@ export default function SupervisorDashboard() {
         {[
           { label: "Active Jobs", value: stats.activeJobs ?? 0, icon: Briefcase, color: "from-primary to-sky-700", bg: "bg-primary/10", text: "text-primary" },
           { label: "Team Members", value: stats.teamSize ?? 0, icon: Users, color: "from-emerald-500 to-emerald-700", bg: "bg-emerald-50", text: "text-emerald-600" },
-          { label: "Total Jobs", value: stats.totalJobs ?? 0, icon: CheckCircle2, color: "from-purple-500 to-purple-700", bg: "bg-purple-50", text: "text-purple-600" },
+          { label: "Due Today", value: stats.dueToday ?? 0, icon: Clock, color: "from-purple-500 to-purple-700", bg: "bg-purple-50", text: "text-purple-600" },
           { label: "Overdue Jobs", value: stats.overdueJobs ?? 0, icon: AlertCircle, color: "from-red-500 to-rose-700", bg: "bg-red-50", text: "text-red-600" },
           { label: "Pending Rework", value: stats.pendingReworkTasks ?? 0, icon: ArrowUpRight, color: "from-amber-500 to-orange-700", bg: "bg-amber-50", text: "text-amber-600" },
           { label: "Active Timers", value: stats.activeTimers ?? 0, icon: Clock, color: "from-cyan-500 to-blue-700", bg: "bg-cyan-50", text: "text-cyan-600" },

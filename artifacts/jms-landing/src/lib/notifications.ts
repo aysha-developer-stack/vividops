@@ -1,7 +1,13 @@
 import { Briefcase, Edit3, AlertTriangle, Clock, RefreshCw, Bell, type LucideIcon } from "lucide-react";
 import type { Role } from "./roles";
 
-export type NotifType = "assigned" | "updated" | "overdue" | "timer" | "rework";
+export type NotifType =
+  | "assigned"
+  | "updated"
+  | "overdue"
+  | "timer"
+  | "rework"
+  | "job_message";
 
 export interface Notif {
   id: number;
@@ -20,9 +26,57 @@ export const NOTIF_STYLE: Record<string, { icon: LucideIcon; color: string; labe
   overdue: { icon: AlertTriangle, color: "bg-red-50 text-red-600", label: "Overdue" },
   timer: { icon: Clock, color: "bg-amber-50 text-amber-600", label: "Timer" },
   rework: { icon: RefreshCw, color: "bg-orange-50 text-orange-600", label: "Rework" },
+  job_message: { icon: Bell, color: "bg-sky-50 text-sky-600", label: "Message" },
 };
 
 export const getNotifStyle = (type: string) => NOTIF_STYLE[type] || defaultNotifStyle;
+
+let activeAudioContext: AudioContext | null = null;
+
+export async function playNotificationTone() {
+  if (typeof window === "undefined") return;
+
+  const AudioContextCtor =
+    window.AudioContext ||
+    (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+  if (!AudioContextCtor) return;
+
+  try {
+    activeAudioContext ??= new AudioContextCtor();
+    if (activeAudioContext.state === "suspended") {
+      await activeAudioContext.resume();
+    }
+
+    const startAt = activeAudioContext.currentTime + 0.02;
+    const notes = [
+      { frequency: 880, duration: 0.12, offset: 0 },
+      { frequency: 1320, duration: 0.16, offset: 0.16 },
+    ];
+
+    for (const note of notes) {
+      const oscillator = activeAudioContext.createOscillator();
+      const gain = activeAudioContext.createGain();
+      const noteStart = startAt + note.offset;
+      const noteEnd = noteStart + note.duration;
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(note.frequency, noteStart);
+
+      gain.gain.setValueAtTime(0.0001, noteStart);
+      gain.gain.exponentialRampToValueAtTime(0.12, noteStart + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, noteEnd);
+
+      oscillator.connect(gain);
+      gain.connect(activeAudioContext.destination);
+
+      oscillator.start(noteStart);
+      oscillator.stop(noteEnd);
+    }
+  } catch {
+    // Ignore browser audio-blocking failures.
+  }
+}
 
 export const NOTIFICATIONS_BY_ROLE: Record<Role, Notif[]> = {
   "super-admin": [

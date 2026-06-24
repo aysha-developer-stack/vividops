@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, desc, sql as dsql } from "drizzle-orm";
+import { and, eq, desc, inArray, sql as dsql } from "drizzle-orm";
 import { upload, uploadToSupabase } from "../lib/storage";
 import { db, jobs, users, jobAttachments, jobMembers, type JobRow, type UserRow, sql } from "@workspace/db";
 import { randomUUID } from "crypto";
@@ -7,6 +7,7 @@ import { requireAuth } from "../middlewares/requireAuth";
 import { io } from "../lib/socket";
 import { addToQueue } from "../lib/queue";
 import { logger } from "../lib/logger";
+import { createNotification } from "../lib/notifications";
 
 const router: IRouter = Router();
 
@@ -151,6 +152,47 @@ router.post(
         attachment,
         uploadedBy: actor.name,
       });
+
+      // Persistent Notification
+      if (actor.role === "user") {
+        // Completion file upload notification
+        if (jobRow.supervisorId) {
+          await createNotification(
+            jobRow.supervisorId,
+            `Completion File Uploaded: ${jobRow.title}`,
+            `${actor.name} has uploaded a completion file for ${jobRow.title}: ${file.originalname}`,
+            "file"
+          );
+        }
+        // Notify Admins
+        const admins = await db.select({ id: users.id }).from(users).where(inArray(users.role, ["admin", "super-admin"]));
+        for (const admin of admins) {
+          await createNotification(
+            admin.id,
+            `Completion File Uploaded: ${jobRow.title}`,
+            `${actor.name} uploaded a file for ${jobRow.title}.`,
+            "file"
+          );
+        }
+      } else {
+        // Job file upload notification
+        if (jobRow.assigneeId) {
+          await createNotification(
+            jobRow.assigneeId,
+            `New Job File: ${jobRow.title}`,
+            `${actor.name} uploaded a file for ${jobRow.title}: ${file.originalname}`,
+            "file"
+          );
+        }
+        if (jobRow.supervisorId && actor.id !== jobRow.supervisorId) {
+          await createNotification(
+            jobRow.supervisorId,
+            `Job File Uploaded: ${jobRow.title}`,
+            `${actor.name} uploaded a file for ${jobRow.title}: ${file.originalname}`,
+            "file"
+          );
+        }
+      }
 
       // Background processing is optional; do not fail the upload if Redis is over quota.
       addToQueue("process-attachment", {

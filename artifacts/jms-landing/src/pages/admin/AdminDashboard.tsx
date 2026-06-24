@@ -65,6 +65,8 @@ export default function AdminDashboard() {
     const totalUsers = dashboardData?.stats.totalUsers ?? 0;
     const activeJobs = dashboardData?.stats.activeJobs ?? 0;
     const overdueJobs = dashboardData?.stats.overdueJobs ?? 0;
+    const dueToday = dashboardData?.stats.dueToday ?? 0;
+    const waitingReview = dashboardData?.stats.waitingReview ?? 0;
 
     const jobsChange = pctChange(totalJobs, jobsPrev);
     const usersChange = pctChange(totalUsers, usersPrev);
@@ -74,7 +76,7 @@ export default function AdminDashboard() {
     return [
       { label: "Total Jobs", value: totalJobs, icon: Briefcase, change: Math.abs(jobsChange), up: jobsChange >= 0, color: "from-primary to-sky-700", bg: "bg-primary/10", text: "text-primary" },
       { label: "Active Users", value: totalUsers, icon: Users, change: Math.abs(usersChange), up: usersChange >= 0, color: "from-emerald-500 to-emerald-700", bg: "bg-emerald-50", text: "text-emerald-600" },
-      { label: "Active Jobs", value: activeJobs, icon: CheckCircle2, change: Math.abs(activeChange), up: activeChange >= 0, color: "from-purple-500 to-purple-700", bg: "bg-purple-50", text: "text-purple-600" },
+      { label: "Due Today", value: dueToday, icon: Clock, change: 0, up: true, color: "from-purple-500 to-purple-700", bg: "bg-purple-50", text: "text-purple-600" },
       { label: "Overdue", value: overdueJobs, icon: Clock, change: Math.abs(overdueChange), up: overdueJobs <= overduePrev, color: "from-amber-500 to-orange-600", bg: "bg-amber-50", text: "text-amber-600" },
     ];
   }, [dashboardData, apiUsers, apiJobs]);

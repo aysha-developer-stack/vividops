@@ -6,8 +6,9 @@ import {
 } from "lucide-react";
 import logoImg from "@assets/vv_1778503190047.png";
 import { clearSession, useAuth } from "@/lib/auth";
-import { getNotifStyle } from "@/lib/notifications";
+import { getNotifStyle, playNotificationTone } from "@/lib/notifications";
 import { ROLES, Role } from "@/lib/roles";
+import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetDashboardStatsQueryOptions,
@@ -40,8 +41,11 @@ export default function DashboardLayout({
   const [profileOpen, setProfileOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const seenNotificationIdsRef = useRef<Set<string>>(new Set());
+  const initializedNotificationsRef = useRef(false);
   const qc = useQueryClient();
   const { user } = useAuth();
+  const { toast } = useToast();
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -67,7 +71,16 @@ export default function DashboardLayout({
     .slice(0, 2)
     .toUpperCase();
 
-  const { data: apiNotifications } = useGetNotifications();
+  const { data: apiNotifications } = useGetNotifications({
+    query: {
+      queryKey: getGetNotificationsQueryKey(),
+      staleTime: 0,
+      refetchOnMount: true,
+      refetchOnWindowFocus: true,
+      refetchInterval: 15000,
+      refetchIntervalInBackground: true,
+    },
+  });
   const markReadMutation = useMarkNotificationRead();
 
   const notifications = apiNotifications?.map(n => ({
@@ -80,6 +93,64 @@ export default function DashboardLayout({
   })) || [];
 
   const unreadCount = notifications.filter((n) => n.unread).length;
+
+  useEffect(() => {
+    initializedNotificationsRef.current = false;
+    seenNotificationIdsRef.current = new Set();
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const storageKey = `seen-notifications:${user.id}`;
+    const currentIds = notifications.map((n) => String(n.id));
+
+    if (!initializedNotificationsRef.current) {
+      const mergedIds = new Set(currentIds);
+      try {
+        const raw = window.sessionStorage.getItem(storageKey);
+        const stored = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(stored)) {
+          for (const id of stored) mergedIds.add(String(id));
+        }
+      } catch {
+      }
+      seenNotificationIdsRef.current = mergedIds;
+      initializedNotificationsRef.current = true;
+      try {
+        window.sessionStorage.setItem(storageKey, JSON.stringify(Array.from(mergedIds)));
+      } catch {
+      }
+      return;
+    }
+
+    const newNotifications = notifications.filter(
+      (notification) =>
+        notification.unread && !seenNotificationIdsRef.current.has(String(notification.id)),
+    );
+
+    if (newNotifications.length === 0) return;
+
+    for (const notification of newNotifications) {
+      seenNotificationIdsRef.current.add(String(notification.id));
+    }
+
+    try {
+      window.sessionStorage.setItem(
+        storageKey,
+        JSON.stringify(Array.from(seenNotificationIdsRef.current)),
+      );
+    } catch {
+    }
+
+    void playNotificationTone();
+    newNotifications.slice(0, 3).forEach((notification) => {
+      toast({
+        title: notification.title,
+        description: notification.desc,
+      });
+    });
+  }, [notifications, toast, user?.id]);
 
   const markAllRead = async () => {
     const unreadIds = notifications.filter((n) => n.unread).map(n => n.id as string);

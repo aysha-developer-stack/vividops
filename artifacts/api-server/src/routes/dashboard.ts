@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, users, jobs, jobMembers, timeLogs, sql, desc, eq, and, lt, ne, inArray } from "@workspace/db";
+import { db, users, jobs, jobMembers, timeLogs, errorReports, sql, desc, eq, and, lt, ne, inArray, gte, lte } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { requireAuth } from "../middlewares/requireAuth";
 import { ensureLegacySupervisorAssignments } from "../lib/schema-init";
@@ -9,6 +9,9 @@ const router = Router();
 router.get("/dashboard/stats", requireAuth, async (req, res) => {
   try {
     const actor = req.session!.user;
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekEnd = new Date(todayStart.getTime() + 7 * 24 * 60 * 60 * 1000);
     
     // For supervisor, only show stats for their jobs
     const isSupervisor = actor.role === "supervisor";
@@ -42,13 +45,17 @@ router.get("/dashboard/stats", requireAuth, async (req, res) => {
         })()
       : db.select({ count: sql<number>`count(*)` }).from(users);
 
-    const [totalUsers, jobCounts, recentJobs] = await Promise.all([
+    const [totalUsers, jobCounts, recentJobs, userMetrics] = await Promise.all([
       totalUsersPromise,
       db
         .select({
           totalJobs: sql<number>`count(*)`,
           activeJobs: sql<number>`count(*) filter (where ${jobs.status} = 'in_progress')`,
           overdueJobs: sql<number>`count(*) filter (where ${jobs.status} <> 'completed' and ${jobs.dueDate} < now())`,
+          dueToday: sql<number>`count(*) filter (where ${jobs.dueDate} >= ${todayStart} and ${jobs.dueDate} < ${new Date(todayStart.getTime() + 24 * 60 * 60 * 1000)})`,
+          dueThisWeek: sql<number>`count(*) filter (where ${jobs.dueDate} >= ${todayStart} and ${jobs.dueDate} < ${weekEnd})`,
+          waitingReview: sql<number>`count(*) filter (where ${jobs.status} = 'in_progress' and ${jobs.progress} >= 90)`,
+          reworkRequired: sql<number>`count(*) filter (where ${jobs.status} = 'rework')`,
         })
         .from(jobs)
         .where(jobFilter),
@@ -57,6 +64,19 @@ router.get("/dashboard/stats", requireAuth, async (req, res) => {
         .where(jobFilter)
         .orderBy(desc(jobs.updatedAt))
         .limit(5),
+      (async () => {
+        if (isSupervisor) return null;
+        
+        const [currentlyWorking] = await db.select({ count: sql<number>`count(distinct ${timeLogs.userId})` }).from(timeLogs).where(sql`${timeLogs.createdAt} >= ${todayStart} and ${timeLogs.duration} = 0`);
+        const [usersMostErrors] = await db.select({ name: users.name, count: sql<number>`count(*)` }).from(errorReports).innerJoin(users, eq(users.id, errorReports.userId)).groupBy(users.name).orderBy(desc(sql`count(*)`)).limit(1);
+        const [usersMostRework] = await db.select({ name: users.name, count: sql<number>`count(*)` }).from(jobs).innerJoin(users, eq(users.id, jobs.assigneeId)).where(eq(jobs.status, "rework")).groupBy(users.name).orderBy(desc(sql`count(*)`)).limit(1);
+        
+        return {
+          currentlyWorking: Number(currentlyWorking.count),
+          usersMostErrors: usersMostErrors?.name ?? "None",
+          usersMostRework: usersMostRework?.name ?? "None",
+        };
+      })(),
     ]);
 
     return res.json({
@@ -65,6 +85,11 @@ router.get("/dashboard/stats", requireAuth, async (req, res) => {
         totalJobs: Number(jobCounts[0].totalJobs),
         activeJobs: Number(jobCounts[0].activeJobs),
         overdueJobs: Number(jobCounts[0].overdueJobs),
+        dueToday: Number(jobCounts[0].dueToday),
+        dueThisWeek: Number(jobCounts[0].dueThisWeek),
+        waitingReview: Number(jobCounts[0].waitingReview),
+        reworkRequired: Number(jobCounts[0].reworkRequired),
+        ...userMetrics,
       },
       recentJobs,
     });
@@ -86,6 +111,7 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
     const supervisorId = actor.id;
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekEnd = new Date(todayStart.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     const supervisedJobs = await db
       .select()
@@ -100,6 +126,9 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
         activeJobs: sql<number>`count(*) filter (where ${jobs.status} = 'in_progress')`,
         overdueJobs: sql<number>`count(*) filter (where ${jobs.status} <> 'completed' and ${jobs.dueDate} < now())`,
         pendingReworkTasks: sql<number>`count(*) filter (where ${jobs.status} = 'rework')`,
+        dueToday: sql<number>`count(*) filter (where ${jobs.dueDate} >= ${todayStart} and ${jobs.dueDate} < ${new Date(todayStart.getTime() + 24 * 60 * 60 * 1000)})`,
+        dueThisWeek: sql<number>`count(*) filter (where ${jobs.dueDate} >= ${todayStart} and ${jobs.dueDate} < ${weekEnd})`,
+        waitingReview: sql<number>`count(*) filter (where ${jobs.status} = 'in_progress' and ${jobs.progress} >= 90)`,
       })
       .from(jobs)
       .where(eq(jobs.supervisorId, supervisorId));
