@@ -539,7 +539,7 @@ function DailyUpdates({ canPost }: { canPost: boolean }) {
                     onChange={(e) => setNewComment(e.target.value)}
                     placeholder="Write a comment…"
                     rows={2}
-                    className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:border-primary"
+                    className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 resize-none focus:outline-none focus:border-primary"
                   />
                   <button
                     onClick={() => void addComment(commentsModal.postId)}
@@ -636,7 +636,7 @@ function Composer({ onPost }: { onPost: (body: string, attachments: DraftAttachm
               onFocus={() => setFocused(true)}
               placeholder="Share a daily training update with the team…"
               rows={focused || body || attachments.length ? 3 : 1}
-              className="w-full bg-gray-50 hover:bg-gray-100 focus:bg-white focus:border-primary border border-transparent rounded-xl px-4 py-2.5 text-sm resize-none focus:outline-none transition-colors"
+              className="w-full bg-gray-50 hover:bg-gray-100 focus:bg-white focus:border-primary border border-transparent rounded-xl px-4 py-2.5 text-sm text-gray-900 resize-none focus:outline-none transition-colors"
             />
 
             {attachments.length > 0 && (
@@ -1396,7 +1396,7 @@ function GalleryToolbar({
     <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between mb-5">
       <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 max-w-md flex-1 focus-within:border-primary transition-colors">
         <Search size={16} className="text-gray-400" />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={placeholder} className="bg-transparent text-sm flex-1 focus:outline-none" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={placeholder} className="bg-transparent text-sm text-gray-900 flex-1 focus:outline-none" />
       </div>
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto">
@@ -1533,7 +1533,7 @@ function CoursesView() {
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between mb-6">
         <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 max-w-md flex-1 focus-within:border-primary transition-colors">
           <Search size={16} className="text-gray-400" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search courses…" className="bg-transparent text-sm flex-1 focus:outline-none" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search courses…" className="bg-transparent text-sm text-gray-900 flex-1 focus:outline-none" />
         </div>
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto">
           {CATEGORIES.map((c) => (
