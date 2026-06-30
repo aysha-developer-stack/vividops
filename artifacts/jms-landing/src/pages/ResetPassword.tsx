@@ -10,6 +10,7 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
+  Loader2,
 } from "lucide-react";
 import { useAuth, useResetPassword } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -17,9 +18,15 @@ import { ROLES, type Role } from "@/lib/roles";
 import logoImg from "@assets/vv_1778503190047.png";
 
 export default function ResetPassword() {
-  const [, setLocation] = useLocation();
+  const [loc, setLocation] = useLocation();
   const { toast } = useToast();
-  const { user, isLoading } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
+  
+  // Detect if this is a token-based reset from email
+  const searchParams = new URLSearchParams(window.location.search);
+  const token = searchParams.get("token");
+  const isTokenFlow = !!token;
+
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -28,18 +35,23 @@ export default function ResetPassword() {
   const [showConfirm, setShowConfirm] = useState(false);
   const resetMutation = useResetPassword();
   const [success, setSuccess] = useState(false);
+  const [isSubmittingToken, setIsSubmittingToken] = useState(false);
 
   useEffect(() => {
-    if (isLoading) return;
+    // Only redirect if not in token flow and not loading
+    if (authLoading) return;
+    if (isTokenFlow) return;
+
     if (!user) {
       setLocation("/login");
       return;
     }
-    if (user.role !== "user" || !user.mustResetPassword) {
+    // mustResetPassword flow for first-time login
+    if (!user.mustResetPassword) {
       const role = (user.role as Role | undefined) ?? "user";
       setLocation(ROLES[role]?.base ?? "/");
     }
-  }, [isLoading, user, setLocation]);
+  }, [authLoading, user, setLocation, isTokenFlow]);
 
   const passwordStrength = useMemo(() => {
     const value = password;
@@ -73,6 +85,38 @@ export default function ResetPassword() {
       return;
     }
 
+    if (isTokenFlow) {
+      setIsSubmittingToken(true);
+      try {
+        const res = await fetch("/api/auth/reset-password-with-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, newPassword: password }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Failed to reset password");
+        }
+
+        setSuccess(true);
+        toast({
+          title: "Password Reset Successful",
+          description: "Your password has been updated. You can now login.",
+        });
+        setTimeout(() => setLocation("/login"), 2000);
+      } catch (err) {
+        toast({
+          title: "Error",
+          description: err instanceof Error ? err.message : "Failed to reset password",
+          variant: "destructive",
+        });
+      } finally {
+        setIsSubmittingToken(false);
+      }
+      return;
+    }
+
     try {
       const updated = await resetMutation.mutateAsync({ 
         data: { 
@@ -93,7 +137,7 @@ export default function ResetPassword() {
     }
   };
 
-  const isSubmitting = resetMutation.isPending;
+  const isSubmitting = resetMutation.isPending || isSubmittingToken;
   const error = resetMutation.error instanceof Error ? resetMutation.error.message : null;
 
   if (success) {
@@ -108,7 +152,7 @@ export default function ResetPassword() {
             <CheckCircle2 className="text-emerald-600" size={32} />
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Password Updated!</h2>
-          <p className="text-gray-500 mb-8">Your account is now secure. We're redirecting you to your dashboard.</p>
+          <p className="text-gray-500 mb-8">Your account is now secure. {isTokenFlow ? "Redirecting to login..." : "Redirecting you to your dashboard."}</p>
           <div className="w-full bg-gray-100 h-1 rounded-full overflow-hidden">
             <motion.div 
               className="bg-primary h-full"
@@ -152,7 +196,7 @@ export default function ResetPassword() {
             transition={{ duration: 0.7, delay: 0.05 }}
             className="text-4xl font-extrabold text-white leading-tight"
           >
-            Secure your account
+            {isTokenFlow ? "Recover your account" : "Secure your account"}
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 14 }}
@@ -160,9 +204,11 @@ export default function ResetPassword() {
             transition={{ duration: 0.7, delay: 0.12 }}
             className="mt-4 text-white/70 text-sm leading-relaxed"
           >
-            This is your first sign-in. Set a new password to continue. Choose something strong and unique.
+            {isTokenFlow 
+              ? "Reset your password to regain access to your account."
+              : "This is your first sign-in. Set a new password to continue. Choose something strong and unique."}
           </motion.p>
-          {user?.email && (
+          {!isTokenFlow && user?.email && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -207,30 +253,32 @@ export default function ResetPassword() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-gray-700 ml-1">Temporary / Current Password</label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 group-focus-within:text-primary transition-colors">
-                  <Key size={18} />
+            {!isTokenFlow && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-gray-700 ml-1">Temporary / Current Password</label>
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 group-focus-within:text-primary transition-colors">
+                    <Key size={18} />
+                  </div>
+                  <input
+                    type={showCurrent ? "text" : "password"}
+                    required
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="block w-full pl-10 pr-12 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-all"
+                    placeholder="Enter the temporary password"
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrent((v) => !v)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  >
+                    {showCurrent ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </div>
-                <input
-                  type={showCurrent ? "text" : "password"}
-                  required
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="block w-full pl-10 pr-12 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl text-sm focus:outline-none focus:border-primary focus:bg-white transition-all"
-                  placeholder="Enter the temporary password"
-                  autoComplete="current-password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowCurrent((v) => !v)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                >
-                  {showCurrent ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
               </div>
-            </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="text-sm font-semibold text-gray-700 ml-1">New Password</label>

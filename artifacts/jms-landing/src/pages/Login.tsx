@@ -397,13 +397,14 @@ export default function Login() {
                   >
                     <div className="flex justify-between items-center mb-1.5">
                       <label className="block text-sm font-medium text-gray-700">Password</label>
-                      <motion.a
-                        href="#"
-                        className="text-xs text-primary hover:underline font-medium"
-                        whileHover={{ color: "#0369a1" }}
-                      >
-                        Forgot password?
-                      </motion.a>
+                      <Link href="/forgot-password">
+                        <motion.span
+                          className="text-xs text-primary hover:underline font-medium cursor-pointer"
+                          whileHover={{ color: "#0369a1" }}
+                        >
+                          Forgot password?
+                        </motion.span>
+                      </Link>
                     </div>
                     <motion.div
                       className={`relative flex items-center rounded-xl border-2 transition-colors duration-200 ${

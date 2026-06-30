@@ -37,6 +37,46 @@ export interface InviteEmailParams {
   signInUrl: string;
 }
 
+export async function sendPasswordResetEmail(params: {
+  to: string;
+  name: string;
+  resetUrl: string;
+}): Promise<{ sent: boolean; error?: string }> {
+  const { to, name, resetUrl } = params;
+  const resend = getResend();
+  if (!resend) {
+    logger.info({ to, resetUrl }, "[email:dry-run] Would send reset email (RESEND_API_KEY missing)");
+    return { sent: false, error: "RESEND_API_KEY is not set" };
+  }
+
+  const subject = "Reset your Vivid OPS password";
+  const from = getFromAddress();
+
+  const html = `
+    <div style="font-family: system-ui, sans-serif; color:#0f172a; max-width:520px; margin:0 auto; padding:24px;">
+      <h1 style="color:#0B7EB9; font-size:22px; margin:0 0 8px;">Password Reset Request</h1>
+      <p style="color:#475569; line-height:1.55;">
+        Hi ${escapeHtml(name)}, we received a request to reset your password for your Vivid OPS account.
+        Click the button below to choose a new password. This link will expire in 1 hour.
+      </p>
+      <div style="margin:24px 0;">
+        <a href="${escapeAttr(resetUrl)}" style="display:inline-block; background:#0B7EB9; color:#fff; padding:12px 24px; border-radius:10px; text-decoration:none; font-weight:600;">Reset Password</a>
+      </div>
+      <p style="color:#94a3b8; font-size:12px; margin-top:28px;">
+        If you didn't request a password reset, you can safely ignore this email.
+      </p>
+    </div>
+  `;
+
+  try {
+    const { error } = await resend.emails.send({ from, to, subject, html });
+    if (error) return { sent: false, error: (error as any)?.message ?? "Failed to send email" };
+    return { sent: true };
+  } catch (err) {
+    return { sent: false, error: err instanceof Error ? err.message : "Failed to send email" };
+  }
+}
+
 export async function sendInviteEmail(
   params: InviteEmailParams,
 ): Promise<{ sent: boolean; error?: string }> {

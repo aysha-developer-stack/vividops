@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
 import { db, sessions, users, sql } from "@workspace/db";
 import { LoginBody, ResetPasswordBody, UpdateUserBody } from "@workspace/api-zod";
 import { logger } from "../lib/logger";
@@ -14,6 +15,7 @@ import {
 import { publicUser } from "../lib/serialize";
 import { requireAuth } from "../middlewares/requireAuth";
 import { updateSessionCacheUser } from "../middlewares/session";
+import { sendPasswordResetEmail } from "../lib/email";
 
 const router: IRouter = Router();
 let userColumnsEnsured = false;
@@ -204,6 +206,80 @@ router.post("/auth/reset-password", requireAuth, async (req, res) => {
   void currentSid;
 
   return res.json(publicUser(updated));
+});
+
+router.post("/auth/forgot-password", async (req, res) => {
+  const { email } = req.body;
+  if (!email || typeof email !== "string") {
+    return res.status(400).json({ error: "Email is required" });
+  }
+
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, email.toLowerCase()))
+    .limit(1);
+
+  if (!user) {
+    // Return 200 even if user not found for security (prevent email enumeration)
+    return res.json({ message: "If an account exists, a reset link has been sent." });
+  }
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 3600000); // 1 hour
+
+  await db.execute(sql`
+    INSERT INTO password_reset_tokens (user_id, token, expires_at)
+    VALUES (${user.id}, ${token}, ${expiresAt})
+    ON CONFLICT (user_id) DO UPDATE
+    SET token = EXCLUDED.token, expires_at = EXCLUDED.expires_at, created_at = now();
+  `);
+
+  const resetUrl = `${process.env.PUBLIC_APP_URL || "http://localhost:5173"}/reset-password?token=${token}`;
+ 
+   const { sent, error } = await sendPasswordResetEmail({
+     to: user.email,
+     name: user.name,
+     resetUrl
+   });
+ 
+   if (!sent) {
+    logger.error({ email, error }, "Failed to send reset email");
+    return res.status(500).json({ error: "Failed to send reset email" });
+  }
+
+  return res.json({ message: "If an account exists, a reset link has been sent." });
+});
+
+router.post("/auth/reset-password-with-token", async (req, res) => {
+  const { token, newPassword } = req.body;
+  if (!token || !newPassword || newPassword.length < 8) {
+    return res.status(400).json({ error: "Invalid token or password" });
+  }
+
+  const rows = await db.execute(sql`
+    SELECT user_id FROM password_reset_tokens
+    WHERE token = ${token} AND expires_at > now()
+    LIMIT 1
+  `);
+  
+  const resetToken = (rows as any).rows?.[0];
+  if (!resetToken) {
+    return res.status(400).json({ error: "Invalid or expired token" });
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  await db.update(users)
+    .set({ 
+      passwordHash, 
+      mustResetPassword: false,
+      updatedAt: new Date()
+    })
+    .where(eq(users.id, resetToken.user_id));
+
+  await db.execute(sql`DELETE FROM password_reset_tokens WHERE token = ${token}`);
+
+  return res.json({ message: "Password has been reset successfully." });
 });
 
 export default router;

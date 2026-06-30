@@ -11,6 +11,7 @@ interface RolePageProps { role?: Role; initialTab?: any; }
 
 const Home = lazy(() => import("@/pages/Home"));
 const Login = lazy(() => import("@/pages/Login"));
+const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const SuperAdminDashboard = lazy(() => import("@/pages/admin/SuperAdminDashboard"));
 const UserManagement = lazy<FC<RolePageProps>>(() => import("@/pages/admin/UserManagement"));
@@ -130,6 +131,7 @@ function AppRouter() {
         <Route path="/login">
           {isAuthenticated ? <RequireSignedIn><Login /></RequireSignedIn> : <Login />}
         </Route>
+        <Route path="/forgot-password" component={ForgotPassword} />
         <Route path="/reset-password"><RequireSignedIn><ResetPassword /></RequireSignedIn></Route>
         
         {/* Super Admin */}
