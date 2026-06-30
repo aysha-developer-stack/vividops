@@ -94,17 +94,22 @@ export default function ResetPassword() {
           body: JSON.stringify({ token, newPassword: password }),
         });
 
+        const data = await res.json();
         if (!res.ok) {
-          const data = await res.json();
           throw new Error(data.error || "Failed to reset password");
         }
 
         setSuccess(true);
         toast({
           title: "Password Reset Successful",
-          description: "Your password has been updated. You can now login.",
+          description: "Your password has been updated. Redirecting to your portal...",
         });
-        setTimeout(() => setLocation("/login"), 2000);
+        
+        // Use the returned user data to determine the target portal
+        const userRole = (data.user?.role as Role | undefined) ?? "user";
+        const target = ROLES[userRole]?.base ?? "/user";
+        
+        setTimeout(() => setLocation(target), 2000);
       } catch (err) {
         toast({
           title: "Error",
@@ -129,8 +134,11 @@ export default function ResetPassword() {
         title: "Password Reset Successful",
         description: "Your password has been updated. Redirecting to dashboard...",
       });
-      const targetRole = (updated.role as Role | undefined) ?? "user";
-      const target = ROLES[targetRole]?.base ?? "/";
+      
+      // Ensure we use the base path defined in ROLES for the specific user role
+      const userRole = (updated.role as Role | undefined) ?? "user";
+      const target = ROLES[userRole]?.base ?? "/user";
+      
       setTimeout(() => setLocation(target), 2000);
     } catch (err) {
       // Error is handled by mutation or toast

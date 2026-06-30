@@ -268,6 +268,11 @@ router.post("/auth/reset-password-with-token", async (req, res) => {
     return res.status(400).json({ error: "Invalid or expired token" });
   }
 
+  const [user] = await db.select().from(users).where(eq(users.id, resetToken.user_id)).limit(1);
+  if (!user) {
+    return res.status(404).json({ error: "User not found" });
+  }
+
   const passwordHash = await hashPassword(newPassword);
   await db.update(users)
     .set({ 
@@ -279,7 +284,18 @@ router.post("/auth/reset-password-with-token", async (req, res) => {
 
   await db.execute(sql`DELETE FROM password_reset_tokens WHERE token = ${token}`);
 
-  return res.json({ message: "Password has been reset successfully." });
+  // Automatically log the user in after successful reset
+  const [session] = await db
+    .insert(sessions)
+    .values({ userId: user.id, expiresAt: sessionExpiresAt() })
+    .returning();
+
+  res.cookie(SESSION_COOKIE, session.id, cookieOpts);
+  
+  return res.json({ 
+    message: "Password has been reset successfully.",
+    user: publicUser(user)
+  });
 });
 
 export default router;
