@@ -5,7 +5,7 @@ import {
   Settings, Bell, ChevronLeft, LogOut, Search, Menu,
 } from "lucide-react";
 import logoImg from "@assets/vv_1778503190047.png";
-import { clearSession, useAuth } from "@/lib/auth";
+import { useAuth, useLogout } from "@/lib/auth";
 import { getNotifStyle, playNotificationTone } from "@/lib/notifications";
 import { ROLES, Role } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
@@ -47,6 +47,7 @@ export default function DashboardLayout({
   const seenNotificationIdsRef = useRef<Set<string>>(new Set());
   const initializedNotificationsRef = useRef(false);
   const qc = useQueryClient();
+  const logoutMutation = useLogout();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -60,10 +61,16 @@ export default function DashboardLayout({
 
   const notificationsQueryKey = [...getGetNotificationsQueryKey(), user?.id ?? "anonymous"];
 
-  const handleLogout = () => {
-    qc.clear();
-    clearSession();
-    setLocation("/");
+  const handleLogout = async () => {
+    try {
+      await logoutMutation.mutateAsync();
+      setLocation("/login");
+    } catch (err) {
+      console.error("Logout failed", err);
+      // Fallback: clear everything manually if the API call fails
+      qc.clear();
+      setLocation("/login");
+    }
   };
 
   const name = user?.name ?? "Guest";
