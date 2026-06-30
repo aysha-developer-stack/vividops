@@ -139,6 +139,10 @@ function cliqWebRoot(): string {
 
 function computeCliqChannelUrl(channelName: string): string | null {
   if (!channelName) return null;
+  const company = (process.env.ZOHO_CLIQ_COMPANY_UNIQUE_NAME || "").trim();
+  if (company) {
+    return `${cliqWebRoot()}/company/${company}/channels/${channelName}`;
+  }
   return `${cliqWebRoot()}/channels/${channelName}`;
 }
 
@@ -431,19 +435,26 @@ async function createStoredJobMessage({
   if (pushToCliq) {
     const prefix = `JOB-${job.serial} · ${job.title}`;
     const payload = `${prefix}\n${actor.name}: ${cleanText}`;
+    logger.info({ jobId: job.id, channelName: computeCliqChannelName(job) }, "[CLIQ-PUSH] Attempting to push message to Zoho Cliq");
     try {
       const ch = await getOrCreateJobCliqChannel(job);
+      if (ch.status !== "active") {
+        logger.info({ jobId: job.id, status: ch.status }, "[CLIQ-PUSH] Channel not active, provisioning first");
+        await provisionCliqChannelForJob(job);
+      }
       await postCliqMessageToChannelByName(ch.channelName, payload);
+      logger.info({ jobId: job.id, channel: ch.channelName }, "[CLIQ-PUSH] Successfully pushed message via API");
     } catch (errToken) {
+      logger.warn({ err: errToken instanceof Error ? errToken.message : String(errToken), jobId: job.id }, "[CLIQ-PUSH] API push failed, falling back to webhook");
       try {
         await postCliqMessageViaWebhook(payload);
+        logger.info({ jobId: job.id }, "[CLIQ-PUSH] Successfully pushed message via Webhook fallback");
       } catch (errWebhook) {
-        logger.warn(
-          { err: errWebhook, jobId: job.id },
-          "Failed to send message to Zoho Cliq",
+        logger.error(
+          { err: errWebhook instanceof Error ? errWebhook.message : String(errWebhook), jobId: job.id },
+          "[CLIQ-PUSH] Failed to send message via both API and Webhook",
         );
       }
-      logger.debug({ err: errToken, jobId: job.id }, "Cliq channel API send failed; fell back to webhook");
     }
   }
 
@@ -1026,8 +1037,11 @@ router.delete("/jobs/:id", creatorRole, async (req, res) => {
 
 router.post("/zoho/cliq/messages/incoming", async (req, res) => {
   try {
+    logger.info({ body: req.body, headers: req.headers }, "[CLIQ-SYNC] Incoming request received");
+
     const configuredSecret = getCliqSyncSecret();
     if (!configuredSecret) {
+      logger.error("[CLIQ-SYNC] ZOHO_CLIQ_SYNC_SECRET not configured in .env");
       return res.status(501).json({ error: "ZOHO_CLIQ_SYNC_SECRET not configured" });
     }
 
@@ -1035,30 +1049,38 @@ router.post("/zoho/cliq/messages/incoming", async (req, res) => {
       (typeof req.headers["x-cliq-sync-secret"] === "string" ? req.headers["x-cliq-sync-secret"] : "") ||
       (typeof req.query.secret === "string" ? req.query.secret : "") ||
       (typeof req.body?.secret === "string" ? req.body.secret : "");
+
     if (!suppliedSecret || suppliedSecret !== configuredSecret) {
+      logger.warn({ supplied: suppliedSecret ? "REDACTED" : "MISSING", configured: "REDACTED" }, "[CLIQ-SYNC] Invalid sync secret");
       return res.status(401).json({ error: "Invalid Cliq sync secret" });
     }
 
     const message = parseIncomingCliqMessage(req.body);
     if (!message) {
+      logger.warn({ body: req.body }, "[CLIQ-SYNC] Failed to parse Cliq payload");
       return res.status(400).json({ error: "Invalid Cliq payload" });
     }
 
     const full = await findJobByCliqChannelName(message.channelName);
     if (!full) {
+      logger.warn({ channelName: message.channelName }, "[CLIQ-SYNC] Job channel not found for channelName");
       return res.status(404).json({ error: "Job channel not found" });
     }
 
     const actor = await findUserByEmail(message.senderEmail);
     if (!actor) {
+      logger.warn({ senderEmail: message.senderEmail }, "[CLIQ-SYNC] User not found for senderEmail");
       await markJobCliqStatus(full.job.id, "active", `Cliq sync user not found for ${message.senderEmail}`);
-      return res.status(404).json({ error: "Cliq sender not mapped to an app user" });
+      return res.status(404).json({ error: `Cliq sender (${message.senderEmail}) not mapped to an app user` });
     }
 
     if (!(await canViewJobCommunication(actor, full.job))) {
+      logger.warn({ user: actor.email, jobId: full.job.id }, "[CLIQ-SYNC] User is not authorized to communicate on this job");
       await markJobCliqStatus(full.job.id, "active", `Cliq sync sender ${message.senderEmail} is not assigned to the job`);
       return res.status(403).json({ error: "Cliq sender is not assigned to this job" });
     }
+
+    logger.info({ user: actor.email, job: full.job.serial }, "[CLIQ-SYNC] Syncing message from Zoho Cliq");
 
     const normalizedText = normalizeMirroredCliqText(full.job, message.text);
     const recent = await findRecentJobMessage(full.job.id, actor.id, normalizedText);

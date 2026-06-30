@@ -25,12 +25,15 @@ import {
 export default function DashboardLayout({
   title,
   children,
-  role = "super-admin",
+  role: roleProp,
 }: {
   title: string;
   children: ReactNode;
   role?: Role;
 }) {
+  const { user } = useAuth();
+  const userRole = (user?.role as Role) || "user";
+  const role = roleProp || userRole;
   const config = ROLES[role];
   const NAV_ITEMS = config.nav;
   const RoleIcon = config.icon;
@@ -44,7 +47,6 @@ export default function DashboardLayout({
   const seenNotificationIdsRef = useRef<Set<string>>(new Set());
   const initializedNotificationsRef = useRef(false);
   const qc = useQueryClient();
-  const { user } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {

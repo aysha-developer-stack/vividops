@@ -70,44 +70,67 @@ function RequireSignedIn({ children }: { children: React.ReactNode }) {
             ? "user"
             : null;
 
-  const target = ROLES[(user?.role as Role | undefined) ?? "user"]?.base ?? "/";
+  const userRole = (user?.role as Role | undefined) ?? "user";
+  const target = ROLES[userRole]?.base ?? "/";
+  
+  // Strict portal check: If a required role is specified by the path, 
+  // the user MUST have that exact role.
   const portalMismatch =
     !!user && requiredRole !== null && user.role !== requiredRole && path !== "/reset-password";
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) setLocation("/login");
-  }, [isLoading, isAuthenticated, setLocation]);
+    if (!isLoading && !isAuthenticated) {
+      // Don't redirect if we're already on a public page
+      if (path === "/" || path === "/login" || path === "/reset-password") return;
+      setLocation("/login");
+    }
+  }, [isLoading, isAuthenticated, path, setLocation]);
 
   useEffect(() => {
-    if (isLoading) return;
-    if (!isAuthenticated) return;
-    if (!user?.mustResetPassword) return;
-    if (user.role !== "user") return;
-    if (path === "/reset-password") return;
-    setLocation("/reset-password");
-  }, [isLoading, isAuthenticated, user, path, setLocation]);
+    if (isLoading || !isAuthenticated || !user) return;
+    
+    // 1. Force password reset if required
+    if (user.mustResetPassword && user.role === "user" && path !== "/reset-password") {
+      setLocation("/reset-password");
+      return;
+    }
 
-  useEffect(() => {
-    if (isLoading) return;
-    if (!isAuthenticated) return;
-    if (!user) return;
-    if (path === "/reset-password") return;
-    if (!portalMismatch) return;
-    if (path !== target) setLocation(target);
+    // 2. Redirect to correct portal if mismatch
+    if (portalMismatch) {
+      setLocation(target);
+      return;
+    }
+
+    // 3. Redirect away from public pages if already logged in
+    if (path === "/login" || (path === "/" && isAuthenticated)) {
+      setLocation(target);
+    }
   }, [isLoading, isAuthenticated, user, path, setLocation, portalMismatch, target]);
 
-  if (isLoading || !isAuthenticated) return <PageLoader />;
+  if (isLoading) return <PageLoader />;
+  
+  // If not authenticated and on a protected route, show loader while redirecting
+  if (!isAuthenticated && requiredRole !== null) return <PageLoader />;
+  
+  // If mismatch, show loader while redirecting
   if (portalMismatch) return <PageLoader />;
+  
   return <>{children}</>;
 }
 
 function AppRouter() {
+  const { isAuthenticated } = useAuth();
+  
   return (
     <Suspense fallback={<PageLoader />}>
       <Switch>
-        <Route path="/" component={Home} />
-        <Route path="/login" component={Login} />
-        <Route path="/reset-password" component={ResetPassword} />
+        <Route path="/">
+          {isAuthenticated ? <RequireSignedIn><Home /></RequireSignedIn> : <Home />}
+        </Route>
+        <Route path="/login">
+          {isAuthenticated ? <RequireSignedIn><Login /></RequireSignedIn> : <Login />}
+        </Route>
+        <Route path="/reset-password"><RequireSignedIn><ResetPassword /></RequireSignedIn></Route>
         
         {/* Super Admin */}
         <Route path="/super-admin/users"><RequireSignedIn><UserManagement role="super-admin" /></RequireSignedIn></Route>

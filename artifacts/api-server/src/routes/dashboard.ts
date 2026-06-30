@@ -14,20 +14,31 @@ router.get("/dashboard/stats", requireAuth, async (req, res) => {
     const weekEnd = new Date(todayStart.getTime() + 7 * 24 * 60 * 60 * 1000);
     
     // For supervisor, only show stats for their jobs
+    // For user (worker), only show stats for jobs assigned to them
     const isSupervisor = actor.role === "supervisor";
+    const isWorker = actor.role === "user";
+    
     if (isSupervisor) {
       await ensureLegacySupervisorAssignments();
     }
+
     const jobFilter = isSupervisor 
       ? eq(jobs.supervisorId, actor.id)
+      : isWorker
+      ? eq(jobs.assigneeId, actor.id)
       : undefined;
 
-    const totalUsersPromise = isSupervisor
+    const totalUsersPromise = (isSupervisor || isWorker)
       ? (async () => {
+          // Supervisors/Workers only see users they collaborate with
+          const filter = isSupervisor 
+            ? eq(jobs.supervisorId, actor.id)
+            : eq(jobs.assigneeId, actor.id);
+            
           const scopedJobs = await db
             .select({ id: jobs.id, assigneeId: jobs.assigneeId })
             .from(jobs)
-            .where(eq(jobs.supervisorId, actor.id));
+            .where(filter);
           const jobIds = scopedJobs.map((job) => job.id);
           const visibleIds = new Set(
             scopedJobs
@@ -65,7 +76,7 @@ router.get("/dashboard/stats", requireAuth, async (req, res) => {
         .orderBy(desc(jobs.updatedAt))
         .limit(5),
       (async () => {
-        if (isSupervisor) return null;
+        if (isSupervisor || isWorker) return null;
         
         const [currentlyWorking] = await db.select({ count: sql<number>`count(distinct ${timeLogs.userId})` }).from(timeLogs).where(sql`${timeLogs.createdAt} >= ${todayStart} and ${timeLogs.duration} = 0`);
         const [usersMostErrors] = await db.select({ name: users.name, count: sql<number>`count(*)` }).from(errorReports).innerJoin(users, eq(users.id, errorReports.userId)).groupBy(users.name).orderBy(desc(sql`count(*)`)).limit(1);
