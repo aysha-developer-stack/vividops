@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, ArrowRight, ArrowLeft, Mail, Lock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import logoImg from "@assets/vv_1778503190047.png";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetMeQueryKey } from "@workspace/api-client-react";
 import { useLogin } from "@/lib/auth";
 import { ROLES, Role } from "@/lib/roles";
 import { ApiError } from "@workspace/api-client-react";
@@ -23,6 +25,7 @@ export default function Login() {
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
   const [role, setRole] = useState<Role>("super-admin");
   const [, setLocation] = useLocation();
+  const qc = useQueryClient();
   const loginMutation = useLogin();
   const isLoading = loginMutation.isPending;
 
@@ -58,6 +61,10 @@ export default function Login() {
       }
       const targetRole = (result.user.role as Role) ?? role;
       const target = ROLES[targetRole]?.base ?? "/";
+      
+      // Force immediate cache update to prevent redirect race
+      qc.setQueryData(getGetMeQueryKey(), result.user);
+      
       setTimeout(() => setLocation(target), 1200);
     } catch (err) {
       let message = "Something went wrong. Please try again.";
