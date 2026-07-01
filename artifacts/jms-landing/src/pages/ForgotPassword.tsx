@@ -4,8 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Mail, ArrowLeft, ArrowRight, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-
-const logoImg = "/favicon.svg";
+import logoImg from "@assets/vv_1778503190047.png";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");

@@ -3,9 +3,8 @@ import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, ArrowRight, ArrowLeft, Mail, Lock, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import logoImg from "@assets/vv_1778503190047.png";
 import { useQueryClient } from "@tanstack/react-query";
-
-const logoImg = "/favicon.svg";
 import { getGetMeQueryKey } from "@workspace/api-client-react";
 import { useLogin } from "@/lib/auth";
 import { ROLES, Role } from "@/lib/roles";
