@@ -62,16 +62,18 @@ export default function DashboardLayout({
   const notificationsQueryKey = [...getGetNotificationsQueryKey(), user?.id ?? "anonymous"];
 
   const handleLogout = () => {
-    // Optimistic logout: clear state and redirect immediately
+    // Clear all security and session flags immediately
     sessionStorage.removeItem("vops_tab_active");
-    qc.setQueryData([...getGetNotificationsQueryKey(), user?.id ?? "anonymous"], null);
+    setProfileOpen(false);
+    
+    // Clear React Query cache
     qc.clear();
     
-    // Fire-and-forget the backend logout
+    // Fire-and-forget the backend logout call
     logoutMutation.mutate(undefined as any);
     
-    // Redirect immediately for a fast UI experience
-    setLocation("/login");
+    // Force a hard redirect to the login page to ensure all state is wiped
+    window.location.href = "/login";
   };
 
   const name = user?.name ?? "Guest";
