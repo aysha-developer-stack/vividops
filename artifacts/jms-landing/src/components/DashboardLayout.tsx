@@ -68,7 +68,7 @@ export default function DashboardLayout({
     qc.clear();
     
     // Fire-and-forget the backend logout
-    logoutMutation.mutate({});
+    logoutMutation.mutate(undefined as any);
     
     // Redirect immediately for a fast UI experience
     setLocation("/login");
