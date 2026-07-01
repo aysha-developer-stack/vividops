@@ -7,11 +7,19 @@
  */
 
 export interface UserSettingsUpdate {
+  inAppNotifications?: boolean;
   emailNotifications?: boolean;
   pushNotifications?: boolean;
   smsNotifications?: boolean;
+  zohoCliqNotifications?: boolean;
   weeklyDigest?: boolean;
   mentions?: boolean;
+  notificationFrequency?: string;
+  /** @nullable */
+  quietHoursStart?: string | null;
+  /** @nullable */
+  quietHoursEnd?: string | null;
+  soundEnabled?: boolean;
   twoFactorEnabled?: boolean;
   theme?: string;
   accentColor?: string;

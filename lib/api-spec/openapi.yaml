@@ -618,14 +618,20 @@ components:
 
     UserSettings:
       type: object
-      required: [userId, emailNotifications, pushNotifications, smsNotifications, weeklyDigest, mentions, twoFactorEnabled, theme, accentColor, compactMode, language, timezone, dateFormat, currency]
+      required: [userId, inAppNotifications, emailNotifications, pushNotifications, smsNotifications, zohoCliqNotifications, weeklyDigest, mentions, twoFactorEnabled, theme, accentColor, compactMode, language, timezone, dateFormat, currency]
       properties:
         userId: { type: string, format: uuid }
+        inAppNotifications: { type: boolean }
         emailNotifications: { type: boolean }
         pushNotifications: { type: boolean }
         smsNotifications: { type: boolean }
+        zohoCliqNotifications: { type: boolean }
         weeklyDigest: { type: boolean }
         mentions: { type: boolean }
+        notificationFrequency: { type: string }
+        quietHoursStart: { type: ["string", "null"] }
+        quietHoursEnd: { type: ["string", "null"] }
+        soundEnabled: { type: boolean }
         twoFactorEnabled: { type: boolean }
         theme: { type: string }
         accentColor: { type: string }
@@ -638,11 +644,17 @@ components:
     UserSettingsUpdate:
       type: object
       properties:
+        inAppNotifications: { type: boolean }
         emailNotifications: { type: boolean }
         pushNotifications: { type: boolean }
         smsNotifications: { type: boolean }
+        zohoCliqNotifications: { type: boolean }
         weeklyDigest: { type: boolean }
         mentions: { type: boolean }
+        notificationFrequency: { type: string }
+        quietHoursStart: { type: ["string", "null"] }
+        quietHoursEnd: { type: ["string", "null"] }
+        soundEnabled: { type: boolean }
         twoFactorEnabled: { type: boolean }
         theme: { type: string }
         accentColor: { type: string }
@@ -654,12 +666,15 @@ components:
 
     SystemSettings:
       type: object
-      required: [id, autoBackup, maintenanceMode, apiLogging]
+      required: [id, autoBackup, maintenanceMode, apiLogging, notifRetentionDays, overdueEscalationDays, reminderSchedule]
       properties:
         id: { type: string }
         autoBackup: { type: boolean }
         maintenanceMode: { type: boolean }
         apiLogging: { type: boolean }
+        notifRetentionDays: { type: integer }
+        overdueEscalationDays: { type: integer }
+        reminderSchedule: { type: string }
 
     SystemSettingsUpdate:
       type: object
@@ -667,6 +682,9 @@ components:
         autoBackup: { type: boolean }
         maintenanceMode: { type: boolean }
         apiLogging: { type: boolean }
+        notifRetentionDays: { type: integer }
+        overdueEscalationDays: { type: integer }
+        reminderSchedule: { type: string }
 
     SystemMetrics:
       type: object

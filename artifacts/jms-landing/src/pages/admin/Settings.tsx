@@ -92,7 +92,7 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
     bio: "",
   });
 
-  const avatarUrl = typeof (user as any)?.avatarUrl === "string" ? (user as any).avatarUrl : "";
+  const avatarUrl = user?.avatarUrl ?? "";
 
   // Password state
   const [passwords, setPasswords] = useState({
@@ -138,49 +138,47 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
       setProfile({
         name: user.name || "",
         email: user.email || "",
-        phone: (user as any).phone || "",
-        bio: (user as any).bio || "",
+        phone: user.phone || "",
+        bio: user.bio || "",
       });
     }
   }, [user]);
 
   useEffect(() => {
     if (apiUserSettings) {
-      const s = apiUserSettings as any;
       setUserSettingsState({
-        inAppNotifications: s.inAppNotifications ?? true,
-        emailNotifications: s.emailNotifications,
-        pushNotifications: s.pushNotifications,
-        smsNotifications: s.smsNotifications,
-        zohoCliqNotifications: s.zohoCliqNotifications ?? true,
-        weeklyDigest: s.weeklyDigest,
-        mentions: s.mentions,
-        notificationFrequency: s.notificationFrequency ?? "instant",
-        quietHoursStart: s.quietHoursStart ?? "",
-        quietHoursEnd: s.quietHoursEnd ?? "",
-        soundEnabled: s.soundEnabled ?? true,
-        twoFactorEnabled: s.twoFactorEnabled,
-        theme: s.theme,
-        accentColor: s.accentColor,
-        compactMode: s.compactMode,
-        language: s.language,
-        timezone: s.timezone,
-        dateFormat: s.dateFormat,
-        currency: s.currency,
+        inAppNotifications: apiUserSettings.inAppNotifications ?? true,
+        emailNotifications: apiUserSettings.emailNotifications,
+        pushNotifications: apiUserSettings.pushNotifications,
+        smsNotifications: apiUserSettings.smsNotifications,
+        zohoCliqNotifications: apiUserSettings.zohoCliqNotifications ?? true,
+        weeklyDigest: apiUserSettings.weeklyDigest,
+        mentions: apiUserSettings.mentions,
+        notificationFrequency: apiUserSettings.notificationFrequency ?? "instant",
+        quietHoursStart: apiUserSettings.quietHoursStart ?? "",
+        quietHoursEnd: apiUserSettings.quietHoursEnd ?? "",
+        soundEnabled: apiUserSettings.soundEnabled ?? true,
+        twoFactorEnabled: apiUserSettings.twoFactorEnabled,
+        theme: apiUserSettings.theme,
+        accentColor: apiUserSettings.accentColor,
+        compactMode: apiUserSettings.compactMode,
+        language: apiUserSettings.language,
+        timezone: apiUserSettings.timezone,
+        dateFormat: apiUserSettings.dateFormat,
+        currency: apiUserSettings.currency,
       });
     }
   }, [apiUserSettings]);
 
   useEffect(() => {
     if (apiSystemSettings) {
-      const s = apiSystemSettings as any;
       setSystemSettingsState({
-        autoBackup: s.autoBackup,
-        maintenanceMode: s.maintenanceMode,
-        apiLogging: s.apiLogging,
-        notifRetentionDays: s.notifRetentionDays ?? 90,
-        overdueEscalationDays: s.overdueEscalationDays ?? 7,
-        reminderSchedule: s.reminderSchedule ?? "3,1,0",
+        autoBackup: apiSystemSettings.autoBackup,
+        maintenanceMode: apiSystemSettings.maintenanceMode,
+        apiLogging: apiSystemSettings.apiLogging,
+        notifRetentionDays: apiSystemSettings.notifRetentionDays ?? 90,
+        overdueEscalationDays: apiSystemSettings.overdueEscalationDays ?? 7,
+        reminderSchedule: apiSystemSettings.reminderSchedule ?? "3,1,0",
       });
     }
   }, [apiSystemSettings]);

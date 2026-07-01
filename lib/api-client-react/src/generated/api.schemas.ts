@@ -81,11 +81,19 @@ export interface UserUpdate {
 
 export interface UserSettings {
   userId: string;
+  inAppNotifications: boolean;
   emailNotifications: boolean;
   pushNotifications: boolean;
   smsNotifications: boolean;
+  zohoCliqNotifications: boolean;
   weeklyDigest: boolean;
   mentions: boolean;
+  notificationFrequency?: string;
+  /** @nullable */
+  quietHoursStart?: string | null;
+  /** @nullable */
+  quietHoursEnd?: string | null;
+  soundEnabled?: boolean;
   twoFactorEnabled: boolean;
   theme: string;
   accentColor: string;
@@ -97,11 +105,19 @@ export interface UserSettings {
 }
 
 export interface UserSettingsUpdate {
+  inAppNotifications?: boolean;
   emailNotifications?: boolean;
   pushNotifications?: boolean;
   smsNotifications?: boolean;
+  zohoCliqNotifications?: boolean;
   weeklyDigest?: boolean;
   mentions?: boolean;
+  notificationFrequency?: string;
+  /** @nullable */
+  quietHoursStart?: string | null;
+  /** @nullable */
+  quietHoursEnd?: string | null;
+  soundEnabled?: boolean;
   twoFactorEnabled?: boolean;
   theme?: string;
   accentColor?: string;
@@ -117,12 +133,18 @@ export interface SystemSettings {
   autoBackup: boolean;
   maintenanceMode: boolean;
   apiLogging: boolean;
+  notifRetentionDays: number;
+  overdueEscalationDays: number;
+  reminderSchedule: string;
 }
 
 export interface SystemSettingsUpdate {
   autoBackup?: boolean;
   maintenanceMode?: boolean;
   apiLogging?: boolean;
+  notifRetentionDays?: number;
+  overdueEscalationDays?: number;
+  reminderSchedule?: string;
 }
 
 export interface SystemMetrics {

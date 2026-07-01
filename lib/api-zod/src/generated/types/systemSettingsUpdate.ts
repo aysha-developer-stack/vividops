@@ -10,4 +10,7 @@ export interface SystemSettingsUpdate {
   autoBackup?: boolean;
   maintenanceMode?: boolean;
   apiLogging?: boolean;
+  notifRetentionDays?: number;
+  overdueEscalationDays?: number;
+  reminderSchedule?: string;
 }
