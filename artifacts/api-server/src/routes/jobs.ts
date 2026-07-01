@@ -164,15 +164,31 @@ async function getOrCreateJobCliqChannel(job: JobRow): Promise<{
     | { channel_name: string; channel_id: string | null; channel_url: string | null; status: string; last_error: string | null }
     | undefined;
   if (existing?.channel_name) {
+    const expectedName = computeCliqChannelName(job);
     const normalizedUrl = computeCliqChannelUrl(existing.channel_name);
-    if ((existing.channel_url ?? null) !== normalizedUrl) {
+    
+    // If stored URL is wrong OR name doesn't match convention, fix it
+    if ((existing.channel_url ?? null) !== normalizedUrl || existing.channel_name !== expectedName) {
+      const finalName = existing.channel_id ? existing.channel_name : expectedName;
+      const finalUrl = computeCliqChannelUrl(finalName);
+      
       await db.execute(sql`
         UPDATE job_cliq_channels
-        SET channel_url = ${normalizedUrl},
+        SET channel_name = ${finalName},
+            channel_url = ${finalUrl},
             updated_at = now()
         WHERE job_id = ${job.id}
       `);
+      
+      return {
+        channelName: finalName,
+        channelId: existing.channel_id ?? null,
+        channelUrl: finalUrl,
+        status: existing.status,
+        lastError: existing.last_error ?? null,
+      };
     }
+    
     return {
       channelName: existing.channel_name,
       channelId: existing.channel_id ?? null,
