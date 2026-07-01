@@ -14,7 +14,7 @@ import {
 } from "../lib/auth";
 import { publicUser } from "../lib/serialize";
 import { requireAuth } from "../middlewares/requireAuth";
-import { updateSessionCacheUser } from "../middlewares/session";
+import { clearSessionCache, updateSessionCacheUser } from "../middlewares/session";
 import { sendPasswordResetEmail } from "../lib/email";
 
 const router: IRouter = Router();
@@ -108,12 +108,20 @@ router.post("/auth/logout", async (req, res) => {
   const sid = req.cookies?.[SESSION_COOKIE];
   if (sid && typeof sid === "string") {
     await db.delete(sessions).where(eq(sessions.id, sid));
+    clearSessionCache(sid);
   }
   res.clearCookie(SESSION_COOKIE, { path: "/" });
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.setHeader("Clear-Site-Data", "\"cache\", \"storage\"");
   return res.status(204).end();
 });
 
 router.get("/auth/me", requireAuth, (req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
   return res.json(publicUser(req.session!.user));
 });
 

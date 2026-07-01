@@ -30,6 +30,10 @@ export function updateSessionCacheUser(sessionId: string, user: UserRow) {
   sessionCache.set(sessionId, { cacheUntilMs: Date.now() + 30_000, value });
 }
 
+export function clearSessionCache(sessionId: string) {
+  sessionCache.delete(sessionId);
+}
+
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
@@ -54,6 +58,9 @@ export async function attachSession(
     req.session = cached.value;
     return next();
   }
+  if (cached) {
+    sessionCache.delete(sid);
+  }
 
   try {
     await ensureUserColumns();
@@ -65,14 +72,19 @@ export async function attachSession(
       .limit(1);
 
     const row = rows[0];
-    if (!row) return next();
+    if (!row) {
+      sessionCache.delete(sid);
+      return next();
+    }
 
     if (row.session.expiresAt.getTime() < Date.now()) {
       // Expired — delete and ignore.
       await db.delete(sessions).where(eq(sessions.id, sid));
+      sessionCache.delete(sid);
       return next();
     }
     if (row.user.status !== "active") {
+      sessionCache.delete(sid);
       return next();
     }
     const value = { sessionId: sid, user: row.user };

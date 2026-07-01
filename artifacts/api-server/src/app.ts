@@ -59,6 +59,18 @@ app.get("/api/health", (req, res) => {
 
 app.use(attachSession);
 
+app.use((req, res, next) => {
+  const isApi = req.path.startsWith("/api/");
+  const isHealth = req.path === "/api/health";
+  const wantsHtml = !isApi && req.method === "GET";
+  if ((req.session && !isHealth) || wantsHtml) {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+  }
+  next();
+});
+
 app.use("/api", (req, res, next) => {
   const pathOnly = req.path || "";
   const shouldSkip =
@@ -107,6 +119,9 @@ if (process.env.NODE_ENV === "production") {
   
   // Handle SPA routing
   app.get(/^(?!\/api).*/, (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     res.sendFile(path.join(frontendPath, "index.html"));
   });
 }

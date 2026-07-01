@@ -108,6 +108,31 @@ function RequireSignedIn({ children }: { children: React.ReactNode }) {
     }
   }, [isLoading, isAuthenticated, user, path, setLocation, portalMismatch, target]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handlePageShow = () => {
+      // Re-check auth when browser restores a page from history/back-forward cache.
+      void fetch("/api/auth/me", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      })
+        .then((res) => {
+          if (res.status === 401) {
+            setLocation("/login");
+          }
+        })
+        .catch(() => {
+          setLocation("/login");
+        });
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, [setLocation]);
+
   if (isLoading) return <PageLoader />;
   
   // If not authenticated and on a protected route, show loader while redirecting
