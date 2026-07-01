@@ -15,7 +15,8 @@ import {
 import { useAuth, useResetPassword } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { ROLES, type Role } from "@/lib/roles";
-import logoImg from "@assets/vv_1778503190047.png";
+
+const logoImg = "/favicon.svg";
 
 export default function ResetPassword() {
   const [loc, setLocation] = useLocation();

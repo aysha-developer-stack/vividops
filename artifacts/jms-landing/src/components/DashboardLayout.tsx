@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Settings, Bell, ChevronLeft, LogOut, Search, Menu,
 } from "lucide-react";
-import logoImg from "@assets/vv_1778503190047.png";
+
+const logoImg = "/favicon.svg";
 import { useAuth, useLogout } from "@/lib/auth";
 import { getNotifStyle, playNotificationTone } from "@/lib/notifications";
 import { ROLES, Role } from "@/lib/roles";

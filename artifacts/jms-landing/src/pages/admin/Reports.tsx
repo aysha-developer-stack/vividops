@@ -8,7 +8,8 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
-import logoImg from "@assets/vv_1778503190047.png";
+
+const logoImg = "/favicon.svg";
 import { useAuth } from "@/lib/auth";
 import {
   useGetDashboardStats,
