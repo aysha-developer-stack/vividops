@@ -46,3 +46,10 @@
   - `POST https://vividops.com.au/api/jobs/60cba6e6-fabb-4138-b9ea-e9f71329e02c/cliq/join`
   - Status: `502 Bad Gateway`
 - This proves the click path reaches the deployed backend and the join attempt fails server-side before Cliq access is granted.
+
+## Additional Evidence
+- Public health endpoint responds successfully at `https://vividops.com.au/api/health`.
+- Railway CLI is not authenticated on this machine (`railway whoami` => unauthorized), so production restart/redeploy cannot be triggered directly from this workspace.
+- Latest successful user-observed join response after fixes:
+  - `{"success":true,"channelUrl":"https://cliq.zoho.com.au/app/chats/CT_1193239807648465788_7003567933","channelName":"jobgood"}`
+- Directly opening that returned `app/chats/...` URL still failed in browser, so the browser-safe deep link should fall back to the channel permalink format.

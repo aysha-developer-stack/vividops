@@ -1224,13 +1224,21 @@ router.post("/zoho/cliq/messages/incoming", async (req, res) => {
     if (!actor) {
       logger.warn({ senderEmail: message.senderEmail }, "[CLIQ-SYNC] User not found for senderEmail");
       await markJobCliqStatus(full.job.id, "active", `Cliq sync user not found for ${message.senderEmail}`);
-      return res.status(404).json({ error: `Cliq sender (${message.senderEmail}) not mapped to an app user` });
+      return res.json({
+        ok: true,
+        ignored: true,
+        reason: `Cliq sender (${message.senderEmail}) not mapped to an app user`,
+      });
     }
 
     if (!(await canViewJobCommunication(actor, full.job))) {
       logger.warn({ user: actor.email, jobId: full.job.id }, "[CLIQ-SYNC] User is not authorized to communicate on this job");
       await markJobCliqStatus(full.job.id, "active", `Cliq sync sender ${message.senderEmail} is not assigned to the job`);
-      return res.status(403).json({ error: "Cliq sender is not assigned to this job" });
+      return res.json({
+        ok: true,
+        ignored: true,
+        reason: "Cliq sender is not assigned to this job",
+      });
     }
 
     logger.info({ user: actor.email, job: full.job.serial }, "[CLIQ-SYNC] Syncing message from Zoho Cliq");
