@@ -140,11 +140,7 @@ function cliqWebRoot(): string {
 
 function computeCliqChannelUrl(channelName: string): string | null {
   if (!channelName) return null;
-  const company = (process.env.ZOHO_CLIQ_COMPANY_UNIQUE_NAME || "").trim();
-  if (company) {
-    return `${cliqWebRoot()}/company/${company}/channels/${channelName}`;
-  }
-  return `${cliqWebRoot()}/channels/${channelName}`;
+  return `${cliqWebRoot()}/channels/${encodeURIComponent(channelName)}`;
 }
 
 function computeCliqChatUrl(chatId: string | null): string | null {
@@ -210,6 +206,7 @@ function parseCliqChannelLookup(raw: any): CliqChannelLookup | null {
     pickString(item.chatId);
   const channelUrl =
     pickString(item.permalink) ??
+    computeCliqChannelUrl(channelName ?? "") ??
     computeCliqChatUrl(chatId) ??
     pickString(item.channel_url) ??
     pickString(item.url);
@@ -826,6 +823,7 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
 
     const discoveredUrl =
       pickString(createJson?.data?.permalink) ??
+      computeCliqChannelUrl(discoveredName ?? channelName) ??
       computeCliqChatUrl(discoveredChatId) ??
       pickString(createJson?.data?.channel_url) ??
       pickString(createJson?.data?.url) ??
