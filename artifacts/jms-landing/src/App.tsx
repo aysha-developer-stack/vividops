@@ -56,7 +56,7 @@ function PageLoader() {
 }
 
 function RequireSignedIn({ children }: { children: React.ReactNode }) {
-  const { isLoading, isAuthenticated, user } = useAuth();
+  const { isLoading, isAuthenticated, user, refresh } = useAuth();
   const [loc, setLocation] = useLocation();
   const path = loc.startsWith("/") ? loc : `/${loc}`;
 
@@ -111,27 +111,23 @@ function RequireSignedIn({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const handlePageShow = () => {
-      // Re-check auth when browser restores a page from history/back-forward cache.
-      void fetch("/api/auth/me", {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-        headers: { "Cache-Control": "no-cache" },
-      })
-        .then((res) => {
-          if (res.status === 401) {
-            setLocation("/login");
-          }
-        })
-        .catch(() => {
-          setLocation("/login");
-        });
+    const handlePageShow = (event: PageTransitionEvent) => {
+      const currentPath = window.location.pathname;
+      const isProtectedRoute =
+        currentPath.startsWith("/super-admin") ||
+        currentPath.startsWith("/admin") ||
+        currentPath.startsWith("/supervisor") ||
+        currentPath.startsWith("/user") ||
+        currentPath === "/reset-password";
+
+      // Only revalidate when the browser restores a protected page from back/forward cache.
+      if (!event.persisted || !isProtectedRoute) return;
+      void refresh();
     };
 
     window.addEventListener("pageshow", handlePageShow);
     return () => window.removeEventListener("pageshow", handlePageShow);
-  }, [setLocation]);
+  }, [refresh]);
 
   if (isLoading) return <PageLoader />;
   
