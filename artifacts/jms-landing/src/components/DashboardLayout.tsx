@@ -373,7 +373,7 @@ export default function DashboardLayout({
         transition={{ type: "spring", stiffness: 200, damping: 28 }}
         className={`fixed lg:sticky top-0 h-screen bg-black text-white z-40 flex flex-col border-r border-white/10 ${
           mobileOpen ? "left-0" : "-left-full lg:left-0"
-        } transition-[left] duration-300`}
+        } transition-[left] duration-300 w-[280px] lg:w-auto`}
       >
         {/* Logo */}
         <div className={`${collapsed ? "h-20" : "h-28"} flex items-center justify-center px-3 border-b border-white/10 shrink-0`}>
@@ -466,8 +466,8 @@ export default function DashboardLayout({
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Topbar */}
-        <header className="h-20 bg-white border-b border-gray-200 sticky top-0 z-20 flex items-center justify-between px-6">
-          <div className="flex items-center gap-4">
+        <header className="h-20 bg-white border-b border-gray-200 sticky top-0 z-20 flex items-center justify-between px-4 md:px-6">
+          <div className="flex items-center gap-2 md:gap-4">
             <button
               onClick={() => setMobileOpen(true)}
               className="lg:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
@@ -475,11 +475,11 @@ export default function DashboardLayout({
               <Menu size={20} />
             </button>
             <div>
-              <div className="flex items-center gap-2">
-                <RoleIcon size={14} className="text-primary" />
-                <span className="text-xs font-semibold text-primary uppercase tracking-wider">{config.label}</span>
+              <div className="flex items-center gap-1.5 md:gap-2">
+                <RoleIcon size={12} className="text-primary md:size-[14px]" />
+                <span className="text-[10px] md:text-xs font-semibold text-primary uppercase tracking-wider">{config.label}</span>
               </div>
-              <h1 className="text-xl font-bold text-gray-900">{title}</h1>
+              <h1 className="text-lg md:text-xl font-bold text-gray-900 line-clamp-1">{title}</h1>
             </div>
           </div>
 
@@ -657,7 +657,7 @@ export default function DashboardLayout({
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-6 md:p-8 overflow-x-hidden">
+        <main className="flex-1 p-4 md:p-8 overflow-x-hidden">
           {children}
         </main>
       </div>

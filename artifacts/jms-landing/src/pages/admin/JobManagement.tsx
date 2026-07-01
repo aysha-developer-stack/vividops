@@ -466,7 +466,7 @@ export default function JobManagement(
       )}
 
       {/* Status pills */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3 mb-6">
         {(["All", "Pending", "In Progress", "Completed", "Overdue", "Rework"] as const).map((s, i) => (
           <motion.button
             key={s}
@@ -475,10 +475,10 @@ export default function JobManagement(
             transition={{ delay: i * 0.05 }}
             whileHover={{ y: -3, boxShadow: "0 12px 24px rgba(0,0,0,0.06)" }}
             onClick={() => setFilter(s)}
-            className={`p-4 rounded-xl border-2 text-left transition-colors ${filter === s ? "border-primary bg-primary/5" : "border-gray-100 bg-white hover:border-gray-200"}`}
+            className={`p-3 md:p-4 rounded-xl border-2 text-left transition-colors ${filter === s ? "border-primary bg-primary/5" : "border-gray-100 bg-white hover:border-gray-200"}`}
           >
-            <div className={`text-xs font-medium ${filter === s ? "text-primary" : "text-gray-500"}`}>{s}</div>
-            <div className="text-2xl font-bold text-gray-900 mt-1">{counts[s]}</div>
+            <div className={`text-[10px] md:text-xs font-medium ${filter === s ? "text-primary" : "text-gray-500"}`}>{s}</div>
+            <div className="text-xl md:text-2xl font-bold text-gray-900 mt-1">{counts[s]}</div>
           </motion.button>
         ))}
       </div>
