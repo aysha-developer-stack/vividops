@@ -40,11 +40,24 @@ const AuthContext = createContext<AuthContextValue>({
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
+  const logoutMutation = useLogout();
+  
   const meQuery = useQuery({
     queryKey: getGetMeQueryKey(),
     queryFn: async () => {
       try {
-        return await getMe();
+        const user = await getMe();
+        
+        // Tab-session security: If we have a user from the cookie 
+        // but no tab-specific session flag, this is a fresh tab 
+        // that shouldn't be auto-logged in.
+        if (user && !sessionStorage.getItem("vops_tab_active")) {
+          // Log out immediately to clear the persistent cookie
+          await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+          return null;
+        }
+        
+        return user;
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) return null;
         throw err;
@@ -56,7 +69,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setCachedUser(meQuery.data ?? null);
-  }, [meQuery.data]);
+    
+    // If we are definitely NOT authenticated, clear the tab flag
+    if (meQuery.isSuccess && !meQuery.data) {
+      sessionStorage.removeItem("vops_tab_active");
+    }
+  }, [meQuery.data, meQuery.isSuccess]);
 
   const value: AuthContextValue = {
     user: meQuery.data ?? null,
@@ -80,6 +98,8 @@ export function useLogin() {
   return useLoginMutation({
     mutation: {
       onSuccess: (data) => {
+        // Mark this tab as having an active session
+        sessionStorage.setItem("vops_tab_active", "true");
         qc.setQueryData(getGetMeQueryKey(), data.user);
         setCachedUser(data.user);
       },
@@ -92,6 +112,7 @@ export function useLogout() {
   return useLogoutMutation({
     mutation: {
       onSuccess: () => {
+        sessionStorage.removeItem("vops_tab_active");
         qc.setQueryData(getGetMeQueryKey(), null);
         setCachedUser(null);
         qc.clear();
@@ -105,6 +126,7 @@ export function useResetPassword() {
   return useResetPasswordMutation({
     mutation: {
       onSuccess: (data) => {
+        sessionStorage.setItem("vops_tab_active", "true");
         qc.setQueryData(getGetMeQueryKey(), data);
         setCachedUser(data);
       },
