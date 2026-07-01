@@ -38,7 +38,7 @@ const { setupSocketIO } = await import("./lib/socket");
 const { setupWorkers } = await import("./lib/queue");
 const { ensureAllSchemas } = await import("./lib/schema-init");
 
-import { shouldSendNotification, createNotification } from "./lib/notifications";
+const { shouldSendNotification, createNotification } = await import("./lib/notifications");
 
 const rawPort = process.env["PORT"] || "3000";
 
