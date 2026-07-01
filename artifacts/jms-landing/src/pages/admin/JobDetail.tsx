@@ -120,6 +120,8 @@ type JobCliqChannelApi = {
   status: string;
 };
 
+const CLIQ_WEB_ROOT = "https://cliq.zoho.com.au";
+
 type JobMessageUi = { id: string; user: string; avatar: string; text: string; time: string; isMe: boolean };
 
 const INITIAL_MESSAGES: JobMessageUi[] = [];
@@ -1540,21 +1542,30 @@ export default function JobDetail({ role = "user", id }: Props) {
         })()}
 
         {tab === "communication" && (() => {
-          const cliqWebRoot =
-            (import.meta as any).env?.VITE_ZOHO_CLIQ_WEB_ROOT ||
-            (import.meta as any).env?.VITE_CLIQ_WEB_ROOT ||
-            "https://cliq.zoho.com.au";
           const fallbackChannelName = `job-${(job?.number ?? `job-${jobId}`).toLowerCase().replace(/[^a-z0-9]/g, "-")}-${(job?.title ?? "job").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`.replace(/^job-job-/, "job-");
           const channelName = cliqChannel?.channelName ?? fallbackChannelName;
-          const cliqUrl = cliqChannel?.channelUrl ?? `${cliqWebRoot}/channels/${channelName}`;
+          const cliqUrl = cliqChannel?.channelUrl ?? `${CLIQ_WEB_ROOT}/channels/${channelName}`;
           const openCliq = async () => {
+            let url = cliqUrl;
             try {
               if (job?.id) {
-                await fetch(`/api/jobs/${job.id}/cliq/join`, { method: "POST", credentials: "include" });
+                const res = await fetch(`/api/jobs/${job.id}/cliq/join`, { method: "POST", credentials: "include" });
+                if (res.ok) {
+                  const data = (await res.json()) as Partial<JobCliqChannelApi>;
+                  if (typeof data.channelName === "string") {
+                    const next = {
+                      channelName: data.channelName,
+                      channelUrl: typeof data.channelUrl === "string" ? data.channelUrl : null,
+                      status: typeof data.status === "string" ? data.status : (cliqChannel?.status ?? "active"),
+                    };
+                    setCliqChannel(next);
+                    url = next.channelUrl ?? `${CLIQ_WEB_ROOT}/channels/${next.channelName}`;
+                  }
+                }
               }
             } catch {
             }
-            window.open(cliqUrl, "_blank", "noopener,noreferrer");
+            window.open(url, "_blank", "noopener,noreferrer");
           };
           const members = (jobMembers.length > 0 ? jobMembers : [
             job?.supervisor?.name ? { id: job.supervisor.id, name: job.supervisor.name, role: "supervisor" as Role } : null,

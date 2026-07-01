@@ -41,6 +41,7 @@ type JobAttachmentApi = {
 
 const QUICK_EMOJIS = ["😀", "👍", "🎉", "✅", "🔥", "🙂", "🙏", "😄"];
 const IMAGE_FILE_RE = /\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?.*)?$/i;
+const CLIQ_WEB_ROOT = "https://cliq.zoho.com.au";
 
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -249,12 +250,25 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
   }, [activeJobId]);
 
   const openCliq = async () => {
-    const url = cliqChannel?.channelUrl;
-    if (!url || !activeJobId) return;
+    if (!activeJobId) return;
+    let url = cliqChannel?.channelUrl;
     try {
-      await fetch(`/api/jobs/${activeJobId}/cliq/join`, { method: "POST", credentials: "include" });
+      const res = await fetch(`/api/jobs/${activeJobId}/cliq/join`, { method: "POST", credentials: "include" });
+      if (res.ok) {
+        const data = (await res.json()) as Partial<JobCliqChannelApi>;
+        if (typeof data.channelName === "string") {
+          const next = {
+            channelName: data.channelName,
+            channelUrl: typeof data.channelUrl === "string" ? data.channelUrl : null,
+            status: typeof data.status === "string" ? data.status : (cliqChannel?.status ?? "active"),
+          };
+          setCliqChannel(next);
+          url = next.channelUrl ?? `${CLIQ_WEB_ROOT}/channels/${next.channelName}`;
+        }
+      }
     } catch {
     }
+    if (!url) return;
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
