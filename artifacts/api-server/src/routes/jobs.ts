@@ -4,6 +4,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { db, jobs, users, jobMembers, type JobRow, type UserRow, sql } from "@workspace/db";
 import { createNotification } from "../lib/notifications";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { CreateJobBody, UpdateJobBody } from "@workspace/api-zod";
 import { publicJob } from "../lib/serialize";
 import { requireAuth, requireRole } from "../middlewares/requireAuth";
@@ -146,16 +147,48 @@ function computeCliqChannelUrl(channelName: string): string | null {
   return `${cliqWebRoot()}/channels/${channelName}`;
 }
 
+function computeCliqChatUrl(chatId: string | null): string | null {
+  const value = pickString(chatId);
+  if (!value) return null;
+  return `${cliqWebRoot()}/app/chats/${encodeURIComponent(value)}`;
+}
+
 function pickString(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const s = v.trim();
   return s ? s : null;
 }
 
+// #region debug-point A:debug-report-helper
+function reportCliqDebug(hypothesisId: string, location: string, msg: string, data: Record<string, unknown>) {
+  let url = "http://127.0.0.1:7777/event";
+  let sessionId = "cliq-open-link";
+  try {
+    const envText = readFileSync(".dbg/cliq-open-link.env", "utf8");
+    url = envText.match(/DEBUG_SERVER_URL=(.+)/)?.[1]?.trim() || url;
+    sessionId = envText.match(/DEBUG_SESSION_ID=(.+)/)?.[1]?.trim() || sessionId;
+  } catch {}
+  fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId,
+      runId: "pre-fix",
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now(),
+    }),
+  }).catch(() => {});
+}
+// #endregion
+
 type CliqChannelLookup = {
   channelId: string | null;
   channelName: string | null;
   channelUrl: string | null;
+  chatId: string | null;
 };
 
 function parseCliqChannelLookup(raw: any): CliqChannelLookup | null {
@@ -172,12 +205,16 @@ function parseCliqChannelLookup(raw: any): CliqChannelLookup | null {
     pickString(item.channel_unique_name) ??
     pickString(item.uniqueName) ??
     pickString(item.name);
+  const chatId =
+    pickString(item.chat_id) ??
+    pickString(item.chatId);
   const channelUrl =
     pickString(item.permalink) ??
+    computeCliqChatUrl(chatId) ??
     pickString(item.channel_url) ??
     pickString(item.url);
-  if (!channelId && !channelName && !channelUrl) return null;
-  return { channelId, channelName, channelUrl };
+  if (!channelId && !channelName && !channelUrl && !chatId) return null;
+  return { channelId, channelName, channelUrl, chatId };
 }
 
 async function getOrCreateJobCliqChannel(job: JobRow): Promise<{
@@ -209,6 +246,21 @@ async function getOrCreateJobCliqChannel(job: JobRow): Promise<{
         finalId
           ? await resolveCliqChannelById(token, finalId)
           : await resolveCliqChannelByName(token, expectedName) ?? await resolveCliqChannelByName(token, existing.channel_name);
+      // #region debug-point A:existing-channel-resolution
+      reportCliqDebug("A", "jobs.ts:getOrCreateJobCliqChannel", "[DEBUG] Existing Cliq channel resolution", {
+        jobId: job.id,
+        serial: job.serial,
+        title: job.title,
+        storedChannelName: existing.channel_name,
+        storedChannelId: existing.channel_id,
+        storedChannelUrl: existing.channel_url,
+        expectedChannelName: expectedName,
+        resolvedChannelId: resolved?.channelId ?? null,
+        resolvedChannelName: resolved?.channelName ?? null,
+        resolvedChannelUrl: resolved?.channelUrl ?? null,
+        resolvedChatId: resolved?.chatId ?? null,
+      });
+      // #endregion
       if (resolved) {
         finalId = resolved.channelId ?? finalId;
         finalName = resolved.channelName ?? finalName;
@@ -720,6 +772,7 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
   let createdChannelName = channelName;
   let createdChannelUrl = computeCliqChannelUrl(channelName);
   let discoveredChannelId: string | null = existingChannelId;
+  let discoveredChatId: string | null = null;
 
   // Only create new channel if it doesn't exist yet
   if (!existingChannelId) {
@@ -757,6 +810,11 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
       pickString(createJson?.data?.channelId) ??
       pickString(createJson?.channel_id) ??
       pickString(createJson?.channelId);
+    discoveredChatId =
+      pickString(createJson?.data?.chat_id) ??
+      pickString(createJson?.data?.chatId) ??
+      pickString(createJson?.chat_id) ??
+      pickString(createJson?.chatId);
     const discoveredName =
       pickString(createJson?.data?.unique_name) ??
       pickString(createJson?.data?.channel_unique_name) ??
@@ -768,6 +826,7 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
 
     const discoveredUrl =
       pickString(createJson?.data?.permalink) ??
+      computeCliqChatUrl(discoveredChatId) ??
       pickString(createJson?.data?.channel_url) ??
       pickString(createJson?.data?.url) ??
       pickString(createJson?.permalink) ??
@@ -1336,6 +1395,17 @@ router.get("/jobs/:id/cliq/channel", requireAuth, async (req, res) => {
     }
 
     const ch = await getOrCreateJobCliqChannel(full.job);
+    // #region debug-point B:channel-endpoint-response
+    reportCliqDebug("B", "jobs.ts:/jobs/:id/cliq/channel", "[DEBUG] Returning Cliq channel payload", {
+      jobId: full.job.id,
+      actorId: actor.id,
+      channelName: ch.channelName,
+      channelId: ch.channelId,
+      channelUrl: ch.channelUrl,
+      status: ch.status,
+      lastError: ch.lastError,
+    });
+    // #endregion
     return res.json(ch);
   } catch (err) {
     logger.error({ err }, "Failed to get job Cliq channel");
@@ -1399,6 +1469,17 @@ router.post("/jobs/:id/cliq/join", requireAuth, async (req, res) => {
 
     await markJobCliqStatus(full.job.id, "active", null);
     ch = await getOrCreateJobCliqChannel(full.job);
+    // #region debug-point C:join-endpoint-response
+    reportCliqDebug("C", "jobs.ts:/jobs/:id/cliq/join", "[DEBUG] Returning join result", {
+      jobId: full.job.id,
+      actorId: actor.id,
+      actorEmail: email,
+      channelId,
+      channelName: ch.channelName,
+      channelUrl: ch.channelUrl,
+      status: ch.status,
+    });
+    // #endregion
     return res.json({ success: true, channelUrl: ch.channelUrl, channelName: ch.channelName });
   } catch (err) {
     logger.error({ err }, "Failed to join job Cliq channel");
