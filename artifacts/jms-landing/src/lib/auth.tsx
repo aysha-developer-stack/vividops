@@ -152,6 +152,7 @@ export function clearSession() {
   fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(
     () => undefined,
   );
+  sessionStorage.removeItem("vops_tab_active");
   setCachedUser(null);
 }
 // Kept only so legacy imports don't break — real flow goes through useLogin.

@@ -61,16 +61,17 @@ export default function DashboardLayout({
 
   const notificationsQueryKey = [...getGetNotificationsQueryKey(), user?.id ?? "anonymous"];
 
-  const handleLogout = async () => {
-    try {
-      await logoutMutation.mutateAsync();
-      setLocation("/login");
-    } catch (err) {
-      console.error("Logout failed", err);
-      // Fallback: clear everything manually if the API call fails
-      qc.clear();
-      setLocation("/login");
-    }
+  const handleLogout = () => {
+    // Optimistic logout: clear state and redirect immediately
+    sessionStorage.removeItem("vops_tab_active");
+    qc.setQueryData([...getGetNotificationsQueryKey(), user?.id ?? "anonymous"], null);
+    qc.clear();
+    
+    // Fire-and-forget the backend logout
+    logoutMutation.mutate({});
+    
+    // Redirect immediately for a fast UI experience
+    setLocation("/login");
   };
 
   const name = user?.name ?? "Guest";
