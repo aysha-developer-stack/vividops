@@ -255,6 +255,7 @@ export interface Job {
 }
 
 export interface JobInput {
+  jobNumber?: string | null;
   /** @minLength 1 */
   title: string;
   /** @minLength 1 */
@@ -271,6 +272,7 @@ export interface JobInput {
 }
 
 export interface JobUpdate {
+  jobNumber?: string | null;
   /** @minLength 1 */
   title?: string;
   /** @minLength 1 */

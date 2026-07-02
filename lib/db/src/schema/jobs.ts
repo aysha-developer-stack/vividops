@@ -25,6 +25,7 @@ export const jobs = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     serial: serial("serial").notNull().unique(),
+    jobNumber: text("job_number"),
     title: text("title").notNull(),
     client: text("client").notNull(),
     address: text("address"),

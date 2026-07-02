@@ -49,6 +49,11 @@ export async function ensureAllSchemas() {
         CREATE TYPE error_report_status AS ENUM ('open', 'resolved');
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS job_number text;
+      CREATE UNIQUE INDEX IF NOT EXISTS jobs_job_number_uniq_idx
+        ON jobs (job_number)
+        WHERE job_number IS NOT NULL;
+
       -- Job Members
       CREATE TABLE IF NOT EXISTS job_members (
         id uuid PRIMARY KEY,

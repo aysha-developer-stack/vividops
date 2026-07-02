@@ -8,6 +8,7 @@
 import type { JobPriority } from "./jobPriority";
 
 export interface JobInput {
+  jobNumber?: string | null;
   /** @minLength 1 */
   title: string;
   /** @minLength 1 */

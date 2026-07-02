@@ -9,6 +9,7 @@ import type { JobPriority } from "./jobPriority";
 import type { JobStatus } from "./jobStatus";
 
 export interface JobUpdate {
+  jobNumber?: string | null;
   /** @minLength 1 */
   title?: string;
   /** @minLength 1 */

@@ -92,6 +92,7 @@ const JOB_TITLE_OPTIONS = [
 ] as const;
 
 interface FormState {
+  jobNumber: string;
   title: string;
   client: string;
   address: string;
@@ -103,6 +104,7 @@ interface FormState {
 }
 
 const EMPTY_FORM: FormState = {
+  jobNumber: "",
   title: "",
   client: "",
   address: "",
@@ -253,6 +255,7 @@ export default function JobManagement(
     const meta = parseJobMeta(raw?.description ?? null);
     setEditingId(j.id);
     setForm({
+      jobNumber: j.number.replace(/^JOB-/i, ""),
       title: j.title,
       client: j.client,
       address: raw?.address ?? "",
@@ -387,6 +390,7 @@ export default function JobManagement(
           })
         : undefined;
     const payload = {
+      jobNumber: form.jobNumber.trim() || null,
       title: form.title,
       client: form.client,
       address: form.address || undefined,
@@ -736,20 +740,31 @@ export default function JobManagement(
                 {/* LEFT COLUMN — Job details */}
                 <div className="space-y-4">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Job Details</div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Title</label>
-                    <input
-                      list="job-title-options"
-                      value={form.title}
-                      onChange={(e) => setForm({ ...form, title: e.target.value })}
-                      placeholder="Select or type a custom job title"
-                      className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
-                    />
-                    <datalist id="job-title-options">
-                      {JOB_TITLE_OPTIONS.map((option) => (
-                        <option key={option} value={option} />
-                      ))}
-                    </datalist>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Number</label>
+                      <input
+                        value={form.jobNumber}
+                        onChange={(e) => setForm({ ...form, jobNumber: e.target.value })}
+                        placeholder="e.g. 2"
+                        className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Title</label>
+                      <input
+                        list="job-title-options"
+                        value={form.title}
+                        onChange={(e) => setForm({ ...form, title: e.target.value })}
+                        placeholder="Select or type a custom job title"
+                        className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                      />
+                      <datalist id="job-title-options">
+                        {JOB_TITLE_OPTIONS.map((option) => (
+                          <option key={option} value={option} />
+                        ))}
+                      </datalist>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>

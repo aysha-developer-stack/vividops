@@ -124,9 +124,31 @@ function slugifyChannel(value: string): string {
 }
 
 function computeCliqChannelName(job: JobRow): string {
-  const num = `job-${job.serial}`;
+  const numberSeed = job.jobNumber?.trim() || String(job.serial);
+  const num = `job-${slugifyChannel(numberSeed) || job.serial}`;
   const title = slugifyChannel(job.title || "job");
   return `${num}-${title}`.slice(0, 80);
+}
+
+function normalizeJobNumber(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const withoutPrefix = trimmed.replace(/^job[\s-]*/i, "");
+  const normalized = withoutPrefix.trim().toUpperCase();
+  return normalized || null;
+}
+
+async function isJobNumberTaken(jobNumber: string, excludeJobId?: string): Promise<boolean> {
+  const rows = await db.execute(sql`
+    SELECT id
+    FROM jobs
+    WHERE job_number = ${jobNumber}
+      AND (${excludeJobId ?? null} IS NULL OR id <> ${excludeJobId ?? null})
+    LIMIT 1
+  `);
+  const row = ((rows as any).rows ?? [])[0] as { id?: string } | undefined;
+  return Boolean(row?.id);
 }
 
 function cliqWebRoot(): string {
@@ -930,6 +952,7 @@ router.post("/jobs", creatorRole, async (req, res) => {
   }
   const actor = req.session!.user;
   const body = parsed.data;
+  const jobNumber = normalizeJobNumber(body.jobNumber);
 
   // Validate referenced users exist and are active.
   const refIds = [body.assigneeId, body.supervisorId].filter(
@@ -962,6 +985,10 @@ router.post("/jobs", creatorRole, async (req, res) => {
     }
   }
 
+  if (jobNumber && (await isJobNumberTaken(jobNumber))) {
+    return res.status(400).json({ error: "Job number already exists" });
+  }
+
   // Supervisors creating jobs become the supervisor by default.
   const supervisorId =
     body.supervisorId ?? (actor.role === "supervisor" ? actor.id : null);
@@ -969,6 +996,7 @@ router.post("/jobs", creatorRole, async (req, res) => {
   const [created] = await db
     .insert(jobs)
     .values({
+      jobNumber,
       title: body.title,
       client: body.client,
       address: body.address ?? null,
@@ -1035,6 +1063,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   const full = await loadJob(id);
   if (!full) return res.status(404).json({ error: "Job not found" });
   const body = parsed.data;
+  const jobNumber = body.jobNumber !== undefined ? normalizeJobNumber(body.jobNumber) : undefined;
 
   const isManager = canManageJob(actor, full.job);
   const isAssignee = full.job.assigneeId === actor.id;
@@ -1084,7 +1113,12 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     }
   }
 
+  if (jobNumber && (await isJobNumberTaken(jobNumber, id))) {
+    return res.status(400).json({ error: "Job number already exists" });
+  }
+
   const patch: Record<string, unknown> = { updatedAt: new Date() };
+  if (body.jobNumber !== undefined) patch.jobNumber = jobNumber;
   if (body.title !== undefined) patch.title = body.title;
   if (body.client !== undefined) patch.client = body.client;
   if (body.address !== undefined) patch.address = body.address;

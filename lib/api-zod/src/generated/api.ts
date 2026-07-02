@@ -385,6 +385,7 @@ export const ListJobsResponse = zod.array(ListJobsResponseItem);
  */
 
 export const CreateJobBody = zod.object({
+  jobNumber: zod.string().nullish(),
   title: zod.string().min(1),
   client: zod.string().min(1),
   address: zod.string().optional(),
@@ -456,6 +457,7 @@ export const updateJobBodyProgressMin = 0;
 export const updateJobBodyProgressMax = 100;
 
 export const UpdateJobBody = zod.object({
+  jobNumber: zod.string().nullish(),
   title: zod.string().min(1).optional(),
   client: zod.string().min(1).optional(),
   address: zod.string().nullish(),

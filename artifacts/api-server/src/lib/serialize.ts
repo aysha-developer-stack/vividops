@@ -33,9 +33,10 @@ export function publicJob(
     job.status !== "completed" &&
     job.status !== "cancelled" &&
     job.dueDate < now;
+  const displayNumber = job.jobNumber?.trim() ? `JOB-${job.jobNumber.trim()}` : `JOB-${job.serial}`;
   return {
     id: job.id,
-    number: `JOB-${job.serial}`,
+    number: displayNumber,
     title: job.title,
     client: job.client,
     address: job.address,
