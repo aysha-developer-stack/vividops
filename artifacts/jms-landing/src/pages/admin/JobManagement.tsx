@@ -193,6 +193,7 @@ export default function JobManagement(
   const [reassignFor, setReassignFor] = useState<UiJob | null>(null);
   const [reassignTo, setReassignTo] = useState<string>("");
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [assigneeMenuOpen, setAssigneeMenuOpen] = useState(false);
   const [jobFiles, setJobFiles] = useState<File[]>([]);
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [checklistTemplate, setChecklistTemplate] = useState<ChecklistTemplateItem[]>([]);
@@ -202,6 +203,36 @@ export default function JobManagement(
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const selectedWorkerIds = useMemo(
+    () => Array.from(new Set([form.assigneeId, ...memberIds].filter((id): id is string => Boolean(id)))),
+    [form.assigneeId, memberIds],
+  );
+  const selectedWorkerNames = useMemo(
+    () => workers.filter((u) => selectedWorkerIds.includes(u.id)).map((u) => u.name),
+    [workers, selectedWorkerIds],
+  );
+
+  const applyWorkerSelection = (ids: string[], preferredPrimaryId?: string) => {
+    const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+    const nextPrimaryId =
+      preferredPrimaryId && uniqueIds.includes(preferredPrimaryId)
+        ? preferredPrimaryId
+        : uniqueIds[0] ?? "";
+    setForm((prev) => ({ ...prev, assigneeId: nextPrimaryId }));
+    setMemberIds(uniqueIds.filter((id) => id !== nextPrimaryId));
+  };
+
+  const toggleWorkerSelection = (workerId: string) => {
+    const currentlySelected = selectedWorkerIds.includes(workerId);
+    if (currentlySelected) {
+      const remaining = selectedWorkerIds.filter((id) => id !== workerId);
+      const nextPrimaryId = workerId === form.assigneeId ? remaining[0] : form.assigneeId;
+      applyWorkerSelection(remaining, nextPrimaryId);
+      return;
+    }
+    applyWorkerSelection([...selectedWorkerIds, workerId], form.assigneeId || workerId);
+  };
 
   const startEdit = (j: UiJob) => {
     const raw = (jobsQuery.data ?? []).find((x) => x.id === j.id);
@@ -228,6 +259,7 @@ export default function JobManagement(
     setUploadingFiles(false);
     setError(null);
     setModalOpen(true);
+    setAssigneeMenuOpen(false);
     setOpenId(null);
 
     fetch(`/api/jobs/${j.id}/members`, { credentials: "include" })
@@ -522,6 +554,7 @@ export default function JobManagement(
                 setMemberIds([]);
                 setUploadingFiles(false);
                 setError(null);
+                setAssigneeMenuOpen(false);
                 setModalOpen(true);
               }}
               className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30 transition-colors"
@@ -731,39 +764,55 @@ export default function JobManagement(
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assignee</label>
-                      <select value={form.assigneeId} onChange={(e) => setForm({ ...form, assigneeId: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors">
-                        <option value="">Unassigned</option>
-                        {workers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                      </select>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assignees</label>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setAssigneeMenuOpen((prev) => !prev)}
+                          className="w-full min-h-[46px] px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm text-left !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                        >
+                          {selectedWorkerNames.length > 0 ? selectedWorkerNames.join(", ") : "Select one or more workers"}
+                        </button>
+                        {assigneeMenuOpen && (
+                          <div className="absolute z-20 mt-2 w-full rounded-xl border-2 border-gray-200 bg-white shadow-lg">
+                            <div className="max-h-52 overflow-y-auto p-2">
+                              {workers.length === 0 ? (
+                                <div className="px-2 py-4 text-xs text-gray-400 text-center">No workers available</div>
+                              ) : (
+                                <div className="space-y-1">
+                                  {workers.map((u) => {
+                                    const checked = selectedWorkerIds.includes(u.id);
+                                    const isPrimary = form.assigneeId === u.id;
+                                    return (
+                                      <label key={u.id} className="flex items-center justify-between gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                                        <span className="flex items-center gap-2 min-w-0">
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => toggleWorkerSelection(u.id)}
+                                            className="h-4 w-4"
+                                          />
+                                          <span className="text-sm text-gray-800 truncate">{u.name}</span>
+                                        </span>
+                                        {isPrimary && (
+                                          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
+                                            Primary
+                                          </span>
+                                        )}
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-1 text-[11px] text-gray-500">
+                        Select 2 or more workers here. The first selected worker stays as the primary assignee.
+                      </div>
                     </div>
                     <div />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Additional Workers</label>
-                    <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-2 max-h-40 overflow-y-auto">
-                      {workers.length === 0 ? (
-                        <div className="px-2 py-4 text-xs text-gray-400 text-center">No workers available</div>
-                      ) : (
-                        <div className="space-y-1">
-                          {workers.map((u) => (
-                            <label key={u.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={memberIds.includes(u.id)}
-                                onChange={(e) => {
-                                  const checked = e.target.checked;
-                                  setMemberIds((prev) => checked ? Array.from(new Set([...prev, u.id])) : prev.filter((x) => x !== u.id));
-                                }}
-                                className="h-4 w-4"
-                              />
-                              <span className="text-sm text-gray-800">{u.name}</span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-gray-500 mt-1">{memberIds.length} selected</div>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Address</label>
