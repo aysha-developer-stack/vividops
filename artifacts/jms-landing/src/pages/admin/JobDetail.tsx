@@ -85,6 +85,18 @@ function parseJobMeta(raw: ApiJob["description"]): { descriptionText: string; ch
   }
 }
 
+function slugifyCliqChannelPart(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+}
+
+function buildFallbackCliqChannelName(job: ApiJob | undefined, jobId: string): string {
+  const jobNumberSource = (job?.number || `job-${jobId}`).replace(/^job[\s-]*/i, "");
+  const numberPart = `job-${slugifyCliqChannelPart(jobNumberSource) || jobId}`;
+  const titlePart = slugifyCliqChannelPart(job?.title || "job");
+  const addressPart = slugifyCliqChannelPart(job?.address || "");
+  return [numberPart, titlePart, addressPart].filter(Boolean).join("-").slice(0, 80);
+}
+
 interface FileItem { id: number; name: string; size: string; type: "doc" | "image" | "pdf"; uploadedBy: string; uploadedAt: string; tag: "input" | "output"; version?: number; group?: string }
 
 const INITIAL_FILES: FileItem[] = [];
@@ -1542,7 +1554,7 @@ export default function JobDetail({ role = "user", id }: Props) {
         })()}
 
         {tab === "communication" && (() => {
-          const fallbackChannelName = `job-${(job?.number ?? `job-${jobId}`).toLowerCase().replace(/[^a-z0-9]/g, "-")}-${(job?.title ?? "job").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`.replace(/^job-job-/, "job-");
+          const fallbackChannelName = buildFallbackCliqChannelName(job, jobId);
           const channelName = cliqChannel?.channelName ?? fallbackChannelName;
           const cliqUrl = cliqChannel?.channelUrl ?? `${CLIQ_WEB_ROOT}/channels/${channelName}`;
           const openCliq = async () => {

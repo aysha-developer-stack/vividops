@@ -125,9 +125,10 @@ function slugifyChannel(value: string): string {
 
 function computeCliqChannelName(job: JobRow): string {
   const numberSeed = job.jobNumber?.trim() || String(job.serial);
-  const num = `job-${slugifyChannel(numberSeed) || job.serial}`;
-  const title = slugifyChannel(job.title || "job");
-  return `${num}-${title}`.slice(0, 80);
+  const numberPart = `job-${slugifyChannel(numberSeed) || job.serial}`;
+  const titlePart = slugifyChannel(job.title || "job");
+  const addressPart = slugifyChannel(job.address || "");
+  return [numberPart, titlePart, addressPart].filter(Boolean).join("-").slice(0, 80);
 }
 
 function normalizeJobNumber(value: unknown): string | null {
