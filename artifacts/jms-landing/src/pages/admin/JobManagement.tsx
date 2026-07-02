@@ -782,9 +782,8 @@ export default function JobManagement(
                                 <div className="space-y-1">
                                   {workers.map((u) => {
                                     const checked = selectedWorkerIds.includes(u.id);
-                                    const isPrimary = form.assigneeId === u.id;
                                     return (
-                                      <label key={u.id} className="flex items-center justify-between gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                                      <label key={u.id} className="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
                                         <span className="flex items-center gap-2 min-w-0">
                                           <input
                                             type="checkbox"
@@ -794,11 +793,6 @@ export default function JobManagement(
                                           />
                                           <span className="text-sm text-gray-800 truncate">{u.name}</span>
                                         </span>
-                                        {isPrimary && (
-                                          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
-                                            Primary
-                                          </span>
-                                        )}
                                       </label>
                                     );
                                   })}
@@ -807,9 +801,6 @@ export default function JobManagement(
                             </div>
                           </div>
                         )}
-                      </div>
-                      <div className="mt-1 text-[11px] text-gray-500">
-                        Select 2 or more workers here. The first selected worker stays as the primary assignee.
                       </div>
                     </div>
                     <div />
