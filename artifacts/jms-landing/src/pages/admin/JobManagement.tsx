@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -203,6 +203,7 @@ export default function JobManagement(
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const assigneeMenuRef = useRef<HTMLDivElement>(null);
 
   const selectedWorkerIds = useMemo(
     () => Array.from(new Set([form.assigneeId, ...memberIds].filter((id): id is string => Boolean(id)))),
@@ -233,6 +234,19 @@ export default function JobManagement(
     }
     applyWorkerSelection([...selectedWorkerIds, workerId], form.assigneeId || workerId);
   };
+
+  useEffect(() => {
+    if (!assigneeMenuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!assigneeMenuRef.current?.contains(event.target as Node)) {
+        setAssigneeMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [assigneeMenuOpen]);
 
   const startEdit = (j: UiJob) => {
     const raw = (jobsQuery.data ?? []).find((x) => x.id === j.id);
@@ -765,7 +779,7 @@ export default function JobManagement(
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assignees</label>
-                      <div className="relative">
+                      <div ref={assigneeMenuRef} className="relative">
                         <button
                           type="button"
                           onClick={() => setAssigneeMenuOpen((prev) => !prev)}
