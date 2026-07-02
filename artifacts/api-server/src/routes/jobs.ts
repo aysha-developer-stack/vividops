@@ -6,7 +6,7 @@ import { createNotification } from "../lib/notifications";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { CreateJobBody, UpdateJobBody } from "@workspace/api-zod";
-import { publicJob } from "../lib/serialize";
+import { buildJobAssignees, publicJob } from "../lib/serialize";
 import { requireAuth, requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { getZohoCliqAccessToken } from "../lib/zoho";
@@ -31,8 +31,43 @@ type JobWithRefs = {
   supervisor: Pick<UserRow, "id" | "name" | "role"> | null;
 };
 
-function rowToPublic({ job, assignee, supervisor }: JobWithRefs) {
-  return publicJob(job, assignee ?? undefined, supervisor ?? undefined);
+type UserRef = Pick<UserRow, "id" | "name" | "role">;
+
+async function loadExtraMembersByJobIds(jobIds: string[]): Promise<Map<string, UserRef[]>> {
+  const map = new Map<string, UserRef[]>();
+  if (jobIds.length === 0) return map;
+
+  const rows = await db
+    .select({
+      jobId: jobMembers.jobId,
+      id: users.id,
+      name: users.name,
+      role: users.role,
+    })
+    .from(jobMembers)
+    .innerJoin(users, eq(users.id, jobMembers.userId))
+    .where(and(inArray(jobMembers.jobId, jobIds), eq(users.role, "user")));
+
+  for (const row of rows) {
+    const list = map.get(row.jobId) ?? [];
+    list.push({ id: row.id, name: row.name, role: row.role });
+    map.set(row.jobId, list);
+  }
+  return map;
+}
+
+function rowToPublic({ job, assignee, supervisor }: JobWithRefs, assignees: UserRef[]) {
+  return publicJob(
+    job,
+    assignee ?? undefined,
+    supervisor ?? undefined,
+    buildJobAssignees(assignee, assignees),
+  );
+}
+
+async function toPublicWithAssignees(full: JobWithRefs) {
+  const membersByJob = await loadExtraMembersByJobIds([full.job.id]);
+  return rowToPublic(full, membersByJob.get(full.job.id) ?? []);
 }
 
 function selectJoined() {
@@ -933,14 +968,17 @@ router.get("/jobs", requireAuth, async (req, res) => {
               .orderBy(desc(jobs.createdAt));
     }
   }
+  const jobIds = rows.map((r: any) => r.job.id as string);
+  const membersByJob = await loadExtraMembersByJobIds(jobIds);
   return res.json(
-    rows.map((r: any) =>
-      rowToPublic({
-        job: r.job,
-        assignee: r.assignee?.id ? r.assignee : null,
-        supervisor: r.supervisor?.id ? r.supervisor : null,
-      }),
-    ),
+    rows.map((r: any) => {
+      const assignee = r.assignee?.id ? r.assignee : null;
+      const supervisor = r.supervisor?.id ? r.supervisor : null;
+      return rowToPublic(
+        { job: r.job, assignee, supervisor },
+        membersByJob.get(r.job.id) ?? [],
+      );
+    }),
   );
 });
 
@@ -1041,7 +1079,7 @@ router.post("/jobs", creatorRole, async (req, res) => {
       logger.warn({ err, jobId: full.job.id }, "Failed to provision Cliq channel");
     });
   }
-  return res.status(201).json(rowToPublic(full!));
+  return res.status(201).json(await toPublicWithAssignees(full!));
 });
 
 router.get("/jobs/:id", requireAuth, async (req, res) => {
@@ -1051,7 +1089,7 @@ router.get("/jobs/:id", requireAuth, async (req, res) => {
   if (!(await canViewJob(req.session!.user, full.job))) {
     return res.status(403).json({ error: "You cannot view this job" });
   }
-  return res.json(rowToPublic(full));
+  return res.json(await toPublicWithAssignees(full));
 });
 
 router.patch("/jobs/:id", requireAuth, async (req, res) => {
@@ -1210,7 +1248,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
       logger.warn({ err, jobId: after.job.id }, "Failed to provision Cliq channel");
     });
   }
-  return res.json(rowToPublic(after!));
+  return res.json(await toPublicWithAssignees(after!));
 });
 
 router.delete("/jobs/:id", creatorRole, async (req, res) => {

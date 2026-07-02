@@ -245,6 +245,8 @@ export interface Job {
   progress: number;
   isOverdue: boolean;
   assignee?: JobUserRef | null;
+  /** All workers assigned to this job (primary assignee plus additional members) */
+  assignees?: JobUserRef[];
   supervisor?: JobUserRef | null;
   /** @nullable */
   dueDate?: string | null;

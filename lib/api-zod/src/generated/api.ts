@@ -363,6 +363,15 @@ export const ListJobsResponseItem = zod.object({
       zod.null(),
     ])
     .optional(),
+  assignees: zod
+    .array(
+      zod.object({
+        id: zod.string().uuid(),
+        name: zod.string(),
+        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+      }),
+    )
+    .optional(),
   supervisor: zod
     .union([
       zod.object({
@@ -429,6 +438,15 @@ export const GetJobResponse = zod.object({
       }),
       zod.null(),
     ])
+    .optional(),
+  assignees: zod
+    .array(
+      zod.object({
+        id: zod.string().uuid(),
+        name: zod.string(),
+        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+      }),
+    )
     .optional(),
   supervisor: zod
     .union([
@@ -502,6 +520,15 @@ export const UpdateJobResponse = zod.object({
       }),
       zod.null(),
     ])
+    .optional(),
+  assignees: zod
+    .array(
+      zod.object({
+        id: zod.string().uuid(),
+        name: zod.string(),
+        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+      }),
+    )
     .optional(),
   supervisor: zod
     .union([

@@ -17,15 +17,36 @@ export function publicUser(u: UserRow) {
 }
 
 type RefUser = Pick<UserRow, "id" | "name" | "role"> | null | undefined;
+export type JobAssigneeRef = NonNullable<ReturnType<typeof userRef>>;
 
 function userRef(u: RefUser) {
   return u ? { id: u.id, name: u.name, role: u.role } : null;
+}
+
+export function buildJobAssignees(
+  assignee: Pick<UserRow, "id" | "name" | "role"> | null,
+  extraMembers: Pick<UserRow, "id" | "name" | "role">[],
+): JobAssigneeRef[] {
+  const result: JobAssigneeRef[] = [];
+  const seen = new Set<string>();
+  if (assignee?.id && assignee.role === "user") {
+    result.push({ id: assignee.id, name: assignee.name, role: assignee.role });
+    seen.add(assignee.id);
+  }
+  for (const member of extraMembers) {
+    if (member.role === "user" && !seen.has(member.id)) {
+      result.push({ id: member.id, name: member.name, role: member.role });
+      seen.add(member.id);
+    }
+  }
+  return result.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function publicJob(
   job: JobRow,
   assignee: RefUser,
   supervisor: RefUser,
+  assignees: JobAssigneeRef[] = [],
 ) {
   const now = new Date();
   const isOverdue =
@@ -46,6 +67,7 @@ export function publicJob(
     progress: job.progress,
     isOverdue,
     assignee: userRef(assignee),
+    assignees,
     supervisor: userRef(supervisor),
     dueDate: job.dueDate ? job.dueDate.toISOString() : null,
     completedAt: job.completedAt ? job.completedAt.toISOString() : null,

@@ -40,7 +40,10 @@ interface UiJob {
   title: string;
   client: string;
   assignee: string;
+  assignees: Array<{ id: string; name: string }>;
   assigneeId: string | null;
+  supervisor: string | null;
+  supervisorId: string | null;
   status: UiStatus;
   priority: UiPriority;
   created: string;
@@ -49,14 +52,26 @@ interface UiJob {
   progress: number;
 }
 
+function initialsForName(name: string) {
+  return name.split(" ").map((s) => s[0]).join("").slice(0, 2);
+}
+
 function mapJob(j: ApiJob): UiJob {
+  const assignees =
+    j.assignees
+      ?.filter((a) => a.role === "user")
+      .map((a) => ({ id: a.id, name: a.name })) ??
+    (j.assignee?.role === "user" ? [{ id: j.assignee.id, name: j.assignee.name }] : []);
   return {
     id: j.id,
     number: j.number,
     title: j.title,
     client: j.client,
-    assignee: j.assignee?.name ?? "Unassigned",
+    assignee: assignees.map((a) => a.name).join(", ") || "Unassigned",
+    assignees,
     assigneeId: j.assignee?.id ?? null,
+    supervisor: j.supervisor?.name ?? null,
+    supervisorId: j.supervisor?.id ?? null,
     status: statusToUi(j),
     priority: priorityToUi(j.priority),
     created: formatShortDate(j.createdAt),
@@ -590,7 +605,7 @@ export default function JobManagement(
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {["Job", "Assignee", "Priority", "Status", "Progress", "Timeline", ""].map((h) => (
+                {["Job", "Assignees", "Supervisor", "Priority", "Status", "Progress", "Timeline", ""].map((h) => (
                   <th key={h} className="text-left px-6 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -616,12 +631,38 @@ export default function JobManagement(
                         <div className="text-xs text-gray-500 mt-0.5">{j.number} · {j.client} · <span className="text-gray-400">Created {j.created}</span></div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-[10px] font-bold flex items-center justify-center">
-                            {j.assignee.split(" ").map((s) => s[0]).join("").slice(0, 2)}
+                        {j.assignees.length === 0 ? (
+                          <span className="text-sm text-gray-400">Unassigned</span>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                            {j.assignees.map((a) => (
+                              <div key={a.id} className="flex items-center gap-1.5">
+                                <div
+                                  title={a.name}
+                                  className="w-6 h-6 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-[9px] font-bold flex items-center justify-center shrink-0"
+                                >
+                                  {initialsForName(a.name)}
+                                </div>
+                                <span className="text-sm text-gray-700">{a.name}</span>
+                              </div>
+                            ))}
                           </div>
-                          <span className="text-sm text-gray-700">{j.assignee}</span>
-                        </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {j.supervisor ? (
+                          <div className="flex items-center gap-1.5">
+                            <div
+                              title={j.supervisor}
+                              className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-500 to-purple-700 text-white text-[9px] font-bold flex items-center justify-center shrink-0"
+                            >
+                              {initialsForName(j.supervisor)}
+                            </div>
+                            <span className="text-sm text-gray-700">{j.supervisor}</span>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-1.5">

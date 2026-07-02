@@ -787,6 +787,11 @@ components:
           oneOf:
             - $ref: "#/components/schemas/JobUserRef"
             - type: "null"
+        assignees:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobUserRef"
+          description: Workers explicitly selected in the Assignees field when the job was created or edited
         supervisor:
           oneOf:
             - $ref: "#/components/schemas/JobUserRef"
