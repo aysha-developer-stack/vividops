@@ -583,6 +583,8 @@ async function createStoredJobMessage({
     logger.warn({ err, jobId: job.id }, "Failed to create in-app message notifications");
   }
 
+  logger.debug({ pushToCliq }, "[CLIQ-DEBUG] Checking pushToCliq condition"); // <-- ADD THIS LINE
+
   if (pushToCliq) {
     const prefix = `JOB-${job.serial} · ${job.title}`;
     const payload = `${prefix}\n${actor.name}: ${cleanText}`;
