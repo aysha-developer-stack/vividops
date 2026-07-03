@@ -36,7 +36,7 @@ if (missingVars.length > 0) {
 const { seedAdminIfEmpty } = await import("./lib/seed");
 const { setupSocketIO } = await import("./lib/socket");
 const { setupWorkers } = await import("./lib/queue");
-const { ensureAllSchemas } = await import("./lib/schema-init");
+const { ensureAllSchemas, ensureJobWriteSchema } = await import("./lib/schema-init");
 
 const { shouldSendNotification, createNotification } = await import("./lib/notifications");
 
@@ -66,6 +66,7 @@ async function start(): Promise<void> {
   // 1. Initialize database schemas once at startup
   try {
     await ensureAllSchemas();
+    await ensureJobWriteSchema();
   } catch (err) {
     logger.error({ err }, "Schema initialization failed");
   }

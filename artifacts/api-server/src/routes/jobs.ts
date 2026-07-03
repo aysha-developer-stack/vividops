@@ -10,7 +10,7 @@ import { buildJobAssignees, publicJob } from "../lib/serialize";
 import { requireAuth, requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { getZohoCliqAccessToken } from "../lib/zoho";
-import { ensureAllSchemas, ensureLegacySupervisorAssignments } from "../lib/schema-init";
+import { ensureAllSchemas, ensureJobWriteSchema, ensureLegacySupervisorAssignments } from "../lib/schema-init";
 
 import { shouldSendNotification } from "../lib/notifications";
 
@@ -19,7 +19,7 @@ const router: IRouter = Router();
 const assigneeAlias = alias(users, "assignee");
 const supervisorAlias = alias(users, "supervisor");
 
-const ensureJobMembersSchema = ensureAllSchemas;
+const ensureJobMembersSchema = ensureJobWriteSchema;
 const ensureJobMessagesSchema = async () => {};
 const ensureJobMessageSyncSchema = async () => {};
 const ensureNotificationsSchema = async () => {};
@@ -68,8 +68,13 @@ function rowToPublic({ job, assignee, supervisor }: JobWithRefs, assignees: User
 }
 
 async function toPublicWithAssignees(full: JobWithRefs) {
-  const membersByJob = await loadExtraMembersByJobIds([full.job.id]);
-  return rowToPublic(full, membersByJob.get(full.job.id) ?? []);
+  try {
+    const membersByJob = await loadExtraMembersByJobIds([full.job.id]);
+    return rowToPublic(full, membersByJob.get(full.job.id) ?? []);
+  } catch (err) {
+    logger.warn({ err, jobId: full.job.id }, "Failed to load job assignees");
+    return rowToPublic(full, []);
+  }
 }
 
 function selectJoined() {
@@ -935,6 +940,7 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
 }
 
 router.get("/jobs", requireAuth, async (req, res) => {
+  await ensureJobWriteSchema();
   const actor = req.session!.user;
   const scope = typeof (req.query as any)?.for === "string" ? String((req.query as any).for) : "";
   const forCommunication = scope === "communication";
@@ -993,56 +999,62 @@ const creatorRole = requireRole("super-admin", "admin", "supervisor");
 
 router.post("/jobs", creatorRole, async (req, res) => {
   try {
+    await ensureJobWriteSchema();
+
     const parsed = CreateJobBody.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Invalid job data" });
-  }
-  const actor = req.session!.user;
-  const body = parsed.data;
-  const jobNumber = normalizeJobNumber(body.jobNumber);
-
-  // Validate referenced users exist and are active.
-  const refIds = [body.assigneeId, body.supervisorId].filter(
-    (x): x is string => typeof x === "string" && x.length > 0,
-  );
-  if (refIds.length > 0) {
-    const found = await db
-      .select({ id: users.id, status: users.status, role: users.role })
-      .from(users)
-      .where(inArray(users.id, refIds));
-    if (found.length !== new Set(refIds).size) {
-      return res.status(400).json({ error: "Assignee or supervisor not found" });
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid job data" });
     }
-    if (found.some((u) => u.status !== "active")) {
-      return res
-        .status(400)
-        .json({ error: "Cannot assign an inactive user" });
-    }
-    if (
-      body.assigneeId &&
-      found.some((u) => u.id === body.assigneeId && u.role !== "user")
-    ) {
-      return res.status(400).json({ error: "Assignee must be a worker" });
-    }
-    if (
-      body.supervisorId &&
-      found.some((u) => u.id === body.supervisorId && u.role !== "supervisor")
-    ) {
-      return res.status(400).json({ error: "Supervisor must have supervisor role" });
-    }
-  }
+    const actor = req.session!.user;
+    const body = parsed.data;
+    const jobNumber = normalizeJobNumber(body.jobNumber);
 
-  if (jobNumber && (await isJobNumberTaken(jobNumber))) {
-    return res.status(400).json({ error: "Job number already exists" });
-  }
+    // Validate referenced users exist and are active.
+    const refIds = [body.assigneeId, body.supervisorId].filter(
+      (x): x is string => typeof x === "string" && x.length > 0,
+    );
+    if (refIds.length > 0) {
+      const found = await db
+        .select({ id: users.id, status: users.status, role: users.role })
+        .from(users)
+        .where(inArray(users.id, refIds));
+      if (found.length !== new Set(refIds).size) {
+        return res.status(400).json({ error: "Assignee or supervisor not found" });
+      }
+      if (found.some((u) => u.status !== "active")) {
+        return res
+          .status(400)
+          .json({ error: "Cannot assign an inactive user" });
+      }
+      if (
+        body.assigneeId &&
+        found.some((u) => u.id === body.assigneeId && u.role !== "user")
+      ) {
+        return res.status(400).json({ error: "Assignee must be a worker" });
+      }
+      if (
+        body.supervisorId &&
+        found.some((u) => u.id === body.supervisorId && u.role !== "supervisor")
+      ) {
+        return res.status(400).json({ error: "Supervisor must have supervisor role" });
+      }
+    }
 
-  // Supervisors creating jobs become the supervisor by default.
-  const supervisorId =
-    body.supervisorId ?? (actor.role === "supervisor" ? actor.id : null);
+    if (jobNumber) {
+      try {
+        if (await isJobNumberTaken(jobNumber)) {
+          return res.status(400).json({ error: "Job number already exists" });
+        }
+      } catch (err) {
+        logger.warn({ err, jobNumber }, "Failed to check job number uniqueness");
+      }
+    }
 
-  const [created] = await db
-    .insert(jobs)
-    .values({
+    // Supervisors creating jobs become the supervisor by default.
+    const supervisorId =
+      body.supervisorId ?? (actor.role === "supervisor" ? actor.id : null);
+
+    const insertValues = {
       jobNumber,
       title: body.title,
       client: body.client,
@@ -1053,44 +1065,61 @@ router.post("/jobs", creatorRole, async (req, res) => {
       supervisorId,
       createdById: actor.id,
       dueDate: body.dueDate ? new Date(body.dueDate) : null,
-    })
-    .returning();
+    };
 
-  const full = await loadJob(created.id);
-  if (!full) {
-    return res.status(500).json({ error: "Job was created but could not be loaded" });
-  }
+    let created: JobRow | undefined;
+    try {
+      [created] = await db.insert(jobs).values(insertValues).returning();
+    } catch (insertErr) {
+      const message = insertErr instanceof Error ? insertErr.message : String(insertErr);
+      if (jobNumber && /job_number/i.test(message)) {
+        logger.warn({ err: insertErr }, "Retrying job insert without job_number column");
+        const { jobNumber: _ignored, ...withoutJobNumber } = insertValues;
+        [created] = await db.insert(jobs).values(withoutJobNumber).returning();
+      } else {
+        throw insertErr;
+      }
+    }
 
-  // Notify Assignee
-  if (full.job.assigneeId) {
-    await createNotification({
-      userId: full.job.assigneeId,
-      jobId: full.job.id,
-      title: `New Job Assigned: ${full.job.title}`,
-      description: `You have been assigned to a new job: ${full.job.title} for ${full.job.client}. Due Date: ${full.job.dueDate ? new Date(full.job.dueDate).toLocaleDateString() : "Not set"}`,
-      type: "assigned"
+    if (!created) {
+      return res.status(500).json({ error: "Failed to create job record" });
+    }
+
+    const full = await loadJob(created.id);
+    if (!full) {
+      return res.status(500).json({ error: "Job was created but could not be loaded" });
+    }
+
+    // Notify Assignee
+    if (full.job.assigneeId) {
+      await createNotification({
+        userId: full.job.assigneeId,
+        jobId: full.job.id,
+        title: `New Job Assigned: ${full.job.title}`,
+        description: `You have been assigned to a new job: ${full.job.title} for ${full.job.client}. Due Date: ${full.job.dueDate ? new Date(full.job.dueDate).toLocaleDateString() : "Not set"}`,
+        type: "assigned"
+      });
+    }
+    // Notify Supervisor
+    if (full.job.supervisorId) {
+      await createNotification({
+        userId: full.job.supervisorId,
+        jobId: full.job.id,
+        title: `New Job for Supervision: ${full.job.title}`,
+        description: `A new job has been assigned to your team: ${full.job.title} for ${full.job.client}. Assigned to: ${full.assignee?.name ?? "Unassigned"}`,
+        type: "assigned"
+      });
+    }
+
+    void getOrCreateJobCliqChannel(full.job).catch((err) => {
+      logger.warn({ err, jobId: full.job.id }, "Failed to initialize job Cliq channel metadata");
     });
-  }
-  // Notify Supervisor
-  if (full.job.supervisorId) {
-    await createNotification({
-      userId: full.job.supervisorId,
-      jobId: full.job.id,
-      title: `New Job for Supervision: ${full.job.title}`,
-      description: `A new job has been assigned to your team: ${full.job.title} for ${full.job.client}. Assigned to: ${full.assignee?.name ?? "Unassigned"}`,
-      type: "assigned"
+    void provisionCliqChannelForJob(full.job).catch((err) => {
+      void markJobCliqStatus(full.job.id, "failed", err instanceof Error ? err.message : String(err)).catch(() => {});
+      logger.warn({ err, jobId: full.job.id }, "Failed to provision Cliq channel");
     });
-  }
 
-  void getOrCreateJobCliqChannel(full.job).catch((err) => {
-    logger.warn({ err, jobId: full.job.id }, "Failed to initialize job Cliq channel metadata");
-  });
-  void provisionCliqChannelForJob(full.job).catch((err) => {
-    void markJobCliqStatus(full.job.id, "failed", err instanceof Error ? err.message : String(err)).catch(() => {});
-    logger.warn({ err, jobId: full.job.id }, "Failed to provision Cliq channel");
-  });
-
-  return res.status(201).json(await toPublicWithAssignees(full));
+    return res.status(201).json(await toPublicWithAssignees(full));
   } catch (err) {
     logger.error({ err }, "Failed to create job");
     return res.status(500).json({ error: "Failed to create job" });

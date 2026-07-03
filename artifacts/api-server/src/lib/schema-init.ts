@@ -29,6 +29,74 @@ export async function ensureLegacySupervisorAssignments() {
   return legacySupervisorAssignmentsPromise;
 }
 
+let jobWriteSchemaEnsured = false;
+
+/** Lightweight migrations required before creating or listing jobs. */
+export async function ensureJobWriteSchema() {
+  if (jobWriteSchemaEnsured) return;
+
+  try {
+    await db.execute(sql`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS job_number text`);
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS jobs_job_number_uniq_idx
+      ON jobs (job_number)
+      WHERE job_number IS NOT NULL
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS job_members (
+        id uuid PRIMARY KEY,
+        job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        CONSTRAINT job_members_job_user_uniq UNIQUE (job_id, user_id)
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS job_members_job_idx ON job_members (job_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS job_members_user_idx ON job_members (user_id)`);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title text NOT NULL,
+        description text NOT NULL,
+        type text NOT NULL,
+        is_read boolean NOT NULL DEFAULT false,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      ALTER TABLE notifications
+      ADD COLUMN IF NOT EXISTS job_id uuid REFERENCES jobs(id) ON DELETE SET NULL
+    `);
+    await db.execute(sql`
+      ALTER TABLE notifications
+      ADD COLUMN IF NOT EXISTS channel text DEFAULT 'in_app'
+    `);
+    await db.execute(sql`
+      ALTER TABLE notifications
+      ADD COLUMN IF NOT EXISTS read_at timestamptz
+    `);
+    await db.execute(sql`
+      ALTER TABLE notifications
+      ADD COLUMN IF NOT EXISTS delivery_status text DEFAULT 'sent'
+    `);
+    await db.execute(sql`
+      ALTER TABLE notifications
+      ADD COLUMN IF NOT EXISTS escalation_status text DEFAULT 'none'
+    `);
+    await db.execute(sql`UPDATE notifications SET channel = 'in_app' WHERE channel IS NULL`);
+    await db.execute(sql`UPDATE notifications SET delivery_status = 'sent' WHERE delivery_status IS NULL`);
+    await db.execute(sql`UPDATE notifications SET escalation_status = 'none' WHERE escalation_status IS NULL`);
+
+    jobWriteSchemaEnsured = true;
+    logger.info("Job write schema ensured.");
+  } catch (err) {
+    logger.error({ err }, "Job write schema migration failed");
+  }
+}
+
 export async function ensureAllSchemas() {
   if (initialized) return;
   
