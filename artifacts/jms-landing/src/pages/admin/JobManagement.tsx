@@ -576,7 +576,6 @@ export default function JobManagement(
                     role === "supervisor"
                       ? (currentUser?.id ?? "")
                       : (supervisors[0]?.id ?? ""),
-                  assigneeId: workers[0]?.id ?? "",
                 });
                 setEditingId(null);
                 setChecklistTemplate([]);
@@ -839,9 +838,9 @@ export default function JobManagement(
                         <button
                           type="button"
                           onClick={() => setAssigneeMenuOpen((prev) => !prev)}
-                          className="w-full min-h-[46px] px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm text-left !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                          className={`w-full min-h-[46px] px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm text-left focus:outline-none focus:border-primary focus:bg-white transition-colors ${selectedWorkerNames.length > 0 ? "!text-gray-900" : "text-gray-400"}`}
                         >
-                          {selectedWorkerNames.length > 0 ? selectedWorkerNames.join(", ") : "Select one or more workers"}
+                          {selectedWorkerNames.length > 0 ? selectedWorkerNames.join(", ") : "Select Workers"}
                         </button>
                         {assigneeMenuOpen && (
                           <div className="absolute z-20 mt-2 w-full rounded-xl border-2 border-gray-200 bg-white shadow-lg">
