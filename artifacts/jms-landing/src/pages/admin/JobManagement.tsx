@@ -770,7 +770,7 @@ export default function JobManagement(
               <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-primary/5 to-sky-50 shrink-0">
                 <div>
                   <h3 className="font-bold text-gray-900 text-base">{editingId !== null ? "Edit Job" : "Create New Job"}</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">{editingId !== null ? "Update job details" : "Assign a new job to a team member"}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{editingId !== null ? "Update job details" : "Assign a new job"}</p>
                 </div>
                 <button onClick={closeModal} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
               </div>
