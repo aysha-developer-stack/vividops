@@ -30,6 +30,7 @@ import {
   ApiError,
 } from "@workspace/api-client-react";
 import { statusToUi, priorityToUi, formatShortDate } from "@/lib/jobMappers";
+import { parseJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
 import { postTimerNotification } from "@/lib/timerNotifications";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -45,45 +46,8 @@ interface ChecklistItem {
   reworkReason?: string;
 }
 
-type ChecklistTemplateItem = {
-  text: string;
-  desc?: string;
-  attachmentRequired?: boolean;
-};
-
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
-function parseJobMeta(raw: ApiJob["description"]): { descriptionText: string; checklist: ChecklistTemplateItem[] } {
-  if (!raw) return { descriptionText: "", checklist: [] };
-  if (typeof raw !== "string") return { descriptionText: "", checklist: [] };
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object") return { descriptionText: raw, checklist: [] };
-    const obj = parsed as Record<string, unknown>;
-    const descriptionText = typeof obj.descriptionText === "string" ? obj.descriptionText : raw;
-    const checklistRaw = Array.isArray(obj.checklist) ? obj.checklist : [];
-    const checklist: ChecklistTemplateItem[] = checklistRaw
-      .map((x) => {
-        if (!x || typeof x !== "object") return null;
-        const i = x as Record<string, unknown>;
-        const text = typeof i.text === "string" ? i.text.trim() : "";
-        if (!text) return null;
-        const desc = typeof i.desc === "string" && i.desc.trim() ? i.desc.trim() : undefined;
-        const attachmentRequired = Boolean(i.attachmentRequired);
-        const item: ChecklistTemplateItem = {
-          text,
-          ...(desc ? { desc } : {}),
-          ...(attachmentRequired ? { attachmentRequired: true } : {}),
-        };
-        return item;
-      })
-      .filter((x): x is ChecklistTemplateItem => x != null);
-    return { descriptionText, checklist };
-  } catch {
-    return { descriptionText: raw, checklist: [] };
-  }
 }
 
 function slugifyCliqChannelPart(value: string): string {

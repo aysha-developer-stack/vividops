@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, MoreVertical, Edit2, Trash2, UserPlus, X,
-  Calendar, ExternalLink, CheckCircle2,
+  Calendar, ExternalLink, CheckCircle2, Download, Loader2,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -25,6 +25,11 @@ import {
   STATUS_UI_TO_API, PRIORITY_UI_TO_API,
   type UiStatus, type UiPriority,
 } from "@/lib/jobMappers";
+import {
+  parseJobMeta,
+  serializeJobMeta,
+  type ChecklistTemplateItem,
+} from "@/lib/jobMeta";
 
 import {
   DropdownMenu,
@@ -130,41 +135,37 @@ const EMPTY_FORM: FormState = {
   due: "",
 };
 
-type ChecklistTemplateItem = {
-  text: string;
-  desc?: string;
-  attachmentRequired?: boolean;
+type ExistingAttachment = {
+  id: string;
+  fileName: string;
+  fileSize?: string | null;
+  fileUrl?: string | null;
 };
 
-function parseJobMeta(raw: ApiJob["description"]): { descriptionText: string; checklist: ChecklistTemplateItem[] } {
-  if (!raw) return { descriptionText: "", checklist: [] };
-  if (typeof raw !== "string") return { descriptionText: "", checklist: [] };
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object") return { descriptionText: raw, checklist: [] };
-    const obj = parsed as Record<string, unknown>;
-    const descriptionText = typeof obj.descriptionText === "string" ? obj.descriptionText : raw;
-    const checklistRaw = Array.isArray(obj.checklist) ? obj.checklist : [];
-    const checklist: ChecklistTemplateItem[] = checklistRaw
-      .map((x) => {
-        if (!x || typeof x !== "object") return null;
-        const i = x as Record<string, unknown>;
-        const text = typeof i.text === "string" ? i.text.trim() : "";
-        if (!text) return null;
-        const desc = typeof i.desc === "string" && i.desc.trim() ? i.desc.trim() : undefined;
-        const attachmentRequired = Boolean(i.attachmentRequired);
-        const item: ChecklistTemplateItem = {
-          text,
-          ...(desc ? { desc } : {}),
-          ...(attachmentRequired ? { attachmentRequired: true } : {}),
-        };
-        return item;
-      })
-      .filter((x): x is ChecklistTemplateItem => x != null);
-    return { descriptionText, checklist };
-  } catch {
-    return { descriptionText: raw, checklist: [] };
-  }
+function applyJobToForm(
+  job: ApiJob,
+  extras: string[],
+  role: Role,
+  currentUserId?: string,
+) {
+  const meta = parseJobMeta(job.description ?? null);
+  return {
+    form: {
+      jobNumber: job.number.replace(/^JOB-/i, ""),
+      title: job.title,
+      client: job.client,
+      address: job.address ?? "",
+      description: meta.descriptionText,
+      supervisorId:
+        job.supervisor?.id ??
+        (role === "supervisor" ? (currentUserId ?? "") : ""),
+      assigneeId: job.assignee?.id ?? "",
+      priority: priorityToUi(job.priority),
+      due: job.dueDate ? String(job.dueDate).slice(0, 10) : "",
+    },
+    checklist: meta.checklist,
+    memberIds: extras,
+  };
 }
 
 export default function JobManagement(
@@ -212,6 +213,8 @@ export default function JobManagement(
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [assigneeMenuOpen, setAssigneeMenuOpen] = useState(false);
   const [jobFiles, setJobFiles] = useState<File[]>([]);
+  const [existingAttachments, setExistingAttachments] = useState<ExistingAttachment[]>([]);
+  const [editLoading, setEditLoading] = useState(false);
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [checklistTemplate, setChecklistTemplate] = useState<ChecklistTemplateItem[]>([]);
   const [checkText, setCheckText] = useState("");
@@ -265,45 +268,104 @@ export default function JobManagement(
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [assigneeMenuOpen]);
 
-  const startEdit = (j: UiJob) => {
-    const raw = (jobsQuery.data ?? []).find((x) => x.id === j.id);
-    const meta = parseJobMeta(raw?.description ?? null);
+  const startEdit = async (j: UiJob) => {
     setEditingId(j.id);
-    setForm({
-      jobNumber: j.number.replace(/^JOB-/i, ""),
-      title: j.title,
-      client: j.client,
-      address: raw?.address ?? "",
-      description: meta.descriptionText,
-      supervisorId:
-        raw?.supervisor?.id ??
-        (role === "supervisor" ? (currentUser?.id ?? "") : ""),
-      assigneeId: j.assigneeId ?? "",
-      priority: j.priority,
-      due: raw?.dueDate ? String(raw.dueDate).slice(0, 10) : "",
-    });
     setJobFiles([]);
-    setMemberIds([]);
-    setChecklistTemplate(meta.checklist);
+    setExistingAttachments([]);
     setCheckText("");
     setCheckDesc("");
     setCheckNeedsFile(false);
     setUploadingFiles(false);
     setError(null);
-    setModalOpen(true);
     setAssigneeMenuOpen(false);
     setOpenId(null);
+    setModalOpen(true);
+    setEditLoading(true);
 
-    fetch(`/api/jobs/${j.id}/members`, { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => {
-        if (!Array.isArray(data)) return;
-        const extras = (data as any[])
-          .filter((p) => p && typeof p.id === "string" && p.role === "user" && p.id !== (j.assigneeId ?? ""))
-          .map((p) => p.id as string);
-        setMemberIds(extras);
-      })
-      .catch(() => {});
+    try {
+      let job: ApiJob | undefined;
+      try {
+        const res = await fetch(`/api/jobs/${j.id}`, { credentials: "include" });
+        if (res.ok) job = (await res.json()) as ApiJob;
+      } catch {
+        // fall back to list cache below
+      }
+      if (!job) {
+        job = (jobsQuery.data ?? []).find((x) => x.id === j.id);
+      }
+      if (!job) {
+        setError("Failed to load job details");
+        return;
+      }
+
+      let extras: string[] = [];
+      try {
+        const membersRes = await fetch(`/api/jobs/${j.id}/members`, { credentials: "include" });
+        if (membersRes.ok) {
+          const data = (await membersRes.json()) as unknown;
+          if (Array.isArray(data)) {
+            const assigneeId = job.assignee?.id ?? j.assigneeId ?? "";
+            extras = data
+              .filter(
+                (p) =>
+                  p &&
+                  typeof p === "object" &&
+                  typeof (p as { id?: string }).id === "string" &&
+                  (p as { role?: string }).role === "user" &&
+                  (p as { id: string }).id !== assigneeId,
+              )
+              .map((p) => (p as { id: string }).id);
+          }
+        }
+      } catch {
+        // members are optional for the form
+      }
+
+      let attachments: ExistingAttachment[] = [];
+      try {
+        const attRes = await fetch(`/api/jobs/${j.id}/attachments`, { credentials: "include" });
+        if (attRes.ok) {
+          const attData = (await attRes.json()) as unknown;
+          if (Array.isArray(attData)) {
+            for (const a of attData) {
+              if (!a || typeof a !== "object") continue;
+              const row = a as Record<string, unknown>;
+              const id = typeof row.id === "string" ? row.id : "";
+              if (!id) continue;
+              attachments.push({
+                id,
+                fileName:
+                  (typeof row.fileName === "string" ? row.fileName : "") ||
+                  (typeof row.file_name === "string" ? row.file_name : "") ||
+                  "File",
+                fileSize:
+                  typeof row.fileSize === "string"
+                    ? row.fileSize
+                    : typeof row.file_size === "string"
+                      ? row.file_size
+                      : undefined,
+                fileUrl:
+                  typeof row.fileUrl === "string"
+                    ? row.fileUrl
+                    : typeof row.file_url === "string"
+                      ? row.file_url
+                      : undefined,
+              });
+            }
+          }
+        }
+      } catch {
+        // attachments are optional for the form
+      }
+
+      const applied = applyJobToForm(job, extras, role, currentUser?.id);
+      setForm(applied.form);
+      setChecklistTemplate(applied.checklist);
+      setMemberIds(applied.memberIds);
+      setExistingAttachments(attachments);
+    } finally {
+      setEditLoading(false);
+    }
   };
   const startReassign = (j: UiJob) => {
     setReassignFor(j);
@@ -398,11 +460,8 @@ export default function JobManagement(
     }
     setError(null);
     const descriptionPayload =
-      form.description.trim() || checklistTemplate.length > 0
-        ? JSON.stringify({
-            descriptionText: form.description.trim(),
-            checklist: checklistTemplate,
-          })
+      editingId !== null || form.description.trim() || checklistTemplate.length > 0
+        ? serializeJobMeta(form.description, checklistTemplate)
         : undefined;
     const payload = {
       jobNumber: form.jobNumber.trim() || null,
@@ -484,6 +543,7 @@ export default function JobManagement(
       await invalidateJobs();
       setForm(EMPTY_FORM);
       setJobFiles([]);
+      setExistingAttachments([]);
       setMemberIds([]);
       setChecklistTemplate([]);
       setCheckText("");
@@ -505,7 +565,9 @@ export default function JobManagement(
     setCheckDesc("");
     setCheckNeedsFile(false);
     setJobFiles([]);
+    setExistingAttachments([]);
     setMemberIds([]);
+    setEditLoading(false);
     setUploadingFiles(false);
     setError(null);
   };
@@ -583,6 +645,7 @@ export default function JobManagement(
                 setCheckDesc("");
                 setCheckNeedsFile(false);
                 setJobFiles([]);
+                setExistingAttachments([]);
                 setMemberIds([]);
                 setUploadingFiles(false);
                 setError(null);
@@ -776,6 +839,12 @@ export default function JobManagement(
               {error && (
                 <div className="px-6 py-3 bg-red-50 border-b border-red-100 text-sm text-red-700 shrink-0">{error}</div>
               )}
+              {editLoading ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 py-16 text-gray-500">
+                  <Loader2 size={28} className="animate-spin text-primary" />
+                  <p className="text-sm">Loading job details…</p>
+                </div>
+              ) : (
               <div className="px-6 py-5 grid md:grid-cols-2 gap-x-6 gap-y-4 overflow-y-auto">
                 {/* LEFT COLUMN — Job details */}
                 <div className="space-y-4">
@@ -959,6 +1028,36 @@ export default function JobManagement(
                   </div>
 
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Job Files</div>
+                  {existingAttachments.length > 0 && (
+                    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-3">
+                      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                        <div className="text-xs font-bold text-gray-900">Existing files</div>
+                        <div className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{existingAttachments.length}</div>
+                      </div>
+                      <div className="divide-y divide-gray-50 max-h-[180px] overflow-y-auto">
+                        {existingAttachments.map((f) => (
+                          <div key={f.id} className="px-4 py-3 flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 font-bold text-[10px]">FILE</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-semibold text-gray-900 truncate">{f.fileName}</div>
+                              {f.fileSize && <div className="text-[11px] text-gray-500">{f.fileSize}</div>}
+                            </div>
+                            {f.fileUrl && (
+                              <a
+                                href={f.fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg"
+                                title="Download"
+                              >
+                                <Download size={14} />
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -1004,12 +1103,13 @@ export default function JobManagement(
                   )}
                 </div>
               </div>
+              )}
               <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50 shrink-0">
                 <button onClick={closeModal} className="px-4 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors">Cancel</button>
                 <motion.button
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
-                  disabled={isSaving}
+                  disabled={isSaving || editLoading}
                   onClick={submit}
                   className="px-5 py-2 bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold shadow-md shadow-primary/30 transition-colors"
                 >
