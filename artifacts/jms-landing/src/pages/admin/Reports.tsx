@@ -267,8 +267,11 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
 
       const completionScore = completionRate * 60;
       const onTimeScore = onTimeRate * 25;
-      const reworkScore = (1 - clamp(reworkRate, 0, 1)) * 15;
-      const score = Math.round(clamp(completionScore + onTimeScore + reworkScore, 0, 100));
+      const reworkScore = totalJobs > 0 ? (1 - clamp(reworkRate, 0, 1)) * 15 : 0;
+      const score =
+        totalJobs === 0
+          ? 0
+          : Math.round(clamp(completionScore + onTimeScore + reworkScore, 0, 100));
 
       return {
         id: u.id,
@@ -1073,12 +1076,16 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                                 <span className={u.overdue > 0 ? "text-red-600 font-semibold" : "text-gray-400"}>{u.overdue}</span>
                               </td>
                               <td className="px-3 py-3.5">
-                                <div className="flex items-center gap-2 w-28">
-                                  <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                    <motion.div initial={{ width: 0 }} animate={{ width: `${u.score}%` }} transition={{ duration: 0.8, delay: i * 0.05 }} className={`h-full rounded-full ${u.score >= 90 ? "bg-emerald-500" : u.score >= 80 ? "bg-primary" : "bg-amber-500"}`} />
+                                {u.jobs === 0 ? (
+                                  <span className="text-xs text-gray-400">—</span>
+                                ) : (
+                                  <div className="flex items-center gap-2 w-28">
+                                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                      <motion.div initial={{ width: 0 }} animate={{ width: `${u.score}%` }} transition={{ duration: 0.8, delay: i * 0.05 }} className={`h-full rounded-full ${u.score >= 90 ? "bg-emerald-500" : u.score >= 80 ? "bg-primary" : "bg-amber-500"}`} />
+                                    </div>
+                                    <span className="text-xs font-semibold text-gray-700">{u.score}</span>
                                   </div>
-                                  <span className="text-xs font-semibold text-gray-700">{u.score}</span>
-                                </div>
+                                )}
                               </td>
                               <td className="px-3 py-3.5 text-sm text-gray-700 whitespace-nowrap">{u.avg}</td>
                               <td className="px-3 py-3.5">
