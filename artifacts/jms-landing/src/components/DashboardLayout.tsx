@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import logoImg from "@assets/vv_1778503190047.png";
 import { useAuth, useLogout } from "@/lib/auth";
-import { getNotifStyle, playNotificationTone } from "@/lib/notifications";
+import { getNotifStyle, playNotificationTone, sortNotificationsByPriority } from "@/lib/notifications";
 import { ROLES, Role } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -98,14 +98,20 @@ export default function DashboardLayout({
   });
   const markReadMutation = useMarkNotificationRead();
 
-  const notifications = apiNotifications?.map(n => ({
-    id: n.id, // Now using string id from API
-    type: n.type as any,
-    title: n.title,
-    desc: n.description,
-    time: new Date(n.createdAt).toLocaleString(),
-    unread: !n.isRead
-  })) || [];
+  const notifications = sortNotificationsByPriority(
+    apiNotifications?.map(n => ({
+      id: n.id,
+      type: n.type as any,
+      title: n.title,
+      desc: n.description,
+      time: new Date(n.createdAt).toLocaleString(),
+      unread: !n.isRead,
+      createdAt: n.createdAt,
+    })) || [],
+  ).sort((a, b) => {
+    if (a.unread !== b.unread) return a.unread ? -1 : 1;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
 
   const unreadCount = notifications.filter((n) => n.unread).length;
 
@@ -178,13 +184,15 @@ export default function DashboardLayout({
     // Separate messages from other alerts to ensure they always show
     const messages = newNotifications.filter(n => n.type === "job_message");
     const otherAlerts = newNotifications.filter(
-      (n) => n.type !== "job_message" && n.type !== "progress",
+      (n) => n.type !== "job_message" && n.type !== "progress" && n.type !== "timer",
     );
+    const timerAlerts = newNotifications.filter((n) => n.type === "timer");
 
-    // Show up to 5 messages and up to 3 other alerts
+    // Show up to 5 messages, 2 timer alerts, and 3 other alerts
     const toToast = [
       ...messages.slice(0, 5),
-      ...otherAlerts.slice(0, 3)
+      ...timerAlerts.slice(0, 2),
+      ...otherAlerts.slice(0, 3),
     ];
 
     toToast.forEach((notification) => {

@@ -166,6 +166,16 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         description: `Rework requested on Item #${itemId}. Reason: ${reworkReason || "No reason provided."}`,
         type: "rework"
       });
+
+      if (job.supervisorId && job.supervisorId !== actor.id) {
+        await createNotification({
+          userId: job.supervisorId,
+          jobId,
+          title: `Rework Flagged: ${job.title}`,
+          description: `${actor.name} requested rework on checklist item #${itemId} for ${job.title}.`,
+          type: "rework",
+        });
+      }
     }
 
     if (actor.role === "user" && status === "completed") {
@@ -207,6 +217,16 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
             title: `Checklist Completed: ${job.title}`,
             description: `Checklist for job ${job.title} has been completed by ${actor.name}.`,
             type: "checklist"
+          });
+        }
+
+        if (nextStatus === "completed" && targetUserId !== actor.id) {
+          await createNotification({
+            userId: targetUserId,
+            jobId,
+            title: `Checklist Completed: ${job.title}`,
+            description: `Your checklist for ${job.title} is complete and ready for review.`,
+            type: "checklist",
           });
         }
       }

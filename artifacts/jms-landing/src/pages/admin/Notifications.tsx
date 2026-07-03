@@ -23,12 +23,17 @@ import {
 const FILTERS: Array<{ id: "all" | "unread" | NotifType; label: string }> = [
   { id: "all", label: "All" },
   { id: "unread", label: "Unread" },
-  { id: "assigned", label: "Assignments" },
-  { id: "job_message", label: "Messages" },
-  { id: "updated", label: "Updates" },
+  { id: "assigned", label: "Jobs" },
   { id: "overdue", label: "Overdue" },
   { id: "timer", label: "Timer" },
+  { id: "job_message", label: "Messages" },
   { id: "rework", label: "Rework" },
+  { id: "checklist", label: "Checklist" },
+  { id: "file", label: "Files" },
+  { id: "training", label: "Training" },
+  { id: "error", label: "Errors" },
+  { id: "progress", label: "Reports" },
+  { id: "updated", label: "Updates" },
 ];
 
 export default function Notifications({ role = "super-admin" }: { role?: Role }) {

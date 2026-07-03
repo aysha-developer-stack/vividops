@@ -4,6 +4,7 @@ import { Play, Pause, Square, Plus, Clock, Trash2, Briefcase } from "lucide-reac
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
+import { postTimerNotification } from "@/lib/timerNotifications";
 import { useGetTimeLogs, useCreateTimeLog, useDeleteTimeLog, useListJobs, type Job } from "@workspace/api-client-react";
 
 interface Entry {
@@ -217,6 +218,12 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     pingTimerRef.current = window.setTimeout(() => {
       setShowActivityPing(true);
       setAutoStopCountdown(AUTO_STOP_S);
+      const label = projects.find((p) => p.id === jobId)?.label ?? "your task";
+      void postTimerNotification(
+        "Still working?",
+        `Your timer on ${label} has been running for 1 hour. Continue or stop within 5 minutes.`,
+        jobId || undefined,
+      );
     }, PING_INTERVAL_S * 1000);
     return () => { if (pingTimerRef.current) clearTimeout(pingTimerRef.current); };
   }, [running, Math.floor(seconds / PING_INTERVAL_S)]);
@@ -242,18 +249,12 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
             createLogMutation
               .mutateAsync({ data: { task: t, duration, jobId: jid } })
               .then(() => {
-                if (role === "user") {
-                  fetch("/api/notifications", {
-                    method: "POST",
-                    credentials: "include",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      type: "timer",
-                      title: "Timer auto-stopped",
-                      description: "Your timer was stopped automatically (no response)",
-                    }),
-                  }).catch(() => {});
-                }
+                const label = projects.find((p) => p.id === jid)?.label ?? "your task";
+                void postTimerNotification(
+                  "Timer auto-stopped",
+                  `Your timer was stopped automatically for ${label} (no response)`,
+                  jid ?? undefined,
+                );
               })
               .catch(() => {});
           }

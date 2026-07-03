@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import {
@@ -7,7 +7,9 @@ import {
   AlertTriangle, TrendingUp, Square,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import TimerActivityPing from "@/components/TimerActivityPing";
 import Pagination, { usePagination } from "@/components/Pagination";
+import { useTimerActivityPing } from "@/hooks/useTimerActivityPing";
 import {
   useGetDashboardStats,
   useGetNotifications,
@@ -386,6 +388,8 @@ export default function UserDashboard() {
     setTick((v) => v + 1);
   };
 
+  const stopActiveTimerRef = useRef<() => Promise<void>>(async () => {});
+
   const stopActiveTimerAndSave = async () => {
     if (!activeTimer) return;
     const duration =
@@ -424,8 +428,33 @@ export default function UserDashboard() {
     setTick((v) => v + 1);
   };
 
+  stopActiveTimerRef.current = stopActiveTimerAndSave;
+
+  const handleTimerAutoStop = useCallback(async () => {
+    await stopActiveTimerRef.current();
+  }, []);
+
+  const {
+    showActivityPing,
+    autoStopCountdown,
+    dismissPing,
+  } = useTimerActivityPing({
+    running: !!activeTimer?.running,
+    elapsedSeconds: activeTimer?.elapsed ?? 0,
+    jobLabel: activeTimerLabel,
+    jobId: activeTimer?.jobId ?? null,
+    onAutoStop: handleTimerAutoStop,
+  });
+
   return (
     <DashboardLayout title="My Dashboard" role="user">
+      <TimerActivityPing
+        open={showActivityPing}
+        countdown={autoStopCountdown}
+        jobLabel={activeTimerLabel}
+        onContinue={dismissPing}
+        onStop={() => { dismissPing(); void stopActiveTimerAndSave(); }}
+      />
       {/* Top Statistics Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         {[

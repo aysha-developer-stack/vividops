@@ -237,6 +237,16 @@ router.patch("/error-reports/:id", requireAuth, async (req, res) => {
 
   const [updated] = await db.update(errorReports).set(patch).where(eq(errorReports.id, id)).returning();
 
+  if (status === "resolved" && updated.userId) {
+    await createNotification({
+      userId: updated.userId,
+      jobId: updated.jobId ?? undefined,
+      title: `Error Report Resolved: ${updated.title}`,
+      description: `Your error report "${updated.title}" has been marked resolved.`,
+      type: "error",
+    });
+  }
+
   const [job] = updated.jobId
     ? await db
         .select({ id: jobs.id, serial: jobs.serial, title: jobs.title })

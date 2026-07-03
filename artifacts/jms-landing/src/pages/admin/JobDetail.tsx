@@ -30,6 +30,7 @@ import {
   ApiError,
 } from "@workspace/api-client-react";
 import { statusToUi, priorityToUi, formatShortDate } from "@/lib/jobMappers";
+import { postTimerNotification } from "@/lib/timerNotifications";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface Props { role?: Role; id?: string }
@@ -601,6 +602,11 @@ export default function JobDetail({ role = "user", id }: Props) {
     pingTimerRef.current = window.setTimeout(() => {
       setShowActivityPing(true);
       setAutoStopCountdown(AUTO_STOP_S);
+      void postTimerNotification(
+        "Still working?",
+        `Your timer on ${job?.number ?? "this job"} has been running for 1 hour. Continue or stop within 5 minutes.`,
+        job?.id,
+      );
     }, PING_INTERVAL_S * 1000);
     return () => { if (pingTimerRef.current) clearTimeout(pingTimerRef.current); };
   }, [running, Math.floor(seconds / PING_INTERVAL_S)]);
@@ -629,18 +635,11 @@ export default function JobDetail({ role = "user", id }: Props) {
               {
                 onSettled: () => {
                   qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
-                  if (role === "user") {
-                    fetch("/api/notifications", {
-                      method: "POST",
-                      credentials: "include",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        type: "timer",
-                        title: "Timer auto-stopped",
-                        description: `Your timer was stopped automatically for ${job.number} (no response)`,
-                      }),
-                    }).catch(() => {});
-                  }
+                  void postTimerNotification(
+                    "Timer auto-stopped",
+                    `Your timer was stopped automatically for ${job.number} (no response)`,
+                    job.id,
+                  );
                 },
               },
             );

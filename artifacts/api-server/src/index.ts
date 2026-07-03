@@ -173,7 +173,7 @@ async function start(): Promise<void> {
                 title,
                 description,
                 type: "overdue",
-                channel: "email",
+                channel: "in_app",
               },
               new Date(Date.now() - 24 * 60 * 60 * 1000),
             );

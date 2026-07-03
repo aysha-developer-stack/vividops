@@ -11,7 +11,40 @@ export type NotifType =
   | "overdue"
   | "timer"
   | "rework"
-  | "job_message";
+  | "job_message"
+  | "checklist"
+  | "file"
+  | "training"
+  | "error"
+  | "progress";
+
+/** Client-spec priority: urgent job alerts first, then assignments, timer, rework, messages, reports. */
+export const NOTIFICATION_PRIORITY: Record<string, number> = {
+  overdue: 0,
+  error: 1,
+  assigned: 2,
+  rework: 3,
+  timer: 4,
+  updated: 5,
+  job_message: 6,
+  checklist: 7,
+  file: 8,
+  training: 9,
+  progress: 10,
+};
+
+export const sortNotificationsByPriority = <T extends { type: string; unread?: boolean; isRead?: boolean }>(
+  items: T[],
+): T[] => {
+  return [...items].sort((a, b) => {
+    const aUnread = a.unread ?? !a.isRead;
+    const bUnread = b.unread ?? !b.isRead;
+    if (aUnread !== bUnread) return aUnread ? -1 : 1;
+    const pa = NOTIFICATION_PRIORITY[a.type] ?? 99;
+    const pb = NOTIFICATION_PRIORITY[b.type] ?? 99;
+    return pa - pb;
+  });
+};
 
 export interface Notif {
   id: number;

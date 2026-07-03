@@ -1111,6 +1111,21 @@ router.post("/jobs", creatorRole, async (req, res) => {
       });
     }
 
+    const admins = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(inArray(users.role, ["admin", "super-admin"]));
+    for (const admin of admins) {
+      if (admin.id === actor.id) continue;
+      await createNotification({
+        userId: admin.id,
+        jobId: full.job.id,
+        title: `New Job Created: ${full.job.title}`,
+        description: `${full.job.title} for ${full.job.client} was created and assigned to ${full.assignee?.name ?? "Unassigned"}.`,
+        type: "assigned",
+      });
+    }
+
     void getOrCreateJobCliqChannel(full.job).catch((err) => {
       logger.warn({ err, jobId: full.job.id }, "Failed to initialize job Cliq channel metadata");
     });

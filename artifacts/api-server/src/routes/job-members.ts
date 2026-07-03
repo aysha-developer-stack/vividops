@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { db, jobs, jobMembers, users, type UserRow } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { createNotification } from "../lib/notifications";
 
 const router: IRouter = Router();
 
@@ -94,10 +95,21 @@ router.post("/jobs/:jobId/members", requireAuth, async (req, res) => {
     if (!u) return res.status(400).json({ error: "User not found" });
     if (u.role !== "user") return res.status(400).json({ error: "Only workers can be added to jobs" });
 
-    await db
+    const inserted = await db
       .insert(jobMembers)
       .values({ id: randomUUID(), jobId, userId })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: jobMembers.id });
+
+    if (inserted.length > 0 && userId !== job.assigneeId) {
+      await createNotification({
+        userId,
+        jobId,
+        title: `New Job Assigned: ${job.title}`,
+        description: `You have been added to job ${job.title} for ${job.client}.`,
+        type: "assigned",
+      });
+    }
 
     return res.status(204).end();
   } catch (err) {

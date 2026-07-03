@@ -70,9 +70,11 @@ router.post("/notifications", requireAuth, async (req, res) => {
     if (!title || !description) return res.status(400).json({ error: "title and description are required" });
     if (!type) return res.status(400).json({ error: "type is required" });
 
-    if (actor.role === "user") {
+    if (type === "timer") {
       if (userId !== actor.id) return res.status(403).json({ error: "Forbidden" });
-      if (type !== "timer") return res.status(403).json({ error: "Forbidden" });
+    } else if (actor.role === "user") {
+      if (userId !== actor.id) return res.status(403).json({ error: "Forbidden" });
+      return res.status(403).json({ error: "Forbidden" });
     }
 
     const created = await createNotification({
