@@ -112,7 +112,7 @@ router.post("/auth/logout", async (req, res) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
-  res.setHeader("Clear-Site-Data", "\"cache\", \"storage\"");
+  res.setHeader("Clear-Site-Data", "\"cache\"");
   return res.status(204).end();
 });
 

@@ -34,7 +34,7 @@ export async function createNotification(options: CreateNotificationOptions) {
     return result;
   } catch (err) {
     logger.error({ err, options }, "Failed to create notification");
-    throw err;
+    return null;
   }
 }
 

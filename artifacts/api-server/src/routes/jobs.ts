@@ -10,7 +10,7 @@ import { buildJobAssignees, publicJob } from "../lib/serialize";
 import { requireAuth, requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { getZohoCliqAccessToken } from "../lib/zoho";
-import { ensureLegacySupervisorAssignments } from "../lib/schema-init";
+import { ensureAllSchemas, ensureLegacySupervisorAssignments } from "../lib/schema-init";
 
 import { shouldSendNotification } from "../lib/notifications";
 
@@ -19,7 +19,7 @@ const router: IRouter = Router();
 const assigneeAlias = alias(users, "assignee");
 const supervisorAlias = alias(users, "supervisor");
 
-const ensureJobMembersSchema = async () => {};
+const ensureJobMembersSchema = ensureAllSchemas;
 const ensureJobMessagesSchema = async () => {};
 const ensureJobMessageSyncSchema = async () => {};
 const ensureNotificationsSchema = async () => {};
@@ -36,6 +36,8 @@ type UserRef = Pick<UserRow, "id" | "name" | "role">;
 async function loadExtraMembersByJobIds(jobIds: string[]): Promise<Map<string, UserRef[]>> {
   const map = new Map<string, UserRef[]>();
   if (jobIds.length === 0) return map;
+
+  await ensureJobMembersSchema();
 
   const rows = await db
     .select({
@@ -969,7 +971,12 @@ router.get("/jobs", requireAuth, async (req, res) => {
     }
   }
   const jobIds = rows.map((r: any) => r.job.id as string);
-  const membersByJob = await loadExtraMembersByJobIds(jobIds);
+  let membersByJob = new Map<string, UserRef[]>();
+  try {
+    membersByJob = await loadExtraMembersByJobIds(jobIds);
+  } catch (err) {
+    logger.warn({ err }, "Failed to load job members for list");
+  }
   return res.json(
     rows.map((r: any) => {
       const assignee = r.assignee?.id ? r.assignee : null;
@@ -985,7 +992,8 @@ router.get("/jobs", requireAuth, async (req, res) => {
 const creatorRole = requireRole("super-admin", "admin", "supervisor");
 
 router.post("/jobs", creatorRole, async (req, res) => {
-  const parsed = CreateJobBody.safeParse(req.body);
+  try {
+    const parsed = CreateJobBody.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid job data" });
   }
@@ -1049,37 +1057,44 @@ router.post("/jobs", creatorRole, async (req, res) => {
     .returning();
 
   const full = await loadJob(created.id);
-  if (full) {
-    // Notify Assignee
-    if (full.job.assigneeId) {
-      await createNotification({
-        userId: full.job.assigneeId,
-        jobId: full.job.id,
-        title: `New Job Assigned: ${full.job.title}`,
-        description: `You have been assigned to a new job: ${full.job.title} for ${full.job.client}. Due Date: ${full.job.dueDate ? new Date(full.job.dueDate).toLocaleDateString() : "Not set"}`,
-        type: "assigned"
-      });
-    }
-    // Notify Supervisor
-    if (full.job.supervisorId) {
-      await createNotification({
-        userId: full.job.supervisorId,
-        jobId: full.job.id,
-        title: `New Job for Supervision: ${full.job.title}`,
-        description: `A new job has been assigned to your team: ${full.job.title} for ${full.job.client}. Assigned to: ${full.assignee?.name ?? "Unassigned"}`,
-        type: "assigned"
-      });
-    }
+  if (!full) {
+    return res.status(500).json({ error: "Job was created but could not be loaded" });
+  }
 
-    void getOrCreateJobCliqChannel(full.job).catch((err) => {
-      logger.warn({ err, jobId: full.job.id }, "Failed to initialize job Cliq channel metadata");
-    });
-    void provisionCliqChannelForJob(full.job).catch((err) => {
-      void markJobCliqStatus(full.job.id, "failed", err instanceof Error ? err.message : String(err)).catch(() => {});
-      logger.warn({ err, jobId: full.job.id }, "Failed to provision Cliq channel");
+  // Notify Assignee
+  if (full.job.assigneeId) {
+    await createNotification({
+      userId: full.job.assigneeId,
+      jobId: full.job.id,
+      title: `New Job Assigned: ${full.job.title}`,
+      description: `You have been assigned to a new job: ${full.job.title} for ${full.job.client}. Due Date: ${full.job.dueDate ? new Date(full.job.dueDate).toLocaleDateString() : "Not set"}`,
+      type: "assigned"
     });
   }
-  return res.status(201).json(await toPublicWithAssignees(full!));
+  // Notify Supervisor
+  if (full.job.supervisorId) {
+    await createNotification({
+      userId: full.job.supervisorId,
+      jobId: full.job.id,
+      title: `New Job for Supervision: ${full.job.title}`,
+      description: `A new job has been assigned to your team: ${full.job.title} for ${full.job.client}. Assigned to: ${full.assignee?.name ?? "Unassigned"}`,
+      type: "assigned"
+    });
+  }
+
+  void getOrCreateJobCliqChannel(full.job).catch((err) => {
+    logger.warn({ err, jobId: full.job.id }, "Failed to initialize job Cliq channel metadata");
+  });
+  void provisionCliqChannelForJob(full.job).catch((err) => {
+    void markJobCliqStatus(full.job.id, "failed", err instanceof Error ? err.message : String(err)).catch(() => {});
+    logger.warn({ err, jobId: full.job.id }, "Failed to provision Cliq channel");
+  });
+
+  return res.status(201).json(await toPublicWithAssignees(full));
+  } catch (err) {
+    logger.error({ err }, "Failed to create job");
+    return res.status(500).json({ error: "Failed to create job" });
+  }
 });
 
 router.get("/jobs/:id", requireAuth, async (req, res) => {
