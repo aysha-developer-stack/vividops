@@ -35,7 +35,8 @@ if (missingVars.length > 0) {
 
 const { seedAdminIfEmpty } = await import("./lib/seed");
 const { setupSocketIO } = await import("./lib/socket");
-const { setupWorkers } = await import("./lib/queue");
+// Initialize Background Workers (optional — requires REDIS_URL)
+void import("./lib/queue").then(({ setupWorkers }) => setupWorkers());
 const { ensureAllSchemas, ensureJobWriteSchema } = await import("./lib/schema-init");
 
 const { createNotification, createNotificationOnce } = await import("./lib/notifications");
@@ -58,9 +59,6 @@ const httpServer = createServer(app);
 
 // Initialize Socket.IO
 setupSocketIO(httpServer);
-
-// Initialize Background Workers
-setupWorkers();
 
 async function start(): Promise<void> {
   // 1. Initialize database schemas once at startup
