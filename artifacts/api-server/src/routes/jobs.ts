@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, or, desc, inArray, sql as dsql } from "drizzle-orm";
+import { and, eq, or, desc, inArray, ne, sql as dsql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, jobs, users, jobMembers, type JobRow, type UserRow, sql } from "@workspace/db";
 import { createNotification } from "../lib/notifications";
@@ -183,15 +183,16 @@ function normalizeJobNumber(value: unknown): string | null {
 }
 
 async function isJobNumberTaken(jobNumber: string, excludeJobId?: string): Promise<boolean> {
-  const rows = await db.execute(sql`
-    SELECT id
-    FROM jobs
-    WHERE job_number = ${jobNumber}
-      AND (${excludeJobId ?? null} IS NULL OR id <> ${excludeJobId ?? null})
-    LIMIT 1
-  `);
-  const row = ((rows as any).rows ?? [])[0] as { id?: string } | undefined;
-  return Boolean(row?.id);
+  const conditions = [eq(jobs.jobNumber, jobNumber)];
+  if (excludeJobId) {
+    conditions.push(ne(jobs.id, excludeJobId));
+  }
+  const [row] = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(and(...conditions))
+    .limit(1);
+  return Boolean(row);
 }
 
 function cliqWebRoot(): string {
