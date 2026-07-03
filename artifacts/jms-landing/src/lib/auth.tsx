@@ -47,16 +47,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryFn: async () => {
       try {
         const user = await getMe();
-        
-        // Tab-session security: If we have a user from the cookie 
-        // but no tab-specific session flag, this is a fresh tab 
-        // that shouldn't be auto-logged in.
-        if (user && !sessionStorage.getItem("vops_tab_active")) {
-          // Log out immediately to clear the persistent cookie
-          await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-          return null;
+        // Valid server session — mark this tab as active. Do not logout here;
+        // clearing sessionStorage alone must not destroy a valid cookie session.
+        if (user) {
+          sessionStorage.setItem("vops_tab_active", "true");
         }
-        
         return user;
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) return null;

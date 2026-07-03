@@ -9,6 +9,7 @@ import {
   SESSION_COOKIE,
   hashPassword,
   sessionExpiresAt,
+  SESSION_TTL_DAYS,
   verifyPassword,
 } from "../lib/auth";
 import { publicUser } from "../lib/serialize";
@@ -35,6 +36,7 @@ const cookieOpts = {
   sameSite: "lax" as const,
   secure: process.env.NODE_ENV === "production",
   path: "/",
+  maxAge: SESSION_TTL_DAYS * 24 * 60 * 60,
 };
 
 router.post("/auth/login", async (req, res) => {
@@ -108,7 +110,11 @@ router.post("/auth/logout", async (req, res) => {
     await db.delete(sessions).where(eq(sessions.id, sid));
     clearSessionCache(sid);
   }
-  res.clearCookie(SESSION_COOKIE, { path: "/" });
+  res.clearCookie(SESSION_COOKIE, {
+    path: "/",
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
