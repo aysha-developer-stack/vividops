@@ -9,6 +9,39 @@ import Pagination, { usePagination } from "@/components/Pagination";
 import { useGetDashboardStats, useListUsers, useListJobs, type User } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
 
+function parseMs(iso: string | null | undefined) {
+  if (!iso) return null;
+  const ms = new Date(iso).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function inWindow(iso: string | null | undefined, start: number, end: number) {
+  const ms = parseMs(iso);
+  return ms != null && ms >= start && ms < end;
+}
+
+function formatCountDelta(delta: number, lowerIsBetter = false) {
+  if (delta === 0) return { change: "0", trend: "neutral" as const };
+  const trend = lowerIsBetter ? (delta < 0 ? "up" : "down") : delta > 0 ? "up" : "down";
+  const sign = delta > 0 ? "+" : "";
+  return { change: `${sign}${delta}`, trend };
+}
+
+function formatPctDelta(current: number, previous: number, lowerIsBetter = false) {
+  if (previous <= 0 && current <= 0) return { change: "0%", trend: "neutral" as const };
+  const pct = previous <= 0 ? 100 : Math.round(((current - previous) / previous) * 100);
+  if (pct === 0) return { change: "0%", trend: "neutral" as const };
+  const trend = lowerIsBetter ? (pct < 0 ? "up" : "down") : pct > 0 ? "up" : "down";
+  const sign = pct > 0 ? "+" : "";
+  return { change: `${sign}${pct}%`, trend };
+}
+
+function formatAvgHours(hours: number) {
+  if (!Number.isFinite(hours) || hours <= 0) return "—";
+  if (hours >= 24) return `${(hours / 24).toFixed(1)}d`;
+  return `${hours.toFixed(1)}h`;
+}
+
 const SYSTEM_HEALTH = [
   { name: "Inspection Report Vault", status: "healthy", uptime: "99.98%", latency: "42ms", icon: FileText },
   { name: "Site Photo Storage", status: "healthy", uptime: "99.99%", latency: "12ms", icon: Image },
@@ -36,12 +69,105 @@ export default function SystemMonitoring({ role = "super-admin" as Role }: { rol
   const [filter, setFilter] = useState<"All" | "Active" | "On Job" | "Idle">("All");
   const [search, setSearch] = useState("");
 
-  const kpis = useMemo(() => [
-    { label: "Online Users", value: (apiUsers ?? []).filter(u => u.status === 'active').length, total: (apiUsers ?? []).length, change: "+0", trend: "up" as const, icon: Users, color: "emerald" },
-    { label: "Active Jobs", value: dashboardData?.stats.activeJobs ?? 0, total: dashboardData?.stats.totalJobs ?? 0, change: "+0", trend: "up" as const, icon: Briefcase, color: "primary" },
-    { label: "Overdue Jobs", value: dashboardData?.stats.overdueJobs ?? 0, total: dashboardData?.stats.totalJobs ?? 0, change: "-0", trend: "down" as const, icon: AlertTriangle, color: "red" },
-    { label: "Avg Response", value: "1.4h", change: "-0%", trend: "down" as const, icon: Clock, color: "amber" },
-  ], [dashboardData, apiUsers]);
+  const kpis = useMemo(() => {
+    const users = apiUsers ?? [];
+    const jobs = apiJobs ?? [];
+    const now = Date.now();
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    const weekStart = now - weekMs;
+    const prevWeekStart = now - 2 * weekMs;
+
+    const activeUsers = users.filter((u) => u.status === "active").length;
+    const signInsThisWeek = users.filter((u) => inWindow(u.lastSignInAt as string, weekStart, now)).length;
+    const signInsLastWeek = users.filter((u) => inWindow(u.lastSignInAt as string, prevWeekStart, weekStart)).length;
+    const usersTrend = formatCountDelta(signInsThisWeek - signInsLastWeek);
+
+    const activeJobs =
+      dashboardData?.stats.activeJobs ?? jobs.filter((j) => j.status === "in_progress").length;
+    const totalJobs = dashboardData?.stats.totalJobs ?? jobs.length;
+    const inProgressThisWeek = jobs.filter(
+      (j) => j.status === "in_progress" && inWindow(j.updatedAt as string, weekStart, now),
+    ).length;
+    const inProgressLastWeek = jobs.filter(
+      (j) => j.status === "in_progress" && inWindow(j.updatedAt as string, prevWeekStart, weekStart),
+    ).length;
+    const activeTrend = formatCountDelta(inProgressThisWeek - inProgressLastWeek);
+
+    const overdueJobs =
+      dashboardData?.stats.overdueJobs ??
+      jobs.filter((j) => {
+        if (j.isOverdue) return true;
+        const dueMs = parseMs(j.dueDate as string);
+        return dueMs != null && dueMs < now && j.status !== "completed" && j.status !== "cancelled";
+      }).length;
+    const overdueWasLastWeek = jobs.filter((j) => {
+      if (j.status === "completed" || j.status === "cancelled") {
+        const completedMs = parseMs(j.completedAt as string);
+        if (completedMs != null && completedMs < weekStart) return false;
+      }
+      const dueMs = parseMs(j.dueDate as string);
+      return dueMs != null && dueMs < weekStart && j.status !== "completed" && j.status !== "cancelled";
+    }).length;
+    const overdueTrend = formatCountDelta(overdueJobs - overdueWasLastWeek, true);
+
+    const avgHoursInWindow = (start: number, end: number) => {
+      const samples = jobs
+        .filter((j) => j.status === "completed")
+        .filter((j) => inWindow(j.completedAt as string, start, end))
+        .map((j) => {
+          const createdMs = parseMs(j.createdAt as string);
+          const completedMs = parseMs(j.completedAt as string);
+          if (createdMs == null || completedMs == null || completedMs < createdMs) return null;
+          return (completedMs - createdMs) / 36e5;
+        })
+        .filter((h): h is number => h != null);
+      if (samples.length === 0) return 0;
+      return samples.reduce((sum, h) => sum + h, 0) / samples.length;
+    };
+
+    const avgThisWeek = avgHoursInWindow(weekStart, now);
+    const avgLastWeek = avgHoursInWindow(prevWeekStart, weekStart);
+    const avgRecent = avgThisWeek > 0 ? avgThisWeek : avgLastWeek;
+    const avgTrend = formatPctDelta(avgThisWeek, avgLastWeek, true);
+
+    return [
+      {
+        label: "Active Users",
+        value: activeUsers,
+        total: users.length,
+        ...usersTrend,
+        icon: Users,
+        color: "emerald",
+        trendHint: "Sign-ins this week vs last week",
+      },
+      {
+        label: "Active Jobs",
+        value: activeJobs,
+        total: totalJobs,
+        ...activeTrend,
+        icon: Briefcase,
+        color: "primary",
+        trendHint: "In-progress job activity vs last week",
+      },
+      {
+        label: "Overdue Jobs",
+        value: overdueJobs,
+        total: totalJobs,
+        ...overdueTrend,
+        icon: AlertTriangle,
+        color: "red",
+        trendHint: "Overdue count vs 7 days ago (lower is better)",
+      },
+      {
+        label: "Avg Response",
+        value: formatAvgHours(avgRecent),
+        ...avgTrend,
+        icon: Clock,
+        color: "amber",
+        trendHint: "Avg job completion time this week vs last week",
+      },
+    ];
+  }, [dashboardData, apiUsers, apiJobs]);
 
   const liveUsers = useMemo(() => (apiUsers ?? []).map((u: User) => {
     const isOnline = u.status === 'active';
@@ -98,12 +224,26 @@ export default function SystemMonitoring({ role = "super-admin" as Role }: { rol
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center bg-${k.color}-50 text-${k.color}-600`}>
                   <Icon size={18} />
                 </div>
-                <span className={`flex items-center gap-1 text-xs font-bold ${k.trend === "up" ? "text-emerald-600" : "text-red-500"}`}>
-                  {k.trend === "up" ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                <span
+                  title={(k as { trendHint?: string }).trendHint ?? "Change vs previous 7 days"}
+                  className={`flex items-center gap-1 text-xs font-bold ${
+                    k.trend === "neutral"
+                      ? "text-gray-400"
+                      : k.trend === "up"
+                        ? "text-emerald-600"
+                        : "text-red-500"
+                  }`}
+                >
+                  {k.trend === "up" ? <TrendingUp size={12} /> : k.trend === "down" ? <TrendingDown size={12} /> : null}
                   {k.change}
                 </span>
               </div>
-              <div className="text-2xl font-bold text-gray-900">{k.value}{k.total && <span className="text-sm font-normal text-gray-400"> / {k.total}</span>}</div>
+              <div className="text-2xl font-bold text-gray-900">
+                {k.value}
+                {"total" in k && k.total != null ? (
+                  <span className="text-sm font-normal text-gray-400"> / {k.total}</span>
+                ) : null}
+              </div>
               <div className="text-xs text-gray-500 mt-0.5">{k.label}</div>
             </motion.div>
           );
