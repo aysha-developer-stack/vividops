@@ -33,7 +33,7 @@ const USER_ROLE_LABEL: Record<string, string> = {
   "user": "User",
 };
 
-interface UserPerf { id: string; name: string; role: UserRoleLabel; jobs: number; completed: number; score: number; avg: string; hours: number; rework: number; overdue: number; }
+interface UserPerf { id: string; name: string; role: UserRoleLabel; jobs: number; completed: number; score: number; scoreTip: string; avg: string; hours: number; rework: number; overdue: number; }
 
 const SEV_COLOR: Record<string, string> = {
   high: "bg-red-50 text-red-700 border-red-200",
@@ -119,14 +119,25 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
       try {
         const entries = await Promise.all(
           jobs.map(async (job) => {
+            const fromApi = (job.assignees ?? [])
+              .filter((member) => member?.role === "user" && typeof member.id === "string")
+              .map((member) => member.id);
+            if (fromApi.length > 0) return [job.id, fromApi] as const;
+
             const res = await fetch(`/api/jobs/${job.id}/members`, { credentials: "include" });
-            if (!res.ok) return [job.id, []] as const;
+            if (!res.ok) {
+              const fallback = job.assignee?.role === "user" && job.assignee.id ? [job.assignee.id] : [];
+              return [job.id, fallback] as const;
+            }
             const data = (await res.json()) as Array<{ id: string; role: string }>;
             const userIds = Array.isArray(data)
               ? data
                   .filter((member) => member?.role === "user" && typeof member.id === "string")
                   .map((member) => member.id)
               : [];
+            if (userIds.length === 0 && job.assignee?.role === "user" && job.assignee.id) {
+              return [job.id, [job.assignee.id]] as const;
+            }
             return [job.id, userIds] as const;
           }),
         );
@@ -191,25 +202,29 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const periodAnchorMs = useMemo(() => Date.now(), [period]);
   const periodStartMs = periodDays ? periodAnchorMs - periodDays * 24 * 60 * 60 * 1000 : null;
 
+  const isJobInPeriod = (j: any) => {
+    if (!periodStartMs) return true;
+    const createdMs = parseMs(j?.createdAt);
+    const updatedMs = parseMs(j?.updatedAt);
+    const completedMs = parseMs(j?.completedAt);
+    const dueMs = parseMs(j?.dueDate);
+    return (
+      (createdMs != null && createdMs >= periodStartMs) ||
+      (updatedMs != null && updatedMs >= periodStartMs) ||
+      (completedMs != null && completedMs >= periodStartMs) ||
+      (dueMs != null && dueMs >= periodStartMs)
+    );
+  };
+
+  const isUserAssignedToJob = (j: any, userId: string) => {
+    if (j.assignee?.id === userId) return true;
+    if ((j.assignees ?? []).some((member: { id?: string }) => member?.id === userId)) return true;
+    return (jobMemberships[j.id] ?? []).includes(userId);
+  };
+
   const userPerformance: UserPerf[] = useMemo(() => {
     return (apiUsers ?? []).map((u: User) => {
-      const userJobsAll = (apiJobs ?? []).filter(
-        (j) => j.assignee?.id === u.id || (jobMemberships[j.id] ?? []).includes(u.id),
-      );
-
-      const isJobInPeriod = (j: any) => {
-        if (!periodStartMs) return true;
-        const createdMs = parseMs(j?.createdAt);
-        const updatedMs = parseMs(j?.updatedAt);
-        const completedMs = parseMs(j?.completedAt);
-        const dueMs = parseMs(j?.dueDate);
-        return (
-          (createdMs != null && createdMs >= periodStartMs) ||
-          (updatedMs != null && updatedMs >= periodStartMs) ||
-          (completedMs != null && completedMs >= periodStartMs) ||
-          (dueMs != null && dueMs >= periodStartMs)
-        );
-      };
+      const userJobsAll = (apiJobs ?? []).filter((j) => isUserAssignedToJob(j, u.id));
 
       const userJobs = userJobsAll.filter(isJobInPeriod);
       const userLogs = (apiTimeLogs ?? [])
@@ -272,6 +287,10 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
         totalJobs === 0
           ? 0
           : Math.round(clamp(completionScore + onTimeScore + reworkScore, 0, 100));
+      const scoreTip =
+        totalJobs === 0
+          ? "No jobs assigned in this period"
+          : `Completion ${Math.round(completionScore)}/60 · On-time ${Math.round(onTimeScore)}/25 · Low rework ${Math.round(reworkScore)}/15`;
 
       return {
         id: u.id,
@@ -280,6 +299,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
         jobs: totalJobs,
         completed: completedCount,
         score,
+        scoreTip,
         avg: formatAvgResolution(avgResolutionHours),
         hours: Number(hours.toFixed(1)),
         rework,
@@ -462,10 +482,35 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const usersP = usePagination(filteredUsers, 6);
   const errorsP = usePagination(filteredErrors, 6);
   const timeP = usePagination(filteredTime, 8);
-  const totalJobs = filteredUsers.reduce((s, u) => s + u.jobs, 0);
-  const totalCompleted = filteredUsers.reduce((s, u) => s + u.completed, 0);
-  const totalHours = filteredUsers.reduce((s, u) => s + u.hours, 0);
-  const totalRework = filteredUsers.reduce((s, u) => s + u.rework, 0);
+
+  const platformJobStats = useMemo(() => {
+    const jobs = (apiJobs ?? []).filter(isJobInPeriod);
+    const completed = jobs.filter((j) => {
+      if (j.status !== "completed") return false;
+      if (!periodStartMs) return true;
+      const completedMs = parseMs(j.completedAt);
+      return completedMs != null && completedMs >= periodStartMs;
+    });
+    const rework = jobs.filter((j) => (j.status as unknown as string) === "rework").length;
+    const hours = (apiTimeLogs ?? [])
+      .filter((l) => {
+        if (!periodStartMs) return true;
+        const createdMs = parseMs(l.createdAt);
+        return createdMs != null && createdMs >= periodStartMs;
+      })
+      .reduce((sum, log) => sum + (log.duration ?? 0), 0) / 3600;
+    return {
+      total: jobs.length,
+      completed: completed.length,
+      hours,
+      rework,
+    };
+  }, [apiJobs, apiTimeLogs, periodStartMs]);
+
+  const totalJobs = platformJobStats.total;
+  const totalCompleted = platformJobStats.completed;
+  const totalHours = platformJobStats.hours;
+  const totalRework = platformJobStats.rework;
 
   const anyLoading = statsLoading || usersLoading || logsLoading || jobsLoading || errorsLoading;
   const anyData = dashboardData || apiUsers || apiTimeLogs || apiJobs;
@@ -1044,7 +1089,13 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                     <table className="w-full">
                       <thead className="bg-gray-50 rounded-lg">
                         <tr>{["User", "Role", "Jobs", "Completed", "Hours", "Rework", "Overdue", "Score", "Avg time", "Report"].map((h) => (
-                          <th key={h} className="text-left px-3 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                          <th
+                            key={h}
+                            title={h === "Score" ? "Score out of 100: Completion (60) + On-time (25) + Low rework (15)" : undefined}
+                            className="text-left px-3 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider"
+                          >
+                            {h}
+                          </th>
                         ))}</tr>
                       </thead>
                       <tbody>
@@ -1079,7 +1130,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                                 {u.jobs === 0 ? (
                                   <span className="text-xs text-gray-400">—</span>
                                 ) : (
-                                  <div className="flex items-center gap-2 w-28">
+                                  <div className="flex items-center gap-2 w-28" title={u.scoreTip}>
                                     <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                                       <motion.div initial={{ width: 0 }} animate={{ width: `${u.score}%` }} transition={{ duration: 0.8, delay: i * 0.05 }} className={`h-full rounded-full ${u.score >= 90 ? "bg-emerald-500" : u.score >= 80 ? "bg-primary" : "bg-amber-500"}`} />
                                     </div>
