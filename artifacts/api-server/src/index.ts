@@ -38,7 +38,7 @@ const { setupSocketIO } = await import("./lib/socket");
 const { setupWorkers } = await import("./lib/queue");
 const { ensureAllSchemas, ensureJobWriteSchema } = await import("./lib/schema-init");
 
-const { shouldSendNotification, createNotification } = await import("./lib/notifications");
+const { shouldSendNotification, createNotification, createNotificationOnce } = await import("./lib/notifications");
 
 const rawPort = process.env["PORT"] || "3000";
 
@@ -85,9 +85,44 @@ async function start(): Promise<void> {
   console.log("[STARTUP] Starting background tasks...");
 
   try {
-    const { db, jobs, users, notifications, jobMembers, timeLogs, posts, and, eq, inArray, sql, gte, lt } = await import("@workspace/db");
+    const { db, jobs, users, jobMembers, timeLogs, posts, and, eq, inArray, sql, gte, lt } = await import("@workspace/db");
 
     const cliqWebhookUrl = process.env.ZOHO_CLIQ_WEBHOOK_URL;
+
+    const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const startOfWeek = (date: Date) => {
+      const start = startOfDay(date);
+      const day = start.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      start.setDate(start.getDate() + diff);
+      return start;
+    };
+    const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
+    const reportPeriodLabel = (type: "weekly" | "monthly", now = new Date()) => {
+      if (type === "monthly") {
+        return now.toLocaleString("en-US", { month: "long", year: "numeric" });
+      }
+      const weekStart = startOfWeek(now);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      const fmt = (d: Date) =>
+        d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      return `${fmt(weekStart)}–${fmt(weekEnd)}, ${weekStart.getFullYear()}`;
+    };
+
+    const loadJobRecipientIds = async (jobId: string, assigneeId: string | null, supervisorId: string | null) => {
+      const recipients = new Set<string>();
+      if (assigneeId) recipients.add(assigneeId);
+      if (supervisorId) recipients.add(supervisorId);
+      const members = await db
+        .select({ userId: jobMembers.userId })
+        .from(jobMembers)
+        .where(eq(jobMembers.jobId, jobId));
+      for (const member of members) {
+        if (member.userId) recipients.add(member.userId);
+      }
+      return recipients;
+    };
 
     const runOverdueScan = async () => {
       try {
@@ -110,9 +145,7 @@ async function start(): Promise<void> {
           const title = `Job Overdue: JOB-${j.serial}`;
           const description = `Job ${j.title} for ${j.client} is overdue by ${daysOverdue} day(s).`;
 
-          const recipients = new Set<string>();
-          if (j.assigneeId) recipients.add(j.assigneeId);
-          if (j.supervisorId) recipients.add(j.supervisorId);
+          const recipients = await loadJobRecipientIds(j.id, j.assigneeId, j.supervisorId);
           for (const a of adminIds) recipients.add(a);
           
           // Escalation: 7+ days overdue notify super admins
@@ -121,29 +154,17 @@ async function start(): Promise<void> {
           }
 
           for (const userId of recipients) {
-            const [existing] = await db
-              .select({ id: notifications.id })
-              .from(notifications)
-              .where(
-                and(
-                  eq(notifications.userId, userId),
-                  eq(notifications.type, "overdue"),
-                  eq(notifications.title, title),
-                  sql`${notifications.createdAt} > now() - interval '24 hours'`,
-                ),
-              )
-              .limit(1);
-            
-            if (existing) continue;
-
-            await createNotification({
-              userId,
-              jobId: j.id,
-              title,
-              description,
-              type: "overdue",
-              channel: "email" // Also send email for overdue
-            });
+            await createNotificationOnce(
+              {
+                userId,
+                jobId: j.id,
+                title,
+                description,
+                type: "overdue",
+                channel: "email",
+              },
+              new Date(Date.now() - 24 * 60 * 60 * 1000),
+            );
           }
         }
 
@@ -159,9 +180,7 @@ async function start(): Promise<void> {
           
           let title = "";
           let description = "";
-          const recipients = new Set<string>();
-          if (j.assigneeId) recipients.add(j.assigneeId);
-          if (j.supervisorId) recipients.add(j.supervisorId);
+          const recipients = await loadJobRecipientIds(j.id, j.assigneeId, j.supervisorId);
 
           if (diffDays === 3) {
             title = `Job Due in 3 Days: JOB-${j.serial}`;
@@ -179,29 +198,17 @@ async function start(): Promise<void> {
           if (!title) continue;
 
           for (const userId of recipients) {
-            const [existing] = await db
-              .select({ id: notifications.id })
-              .from(notifications)
-              .where(
-                and(
-                  eq(notifications.userId, userId),
-                  eq(notifications.type, "updated"),
-                  eq(notifications.title, title),
-                  sql`${notifications.createdAt} > now() - interval '24 hours'`,
-                ),
-              )
-              .limit(1);
-            
-            if (existing) continue;
-
-            await createNotification({
-              userId,
-              jobId: j.id,
-              title,
-              description,
-              type: "updated",
-              channel: diffDays <= 1 ? "email" : "in_app" // Send email for 1 day and today reminders
-            });
+            await createNotificationOnce(
+              {
+                userId,
+                jobId: j.id,
+                title,
+                description,
+                type: "updated",
+                channel: diffDays <= 1 ? "email" : "in_app",
+              },
+              new Date(Date.now() - 24 * 60 * 60 * 1000),
+            );
           }
         }
       } catch (err) {
@@ -212,7 +219,12 @@ async function start(): Promise<void> {
     const runDailySummary = async () => {
       try {
         const now = new Date();
-        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const todayStart = startOfDay(now);
+        const dateLabel = todayStart.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
 
         // 1. Time Summary
         const logs = await db.select().from(timeLogs).where(gte(timeLogs.createdAt, todayStart));
@@ -225,25 +237,30 @@ async function start(): Promise<void> {
           const hours = Math.floor(totalSeconds / 3600);
           const minutes = Math.floor((totalSeconds % 3600) / 60);
           const summary = `Today's work time: ${hours}h ${minutes}m`;
+          const userTitle = `Daily Time Summary — ${dateLabel}`;
 
-          // Notify User
-          await createNotification({
-            userId,
-            title: "Daily Time Summary",
-            description: summary,
-            type: "timer"
-          });
+          await createNotificationOnce(
+            {
+              userId,
+              title: userTitle,
+              description: summary,
+              type: "timer",
+            },
+            todayStart,
+          );
 
-          // Notify Supervisor
           const [userRow] = await db.select({ name: users.name, supervisorId: sql<string>`(select supervisor_id from jobs where assignee_id = ${userId} limit 1)` }).from(users).where(eq(users.id, userId)).limit(1);
           const supervisorId = (userRow as any)?.supervisorId;
           if (supervisorId) {
-            await createNotification({
-              userId: supervisorId,
-              title: `Daily Summary: ${userRow.name}`,
-              description: `${userRow.name} worked for ${hours}h ${minutes}m today.`,
-              type: "timer"
-            });
+            await createNotificationOnce(
+              {
+                userId: supervisorId,
+                title: `Daily Summary: ${userRow.name} — ${dateLabel}`,
+                description: `${userRow.name} worked for ${hours}h ${minutes}m today.`,
+                type: "timer",
+              },
+              todayStart,
+            );
           }
         }
 
@@ -259,25 +276,30 @@ async function start(): Promise<void> {
             const likedRows = (liked as any)?.rows ?? (Array.isArray(liked) ? liked : []);
             if (likedRows.length > 0) continue;
 
-            // Notify User
-            await createNotification({
-              userId: u.id,
-              title: `Training Not Completed: ${post.title}`,
-              description: `You have not completed the training "${post.title}" assigned yesterday.`,
-              type: "training"
-            });
+            const userTitle = `Training Not Completed: ${post.title}`;
+            await createNotificationOnce(
+              {
+                userId: u.id,
+                title: userTitle,
+                description: `You have not completed the training "${post.title}" assigned yesterday.`,
+                type: "training",
+              },
+              yesterdayStart,
+            );
 
-            // Notify Supervisor (approximate via first job found)
             const sup = await db.execute(sql`(select supervisor_id from jobs where assignee_id = ${u.id} limit 1)`);
             const supRows = (sup as any)?.rows ?? (Array.isArray(sup) ? sup : []);
             const supId = supRows[0]?.supervisor_id;
             if (supId) {
-              await createNotification({
-                userId: supId,
-                title: `Training Incomplete: ${u.name}`,
-                description: `${u.name} has not completed the training: ${post.title}`,
-                type: "training"
-              });
+              await createNotificationOnce(
+                {
+                  userId: supId,
+                  title: `Training Incomplete: ${u.name} — ${post.title}`,
+                  description: `${u.name} has not completed the training: ${post.title}`,
+                  type: "training",
+                },
+                yesterdayStart,
+              );
             }
           }
         }
@@ -288,27 +310,37 @@ async function start(): Promise<void> {
 
     const runReportNotifications = async (type: "weekly" | "monthly") => {
       try {
-        const activeUsers = await db.select({ id: users.id }).from(users).where(eq(users.status, "active"));
-        const period = type === "weekly" ? "last week" : "last month";
-        
-        for (const u of activeUsers) {
-          await createNotification({
-            userId: u.id,
-            title: `${type.charAt(0).toUpperCase() + type.slice(1)} Report Available`,
-            description: `Your ${type} performance report for ${period} is now available in the Reports section.`,
-            type: "progress"
-          });
-        }
+        const now = new Date();
+        const periodLabel = reportPeriodLabel(type, now);
+        const periodStart = type === "weekly" ? startOfWeek(now) : startOfMonth(now);
+        const humanPeriod = type === "weekly" ? "last week" : "last month";
+        const activeUsers = await db.select({ id: users.id, role: users.role }).from(users).where(eq(users.status, "active"));
+        const managerRoles = new Set(["super-admin", "admin", "supervisor"]);
 
-        // Notify supervisors/admins about team reports
-        const managers = await db.select({ id: users.id }).from(users).where(inArray(users.role, ["super-admin", "admin", "supervisor"]));
-        for (const m of managers) {
-          await createNotification({
-            userId: m.id,
-            title: `Team ${type.charAt(0).toUpperCase() + type.slice(1)} Report Generated`,
-            description: `The team ${type} report for ${period} has been generated. View insights in the Reports dashboard.`,
-            type: "progress"
-          });
+        for (const u of activeUsers) {
+          if (!(await shouldSendNotification(u.id, "weekly"))) continue;
+
+          await createNotificationOnce(
+            {
+              userId: u.id,
+              title: `${type === "weekly" ? "Weekly" : "Monthly"} Report Available — ${periodLabel}`,
+              description: `Your ${type} performance report for ${humanPeriod} is now available in the Reports section.`,
+              type: "progress",
+            },
+            periodStart,
+          );
+
+          if (managerRoles.has(u.role)) {
+            await createNotificationOnce(
+              {
+                userId: u.id,
+                title: `Team ${type === "weekly" ? "Weekly" : "Monthly"} Report — ${periodLabel}`,
+                description: `The team ${type} report for ${humanPeriod} has been generated. View insights in the Reports dashboard.`,
+                type: "progress",
+              },
+              periodStart,
+            );
+          }
         }
       } catch (err) {
         logger.error({ err }, `${type} report notification failed`);
@@ -318,6 +350,8 @@ async function start(): Promise<void> {
     // Delay initial scan slightly to let server handle incoming requests first
     setTimeout(() => {
       void runOverdueScan();
+      void runReportNotifications("weekly");
+      void runReportNotifications("monthly");
     }, 5000);
     setInterval(() => void runOverdueScan(), 15 * 60 * 1000);
 
@@ -333,27 +367,32 @@ async function start(): Promise<void> {
     };
     scheduleDaily();
 
-    // Schedule weekly/monthly report notifications
-    const scheduleReports = () => {
+    const scheduleWeeklyReports = () => {
       const now = new Date();
-      
-      // Weekly: Monday 9:00 AM
       const nextMonday = new Date(now);
-      nextMonday.setDate(now.getDate() + (1 + 7 - now.getDay()) % 7);
+      nextMonday.setDate(now.getDate() + ((1 + 7 - now.getDay()) % 7 || 7));
       nextMonday.setHours(9, 0, 0, 0);
-      if (nextMonday.getTime() <= now.getTime()) nextMonday.setDate(nextMonday.getDate() + 7);
-      
+      if (nextMonday.getTime() <= now.getTime()) {
+        nextMonday.setDate(nextMonday.getDate() + 7);
+      }
+
       setTimeout(() => {
         void runReportNotifications("weekly");
+        scheduleWeeklyReports();
       }, nextMonday.getTime() - now.getTime());
+    };
 
-      // Monthly: 1st of month 9:00 AM
+    const scheduleMonthlyReports = () => {
+      const now = new Date();
       const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 9, 0, 0, 0);
       setTimeout(() => {
         void runReportNotifications("monthly");
+        scheduleMonthlyReports();
       }, nextMonth.getTime() - now.getTime());
     };
-    scheduleReports();
+
+    scheduleWeeklyReports();
+    scheduleMonthlyReports();
   } catch (err) {
     logger.error({ err }, "Failed to start overdue scheduler");
   }

@@ -177,7 +177,9 @@ export default function DashboardLayout({
 
     // Separate messages from other alerts to ensure they always show
     const messages = newNotifications.filter(n => n.type === "job_message");
-    const otherAlerts = newNotifications.filter(n => n.type !== "job_message");
+    const otherAlerts = newNotifications.filter(
+      (n) => n.type !== "job_message" && n.type !== "progress",
+    );
 
     // Show up to 5 messages and up to 3 other alerts
     const toToast = [

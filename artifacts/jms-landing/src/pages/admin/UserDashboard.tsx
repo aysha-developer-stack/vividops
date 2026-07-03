@@ -15,6 +15,8 @@ import {
   useListJobs,
   useGetTimeLogs,
   getGetTimeLogsQueryKey,
+  getGetNotificationsQueryKey,
+  useMarkNotificationRead,
   type Job,
   type Notification as ApiNotification,
   type Post
@@ -34,7 +36,14 @@ export default function UserDashboard() {
   const { user: currentUser } = useAuth();
   const qc = useQueryClient();
   const { isLoading: statsLoading } = useGetDashboardStats();
-  const { data: apiNotifs, isLoading: notifsLoading } = useGetNotifications();
+  const { data: apiNotifs, isLoading: notifsLoading } = useGetNotifications({
+    query: {
+      staleTime: 0,
+      refetchInterval: 30000,
+    },
+  });
+  const markReadMutation = useMarkNotificationRead();
+  const notificationsQueryKey = [...getGetNotificationsQueryKey(), currentUser?.id ?? "anonymous"];
   const { data: apiPosts, isLoading: postsLoading } = useGetPosts();
   const { data: apiJobs, isLoading: jobsLoading } = useListJobs();
   const { data: apiTimeLogs, isLoading: logsLoading } = useGetTimeLogs();
@@ -198,13 +207,44 @@ export default function UserDashboard() {
     return activeTimer.task?.trim() ? activeTimer.task.trim() : "General";
   }, [activeTimer, assignedJobs, activeJob?.title]);
 
-  const notifs = useMemo(() => (apiNotifs ?? []).slice(0, 5).map((n: ApiNotification) => ({
-    id: n.id,
-    title: n.title,
-    desc: n.description,
-    time: new Date(n.createdAt).toLocaleTimeString(),
-    type: n.type
-  })), [apiNotifs]);
+  const notifs = useMemo(() => {
+    const seenTitles = new Set<string>();
+    const sorted = [...(apiNotifs ?? [])].sort((a, b) => {
+      const unreadDiff = Number(!a.isRead) - Number(!b.isRead);
+      if (unreadDiff !== 0) return -unreadDiff;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    const unique: ApiNotification[] = [];
+    for (const n of sorted) {
+      const key = `${n.type}:${n.title}`;
+      if (seenTitles.has(key)) continue;
+      seenTitles.add(key);
+      unique.push(n);
+      if (unique.length >= 5) break;
+    }
+
+    return unique.map((n) => ({
+      id: n.id,
+      title: n.title,
+      desc: n.description,
+      time: new Date(n.createdAt).toLocaleTimeString(),
+      type: n.type,
+      unread: !n.isRead,
+    }));
+  }, [apiNotifs]);
+
+  const markNotifRead = async (id: string) => {
+    qc.setQueryData(notificationsQueryKey, (prev: ApiNotification[] | undefined) => {
+      if (!prev) return prev;
+      return prev.map((n) => (n.id === id ? { ...n, isRead: true } : n));
+    });
+    try {
+      await markReadMutation.mutateAsync({ id });
+    } catch {
+      await qc.invalidateQueries({ queryKey: notificationsQueryKey });
+    }
+  };
 
   const training = useMemo(() => (apiPosts ?? []).slice(0, 2).map((p: Post) => ({
     id: p.id,
@@ -560,10 +600,18 @@ export default function UserDashboard() {
             </div>
             <div className="p-2 space-y-1">
               {notifs.map(n => (
-                <div key={n.id} className="p-2 rounded-lg hover:bg-gray-50 transition-colors group">
-                  <div className="text-xs font-bold text-gray-900 group-hover:text-primary transition-colors">{n.title}</div>
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => { if (n.unread) void markNotifRead(n.id); }}
+                  className={`w-full text-left p-2 rounded-lg hover:bg-gray-50 transition-colors group ${n.unread ? "bg-primary/[0.03]" : ""}`}
+                >
+                  <div className="flex items-center gap-2">
+                    {n.unread && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+                    <div className="text-xs font-bold text-gray-900 group-hover:text-primary transition-colors">{n.title}</div>
+                  </div>
                   <div className="text-[10px] text-gray-500 line-clamp-1 mt-0.5">{n.desc}</div>
-                </div>
+                </button>
               ))}
               {notifs.length === 0 && <div className="p-8 text-center text-xs text-gray-400">No new alerts</div>}
             </div>

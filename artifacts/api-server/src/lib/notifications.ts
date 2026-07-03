@@ -1,4 +1,4 @@
-import { db, userSettings, eq, notifications, users } from "@workspace/db";
+import { db, userSettings, eq, and, gte, notifications, users } from "@workspace/db";
 import { logger } from "./logger";
 
 export type NotificationType = "assigned" | "updated" | "overdue" | "timer" | "rework" | "job_message" | "checklist" | "file" | "training" | "progress" | "error";
@@ -10,6 +10,38 @@ export interface CreateNotificationOptions {
   type: NotificationType;
   jobId?: string;
   channel?: "in_app" | "email" | "cliq" | "push";
+}
+
+export async function notificationExists(
+  userId: string,
+  type: NotificationType,
+  title: string,
+  since?: Date,
+): Promise<boolean> {
+  const sinceAt = since ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [existing] = await db
+    .select({ id: notifications.id })
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.userId, userId),
+        eq(notifications.type, type),
+        eq(notifications.title, title),
+        gte(notifications.createdAt, sinceAt),
+      ),
+    )
+    .limit(1);
+  return Boolean(existing);
+}
+
+/** Create a notification only if the same user/type/title does not already exist since `since`. */
+export async function createNotificationOnce(
+  options: CreateNotificationOptions,
+  since?: Date,
+) {
+  const exists = await notificationExists(options.userId, options.type, options.title, since);
+  if (exists) return null;
+  return createNotification(options);
 }
 
 export async function createNotification(options: CreateNotificationOptions) {
