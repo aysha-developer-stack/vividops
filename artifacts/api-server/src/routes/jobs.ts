@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { and, eq, or, desc, inArray, ne, sql as dsql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, jobs, users, jobMembers, type JobRow, type UserRow, sql } from "@workspace/db";
-import { createNotification } from "../lib/notifications";
+import { createNotification, createNotificationOnce } from "../lib/notifications";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { CreateJobBody, UpdateJobBody } from "@workspace/api-zod";
@@ -193,6 +193,64 @@ async function isJobNumberTaken(jobNumber: string, excludeJobId?: string): Promi
     .where(and(...conditions))
     .limit(1);
   return Boolean(row);
+}
+
+function datesEqual(a: Date | null | undefined, b: Date | null | undefined): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return a.getTime() === b.getTime();
+}
+
+async function notifyJobContentUpdated(
+  actor: UserRow,
+  before: JobRow,
+  after: JobRow,
+  body: Record<string, unknown>,
+) {
+  const changed: string[] = [];
+  if (body.title !== undefined && body.title !== before.title) changed.push("title");
+  if (body.client !== undefined && body.client !== before.client) changed.push("client");
+  if (body.address !== undefined && body.address !== before.address) changed.push("address");
+  if (body.description !== undefined && body.description !== before.description) {
+    changed.push("description");
+  }
+  if (body.priority !== undefined && body.priority !== before.priority) changed.push("priority");
+  if (body.dueDate !== undefined) {
+    const nextDue = body.dueDate ? new Date(body.dueDate as string | Date) : null;
+    if (!datesEqual(before.dueDate, nextDue)) changed.push("due date");
+  }
+  if (changed.length === 0) return;
+
+  const recipientIds = new Set<string>();
+  if (after.assigneeId) recipientIds.add(after.assigneeId);
+  if (after.supervisorId) recipientIds.add(after.supervisorId);
+  try {
+    const membersByJob = await loadExtraMembersByJobIds([after.id]);
+    for (const member of membersByJob.get(after.id) ?? []) {
+      if (member.role === "user") recipientIds.add(member.id);
+    }
+  } catch (err) {
+    logger.warn({ err, jobId: after.id }, "Failed to load members for job update notification");
+  }
+  recipientIds.delete(actor.id);
+
+  const detail =
+    changed.includes("description")
+      ? "Details, checklist, or scope were updated."
+      : `Updated: ${changed.join(", ")}.`;
+
+  for (const userId of recipientIds) {
+    await createNotificationOnce(
+      {
+        userId,
+        jobId: after.id,
+        title: `Job Updated: ${after.title}`,
+        description: `${actor.name} updated ${after.title}. ${detail}`,
+        type: "updated",
+      },
+      new Date(Date.now() - 2 * 60 * 1000),
+    );
+  }
 }
 
 function cliqWebRoot(): string {
@@ -1299,6 +1357,8 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
         });
       }
     }
+
+    await notifyJobContentUpdated(actor, full.job, after.job, body as Record<string, unknown>);
 
     void getOrCreateJobCliqChannel(after.job).catch((err) => {
       logger.warn({ err, jobId: after.job.id }, "Failed to refresh job Cliq channel metadata");

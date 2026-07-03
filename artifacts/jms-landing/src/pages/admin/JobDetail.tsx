@@ -196,7 +196,14 @@ export default function JobDetail({ role = "user", id }: Props) {
   const createTimeLogMutation = useCreateTimeLog();
   const qc = useQueryClient();
   const job = jobQuery.data;
-  const meta = parseJobMeta(job?.description);
+  const meta = useMemo(() => {
+    const parsed = parseJobMeta(job?.description);
+    const apiChecklist = (job as ApiJob & { checklist?: ChecklistTemplateItem[] })?.checklist;
+    const checklist =
+      Array.isArray(apiChecklist) && apiChecklist.length > 0 ? apiChecklist : parsed.checklist;
+    return { descriptionText: parsed.descriptionText, checklist };
+  }, [job?.description, job]);
+  const checklistTemplateKey = useMemo(() => JSON.stringify(meta.checklist), [meta.checklist]);
   const [attachments, setAttachments] = useState<AttachmentApi[]>([]);
   const [jobMembers, setJobMembers] = useState<Array<{ id: string; name: string; role: Role }>>([]);
 
@@ -555,7 +562,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       }
     })();
     return () => { cancelled = true; };
-  }, [job?.id]);
+  }, [job?.id, job?.description, checklistTemplateKey, role, job?.assignee?.id, job?.progress, job?.status]);
 
   // Trigger hourly check-in: every PING_INTERVAL_S of running time, show popup
   useEffect(() => {

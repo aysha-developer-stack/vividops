@@ -1,4 +1,5 @@
 import type { JobRow, UserRow } from "@workspace/db";
+import { parseJobMeta } from "./jobMeta";
 
 export function publicUser(u: UserRow) {
   return {
@@ -55,6 +56,7 @@ export function publicJob(
     job.status !== "cancelled" &&
     job.dueDate < now;
   const displayNumber = job.jobNumber?.trim() ? `JOB-${job.jobNumber.trim()}` : `JOB-${job.serial}`;
+  const meta = parseJobMeta(job.description);
   return {
     id: job.id,
     number: displayNumber,
@@ -62,6 +64,8 @@ export function publicJob(
     client: job.client,
     address: job.address,
     description: job.description,
+    checklist: meta.checklist,
+    descriptionText: meta.descriptionText,
     status: job.status,
     priority: job.priority,
     progress: job.progress,

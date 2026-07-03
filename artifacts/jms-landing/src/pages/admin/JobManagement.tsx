@@ -16,6 +16,7 @@ import {
   useDeleteJob,
   useListAssignableUsers,
   getListJobsQueryKey,
+  getGetJobQueryKey,
   ApiError,
   type Job as ApiJob,
 } from "@workspace/api-client-react";
@@ -142,29 +143,47 @@ type ExistingAttachment = {
   fileUrl?: string | null;
 };
 
+type JobWithChecklist = ApiJob & {
+  checklist?: ChecklistTemplateItem[];
+  descriptionText?: string | null;
+};
+
 function applyJobToForm(
-  job: ApiJob,
+  job: JobWithChecklist,
   extras: string[],
   role: Role,
   currentUserId?: string,
 ) {
   const meta = parseJobMeta(job.description ?? null);
+  const checklist =
+    Array.isArray(job.checklist) && job.checklist.length > 0
+      ? job.checklist
+      : meta.checklist;
+  const descriptionText =
+    typeof job.descriptionText === "string" ? job.descriptionText : meta.descriptionText;
+  const assigneeId = job.assignee?.id ?? "";
+  const memberIdsFromApi =
+    extras.length > 0
+      ? extras
+      : (job.assignees ?? [])
+          .filter((a) => a.role === "user" && a.id !== assigneeId)
+          .map((a) => a.id);
   return {
     form: {
       jobNumber: job.number.replace(/^JOB-/i, ""),
       title: job.title,
       client: job.client,
       address: job.address ?? "",
-      description: meta.descriptionText,
+      description: descriptionText,
       supervisorId:
         job.supervisor?.id ??
         (role === "supervisor" ? (currentUserId ?? "") : ""),
-      assigneeId: job.assignee?.id ?? "",
+      assigneeId,
       priority: priorityToUi(job.priority),
       due: job.dueDate ? String(job.dueDate).slice(0, 10) : "",
     },
-    checklist: meta.checklist,
-    memberIds: extras,
+    checklist,
+    memberIds: memberIdsFromApi,
   };
 }
 
@@ -186,7 +205,12 @@ export default function JobManagement(
   const updateMutation = useUpdateJob();
   const deleteMutation = useDeleteJob();
 
-  const invalidateJobs = () => qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+  const invalidateJobs = async (jobId?: string | null) => {
+    await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+    if (jobId) {
+      await qc.invalidateQueries({ queryKey: getGetJobQueryKey(jobId) });
+    }
+  };
 
   const jobs: UiJob[] = useMemo(
     () => (jobsQuery.data ?? []).map(mapJob),
@@ -283,15 +307,15 @@ export default function JobManagement(
     setEditLoading(true);
 
     try {
-      let job: ApiJob | undefined;
+      let job: JobWithChecklist | undefined;
       try {
         const res = await fetch(`/api/jobs/${j.id}`, { credentials: "include" });
-        if (res.ok) job = (await res.json()) as ApiJob;
+        if (res.ok) job = (await res.json()) as JobWithChecklist;
       } catch {
         // fall back to list cache below
       }
       if (!job) {
-        job = (jobsQuery.data ?? []).find((x) => x.id === j.id);
+        job = (jobsQuery.data ?? []).find((x) => x.id === j.id) as JobWithChecklist | undefined;
       }
       if (!job) {
         setError("Failed to load job details");
@@ -535,12 +559,13 @@ export default function JobManagement(
         await updateMutation.mutateAsync({ id: editingId, data: payload });
         await uploadAllFiles(editingId);
         await syncMembers(editingId);
+        await invalidateJobs(editingId);
       } else {
         const created = await createMutation.mutateAsync({ data: payload });
         await uploadAllFiles(created.id);
         await syncMembers(created.id);
+        await invalidateJobs(created.id);
       }
-      await invalidateJobs();
       setForm(EMPTY_FORM);
       setJobFiles([]);
       setExistingAttachments([]);
