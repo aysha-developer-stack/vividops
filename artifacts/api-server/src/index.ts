@@ -38,7 +38,7 @@ const { setupSocketIO } = await import("./lib/socket");
 const { setupWorkers } = await import("./lib/queue");
 const { ensureAllSchemas, ensureJobWriteSchema } = await import("./lib/schema-init");
 
-const { shouldSendNotification, createNotification, createNotificationOnce } = await import("./lib/notifications");
+const { createNotification, createNotificationOnce } = await import("./lib/notifications");
 
 const rawPort = process.env["PORT"] || "3000";
 
@@ -85,9 +85,23 @@ async function start(): Promise<void> {
   console.log("[STARTUP] Starting background tasks...");
 
   try {
-    const { db, jobs, users, jobMembers, timeLogs, posts, and, eq, inArray, sql, gte, lt } = await import("@workspace/db");
+    const { db, jobs, users, jobMembers, timeLogs, posts, userSettings, and, eq, inArray, sql, gte, lt } = await import("@workspace/db");
 
     const cliqWebhookUrl = process.env.ZOHO_CLIQ_WEBHOOK_URL;
+
+    // Node setTimeout delays are capped at 2^31-1 ms (~24.85 days). Chunk longer waits.
+    const MAX_TIMEOUT_MS = 2_147_483_647;
+    const scheduleAt = (target: Date, fn: () => void) => {
+      const tick = () => {
+        const remaining = target.getTime() - Date.now();
+        if (remaining <= 0) {
+          fn();
+          return;
+        }
+        setTimeout(tick, Math.min(remaining, MAX_TIMEOUT_MS));
+      };
+      tick();
+    };
 
     const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const startOfWeek = (date: Date) => {
@@ -308,7 +322,11 @@ async function start(): Promise<void> {
       }
     };
 
+    const reportRuns = new Set<"weekly" | "monthly">();
+
     const runReportNotifications = async (type: "weekly" | "monthly") => {
+      if (reportRuns.has(type)) return;
+      reportRuns.add(type);
       try {
         const now = new Date();
         const periodLabel = reportPeriodLabel(type, now);
@@ -317,8 +335,15 @@ async function start(): Promise<void> {
         const activeUsers = await db.select({ id: users.id, role: users.role }).from(users).where(eq(users.status, "active"));
         const managerRoles = new Set(["super-admin", "admin", "supervisor"]);
 
+        const digestSettings = await db
+          .select({ userId: userSettings.userId, weeklyDigest: userSettings.weeklyDigest })
+          .from(userSettings);
+        const digestDisabled = new Set(
+          digestSettings.filter((s) => s.weeklyDigest === false).map((s) => s.userId),
+        );
+
         for (const u of activeUsers) {
-          if (!(await shouldSendNotification(u.id, "weekly"))) continue;
+          if (digestDisabled.has(u.id)) continue;
 
           await createNotificationOnce(
             {
@@ -344,6 +369,8 @@ async function start(): Promise<void> {
         }
       } catch (err) {
         logger.error({ err }, `${type} report notification failed`);
+      } finally {
+        reportRuns.delete(type);
       }
     };
 
@@ -360,10 +387,10 @@ async function start(): Promise<void> {
       const now = new Date();
       const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 55, 0);
       if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
-      setTimeout(() => {
+      scheduleAt(next, () => {
         void runDailySummary();
         scheduleDaily();
-      }, next.getTime() - now.getTime());
+      });
     };
     scheduleDaily();
 
@@ -376,19 +403,19 @@ async function start(): Promise<void> {
         nextMonday.setDate(nextMonday.getDate() + 7);
       }
 
-      setTimeout(() => {
+      scheduleAt(nextMonday, () => {
         void runReportNotifications("weekly");
         scheduleWeeklyReports();
-      }, nextMonday.getTime() - now.getTime());
+      });
     };
 
     const scheduleMonthlyReports = () => {
       const now = new Date();
       const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 9, 0, 0, 0);
-      setTimeout(() => {
+      scheduleAt(nextMonth, () => {
         void runReportNotifications("monthly");
         scheduleMonthlyReports();
-      }, nextMonth.getTime() - now.getTime());
+      });
     };
 
     scheduleWeeklyReports();
