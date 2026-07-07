@@ -88,6 +88,8 @@ type JobMessageApi = {
   text: string;
   createdAt: string;
   isMe: boolean;
+  source?: "app" | "zoho_cliq";
+  deliveryState?: "local_only" | "sent" | "failed" | "received";
   user: { id: string; name: string };
 };
 
@@ -1632,7 +1634,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                   <div className="p-5 border-b border-gray-100 flex items-center justify-between">
                     <div>
                       <h3 className="font-bold text-gray-900 flex items-center gap-2"><MessageCircle size={16} className="text-primary" /> Recent Activity</h3>
-                      <p className="text-[11px] text-gray-500 mt-0.5">Read-only preview · Reply inside Zoho Cliq</p>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Mirrored OPS history from the live Zoho Cliq job channel.</p>
                     </div>
                     <span className="text-[10px] font-medium text-gray-500 flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live

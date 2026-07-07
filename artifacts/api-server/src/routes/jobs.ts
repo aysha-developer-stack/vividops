@@ -20,10 +20,10 @@ const assigneeAlias = alias(users, "assignee");
 const supervisorAlias = alias(users, "supervisor");
 
 const ensureJobMembersSchema = ensureJobWriteSchema;
-const ensureJobMessagesSchema = async () => {};
-const ensureJobMessageSyncSchema = async () => {};
-const ensureNotificationsSchema = async () => {};
-const ensureJobCliqSchema = async () => {};
+const ensureJobMessagesSchema = ensureAllSchemas;
+const ensureJobMessageSyncSchema = ensureAllSchemas;
+const ensureNotificationsSchema = ensureAllSchemas;
+const ensureJobCliqSchema = ensureAllSchemas;
 
 type JobWithRefs = {
   job: JobRow;
@@ -32,6 +32,9 @@ type JobWithRefs = {
 };
 
 type UserRef = Pick<UserRow, "id" | "name" | "role">;
+
+type MessageSource = "app" | "zoho_cliq";
+type MessageDeliveryState = "local_only" | "sent" | "failed" | "received";
 
 async function loadExtraMembersByJobIds(jobIds: string[]): Promise<Map<string, UserRef[]>> {
   const map = new Map<string, UserRef[]>();
@@ -447,21 +450,51 @@ function cliqApiRoot(): string {
   return (process.env.ZOHO_CLIQ_API_ROOT || "https://cliq.zoho.com/api/v2").replace(/\/+$/, "");
 }
 
-async function postCliqMessageToChannelByName(channelName: string, text: string): Promise<void> {
+function parseCliqPostedMessageId(json: unknown): string | null {
+  const data = json && typeof json === "object" ? (json as Record<string, unknown>) : null;
+  const nested =
+    data?.data && typeof data.data === "object" ? (data.data as Record<string, unknown>) : null;
+  return (
+    pickString(nested?.message_id) ??
+    pickString(nested?.id) ??
+    pickString(data?.message_id) ??
+    pickString(data?.id) ??
+    null
+  );
+}
+
+async function postCliqMessageToChannel(
+  channelName: string,
+  channelId: string | null,
+  text: string,
+): Promise<string | null> {
   const token = await getZohoCliqAccessToken();
-  const url = `${cliqApiRoot()}/channelsbyname/${encodeURIComponent(channelName)}/message`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Zoho-oauthtoken ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ text }),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Cliq channel message failed (${res.status}): ${body}`);
+  const headers = {
+    Authorization: `Zoho-oauthtoken ${token}`,
+    "Content-Type": "application/json",
+  };
+  const body = JSON.stringify({ text });
+
+  if (channelId) {
+    const byIdUrl = `${cliqApiRoot()}/channels/${encodeURIComponent(channelId)}/message`;
+    const byIdRes = await fetch(byIdUrl, { method: "POST", headers, body });
+    if (byIdRes.ok) {
+      return parseCliqPostedMessageId(await byIdRes.json().catch(() => null));
+    }
+    const byIdBody = await byIdRes.text().catch(() => "");
+    logger.warn(
+      { channelId, channelName, status: byIdRes.status, body: byIdBody },
+      "[CLIQ-PUSH] Channel ID message post failed, trying channel name",
+    );
   }
+
+  const byNameUrl = `${cliqApiRoot()}/channelsbyname/${encodeURIComponent(channelName)}/message`;
+  const byNameRes = await fetch(byNameUrl, { method: "POST", headers, body });
+  if (!byNameRes.ok) {
+    const byNameBody = await byNameRes.text().catch(() => "");
+    throw new Error(`Cliq channel message failed (${byNameRes.status}): ${byNameBody}`);
+  }
+  return parseCliqPostedMessageId(await byNameRes.json().catch(() => null));
 }
 
 async function resolveCliqChannelIdByName(token: string, channelName: string): Promise<string | null> {
@@ -551,14 +584,22 @@ async function listJobParticipantIds(job: JobRow): Promise<string[]> {
   return Array.from(ids);
 }
 
-async function findJobByCliqChannelName(channelName: string): Promise<JobWithRefs | null> {
+async function findJobByCliqChannel(channelId: string | null, channelName: string): Promise<JobWithRefs | null> {
   await ensureJobCliqSchema();
-  const rows = await db.execute(sql`
-    SELECT job_id
-    FROM job_cliq_channels
-    WHERE lower(channel_name) = lower(${channelName})
-    LIMIT 1
-  `);
+  const rows = channelId
+    ? await db.execute(sql`
+        SELECT job_id
+        FROM job_cliq_channels
+        WHERE channel_id = ${channelId}
+           OR lower(channel_name) = lower(${channelName})
+        LIMIT 1
+      `)
+    : await db.execute(sql`
+        SELECT job_id
+        FROM job_cliq_channels
+        WHERE lower(channel_name) = lower(${channelName})
+        LIMIT 1
+      `);
   const row = ((rows as any).rows ?? [])[0] as { job_id?: string } | undefined;
   if (!row?.job_id) return null;
   return loadJob(row.job_id);
@@ -601,13 +642,90 @@ async function findRecentJobMessage(jobId: string, userId: string, text: string)
   return (((rows as any).rows ?? [])[0] as { id: string; created_at: string } | undefined) ?? null;
 }
 
+type UpsertJobMessageSyncOptions = {
+  jobId: string;
+  jobMessageId: string;
+  source: MessageSource;
+  direction: "inbound" | "outbound";
+  externalMessageId?: string | null;
+  externalChannelId?: string | null;
+  externalChannelName?: string | null;
+  senderEmail?: string | null;
+  payload?: unknown;
+  deliveryStatus: MessageDeliveryState;
+  lastError?: string | null;
+};
+
+async function upsertJobMessageSync({
+  jobId,
+  jobMessageId,
+  source,
+  direction,
+  externalMessageId = null,
+  externalChannelId = null,
+  externalChannelName = null,
+  senderEmail = null,
+  payload = null,
+  deliveryStatus,
+  lastError = null,
+}: UpsertJobMessageSyncOptions): Promise<void> {
+  await ensureJobMessageSyncSchema();
+  await db.execute(sql`
+    INSERT INTO job_message_sync (
+      id,
+      job_id,
+      job_message_id,
+      source,
+      direction,
+      external_message_id,
+      external_channel_id,
+      external_channel_name,
+      sender_email,
+      delivery_status,
+      last_error,
+      payload,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      ${randomUUID()},
+      ${jobId},
+      ${jobMessageId},
+      ${source},
+      ${direction},
+      ${externalMessageId},
+      ${externalChannelId},
+      ${externalChannelName},
+      ${senderEmail},
+      ${deliveryStatus},
+      ${lastError},
+      ${payload == null ? null : JSON.stringify(payload)},
+      now(),
+      now()
+    )
+    ON CONFLICT (job_message_id) DO UPDATE
+    SET source = EXCLUDED.source,
+        direction = EXCLUDED.direction,
+        external_message_id = EXCLUDED.external_message_id,
+        external_channel_id = EXCLUDED.external_channel_id,
+        external_channel_name = EXCLUDED.external_channel_name,
+        sender_email = EXCLUDED.sender_email,
+        delivery_status = EXCLUDED.delivery_status,
+        last_error = EXCLUDED.last_error,
+        payload = EXCLUDED.payload,
+        updated_at = now()
+  `);
+}
+
 type CreateStoredJobMessageOptions = {
   job: JobRow;
   actor: Pick<UserRow, "id" | "name">;
   text: string;
   pushToCliq?: boolean;
-  externalSource?: string | null;
+  externalSource?: MessageSource | null;
   externalMessageId?: string | null;
+  externalChannelId?: string | null;
+  externalChannelName?: string | null;
   senderEmail?: string | null;
   rawPayload?: unknown;
 };
@@ -619,6 +737,8 @@ async function createStoredJobMessage({
   pushToCliq = false,
   externalSource = null,
   externalMessageId = null,
+  externalChannelId = null,
+  externalChannelName = null,
   senderEmail = null,
   rawPayload = null,
 }: CreateStoredJobMessageOptions): Promise<{
@@ -627,6 +747,8 @@ async function createStoredJobMessage({
   createdAt: string;
   user: { id: string; name: string };
   duplicate: boolean;
+  source: MessageSource;
+  deliveryState: MessageDeliveryState;
 }> {
   const cleanText = text.trim();
   if (!cleanText) throw new Error("text is required");
@@ -651,6 +773,8 @@ async function createStoredJobMessage({
         createdAt: recent?.created_at ?? new Date().toISOString(),
         user: { id: actor.id, name: actor.name },
         duplicate: true,
+        source: externalSource,
+        deliveryState: "received",
       };
     }
   }
@@ -666,20 +790,20 @@ async function createStoredJobMessage({
     | undefined;
   const createdAt = insertedRow?.created_at ?? new Date().toISOString();
 
-  if (externalSource) {
-    await db.execute(sql`
-      INSERT INTO job_message_sync (id, job_id, source, external_message_id, sender_email, payload)
-      VALUES (
-        ${randomUUID()},
-        ${job.id},
-        ${externalSource},
-        ${externalMessageId},
-        ${senderEmail},
-        ${rawPayload == null ? null : JSON.stringify(rawPayload)}
-      )
-      ON CONFLICT DO NOTHING
-    `);
-  }
+  const source: MessageSource = externalSource ?? "app";
+  const initialDeliveryState: MessageDeliveryState = externalSource ? "received" : "local_only";
+  await upsertJobMessageSync({
+    jobId: job.id,
+    jobMessageId: msgId,
+    source,
+    direction: externalSource ? "inbound" : "outbound",
+    externalMessageId,
+    externalChannelId,
+    externalChannelName,
+    senderEmail,
+    payload: rawPayload,
+    deliveryStatus: initialDeliveryState,
+  });
 
   try {
     await ensureNotificationsSchema();
@@ -709,6 +833,8 @@ async function createStoredJobMessage({
 
   logger.debug({ pushToCliq }, "[CLIQ-DEBUG] Checking pushToCliq condition"); // <-- ADD THIS LINE
 
+  let deliveryState: MessageDeliveryState = initialDeliveryState;
+
   if (pushToCliq) {
     const prefix = `JOB-${job.serial} · ${job.title}`;
     const payload = `${prefix}\n${actor.name}: ${cleanText}`;
@@ -719,14 +845,50 @@ async function createStoredJobMessage({
         logger.info({ jobId: job.id, status: ch.status }, "[CLIQ-PUSH] Channel not active, provisioning first");
         await provisionCliqChannelForJob(job);
       }
-      await postCliqMessageToChannelByName(ch.channelName, payload);
+      const externalId = await postCliqMessageToChannel(ch.channelName, ch.channelId, payload);
+      await upsertJobMessageSync({
+        jobId: job.id,
+        jobMessageId: msgId,
+        source: "app",
+        direction: "outbound",
+        externalMessageId: externalId,
+        externalChannelId: ch.channelId,
+        externalChannelName: ch.channelName,
+        senderEmail: null,
+        payload: { text: payload },
+        deliveryStatus: "sent",
+      });
+      deliveryState = "sent";
       logger.info({ jobId: job.id, channel: ch.channelName }, "[CLIQ-PUSH] Successfully pushed message via API");
     } catch (errToken) {
       logger.warn({ err: errToken instanceof Error ? errToken.message : String(errToken), jobId: job.id }, "[CLIQ-PUSH] API push failed, falling back to webhook");
       try {
         await postCliqMessageViaWebhook(payload);
+        await upsertJobMessageSync({
+          jobId: job.id,
+          jobMessageId: msgId,
+          source: "app",
+          direction: "outbound",
+          externalChannelName: computeCliqChannelName(job),
+          senderEmail: null,
+          payload: { text: payload, via: "webhook_fallback" },
+          deliveryStatus: "sent",
+        });
+        deliveryState = "sent";
         logger.info({ jobId: job.id }, "[CLIQ-PUSH] Successfully pushed message via Webhook fallback");
       } catch (errWebhook) {
+        await upsertJobMessageSync({
+          jobId: job.id,
+          jobMessageId: msgId,
+          source: "app",
+          direction: "outbound",
+          externalChannelName: computeCliqChannelName(job),
+          senderEmail: null,
+          payload: { text: payload, via: "webhook_fallback" },
+          deliveryStatus: "failed",
+          lastError: errWebhook instanceof Error ? errWebhook.message : String(errWebhook),
+        });
+        deliveryState = "failed";
         logger.error(
           { err: errWebhook instanceof Error ? errWebhook.message : String(errWebhook), jobId: job.id },
           "[CLIQ-PUSH] Failed to send message via both API and Webhook",
@@ -741,6 +903,8 @@ async function createStoredJobMessage({
     createdAt,
     user: { id: actor.id, name: actor.name },
     duplicate: false,
+    source,
+    deliveryState,
   };
 }
 
@@ -749,6 +913,7 @@ function getCliqSyncSecret(): string {
 }
 
 type IncomingCliqMessage = {
+  channelId: string | null;
   channelName: string;
   text: string;
   senderEmail: string;
@@ -768,14 +933,24 @@ function parseIncomingCliqMessage(payload: unknown): IncomingCliqMessage | null 
     return "";
   };
 
+  const channelId = pickString(
+    obj.channelId,
+    obj.channel_id,
+    obj.channel?.id,
+    obj.channel?.channel_id,
+    obj.data?.channel_id,
+    obj.data?.channelId,
+  );
   const channelName = pickString(
     obj.channelName,
     obj.channel_name,
     obj.channel_unique_name,
+    obj.channel?.name,
     obj.channel?.unique_name,
     obj.channel?.channel_unique_name,
     obj.data?.channel_unique_name,
     obj.data?.channelName,
+    obj.data?.channel_name,
   );
   const text = pickString(
     obj.text,
@@ -813,6 +988,7 @@ function parseIncomingCliqMessage(payload: unknown): IncomingCliqMessage | null 
 
   if (!channelName || !text || !senderEmail || !senderName) return null;
   return {
+    channelId: channelId || null,
     channelName,
     text,
     senderEmail,
@@ -1409,9 +1585,9 @@ router.post("/zoho/cliq/messages/incoming", async (req, res) => {
       return res.status(400).json({ error: "Invalid Cliq payload" });
     }
 
-    const full = await findJobByCliqChannelName(message.channelName);
+    const full = await findJobByCliqChannel(message.channelId, message.channelName);
     if (!full) {
-      logger.warn({ channelName: message.channelName }, "[CLIQ-SYNC] Job channel not found for channelName");
+      logger.warn({ channelId: message.channelId, channelName: message.channelName }, "[CLIQ-SYNC] Job channel not found for channel");
       return res.status(404).json({ error: "Job channel not found" });
     }
 
@@ -1451,6 +1627,8 @@ router.post("/zoho/cliq/messages/incoming", async (req, res) => {
       pushToCliq: false,
       externalSource: "zoho_cliq",
       externalMessageId: message.externalMessageId,
+      externalChannelId: message.channelId,
+      externalChannelName: message.channelName,
       senderEmail: message.senderEmail,
       rawPayload: message.rawPayload,
     });
@@ -1520,9 +1698,12 @@ router.get("/jobs/:id/messages", requireAuth, async (req, res) => {
         jm.text,
         jm.created_at,
         u.id AS user_id,
-        u.name AS user_name
+        u.name AS user_name,
+        COALESCE(jms.source, 'app') AS source,
+        COALESCE(jms.delivery_status, 'local_only') AS delivery_status
       FROM job_messages jm
       JOIN users u ON u.id = jm.user_id
+      LEFT JOIN job_message_sync jms ON jms.job_message_id = jm.id
       WHERE jm.job_id = ${id}
       ORDER BY jm.created_at ASC
       LIMIT 200
@@ -1533,6 +1714,8 @@ router.get("/jobs/:id/messages", requireAuth, async (req, res) => {
       created_at: string;
       user_id: string;
       user_name: string;
+      source: MessageSource;
+      delivery_status: MessageDeliveryState;
     }>;
 
     return res.json(
@@ -1541,6 +1724,8 @@ router.get("/jobs/:id/messages", requireAuth, async (req, res) => {
         text: m.text,
         createdAt: m.created_at,
         isMe: m.user_id === actor.id,
+        source: m.source,
+        deliveryState: m.delivery_status,
         user: { id: m.user_id, name: m.user_name },
       })),
     );
@@ -1576,6 +1761,8 @@ router.post("/jobs/:id/messages", requireAuth, async (req, res) => {
       text: created.text,
       createdAt: created.createdAt,
       isMe: true,
+      source: created.source,
+      deliveryState: created.deliveryState,
       user: created.user,
     });
   } catch (err) {

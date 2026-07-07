@@ -21,6 +21,8 @@ type JobMessageApi = {
   text: string;
   createdAt: string;
   isMe: boolean;
+  source?: "app" | "zoho_cliq";
+  deliveryState?: "local_only" | "sent" | "failed" | "received";
   user: { id: string; name: string };
 };
 
@@ -375,7 +377,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                 )}
               </div>
               <div className="text-xs text-gray-500 mt-0.5">
-                Job messages are stored in the app and can be pushed to a dedicated Cliq channel.
+                Zoho Cliq is the live job chat, and OPS keeps a mirrored job history.
               </div>
             </div>
           </div>
