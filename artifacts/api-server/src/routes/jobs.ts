@@ -10,7 +10,12 @@ import { buildJobAssignees, publicJob } from "../lib/serialize";
 import { requireAuth, requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { getZohoCliqAccessToken } from "../lib/zoho";
-import { ensureAllSchemas, ensureJobWriteSchema, ensureLegacySupervisorAssignments } from "../lib/schema-init";
+import {
+  ensureAllSchemas,
+  ensureJobMessageSyncSchema,
+  ensureJobWriteSchema,
+  ensureLegacySupervisorAssignments,
+} from "../lib/schema-init";
 
 import { shouldSendNotification } from "../lib/notifications";
 
@@ -21,7 +26,6 @@ const supervisorAlias = alias(users, "supervisor");
 
 const ensureJobMembersSchema = ensureJobWriteSchema;
 const ensureJobMessagesSchema = ensureAllSchemas;
-const ensureJobMessageSyncSchema = ensureAllSchemas;
 const ensureNotificationsSchema = ensureAllSchemas;
 const ensureJobCliqSchema = ensureAllSchemas;
 
@@ -1692,6 +1696,7 @@ router.get("/jobs/:id/messages", requireAuth, async (req, res) => {
     }
 
     await ensureJobMessagesSchema();
+    await ensureJobMessageSyncSchema();
     const rows = await db.execute(sql`
       SELECT
         jm.id,

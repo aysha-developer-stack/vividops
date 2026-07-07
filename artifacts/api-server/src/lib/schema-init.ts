@@ -97,6 +97,79 @@ export async function ensureJobWriteSchema() {
   }
 }
 
+let jobMessageSyncSchemaEnsured = false;
+
+/** Migrate legacy job_message_sync tables created before two-way sync metadata existed. */
+export async function ensureJobMessageSyncSchema() {
+  if (jobMessageSyncSchemaEnsured) return;
+
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS job_message_sync (
+        id uuid PRIMARY KEY,
+        job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        source text NOT NULL,
+        external_message_id text,
+        sender_email text,
+        payload jsonb
+      )
+    `);
+    await db.execute(sql`
+      ALTER TABLE job_message_sync
+      ADD COLUMN IF NOT EXISTS job_message_id uuid REFERENCES job_messages(id) ON DELETE CASCADE
+    `);
+    await db.execute(sql`
+      ALTER TABLE job_message_sync
+      ADD COLUMN IF NOT EXISTS direction text NOT NULL DEFAULT 'inbound'
+    `);
+    await db.execute(sql`
+      ALTER TABLE job_message_sync
+      ADD COLUMN IF NOT EXISTS external_channel_id text
+    `);
+    await db.execute(sql`
+      ALTER TABLE job_message_sync
+      ADD COLUMN IF NOT EXISTS external_channel_name text
+    `);
+    await db.execute(sql`
+      ALTER TABLE job_message_sync
+      ADD COLUMN IF NOT EXISTS delivery_status text NOT NULL DEFAULT 'received'
+    `);
+    await db.execute(sql`
+      ALTER TABLE job_message_sync
+      ADD COLUMN IF NOT EXISTS last_error text
+    `);
+    await db.execute(sql`
+      ALTER TABLE job_message_sync
+      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now()
+    `);
+    await db.execute(sql`
+      ALTER TABLE job_message_sync
+      ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS job_message_sync_job_idx ON job_message_sync (job_id)
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS job_message_sync_message_idx ON job_message_sync (job_message_id)
+    `);
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS job_message_sync_job_message_uniq_idx
+      ON job_message_sync (job_message_id)
+    `);
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS job_message_sync_external_message_uniq_idx
+      ON job_message_sync (source, external_message_id)
+      WHERE external_message_id IS NOT NULL
+    `);
+
+    jobMessageSyncSchemaEnsured = true;
+    logger.info("Job message sync schema ensured.");
+  } catch (err) {
+    logger.error({ err }, "Job message sync schema migration failed");
+    throw err;
+  }
+}
+
 export async function ensureAllSchemas() {
   if (initialized) return;
   
@@ -175,30 +248,6 @@ export async function ensureAllSchemas() {
       CREATE INDEX IF NOT EXISTS job_messages_job_idx ON job_messages (job_id);
       CREATE INDEX IF NOT EXISTS job_messages_job_created_idx ON job_messages (job_id, created_at);
 
-      CREATE TABLE IF NOT EXISTS job_message_sync (
-        id uuid PRIMARY KEY,
-        job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-        job_message_id uuid NOT NULL REFERENCES job_messages(id) ON DELETE CASCADE,
-        source text NOT NULL,
-        direction text NOT NULL DEFAULT 'inbound',
-        external_message_id text,
-        external_channel_id text,
-        external_channel_name text,
-        sender_email text,
-        delivery_status text NOT NULL DEFAULT 'received',
-        last_error text,
-        payload jsonb,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now()
-      );
-      CREATE INDEX IF NOT EXISTS job_message_sync_job_idx ON job_message_sync (job_id);
-      CREATE INDEX IF NOT EXISTS job_message_sync_message_idx ON job_message_sync (job_message_id);
-      CREATE UNIQUE INDEX IF NOT EXISTS job_message_sync_job_message_uniq_idx
-        ON job_message_sync (job_message_id);
-      CREATE UNIQUE INDEX IF NOT EXISTS job_message_sync_external_message_uniq_idx
-        ON job_message_sync (source, external_message_id)
-        WHERE external_message_id IS NOT NULL;
-
       -- Cliq Integration
       CREATE TABLE IF NOT EXISTS job_cliq_channels (
         job_id uuid PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
@@ -269,6 +318,7 @@ export async function ensureAllSchemas() {
       );
     `);
 
+    await ensureJobMessageSyncSchema();
     await ensureLegacySupervisorAssignments();
     
     initialized = true;
