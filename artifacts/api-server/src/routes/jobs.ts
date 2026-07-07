@@ -548,6 +548,28 @@ function parseCliqPostedMessageId(json: unknown): string | null {
   );
 }
 
+async function ensureCliqBotInChannel(channelName: string): Promise<void> {
+  const botName = getCliqBotUniqueName();
+  if (!botName || !channelName) return;
+
+  const token = await getZohoCliqAccessToken();
+  const res = await fetch(`${cliqApiRoot()}/bots/${encodeURIComponent(botName)}/associate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Zoho-oauthtoken ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ channel_unique_name: channelName }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    logger.warn(
+      { channelName, botName, status: res.status, body },
+      "[CLIQ] Failed to ensure bot is associated with channel",
+    );
+  }
+}
+
 async function postCliqMessageToChannel(
   channelName: string,
   channelId: string | null,
@@ -564,6 +586,24 @@ async function postCliqMessageToChannel(
   const botName = getCliqBotUniqueName();
   const attempts: string[] = [];
 
+  for (const name of nameCandidates) {
+    await ensureCliqBotInChannel(name);
+  }
+
+  if (botName) {
+    for (const name of nameCandidates) {
+      const encoded = encodeURIComponent(name);
+      attempts.push(
+        `${cliqApiRoot()}/channelsbyname/${encoded}/message?bot_unique_name=${encodeURIComponent(botName)}`,
+      );
+    }
+    if (channelId) {
+      attempts.push(
+        `${cliqApiRoot()}/channels/${encodeURIComponent(channelId)}/message?bot_unique_name=${encodeURIComponent(botName)}`,
+      );
+    }
+  }
+
   if (chatId) {
     attempts.push(`${cliqApiRoot()}/chats/${encodeURIComponent(chatId)}/message`);
   }
@@ -571,13 +611,7 @@ async function postCliqMessageToChannel(
     attempts.push(`${cliqApiRoot()}/channels/${encodeURIComponent(channelId)}/message`);
   }
   for (const name of nameCandidates) {
-    const encoded = encodeURIComponent(name);
-    if (botName) {
-      attempts.push(
-        `${cliqApiRoot()}/channelsbyname/${encoded}/message?bot_unique_name=${encodeURIComponent(botName)}`,
-      );
-    }
-    attempts.push(`${cliqApiRoot()}/channelsbyname/${encoded}/message`);
+    attempts.push(`${cliqApiRoot()}/channelsbyname/${encodeURIComponent(name)}/message`);
   }
 
   const errors: string[] = [];
@@ -846,6 +880,7 @@ async function createStoredJobMessage({
   duplicate: boolean;
   source: MessageSource;
   deliveryState: MessageDeliveryState;
+  deliveryError?: string | null;
 }> {
   const cleanText = text.trim();
   if (!cleanText) throw new Error("text is required");
@@ -931,6 +966,7 @@ async function createStoredJobMessage({
   logger.debug({ pushToCliq }, "[CLIQ-DEBUG] Checking pushToCliq condition"); // <-- ADD THIS LINE
 
   let deliveryState: MessageDeliveryState = initialDeliveryState;
+  let deliveryError: string | null = null;
 
   if (pushToCliq) {
     const prefix = `JOB-${job.serial} · ${job.title}`;
@@ -984,6 +1020,7 @@ async function createStoredJobMessage({
         lastError: errMessage,
       });
       deliveryState = "failed";
+      deliveryError = errMessage;
     }
   }
 
@@ -995,6 +1032,7 @@ async function createStoredJobMessage({
     duplicate: false,
     source,
     deliveryState,
+    deliveryError,
   };
 }
 
@@ -1233,6 +1271,8 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
         updated_at = now()
     WHERE job_id = ${job.id}
   `);
+
+  await ensureCliqBotInChannel(createdChannelName);
 
   let memberAddError: string | null = null;
   if (participantEmails.length > 0) {
@@ -1856,6 +1896,7 @@ router.post("/jobs/:id/messages", requireAuth, async (req, res) => {
       isMe: true,
       source: created.source,
       deliveryState: created.deliveryState,
+      deliveryError: created.deliveryError ?? null,
       user: created.user,
     });
   } catch (err) {

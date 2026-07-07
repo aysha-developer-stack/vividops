@@ -18,7 +18,7 @@ export function getZohoAccountsBaseUrl(): string {
 export function getZohoCliqScopes(): string {
   return (
     process.env.ZOHO_CLIQ_SCOPES ||
-    "ZohoCliq.Channels.ALL,ZohoCliq.Messages.ALL,ZohoCliq.Users.READ"
+    "ZohoCliq.Channels.ALL,ZohoCliq.Messages.ALL,ZohoCliq.Webhooks.CREATE,ZohoCliq.Users.READ"
   );
 }
 
