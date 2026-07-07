@@ -260,6 +260,7 @@ export async function ensureAllSchemas() {
         updated_at timestamptz NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS job_cliq_channels_status_idx ON job_cliq_channels (status);
+      ALTER TABLE job_cliq_channels ADD COLUMN IF NOT EXISTS chat_id text;
 
       -- Error Reports
       CREATE TABLE IF NOT EXISTS error_reports (

@@ -345,27 +345,102 @@ function parseCliqChannelLookup(raw: any): CliqChannelLookup | null {
   return { channelId, channelName, channelUrl, chatId };
 }
 
-async function getOrCreateJobCliqChannel(job: JobRow): Promise<{
+type JobCliqChannelRecord = {
   channelName: string;
   channelId: string | null;
+  chatId: string | null;
   channelUrl: string | null;
   status: string;
   lastError: string | null;
-}> {
+};
+
+async function persistJobCliqChannelRecord(
+  jobId: string,
+  resolved: CliqChannelLookup,
+  status: string,
+  lastError: string | null,
+  fallbackName: string,
+): Promise<JobCliqChannelRecord> {
+  const channelName = resolved.channelName ?? fallbackName;
+  const channelId = resolved.channelId ?? null;
+  const chatId = resolved.chatId ?? null;
+  const channelUrl = resolved.channelUrl ?? computeCliqChannelUrl(channelName);
+  await db.execute(sql`
+    UPDATE job_cliq_channels
+    SET channel_name = ${channelName},
+        channel_id = ${channelId},
+        chat_id = ${chatId},
+        channel_url = ${channelUrl},
+        updated_at = now()
+    WHERE job_id = ${jobId}
+  `);
+  return { channelName, channelId, chatId, channelUrl, status, lastError };
+}
+
+function getCliqBotUniqueName(): string | null {
+  const raw = (process.env.ZOHO_CLIQ_BOT_UNIQUE_NAME || "vividopssync").trim();
+  return raw || null;
+}
+
+function uniqueChannelNameCandidates(channelName: string, job: JobRow): string[] {
+  const names = new Set<string>();
+  const add = (value: string | null | undefined) => {
+    const trimmed = pickString(value);
+    if (trimmed) names.add(trimmed);
+  };
+  add(channelName);
+  add(computeCliqChannelName(job));
+  for (const name of [...names]) {
+    if (name.length > 1) add(name.slice(0, -1));
+    add(`${name}d`);
+  }
+  return Array.from(names);
+}
+
+async function refreshJobCliqChannelForPush(job: JobRow, current: JobCliqChannelRecord): Promise<JobCliqChannelRecord> {
+  try {
+    const token = await getZohoCliqAccessToken();
+    if (current.channelId) {
+      const byId = await resolveCliqChannelById(token, current.channelId);
+      if (byId) {
+        return persistJobCliqChannelRecord(job.id, byId, current.status, current.lastError, current.channelName);
+      }
+    }
+    for (const name of uniqueChannelNameCandidates(current.channelName, job)) {
+      const byName = await resolveCliqChannelByName(token, name);
+      if (byName?.channelId || byName?.channelName || byName?.chatId) {
+        return persistJobCliqChannelRecord(job.id, byName, current.status, current.lastError, name);
+      }
+    }
+  } catch (err) {
+    logger.warn({ err, jobId: job.id }, "[CLIQ-PUSH] Failed to refresh channel mapping before push");
+  }
+  return current;
+}
+
+async function getOrCreateJobCliqChannel(job: JobRow): Promise<JobCliqChannelRecord> {
   await ensureJobCliqSchema();
   const rows = await db.execute(sql`
-    SELECT channel_name, channel_id, channel_url, status, last_error
+    SELECT channel_name, channel_id, chat_id, channel_url, status, last_error
     FROM job_cliq_channels
     WHERE job_id = ${job.id}
     LIMIT 1
   `);
   const existing = (rows as any).rows?.[0] as
-    | { channel_name: string; channel_id: string | null; channel_url: string | null; status: string; last_error: string | null }
+    | {
+        channel_name: string;
+        channel_id: string | null;
+        chat_id: string | null;
+        channel_url: string | null;
+        status: string;
+        last_error: string | null;
+      }
     | undefined;
   if (existing?.channel_name) {
     const expectedName = computeCliqChannelName(job);
     let finalName = existing.channel_name;
     let finalId = existing.channel_id ?? null;
+    let finalChatId = existing.chat_id ?? null;
     let finalUrl = computeCliqChannelUrl(finalName);
 
     try {
@@ -381,6 +456,7 @@ async function getOrCreateJobCliqChannel(job: JobRow): Promise<{
         title: job.title,
         storedChannelName: existing.channel_name,
         storedChannelId: existing.channel_id,
+        storedChatId: existing.chat_id,
         storedChannelUrl: existing.channel_url,
         expectedChannelName: expectedName,
         resolvedChannelId: resolved?.channelId ?? null,
@@ -391,6 +467,7 @@ async function getOrCreateJobCliqChannel(job: JobRow): Promise<{
       // #endregion
       if (resolved) {
         finalId = resolved.channelId ?? finalId;
+        finalChatId = resolved.chatId ?? finalChatId;
         finalName = resolved.channelName ?? finalName;
         finalUrl = resolved.channelUrl ?? computeCliqChannelUrl(finalName);
       } else if (!finalId) {
@@ -407,12 +484,14 @@ async function getOrCreateJobCliqChannel(job: JobRow): Promise<{
     if (
       existing.channel_name !== finalName ||
       (existing.channel_id ?? null) !== finalId ||
+      (existing.chat_id ?? null) !== finalChatId ||
       (existing.channel_url ?? null) !== finalUrl
     ) {
       await db.execute(sql`
         UPDATE job_cliq_channels
         SET channel_name = ${finalName},
             channel_id = ${finalId},
+            chat_id = ${finalChatId},
             channel_url = ${finalUrl},
             updated_at = now()
         WHERE job_id = ${job.id}
@@ -421,6 +500,7 @@ async function getOrCreateJobCliqChannel(job: JobRow): Promise<{
       return {
         channelName: finalName,
         channelId: finalId,
+        chatId: finalChatId,
         channelUrl: finalUrl,
         status: existing.status,
         lastError: existing.last_error ?? null,
@@ -430,6 +510,7 @@ async function getOrCreateJobCliqChannel(job: JobRow): Promise<{
     return {
       channelName: finalName,
       channelId: finalId,
+      chatId: finalChatId,
       channelUrl: finalUrl,
       status: existing.status,
       lastError: existing.last_error ?? null,
@@ -447,7 +528,7 @@ async function getOrCreateJobCliqChannel(job: JobRow): Promise<{
           updated_at = now()
   `);
 
-  return { channelName, channelId: null, channelUrl, status: "pending", lastError: null };
+  return { channelName, channelId: null, chatId: null, channelUrl, status: "pending", lastError: null };
 }
 
 function cliqApiRoot(): string {
@@ -470,6 +551,8 @@ function parseCliqPostedMessageId(json: unknown): string | null {
 async function postCliqMessageToChannel(
   channelName: string,
   channelId: string | null,
+  chatId: string | null,
+  nameCandidates: string[],
   text: string,
 ): Promise<string | null> {
   const token = await getZohoCliqAccessToken();
@@ -478,27 +561,37 @@ async function postCliqMessageToChannel(
     "Content-Type": "application/json",
   };
   const body = JSON.stringify({ text });
+  const botName = getCliqBotUniqueName();
+  const attempts: string[] = [];
 
+  if (chatId) {
+    attempts.push(`${cliqApiRoot()}/chats/${encodeURIComponent(chatId)}/message`);
+  }
   if (channelId) {
-    const byIdUrl = `${cliqApiRoot()}/channels/${encodeURIComponent(channelId)}/message`;
-    const byIdRes = await fetch(byIdUrl, { method: "POST", headers, body });
-    if (byIdRes.ok) {
-      return parseCliqPostedMessageId(await byIdRes.json().catch(() => null));
+    attempts.push(`${cliqApiRoot()}/channels/${encodeURIComponent(channelId)}/message`);
+  }
+  for (const name of nameCandidates) {
+    const encoded = encodeURIComponent(name);
+    if (botName) {
+      attempts.push(
+        `${cliqApiRoot()}/channelsbyname/${encoded}/message?bot_unique_name=${encodeURIComponent(botName)}`,
+      );
     }
-    const byIdBody = await byIdRes.text().catch(() => "");
-    logger.warn(
-      { channelId, channelName, status: byIdRes.status, body: byIdBody },
-      "[CLIQ-PUSH] Channel ID message post failed, trying channel name",
-    );
+    attempts.push(`${cliqApiRoot()}/channelsbyname/${encoded}/message`);
   }
 
-  const byNameUrl = `${cliqApiRoot()}/channelsbyname/${encodeURIComponent(channelName)}/message`;
-  const byNameRes = await fetch(byNameUrl, { method: "POST", headers, body });
-  if (!byNameRes.ok) {
-    const byNameBody = await byNameRes.text().catch(() => "");
-    throw new Error(`Cliq channel message failed (${byNameRes.status}): ${byNameBody}`);
+  const errors: string[] = [];
+  for (const url of attempts) {
+    const res = await fetch(url, { method: "POST", headers, body });
+    if (res.ok) {
+      return parseCliqPostedMessageId(await res.json().catch(() => null));
+    }
+    const responseBody = await res.text().catch(() => "");
+    errors.push(`${url} (${res.status}): ${responseBody}`);
+    logger.warn({ url, status: res.status, body: responseBody }, "[CLIQ-PUSH] Channel message attempt failed");
   }
-  return parseCliqPostedMessageId(await byNameRes.json().catch(() => null));
+
+  throw new Error(`Cliq channel message failed: ${errors.join(" | ")}`);
 }
 
 async function resolveCliqChannelIdByName(token: string, channelName: string): Promise<string | null> {
@@ -844,60 +937,53 @@ async function createStoredJobMessage({
     const payload = `${prefix}\n${actor.name}: ${cleanText}`;
     logger.info({ jobId: job.id, channelName: computeCliqChannelName(job) }, "[CLIQ-PUSH] Attempting to push message to Zoho Cliq");
     try {
-      const ch = await getOrCreateJobCliqChannel(job);
+      let ch = await getOrCreateJobCliqChannel(job);
       if (ch.status !== "active") {
         logger.info({ jobId: job.id, status: ch.status }, "[CLIQ-PUSH] Channel not active, provisioning first");
         await provisionCliqChannelForJob(job);
+        ch = await getOrCreateJobCliqChannel(job);
       }
-      const externalId = await postCliqMessageToChannel(ch.channelName, ch.channelId, payload);
+      ch = await refreshJobCliqChannelForPush(job, ch);
+      const nameCandidates = uniqueChannelNameCandidates(ch.channelName, job);
+      const externalId = await postCliqMessageToChannel(
+        ch.channelName,
+        ch.channelId,
+        ch.chatId,
+        nameCandidates,
+        payload,
+      );
       await upsertJobMessageSync({
         jobId: job.id,
         jobMessageId: msgId,
         source: "app",
         direction: "outbound",
         externalMessageId: externalId,
-        externalChannelId: ch.channelId,
+        externalChannelId: ch.channelId ?? ch.chatId,
         externalChannelName: ch.channelName,
         senderEmail: null,
-        payload: { text: payload },
+        payload: { text: payload, chatId: ch.chatId },
         deliveryStatus: "sent",
       });
       deliveryState = "sent";
-      logger.info({ jobId: job.id, channel: ch.channelName }, "[CLIQ-PUSH] Successfully pushed message via API");
+      logger.info(
+        { jobId: job.id, channel: ch.channelName, channelId: ch.channelId, chatId: ch.chatId },
+        "[CLIQ-PUSH] Successfully pushed message to job channel",
+      );
     } catch (errToken) {
-      logger.warn({ err: errToken instanceof Error ? errToken.message : String(errToken), jobId: job.id }, "[CLIQ-PUSH] API push failed, falling back to webhook");
-      try {
-        await postCliqMessageViaWebhook(payload);
-        await upsertJobMessageSync({
-          jobId: job.id,
-          jobMessageId: msgId,
-          source: "app",
-          direction: "outbound",
-          externalChannelName: computeCliqChannelName(job),
-          senderEmail: null,
-          payload: { text: payload, via: "webhook_fallback" },
-          deliveryStatus: "sent",
-        });
-        deliveryState = "sent";
-        logger.info({ jobId: job.id }, "[CLIQ-PUSH] Successfully pushed message via Webhook fallback");
-      } catch (errWebhook) {
-        await upsertJobMessageSync({
-          jobId: job.id,
-          jobMessageId: msgId,
-          source: "app",
-          direction: "outbound",
-          externalChannelName: computeCliqChannelName(job),
-          senderEmail: null,
-          payload: { text: payload, via: "webhook_fallback" },
-          deliveryStatus: "failed",
-          lastError: errWebhook instanceof Error ? errWebhook.message : String(errWebhook),
-        });
-        deliveryState = "failed";
-        logger.error(
-          { err: errWebhook instanceof Error ? errWebhook.message : String(errWebhook), jobId: job.id },
-          "[CLIQ-PUSH] Failed to send message via both API and Webhook",
-        );
-      }
+      const errMessage = errToken instanceof Error ? errToken.message : String(errToken);
+      logger.error({ err: errMessage, jobId: job.id }, "[CLIQ-PUSH] Failed to send message to job channel");
+      await upsertJobMessageSync({
+        jobId: job.id,
+        jobMessageId: msgId,
+        source: "app",
+        direction: "outbound",
+        externalChannelName: computeCliqChannelName(job),
+        senderEmail: null,
+        payload: { text: payload },
+        deliveryStatus: "failed",
+        lastError: errMessage,
+      });
+      deliveryState = "failed";
     }
   }
 
@@ -1071,14 +1157,14 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
   }
 
   // First check if channel already exists in Cliq
-  let existingChannelId = await resolveCliqChannelIdByName(token, channelName);
-  let createdChannelName = channelName;
-  let createdChannelUrl = computeCliqChannelUrl(channelName);
-  let discoveredChannelId: string | null = existingChannelId;
-  let discoveredChatId: string | null = null;
+  const existingChannel = await resolveCliqChannelByName(token, channelName);
+  let createdChannelName = existingChannel?.channelName ?? channelName;
+  let createdChannelUrl = existingChannel?.channelUrl ?? computeCliqChannelUrl(createdChannelName);
+  let discoveredChannelId: string | null = existingChannel?.channelId ?? null;
+  let discoveredChatId: string | null = existingChannel?.chatId ?? null;
 
   // Only create new channel if it doesn't exist yet
-  if (!existingChannelId) {
+  if (!discoveredChannelId) {
     const rawLevel = (process.env.ZOHO_CLIQ_CHANNEL_LEVEL || "private").trim().toLowerCase();
     const level =
       rawLevel === "organization" || rawLevel === "team" || rawLevel === "private" || rawLevel === "external"
@@ -1142,6 +1228,7 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
     UPDATE job_cliq_channels
     SET channel_name = ${createdChannelName},
         channel_id = ${discoveredChannelId},
+        chat_id = ${discoveredChatId},
         channel_url = ${createdChannelUrl},
         updated_at = now()
     WHERE job_id = ${job.id}
@@ -1171,6 +1258,7 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
   await db.execute(sql`
     UPDATE job_cliq_channels
     SET channel_url = ${channelUrl},
+        chat_id = ${discoveredChatId},
         status = 'active',
         last_error = ${memberAddError},
         updated_at = now()
