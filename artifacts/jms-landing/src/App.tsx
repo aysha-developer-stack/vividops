@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, type FC } from "react";
+import { useEffect } from "react";
 import { Switch, Route, Router, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -6,35 +6,32 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
 import { ROLES, type Role } from "@/lib/roles";
-
-interface RolePageProps { role?: Role; initialTab?: any; }
-
-const Home = lazy(() => import("@/pages/Home"));
-const Login = lazy(() => import("@/pages/Login"));
-const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
-const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
-const SuperAdminDashboard = lazy(() => import("@/pages/admin/SuperAdminDashboard"));
-const UserManagement = lazy<FC<RolePageProps>>(() => import("@/pages/admin/UserManagement"));
-const JobManagement = lazy<FC<RolePageProps>>(() => import("@/pages/admin/JobManagement"));
-const Reports = lazy<FC<RolePageProps>>(() => import("@/pages/admin/Reports"));
-const Communication = lazy<FC<RolePageProps>>(() => import("@/pages/admin/Communication"));
-const Timer = lazy<FC<RolePageProps>>(() => import("@/pages/admin/Timer"));
-const Training = lazy<FC<RolePageProps>>(() => import("@/pages/admin/Training"));
-const Settings = lazy<FC<RolePageProps>>(() => import("@/pages/admin/Settings"));
-const AdminDashboard = lazy(() => import("@/pages/admin/AdminDashboard"));
-const SupervisorMonitoring = lazy<FC<RolePageProps>>(() => import("@/pages/admin/SupervisorMonitoring"));
-const SupervisorDashboard = lazy(() => import("@/pages/admin/SupervisorDashboard"));
-const UserMonitoring = lazy<FC<RolePageProps>>(() => import("@/pages/admin/UserMonitoring"));
-const UserDashboard = lazy(() => import("@/pages/admin/UserDashboard"));
-const FilesChecklists = lazy(() => import("@/pages/admin/FilesChecklists"));
-const SuperAdminFiles = lazy(() => import("./pages/admin/SuperAdminFiles"));
-const SuperAdminRolesPermissions = lazy(() => import("./pages/admin/SuperAdminRolesPermissions"));
-const MyJobs = lazy(() => import("@/pages/admin/MyJobs"));
-const JobDetail = lazy(() => import("@/pages/admin/JobDetail"));
-const Notifications = lazy<FC<RolePageProps>>(() => import("@/pages/admin/Notifications"));
-const NotificationTemplates = lazy(() => import("@/pages/admin/NotificationTemplates"));
-const SystemMonitoring = lazy<FC<RolePageProps>>(() => import("@/pages/admin/SystemMonitoring"));
-const NotFound = lazy(() => import("@/pages/not-found"));
+import Home from "@/pages/Home";
+import Login from "@/pages/Login";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
+import SuperAdminDashboard from "@/pages/admin/SuperAdminDashboard";
+import UserManagement from "@/pages/admin/UserManagement";
+import JobManagement from "@/pages/admin/JobManagement";
+import Reports from "@/pages/admin/Reports";
+import Communication from "@/pages/admin/Communication";
+import Timer from "@/pages/admin/Timer";
+import Training from "@/pages/admin/Training";
+import Settings from "@/pages/admin/Settings";
+import AdminDashboard from "@/pages/admin/AdminDashboard";
+import SupervisorMonitoring from "@/pages/admin/SupervisorMonitoring";
+import SupervisorDashboard from "@/pages/admin/SupervisorDashboard";
+import UserMonitoring from "@/pages/admin/UserMonitoring";
+import UserDashboard from "@/pages/admin/UserDashboard";
+import FilesChecklists from "@/pages/admin/FilesChecklists";
+import SuperAdminFiles from "./pages/admin/SuperAdminFiles";
+import SuperAdminRolesPermissions from "./pages/admin/SuperAdminRolesPermissions";
+import MyJobs from "@/pages/admin/MyJobs";
+import JobDetail from "@/pages/admin/JobDetail";
+import Notifications from "@/pages/admin/Notifications";
+import NotificationTemplates from "@/pages/admin/NotificationTemplates";
+import SystemMonitoring from "@/pages/admin/SystemMonitoring";
+import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -144,8 +141,7 @@ function AppRouter() {
   const { isAuthenticated } = useAuth();
   
   return (
-    <Suspense fallback={<PageLoader />}>
-      <Switch>
+    <Switch>
         <Route path="/">
           {isAuthenticated ? <RequireSignedIn><Home /></RequireSignedIn> : <Home />}
         </Route>
@@ -218,7 +214,6 @@ function AppRouter() {
   
         <Route><NotFound /></Route>
       </Switch>
-    </Suspense>
   );
 }
 

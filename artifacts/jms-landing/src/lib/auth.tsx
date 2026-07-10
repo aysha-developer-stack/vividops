@@ -11,14 +11,44 @@ import {
 } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
 
+const AUTH_USER_KEY = "vops_auth_user";
+
 // ---------------------------------------------------------------------------
 // Module-level cache so non-React callers (DashboardLayout sync getters) keep
 // working without rewiring every page.
 // ---------------------------------------------------------------------------
 let cachedUser: User | null = null;
 
+function readStoredAuthUser(): User | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(AUTH_USER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as User;
+    if (parsed && typeof parsed.id === "string") return parsed;
+  } catch {
+    // ignore corrupt cache
+  }
+  return null;
+}
+
+function writeStoredAuthUser(user: User | null) {
+  if (typeof window === "undefined") return;
+  if (user) {
+    sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+  } else {
+    sessionStorage.removeItem(AUTH_USER_KEY);
+  }
+}
+
 function setCachedUser(u: User | null) {
   cachedUser = u;
+  writeStoredAuthUser(u);
+}
+
+// Hydrate sync getters from the last known session in this tab.
+if (typeof window !== "undefined") {
+  cachedUser = readStoredAuthUser();
 }
 
 // ---------------------------------------------------------------------------
@@ -58,8 +88,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw err;
       }
     },
-    staleTime: 30_000,
+    initialData: () => readStoredAuthUser() ?? undefined,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
     retry: false,
+    refetchOnWindowFocus: false,
   });
 
   useEffect(() => {
@@ -73,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value: AuthContextValue = {
     user: meQuery.data ?? null,
-    isLoading: meQuery.isLoading,
+    isLoading: meQuery.isPending,
     isAuthenticated: !!meQuery.data,
     refresh: () => qc.invalidateQueries({ queryKey: getGetMeQueryKey() }),
   };

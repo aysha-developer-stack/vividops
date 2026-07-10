@@ -190,6 +190,11 @@ export async function ensureAllSchemas() {
         CREATE TYPE error_report_status AS ENUM ('open', 'resolved');
       EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS phone text,
+        ADD COLUMN IF NOT EXISTS bio text,
+        ADD COLUMN IF NOT EXISTS avatar_url text;
+
       ALTER TABLE jobs ADD COLUMN IF NOT EXISTS job_number text;
       CREATE UNIQUE INDEX IF NOT EXISTS jobs_job_number_uniq_idx
         ON jobs (job_number)
