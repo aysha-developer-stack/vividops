@@ -99,8 +99,8 @@ function RequireSignedIn({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 3. Redirect away from public pages if already logged in
-    if (path === "/login" || (path === "/" && isAuthenticated)) {
+    // 3. Redirect away from home if already logged in
+    if (path === "/" && isAuthenticated) {
       setLocation(target);
     }
   }, [isLoading, isAuthenticated, user, path, setLocation, portalMismatch, target]);
@@ -145,9 +145,7 @@ function AppRouter() {
         <Route path="/">
           {isAuthenticated ? <RequireSignedIn><Home /></RequireSignedIn> : <Home />}
         </Route>
-        <Route path="/login">
-          {isAuthenticated ? <RequireSignedIn><Login /></RequireSignedIn> : <Login />}
-        </Route>
+        <Route path="/login" component={Login} />
         <Route path="/forgot-password" component={ForgotPassword} />
         <Route path="/reset-password"><RequireSignedIn><ResetPassword /></RequireSignedIn></Route>
         

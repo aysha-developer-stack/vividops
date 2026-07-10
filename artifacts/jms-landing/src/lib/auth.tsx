@@ -117,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthContextValue = {
     user: meQuery.data ?? null,
     isLoading: meQuery.isPending,
-    isAuthenticated: !!meQuery.data,
+    isAuthenticated: meQuery.isSuccess && !!meQuery.data,
     refresh: () => qc.invalidateQueries({ queryKey: getGetMeQueryKey() }),
   };
 
@@ -151,7 +151,6 @@ export function useLogout() {
     mutation: {
       onSuccess: () => {
         purgeAuthState(qc);
-        qc.clear();
       },
     },
   });

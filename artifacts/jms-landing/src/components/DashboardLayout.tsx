@@ -63,7 +63,6 @@ export default function DashboardLayout({
 
   const handleLogout = async () => {
     setProfileOpen(false);
-    // Clear cached auth first so a reload cannot resurrect the session.
     purgeAuthState(qc);
 
     try {
@@ -72,8 +71,7 @@ export default function DashboardLayout({
       // Still send the user to login if the network call fails.
     }
 
-    qc.clear();
-    window.location.href = "/login";
+    setLocation("/login");
   };
 
   const name = user?.name ?? "Guest";

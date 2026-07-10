@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, ArrowRight, ArrowLeft, Mail, Lock, CheckCircle2 } from "lucide-react";
@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import logoImg from "@assets/vv_1778503190047.png";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMeQueryKey } from "@workspace/api-client-react";
-import { useLogin } from "@/lib/auth";
+import { useLogin, useAuth } from "@/lib/auth";
 import { ROLES, Role } from "@/lib/roles";
 import { ApiError } from "@workspace/api-client-react";
 
@@ -27,7 +27,14 @@ export default function Login() {
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
   const loginMutation = useLogin();
+  const { isAuthenticated, user } = useAuth();
   const isLoading = loginMutation.isPending;
+
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+    const target = ROLES[user.role as Role]?.base ?? "/";
+    setLocation(target);
+  }, [isAuthenticated, user, setLocation]);
 
   const validate = () => {
     const newErrors: { email?: string; password?: string } = {};
