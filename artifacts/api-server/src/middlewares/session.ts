@@ -34,6 +34,10 @@ export function clearSessionCache(sessionId: string) {
   sessionCache.delete(sessionId);
 }
 
+function sessionIdPreview(sessionId: string): string {
+  return sessionId.slice(0, 8);
+}
+
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
@@ -73,17 +77,36 @@ export async function attachSession(
 
     const row = rows[0];
     if (!row) {
+      req.log.warn(
+        { sessionIdPrefix: sessionIdPreview(sid) },
+        "Session cookie did not match an active session",
+      );
       sessionCache.delete(sid);
       return next();
     }
 
     if (row.session.expiresAt.getTime() < Date.now()) {
       // Expired — delete and ignore.
+      req.log.warn(
+        {
+          sessionIdPrefix: sessionIdPreview(sid),
+          expiredAt: row.session.expiresAt.toISOString(),
+        },
+        "Session expired",
+      );
       await db.delete(sessions).where(eq(sessions.id, sid));
       sessionCache.delete(sid);
       return next();
     }
     if (row.user.status !== "active") {
+      req.log.warn(
+        {
+          sessionIdPrefix: sessionIdPreview(sid),
+          userId: row.user.id,
+          userStatus: row.user.status,
+        },
+        "Session rejected because user is inactive",
+      );
       sessionCache.delete(sid);
       return next();
     }
@@ -95,7 +118,10 @@ export async function attachSession(
     );
     sessionCache.set(sid, { cacheUntilMs, value });
   } catch (err) {
-    req.log.error({ err }, "Failed to load session");
+    req.log.error(
+      { err, sessionIdPrefix: sessionIdPreview(sid) },
+      "Failed to load session",
+    );
   }
   return next();
 }

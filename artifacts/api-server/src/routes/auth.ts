@@ -36,7 +36,7 @@ const cookieOpts = {
   sameSite: "lax" as const,
   secure: process.env.NODE_ENV === "production",
   path: "/",
-  maxAge: SESSION_TTL_DAYS * 24 * 60 * 60,
+  maxAge: SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
 };
 
 router.post("/auth/login", async (req, res) => {
