@@ -660,22 +660,23 @@ async function setCliqChannelMemberRole(
   userId: string,
   role: "super_admin" | "admin" | "moderator" | "member",
 ): Promise<string | null> {
-  const res = await fetch(
+  const headers = {
+    Authorization: `Zoho-oauthtoken ${token}`,
+    "Content-Type": "application/json",
+  };
+  const body = JSON.stringify({ role });
+  const urls = [
+    `${cliqApiRoot()}/channels/${encodeURIComponent(channelId)}/members/${encodeURIComponent(userId)}`,
     `${cliqApiRoot()}/channels/${encodeURIComponent(channelId)}/members/${encodeURIComponent(userId)}/members`,
-    {
-      method: "PUT",
-      headers: {
-        Authorization: `Zoho-oauthtoken ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ role }),
-    },
-  );
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    return `Cliq update channel member role failed (${res.status}): ${body}`;
+  ];
+  const errors: string[] = [];
+  for (const url of urls) {
+    const res = await fetch(url, { method: "PUT", headers, body });
+    if (res.ok) return null;
+    const responseBody = await res.text().catch(() => "");
+    errors.push(`${url} (${res.status}): ${responseBody}`);
   }
-  return null;
+  return `Cliq update channel member role failed: ${errors.join(" | ")}`;
 }
 
 function combineCliqProvisionErrors(...errors: Array<string | null | undefined>): string | null {
