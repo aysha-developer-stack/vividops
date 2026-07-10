@@ -5,7 +5,7 @@ import {
   Settings, Bell, ChevronLeft, LogOut, Search, Menu,
 } from "lucide-react";
 import logoImg from "@assets/vv_1778503190047.png";
-import { useAuth, useLogout } from "@/lib/auth";
+import { useAuth, useLogout, purgeAuthState } from "@/lib/auth";
 import { getNotifStyle, playNotificationTone, sortNotificationsByPriority } from "@/lib/notifications";
 import { ROLES, Role } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
@@ -61,18 +61,18 @@ export default function DashboardLayout({
 
   const notificationsQueryKey = [...getGetNotificationsQueryKey(), user?.id ?? "anonymous"];
 
-  const handleLogout = () => {
-    // Clear all security and session flags immediately
-    sessionStorage.removeItem("vops_tab_active");
+  const handleLogout = async () => {
     setProfileOpen(false);
-    
-    // Clear React Query cache
+    // Clear cached auth first so a reload cannot resurrect the session.
+    purgeAuthState(qc);
+
+    try {
+      await logoutMutation.mutateAsync(undefined as any);
+    } catch {
+      // Still send the user to login if the network call fails.
+    }
+
     qc.clear();
-    
-    // Fire-and-forget the backend logout call
-    logoutMutation.mutate(undefined as any);
-    
-    // Force a hard redirect to the login page to ensure all state is wiped
     window.location.href = "/login";
   };
 

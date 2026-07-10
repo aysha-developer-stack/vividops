@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, type ReactNode } from "react";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQueryClient, useQuery, type QueryClient } from "@tanstack/react-query";
 import {
   useLogin as useLoginMutation,
   useLogout as useLogoutMutation,
@@ -44,6 +44,16 @@ function writeStoredAuthUser(user: User | null) {
 function setCachedUser(u: User | null) {
   cachedUser = u;
   writeStoredAuthUser(u);
+}
+
+/** Clear all client-side auth state immediately (sync). */
+export function purgeAuthState(qc?: QueryClient) {
+  sessionStorage.removeItem("vops_tab_active");
+  writeStoredAuthUser(null);
+  cachedUser = null;
+  if (qc) {
+    qc.setQueryData(getGetMeQueryKey(), null);
+  }
 }
 
 // Hydrate sync getters from the last known session in this tab.
@@ -140,9 +150,7 @@ export function useLogout() {
   return useLogoutMutation({
     mutation: {
       onSuccess: () => {
-        sessionStorage.removeItem("vops_tab_active");
-        qc.setQueryData(getGetMeQueryKey(), null);
-        setCachedUser(null);
+        purgeAuthState(qc);
         qc.clear();
       },
     },
@@ -180,8 +188,7 @@ export function clearSession() {
   fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(
     () => undefined,
   );
-  sessionStorage.removeItem("vops_tab_active");
-  setCachedUser(null);
+  purgeAuthState();
 }
 // Kept only so legacy imports don't break — real flow goes through useLogin.
 export function setSession(_email: string, _name?: string, _role?: Role) {
