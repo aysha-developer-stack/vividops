@@ -570,6 +570,156 @@ async function ensureCliqBotInChannel(channelName: string): Promise<void> {
   }
 }
 
+function getCliqChannelAdminEmail(): string {
+  const raw = (process.env.ZOHO_CLIQ_CHANNEL_ADMIN_EMAIL || process.env.SEED_ADMIN_EMAIL || "").trim();
+  return raw.toLowerCase();
+}
+
+async function listCliqChannelMemberEmails(job: JobRow): Promise<string[]> {
+  const ids = new Set<string>();
+  if (job.assigneeId) ids.add(job.assigneeId);
+  if (job.supervisorId) ids.add(job.supervisorId);
+  if (job.createdById) ids.add(job.createdById);
+
+  await ensureJobMembersSchema();
+  const memberRows = await db
+    .select({ userId: jobMembers.userId })
+    .from(jobMembers)
+    .where(eq(jobMembers.jobId, job.id));
+  for (const m of memberRows) ids.add(m.userId);
+
+  const idList = Array.from(ids);
+  const participantRows =
+    idList.length === 0
+      ? []
+      : await db
+          .select({ email: users.email })
+          .from(users)
+          .where(inArray(users.id, idList));
+
+  const emails = new Set(
+    participantRows
+      .map((r) => (typeof r.email === "string" ? r.email.trim() : ""))
+      .filter(Boolean),
+  );
+
+  const adminEmail = getCliqChannelAdminEmail();
+  if (adminEmail) emails.add(adminEmail);
+
+  return Array.from(emails);
+}
+
+type CliqChannelMember = {
+  user_id: string;
+  email_id: string;
+  user_role: string;
+};
+
+async function fetchCliqChannelMembers(token: string, channelId: string): Promise<CliqChannelMember[]> {
+  const res = await fetch(`${cliqApiRoot()}/channels/${encodeURIComponent(channelId)}/members`, {
+    method: "GET",
+    headers: { Authorization: `Zoho-oauthtoken ${token}` },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    logger.warn({ channelId, status: res.status, body }, "[CLIQ] Failed to list channel members");
+    return [];
+  }
+  const json = (await res.json().catch(() => null)) as { members?: CliqChannelMember[] } | null;
+  return Array.isArray(json?.members) ? json.members : [];
+}
+
+async function addCliqChannelMembersByEmail(
+  token: string,
+  channelId: string | null,
+  channelName: string,
+  emails: string[],
+): Promise<string | null> {
+  if (emails.length === 0) return null;
+  const addUrl = channelId
+    ? `${cliqApiRoot()}/channels/${encodeURIComponent(channelId)}/members`
+    : `${cliqApiRoot()}/channelsbyname/${encodeURIComponent(channelName)}/members`;
+  const addRes = await fetch(addUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Zoho-oauthtoken ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email_ids: emails }),
+  });
+  if (!addRes.ok) {
+    const body = await addRes.text().catch(() => "");
+    return `Cliq add channel members failed (${addRes.status}): ${body}`;
+  }
+  return null;
+}
+
+async function setCliqChannelMemberRole(
+  token: string,
+  channelId: string,
+  userId: string,
+  role: "super_admin" | "admin" | "moderator" | "member",
+): Promise<string | null> {
+  const res = await fetch(
+    `${cliqApiRoot()}/channels/${encodeURIComponent(channelId)}/members/${encodeURIComponent(userId)}/members`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Zoho-oauthtoken ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ role }),
+    },
+  );
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    return `Cliq update channel member role failed (${res.status}): ${body}`;
+  }
+  return null;
+}
+
+function combineCliqProvisionErrors(...errors: Array<string | null | undefined>): string | null {
+  const combined = errors.filter((value): value is string => Boolean(value)).join(" | ");
+  return combined || null;
+}
+
+async function alignCliqChannelSuperAdmin(
+  token: string,
+  channelId: string,
+  channelName: string,
+): Promise<string | null> {
+  const adminEmail = getCliqChannelAdminEmail();
+  if (!adminEmail) return null;
+
+  const memberAddError = await addCliqChannelMembersByEmail(token, channelId, channelName, [adminEmail]);
+  if (memberAddError) {
+    logger.warn({ channelId, channelName, adminEmail, memberAddError }, "[CLIQ] Could not ensure channel admin member");
+  }
+
+  const members = await fetchCliqChannelMembers(token, channelId);
+  if (members.length === 0) {
+    return memberAddError ?? "Could not resolve Cliq channel members for super-admin alignment";
+  }
+
+  const adminMember = members.find((member) => (member.email_id || "").trim().toLowerCase() === adminEmail);
+  if (!adminMember?.user_id) {
+    return memberAddError ?? `Cliq channel admin user not found: ${adminEmail}`;
+  }
+
+  const promoteError = await setCliqChannelMemberRole(token, channelId, adminMember.user_id, "super_admin");
+  if (promoteError) return promoteError;
+
+  const demoteErrors: string[] = [];
+  for (const member of members) {
+    if (member.user_id === adminMember.user_id) continue;
+    if ((member.user_role || "").toLowerCase() !== "super_admin") continue;
+    const demoteError = await setCliqChannelMemberRole(token, channelId, member.user_id, "member");
+    if (demoteError) demoteErrors.push(demoteError);
+  }
+
+  return combineCliqProvisionErrors(memberAddError, demoteErrors.length > 0 ? demoteErrors.join(" | ") : null);
+}
+
 async function postCliqMessageToChannel(
   channelName: string,
   channelId: string | null,
@@ -1152,42 +1302,21 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
     return;
   }
 
-  const participantIds = await listJobParticipantIds(job);
-  const participantRows = await db
-    .select({ email: users.email })
-    .from(users)
-    .where(inArray(users.id, participantIds));
-  const participantEmails = Array.from(
-    new Set(
-      participantRows
-        .map((r) => (typeof r.email === "string" ? r.email.trim() : ""))
-        .filter(Boolean),
-    ),
-  );
+  const participantEmails = await listCliqChannelMemberEmails(job);
 
   await markJobCliqStatus(job.id, "provisioning", null);
 
   if (ch.status === "active" && !ch.lastError && ch.channelId) {
-    let memberAddError: string | null = null;
-    if (participantEmails.length > 0) {
-      const addRes = await fetch(`${cliqApiRoot()}/channels/${encodeURIComponent(ch.channelId)}/members`, {
-        method: "POST",
-        headers: {
-          Authorization: `Zoho-oauthtoken ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email_ids: participantEmails }),
-      });
-      if (!addRes.ok) {
-        const body = await addRes.text().catch(() => "");
-        memberAddError = `Cliq add channel members failed (${addRes.status}): ${body}`;
-      }
-    }
+    const memberAddError =
+      participantEmails.length > 0
+        ? await addCliqChannelMembersByEmail(token, ch.channelId, channelName, participantEmails)
+        : null;
+    const adminAlignError = await alignCliqChannelSuperAdmin(token, ch.channelId, channelName);
 
     await db.execute(sql`
       UPDATE job_cliq_channels
       SET status = 'active',
-          last_error = ${memberAddError},
+          last_error = ${combineCliqProvisionErrors(memberAddError, adminAlignError)},
           updated_at = now()
       WHERE job_id = ${job.id}
     `);
@@ -1274,25 +1403,14 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
 
   await ensureCliqBotInChannel(createdChannelName);
 
-  let memberAddError: string | null = null;
-  if (participantEmails.length > 0) {
-    const channelIdForMembers = discoveredChannelId ?? ch.channelId;
-    const addUrl = channelIdForMembers
-      ? `${cliqApiRoot()}/channels/${encodeURIComponent(channelIdForMembers)}/members`
-      : `${cliqApiRoot()}/channelsbyname/${encodeURIComponent(createdChannelName)}/members`;
-    const addRes = await fetch(addUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Zoho-oauthtoken ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email_ids: participantEmails }),
-    });
-    if (!addRes.ok) {
-      const body = await addRes.text().catch(() => "");
-      memberAddError = `Cliq add channel members failed (${addRes.status}): ${body}`;
-    }
-  }
+  const channelIdForMembers = discoveredChannelId ?? ch.channelId;
+  const memberAddError =
+    participantEmails.length > 0
+      ? await addCliqChannelMembersByEmail(token, channelIdForMembers, createdChannelName, participantEmails)
+      : null;
+  const adminAlignError = channelIdForMembers
+    ? await alignCliqChannelSuperAdmin(token, channelIdForMembers, createdChannelName)
+    : null;
 
   const channelUrl = createdChannelUrl;
   await db.execute(sql`
@@ -1300,7 +1418,7 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
     SET channel_url = ${channelUrl},
         chat_id = ${discoveredChatId},
         status = 'active',
-        last_error = ${memberAddError},
+        last_error = ${combineCliqProvisionErrors(memberAddError, adminAlignError)},
         updated_at = now()
     WHERE job_id = ${job.id}
   `);
