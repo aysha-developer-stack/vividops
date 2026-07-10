@@ -301,8 +301,8 @@ export const getGetMeUrl = () => {
   return `/api/auth/me`;
 };
 
-export const getMe = async (options?: RequestInit): Promise<User> => {
-  return customFetch<User>(getGetMeUrl(), {
+export const getMe = async (options?: RequestInit): Promise<User | null> => {
+  return customFetch<User | null>(getGetMeUrl(), {
     ...options,
     method: "GET",
   });
