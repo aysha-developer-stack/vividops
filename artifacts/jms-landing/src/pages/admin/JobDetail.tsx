@@ -507,29 +507,6 @@ export default function JobDetail({ role = "user", id }: Props) {
   }, [role, job?.id]);
 
   useEffect(() => {
-    if (role !== "user") return;
-    if (!job?.id) return;
-    if (job.status === "completed" || job.status === "awaiting_supervisor" || job.status === "awaiting_admin") return;
-    if ((job.progress ?? 0) < 100) return;
-    if (autoCompleteRef.current === job.id) return;
-    autoCompleteRef.current = job.id;
-    void fetch(`/api/jobs/${job.id}/review`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "submit_for_supervisor" }),
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Failed to submit for review");
-        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
-        await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-      })
-      .catch(() => {
-        autoCompleteRef.current = null;
-      });
-  }, [role, job?.id, job?.status, job?.progress]);
-
-  useEffect(() => {
     if (!job?.id) return;
     const template = meta.checklist;
     const nextChecklist: ChecklistItem[] = template.map((t, idx) => ({
@@ -703,6 +680,33 @@ export default function JobDetail({ role = "user", id }: Props) {
   const completedCount = checklist.filter((c) => c.status === "completed").length;
   const checklistProgress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
   const progress = Math.max(job?.progress ?? 0, checklistProgress);
+
+  useEffect(() => {
+    if (role !== "user") return;
+    if (!job?.id) return;
+    if (job.status === "completed" || job.status === "awaiting_supervisor" || job.status === "awaiting_admin") return;
+    if (checklist.length === 0) return;
+    if (completedCount < checklist.length) return;
+    if (autoCompleteRef.current === job.id) return;
+    autoCompleteRef.current = job.id;
+    void fetch(`/api/jobs/${job.id}/review`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "submit_for_supervisor" }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error((data as any).error || "Failed to submit for review");
+        }
+        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+        await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      })
+      .catch(() => {
+        autoCompleteRef.current = null;
+      });
+  }, [role, job?.id, job?.status, checklist.length, completedCount]);
 
   const jobTimeLogs = useMemo(() => {
     const all = timeLogsQuery.data ?? [];
@@ -1549,8 +1553,52 @@ export default function JobDetail({ role = "user", id }: Props) {
                       <textarea className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl p-3 text-xs !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary resize-none h-24" placeholder="Add notes about this task..." />
                     </div>
 
-                    <div className="flex gap-2 pt-2">
-                      {selectedChecklistItem.status !== "completed" && (
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      {selectedChecklistItem.status !== "completed" && role === "user" && (
+                        <button 
+                          onClick={async () => {
+                            const needsFile = !!selectedChecklistItem.attachmentRequired;
+                            const uploadedCount = checklistUploads[selectedChecklistItem.id] ?? 0;
+                            if (needsFile && uploadedCount === 0) {
+                              alert("Upload a checklist file before marking this item complete.");
+                              return;
+                            }
+                            if (!job?.id) return;
+                            try {
+                              const res = await fetch(`/api/jobs/${job.id}/checklist-state`, {
+                                method: "PATCH",
+                                credentials: "include",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ itemId: selectedChecklistItem.id, status: "completed" }),
+                              });
+                              if (!res.ok) {
+                                const data = await res.json().catch(() => ({}));
+                                throw new Error((data as any).error || "Failed to mark complete");
+                              }
+                              const next = checklist.map((i) =>
+                                i.id === selectedChecklistItem.id ? { ...i, status: "completed" as const, done: true } : i
+                              );
+                              setChecklist(next);
+                              setSelectedChecklistItem({ ...selectedChecklistItem, status: "completed" as const, done: true });
+                              persistLocalChecklist(next, checklistUploads);
+                              await persistProgress(next);
+                              await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+                              await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                            } catch (err) {
+                              alert(err instanceof Error ? err.message : "Failed to mark complete");
+                            }
+                          }}
+                          disabled={!!selectedChecklistItem.attachmentRequired && (checklistUploads[selectedChecklistItem.id] ?? 0) === 0}
+                          className={`flex-1 py-2.5 text-white text-xs font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-colors ${
+                            !!selectedChecklistItem.attachmentRequired && (checklistUploads[selectedChecklistItem.id] ?? 0) === 0
+                              ? "bg-gray-300 shadow-gray-200 cursor-not-allowed"
+                              : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
+                          }`}
+                        >
+                          <CheckCircle2 size={14} /> Mark Complete
+                        </button>
+                      )}
+                      {selectedChecklistItem.status !== "completed" && role !== "user" && (
                         <button 
                           onClick={async () => {
                             const next = checklist.map((i) =>
@@ -1574,15 +1622,18 @@ export default function JobDetail({ role = "user", id }: Props) {
                               }
                             }
                           }}
-                          disabled={!!selectedChecklistItem.attachmentRequired && (checklistUploads[selectedChecklistItem.id] ?? 0) === 0}
-                          className={`flex-1 py-2.5 text-white text-xs font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-colors ${
-                            !!selectedChecklistItem.attachmentRequired && (checklistUploads[selectedChecklistItem.id] ?? 0) === 0
-                              ? "bg-gray-300 shadow-gray-200 cursor-not-allowed"
-                              : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
-                          }`}
+                          className="flex-1 py-2.5 text-white text-xs font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-colors bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
                         >
                           <CheckCircle2 size={14} /> Mark Complete
                         </button>
+                      )}
+                      {selectedChecklistItem.status !== "completed" &&
+                        role === "user" &&
+                        selectedChecklistItem.attachmentRequired &&
+                        (checklistUploads[selectedChecklistItem.id] ?? 0) === 0 && (
+                        <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                          Upload a checklist file above, then mark this item complete.
+                        </p>
                       )}
                       {selectedChecklistItem.status === "completed" && role === "supervisor" && (
                         <button 

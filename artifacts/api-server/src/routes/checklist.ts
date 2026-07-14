@@ -179,6 +179,45 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Forbidden" });
     }
 
+    let checklistList: any[] = [];
+    try {
+      const parsed = JSON.parse(typeof job.description === "string" ? job.description : "{}") as any;
+      checklistList = Array.isArray(parsed?.checklist) ? parsed.checklist : [];
+    } catch {
+      checklistList = [];
+    }
+
+    if (actor.role === "user" && status === "completed") {
+      if (checklistList.length === 0) {
+        return res.status(400).json({ error: "This job has no checklist items to complete." });
+      }
+      const template = checklistList[itemId - 1];
+      if (!template) {
+        return res.status(400).json({ error: "Checklist item not found" });
+      }
+      const needsFile = Boolean(
+        template?.attachmentRequired ?? template?.fileRequired ?? template?.requiresFile,
+      );
+      if (needsFile) {
+        const [uploaded] = await db
+          .select({ id: jobChecklistAttachments.id })
+          .from(jobChecklistAttachments)
+          .where(
+            and(
+              eq(jobChecklistAttachments.jobId, jobId),
+              eq(jobChecklistAttachments.userId, targetUserId),
+              eq(jobChecklistAttachments.itemId, itemId),
+            ),
+          )
+          .limit(1);
+        if (!uploaded) {
+          return res.status(400).json({
+            error: "Upload a checklist file before marking this item complete.",
+          });
+        }
+      }
+    }
+
     await db
       .insert(jobChecklistState)
       .values({
@@ -256,16 +295,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
     }
 
     if (actor.role === "user" && status === "completed") {
-      const templateJson = typeof job.description === "string" ? job.description : null;
-      let total = 0;
-      try {
-        if (templateJson) {
-          const parsed = JSON.parse(templateJson) as any;
-          const list = Array.isArray(parsed?.checklist) ? parsed.checklist : [];
-          total = list.length;
-        }
-      } catch {
-      }
+      const total = checklistList.length;
 
       if (total > 0) {
         const rows = await db
@@ -275,14 +305,19 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         const done = rows.filter((r) => r.status === "completed").length;
         const nextProgress = Math.round((done / total) * 100);
         const hasRework = rows.some((r) => r.status === "rework");
-        // Worker checklist 100% → supervisor review (not final completed)
-        const nextStatus = hasRework
-          ? "rework"
-          : nextProgress >= 100
-            ? "awaiting_supervisor"
-            : nextProgress > 0
-              ? "in_progress"
-              : "pending";
+
+        let nextStatus: string =
+          hasRework ? "rework" : nextProgress > 0 ? "in_progress" : "pending";
+
+        // Only move to supervisor review when every checklist item (+ required files) is done
+        if (!hasRework && nextProgress >= 100) {
+          const { assertWorkerChecklistReady } = await import("../lib/job-review");
+          const checklistError = await assertWorkerChecklistReady(job, targetUserId);
+          if (!checklistError) {
+            nextStatus = "awaiting_supervisor";
+          }
+        }
+
         const previousStatus = job.status;
         await db
           .update(jobs)

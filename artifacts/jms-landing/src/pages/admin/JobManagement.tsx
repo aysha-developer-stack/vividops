@@ -251,8 +251,6 @@ export default function JobManagement(
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [templateName, setTemplateName] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
-  const [checkText, setCheckText] = useState("");
-  const [checkDesc, setCheckDesc] = useState("");
   const [checkNeedsFile, setCheckNeedsFile] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
@@ -307,9 +305,8 @@ export default function JobManagement(
     setEditingId(j.id);
     setJobFiles([]);
     setExistingAttachments([]);
-    setCheckText("");
-    setCheckDesc("");
     setCheckNeedsFile(false);
+    setCheckPendingFile(null);
     setUploadingFiles(false);
     setError(null);
     setAssigneeMenuOpen(false);
@@ -464,21 +461,21 @@ export default function JobManagement(
     setJobFiles(jobFiles.filter((_, i) => i !== idx));
   };
   const addChecklistItem = () => {
-    const text = checkText.trim();
+    if (!checkPendingFile) {
+      setError("Choose a checklist file — the file name becomes the task name.");
+      return;
+    }
+    const text = checkPendingFile.name.trim();
     if (!text) return;
-    const desc = checkDesc.trim() ? checkDesc.trim() : undefined;
     const nextIndex = checklistTemplate.length;
     setChecklistTemplate([
       ...checklistTemplate,
-      { text, desc, attachmentRequired: checkNeedsFile || undefined },
+      { text, attachmentRequired: checkNeedsFile || undefined },
     ]);
-    if (checkPendingFile) {
-      setChecklistItemFiles((prev) => ({ ...prev, [nextIndex]: [checkPendingFile] }));
-    }
-    setCheckText("");
-    setCheckDesc("");
+    setChecklistItemFiles((prev) => ({ ...prev, [nextIndex]: [checkPendingFile] }));
     setCheckNeedsFile(false);
     setCheckPendingFile(null);
+    setError(null);
   };
   const removeChecklistItem = (idx: number) => {
     setChecklistTemplate(checklistTemplate.filter((_, i) => i !== idx));
@@ -696,8 +693,6 @@ export default function JobManagement(
       setChecklistTemplate([]);
       setChecklistItemFiles({});
       setCheckPendingFile(null);
-      setCheckText("");
-      setCheckDesc("");
       setCheckNeedsFile(false);
       setUploadingFiles(false);
       setEditingId(null);
@@ -713,8 +708,6 @@ export default function JobManagement(
     setChecklistTemplate([]);
     setChecklistItemFiles({});
     setCheckPendingFile(null);
-    setCheckText("");
-    setCheckDesc("");
     setCheckNeedsFile(false);
     setJobFiles([]);
     setExistingAttachments([]);
@@ -795,9 +788,8 @@ export default function JobManagement(
                 });
                 setEditingId(null);
                 setChecklistTemplate([]);
-                setCheckText("");
-                setCheckDesc("");
                 setCheckNeedsFile(false);
+                setCheckPendingFile(null);
                 setJobFiles([]);
                 setExistingAttachments([]);
                 setMemberIds([]);
@@ -1229,20 +1221,13 @@ export default function JobManagement(
                   </div>
 
                   <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4 space-y-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Task Name</label>
-                      <input value={checkText} onChange={(e) => setCheckText(e.target.value)} placeholder="e.g. Review Site Photos" className="w-full px-3 py-2.5 bg-white border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Description (optional)</label>
-                      <textarea value={checkDesc} onChange={(e) => setCheckDesc(e.target.value)} placeholder="What does success look like for this task?" rows={3} className="w-full px-3 py-2.5 bg-white border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary resize-none" />
-                    </div>
                     <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
                       <input type="checkbox" checked={checkNeedsFile} onChange={(e) => setCheckNeedsFile(e.target.checked)} className="h-4 w-4" />
                       File upload required from worker
                     </label>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Attach checklist file (optional)</label>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Attach checklist file</label>
+                      <p className="text-[11px] text-gray-500 mb-1.5">The file name becomes the task name.</p>
                       <input
                         ref={checklistItemFileRef}
                         type="file"
@@ -1274,7 +1259,12 @@ export default function JobManagement(
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={addChecklistItem}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold shadow-md shadow-primary/30"
+                      disabled={!checkPendingFile}
+                      className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold shadow-md ${
+                        checkPendingFile
+                          ? "bg-primary text-white shadow-primary/30"
+                          : "bg-gray-200 text-gray-500 cursor-not-allowed shadow-none"
+                      }`}
                     >
                       <Plus size={14} /> Add Checklist Item
                     </motion.button>

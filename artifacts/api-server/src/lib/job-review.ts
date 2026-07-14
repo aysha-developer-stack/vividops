@@ -1,5 +1,13 @@
-import { eq, inArray } from "drizzle-orm";
-import { db, jobs, users, type JobRow, type UserRow } from "@workspace/db";
+import { and, eq, inArray } from "drizzle-orm";
+import {
+  db,
+  jobs,
+  users,
+  jobChecklistState,
+  jobChecklistAttachments,
+  type JobRow,
+  type UserRow,
+} from "@workspace/db";
 import { createNotification } from "./notifications";
 import type { NotificationType } from "./notifications";
 
@@ -17,6 +25,84 @@ export type ReviewableStatus =
   | "completed"
   | "cancelled"
   | "rework";
+
+type ChecklistTemplateItem = {
+  text?: string;
+  attachmentRequired?: boolean;
+  fileRequired?: boolean;
+  requiresFile?: boolean;
+};
+
+function parseJobChecklist(job: JobRow): ChecklistTemplateItem[] {
+  try {
+    const parsed = JSON.parse(typeof job.description === "string" ? job.description : "{}") as any;
+    return Array.isArray(parsed?.checklist) ? parsed.checklist : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Workers must finish every checklist item (and required file uploads) before review. */
+export async function assertWorkerChecklistReady(
+  job: JobRow,
+  workerUserId: string,
+): Promise<string | null> {
+  const list = parseJobChecklist(job);
+  if (list.length === 0) {
+    return "Checklist items are required before submitting this job.";
+  }
+
+  const rows = await db
+    .select({ itemId: jobChecklistState.itemId, status: jobChecklistState.status })
+    .from(jobChecklistState)
+    .where(and(eq(jobChecklistState.jobId, job.id), eq(jobChecklistState.userId, workerUserId)));
+
+  const byItem = new Map(rows.map((r) => [r.itemId, r.status]));
+  const incomplete: number[] = [];
+  const missingFiles: number[] = [];
+
+  for (let i = 0; i < list.length; i++) {
+    const itemId = i + 1;
+    if (byItem.get(itemId) !== "completed") {
+      incomplete.push(itemId);
+    }
+  }
+
+  if (incomplete.length > 0) {
+    return `Complete all checklist items before submitting (${incomplete.length} remaining).`;
+  }
+
+  const requiredIds = list
+    .map((item, idx) => ({
+      id: idx + 1,
+      required: Boolean(item.attachmentRequired ?? item.fileRequired ?? item.requiresFile),
+    }))
+    .filter((x) => x.required)
+    .map((x) => x.id);
+
+  if (requiredIds.length > 0) {
+    const uploaded = await db
+      .select({ itemId: jobChecklistAttachments.itemId })
+      .from(jobChecklistAttachments)
+      .where(
+        and(
+          eq(jobChecklistAttachments.jobId, job.id),
+          eq(jobChecklistAttachments.userId, workerUserId),
+          inArray(jobChecklistAttachments.itemId, requiredIds),
+        ),
+      );
+    const uploadedSet = new Set(uploaded.map((u) => u.itemId));
+    for (const id of requiredIds) {
+      if (!uploadedSet.has(id)) missingFiles.push(id);
+    }
+  }
+
+  if (missingFiles.length > 0) {
+    return "Upload the required checklist file(s) before submitting this job.";
+  }
+
+  return null;
+}
 
 /** Map a raw "completed" request into the correct stage for the actor's role. */
 export function coerceCompletionStatus(
@@ -162,6 +248,11 @@ export async function applyJobReview(opts: {
     }
     if (job.status === "completed" || job.status === "cancelled") {
       return { ok: false, status: 400, error: "This job cannot be submitted for review" };
+    }
+    const workerId = job.assigneeId ?? actor.id;
+    const checklistError = await assertWorkerChecklistReady(job, workerId);
+    if (checklistError) {
+      return { ok: false, status: 400, error: checklistError };
     }
     nextStatus = "awaiting_supervisor";
   } else if (action === "supervisor_approve") {
