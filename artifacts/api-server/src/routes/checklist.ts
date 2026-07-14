@@ -71,25 +71,72 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       .where(and(eq(jobChecklistState.jobId, jobId), eq(jobChecklistState.userId, targetUserId)))
       .orderBy(desc(jobChecklistState.updatedAt));
 
-    const attachments = await db
-      .select({ itemId: jobChecklistAttachments.itemId, attachmentId: jobChecklistAttachments.attachmentId })
+    const linked = await db
+      .select({
+        itemId: jobChecklistAttachments.itemId,
+        linkUserId: jobChecklistAttachments.userId,
+        attachment: jobAttachments,
+        uploadedBy: { id: users.id, name: users.name, role: users.role },
+      })
       .from(jobChecklistAttachments)
-      .where(and(eq(jobChecklistAttachments.jobId, jobId), eq(jobChecklistAttachments.userId, targetUserId)));
+      .innerJoin(jobAttachments, eq(jobAttachments.id, jobChecklistAttachments.attachmentId))
+      .leftJoin(users, eq(users.id, jobAttachments.uploadedById))
+      .where(eq(jobChecklistAttachments.jobId, jobId))
+      .orderBy(desc(jobAttachments.createdAt));
 
+    const filesByItem: Record<
+      number,
+      Array<{
+        id: string;
+        fileName: string;
+        fileType: string | null;
+        fileSize: string | null;
+        fileUrl: string;
+        uploadedBy: { id: string; name: string; role: UserRow["role"] } | null;
+        createdAt: Date;
+      }>
+    > = {};
     const countByItem: Record<number, number> = {};
-    for (const a of attachments) {
-      countByItem[a.itemId] = (countByItem[a.itemId] ?? 0) + 1;
-      void a.attachmentId;
+
+    for (const row of linked) {
+      const itemId = row.itemId;
+      if (!filesByItem[itemId]) filesByItem[itemId] = [];
+      filesByItem[itemId].push({
+        id: row.attachment.id,
+        fileName: row.attachment.fileName,
+        fileType: row.attachment.fileType,
+        fileSize: row.attachment.fileSize,
+        fileUrl: row.attachment.fileUrl,
+        uploadedBy: row.uploadedBy?.id ? row.uploadedBy : null,
+        createdAt: row.attachment.createdAt,
+      });
+      // Count only worker completion uploads — not manager instruction files
+      if (row.uploadedBy?.role === "user" || row.attachment.uploadedById === targetUserId) {
+        countByItem[itemId] = (countByItem[itemId] ?? 0) + 1;
+      }
     }
 
+    // Ensure we still return template items with files even if no state rows yet
+    const itemIds = new Set<number>([
+      ...rows.map((r) => r.itemId),
+      ...Object.keys(filesByItem).map((k) => Number(k)),
+    ]);
+    const stateByItem = new Map(rows.map((r) => [r.itemId, r]));
+
     return res.json(
-      rows.map((r) => ({
-        itemId: r.itemId,
-        status: r.status,
-        reworkReason: r.reworkReason,
-        attachmentCount: countByItem[r.itemId] ?? 0,
-        updatedAt: r.updatedAt,
-      })),
+      Array.from(itemIds)
+        .sort((a, b) => a - b)
+        .map((itemId) => {
+          const r = stateByItem.get(itemId);
+          return {
+            itemId,
+            status: r?.status ?? "pending",
+            reworkReason: r?.reworkReason ?? null,
+            attachmentCount: countByItem[itemId] ?? 0,
+            files: filesByItem[itemId] ?? [],
+            updatedAt: r?.updatedAt ?? null,
+          };
+        }),
     );
   } catch (err) {
     logger.error({ err }, "Failed to load checklist state");

@@ -36,6 +36,16 @@ import { useQueryClient } from "@tanstack/react-query";
 
 interface Props { role?: Role; id?: string }
 
+type ChecklistFileApi = {
+  id: string;
+  fileName: string;
+  fileType: string | null;
+  fileSize: string | null;
+  fileUrl: string;
+  uploadedBy: { id: string; name: string; role: Role } | null;
+  createdAt: string;
+};
+
 interface ChecklistItem { 
   id: number; 
   text: string; 
@@ -44,6 +54,7 @@ interface ChecklistItem {
   attachmentRequired?: boolean; 
   status: "pending" | "in_progress" | "completed" | "rework";
   reworkReason?: string;
+  files?: ChecklistFileApi[];
 }
 
 function isUuid(value: string): boolean {
@@ -76,6 +87,7 @@ type AttachmentApi = {
   fileSize: string | null;
   uploadedById: string;
   createdAt: string;
+  checklistItemId?: number | null;
   uploadedBy: { id: string; name: string; role: Role } | null;
 };
 
@@ -529,14 +541,26 @@ export default function JobDetail({ role = "user", id }: Props) {
         const res = await fetch(url, { credentials: "include" });
         if (!res.ok) throw new Error("Failed");
         const data = (await res.json()) as unknown;
-        const api = Array.isArray(data) ? (data as Array<{ itemId: number; status: ChecklistItem["status"]; reworkReason: string | null; attachmentCount: number }>) : [];
-        const byId = new Map<number, { status: ChecklistItem["status"]; reworkReason?: string; attachmentCount: number }>();
+        const api = Array.isArray(data) ? (data as Array<{
+          itemId: number;
+          status: ChecklistItem["status"];
+          reworkReason: string | null;
+          attachmentCount: number;
+          files?: ChecklistFileApi[];
+        }>) : [];
+        const byId = new Map<number, {
+          status: ChecklistItem["status"];
+          reworkReason?: string;
+          attachmentCount: number;
+          files: ChecklistFileApi[];
+        }>();
         for (const r of api) {
           if (typeof r.itemId !== "number") continue;
           byId.set(r.itemId, {
             status: r.status,
             ...(typeof r.reworkReason === "string" && r.reworkReason.trim() ? { reworkReason: r.reworkReason } : {}),
             attachmentCount: typeof r.attachmentCount === "number" ? r.attachmentCount : 0,
+            files: Array.isArray(r.files) ? r.files : [],
           });
         }
         const hydrated = nextChecklist.map((c) => {
@@ -546,9 +570,16 @@ export default function JobDetail({ role = "user", id }: Props) {
             ...c,
             done: saved.status === "completed",
             status: saved.status,
+            files: saved.files,
             ...(saved.reworkReason ? { reworkReason: saved.reworkReason } : {}),
           };
         });
+        // Also attach files for items that only have file rows
+        for (const [id, v] of byId.entries()) {
+          if (!hydrated.find((c) => c.id === id) && v.files.length > 0) {
+            // ignore orphaned file rows without template items
+          }
+        }
         const uploads: Record<number, number> = {};
         for (const [id, v] of byId.entries()) uploads[id] = v.attachmentCount ?? 0;
         if (!cancelled) {
@@ -836,21 +867,72 @@ export default function JobDetail({ role = "user", id }: Props) {
   };
   const handleChecklistUpload = (checklistId: number) => {
     uploadChecklistIdRef.current = checklistId;
-    outputPickerRef.current?.click();
+    // Managers attach instruction/checklist docs; workers upload completed task files.
+    if (role === "user") outputPickerRef.current?.click();
+    else inputPickerRef.current?.click();
+  };
+  const refreshChecklistFiles = async () => {
+    if (!job?.id) return;
+    try {
+      const userId = role === "user" ? null : (job?.assignee?.id ?? null);
+      const url = userId ? `/api/jobs/${job.id}/checklist-state?userId=${encodeURIComponent(userId)}` : `/api/jobs/${job.id}/checklist-state`;
+      const sres = await fetch(url, { credentials: "include" });
+      if (!sres.ok) return;
+      const sdata = (await sres.json()) as unknown;
+      const api = Array.isArray(sdata) ? (sdata as Array<{
+        itemId: number;
+        status: ChecklistItem["status"];
+        reworkReason: string | null;
+        attachmentCount: number;
+        files?: ChecklistFileApi[];
+      }>) : [];
+      const byId = new Map(api.map((r) => [r.itemId, r]));
+      setChecklist((prev) =>
+        prev.map((c) => {
+          const saved = byId.get(c.id);
+          if (!saved) return c;
+          return {
+            ...c,
+            done: saved.status === "completed",
+            status: saved.status,
+            files: Array.isArray(saved.files) ? saved.files : [],
+            ...(typeof saved.reworkReason === "string" && saved.reworkReason.trim()
+              ? { reworkReason: saved.reworkReason }
+              : {}),
+          };
+        }),
+      );
+      setSelectedChecklistItem((prev) => {
+        if (!prev) return prev;
+        const saved = byId.get(prev.id);
+        if (!saved) return prev;
+        return {
+          ...prev,
+          done: saved.status === "completed",
+          status: saved.status,
+          files: Array.isArray(saved.files) ? saved.files : [],
+          ...(typeof saved.reworkReason === "string" && saved.reworkReason.trim()
+            ? { reworkReason: saved.reworkReason }
+            : {}),
+        };
+      });
+      const uploads: Record<number, number> = {};
+      for (const r of api) uploads[r.itemId] = r.attachmentCount ?? 0;
+      setChecklistUploads((prev) => ({ ...prev, ...uploads }));
+    } catch {
+    }
   };
   const onPickerChange = (tag: FileItem["tag"]) => async (e: React.ChangeEvent<HTMLInputElement>) => {
     const picked = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (picked.length === 0) return;
-    const checklistItemId = tag === "output" && uploadChecklistIdRef.current ? uploadChecklistIdRef.current : null;
-    if (tag === "output" && uploadChecklistIdRef.current) {
-      const id = uploadChecklistIdRef.current;
+    const checklistItemId = uploadChecklistIdRef.current;
+    if (checklistItemId != null) {
       setChecklistUploads((prev) => {
-        const next = { ...prev, [id]: (prev[id] ?? 0) + picked.length };
+        const next = { ...prev, [checklistItemId]: (prev[checklistItemId] ?? 0) + picked.length };
         persistLocalChecklist(checklist, next);
         return next;
       });
-      uploadChecklistIdRef.current = null;
     }
 
     if (job?.id) {
@@ -868,33 +950,21 @@ export default function JobDetail({ role = "user", id }: Props) {
           });
           if (!res.ok) throw new Error("Upload failed");
         }
+        uploadChecklistIdRef.current = null;
         const res = await fetch(`/api/jobs/${job.id}/attachments`, { credentials: "include" });
         if (res.ok) {
           const data = (await res.json()) as unknown;
           if (Array.isArray(data)) setAttachments(data as AttachmentApi[]);
         }
         if (checklistItemId != null) {
-          try {
-            const userId = role === "user" ? null : (job?.assignee?.id ?? null);
-            const url = userId ? `/api/jobs/${job.id}/checklist-state?userId=${encodeURIComponent(userId)}` : `/api/jobs/${job.id}/checklist-state`;
-            const sres = await fetch(url, { credentials: "include" });
-            if (sres.ok) {
-              const sdata = (await sres.json()) as unknown;
-              const api = Array.isArray(sdata) ? (sdata as Array<{ itemId: number; status: ChecklistItem["status"]; reworkReason: string | null; attachmentCount: number }>) : [];
-              const uploads: Record<number, number> = {};
-              for (const r of api) {
-                if (typeof r.itemId !== "number") continue;
-                uploads[r.itemId] = typeof r.attachmentCount === "number" ? r.attachmentCount : 0;
-              }
-              setChecklistUploads((prev) => ({ ...prev, ...uploads }));
-            }
-          } catch {
-          }
+          await refreshChecklistFiles();
         }
         return;
       } catch {
+        uploadChecklistIdRef.current = null;
       }
     }
+    uploadChecklistIdRef.current = null;
 
     const me = role === "user" ? "Jordan Reed" : role === "supervisor" ? "Sam Carter" : "Admin";
     const newItems: FileItem[] = picked.map((f) => {
@@ -1244,6 +1314,54 @@ export default function JobDetail({ role = "user", id }: Props) {
                           </span>
                           {c.attachmentRequired && <span className="text-gray-400 flex items-center gap-1"><Upload size={10} /> File required</span>}
                         </div>
+                        {(c.files ?? []).length > 0 && (
+                          <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()}>
+                            {(c.files ?? []).map((f) => (
+                              <div key={f.id} className="flex items-center gap-2 rounded-lg bg-gray-50 border border-gray-100 px-2.5 py-1.5">
+                                <FileText size={12} className="text-primary shrink-0" />
+                                <span className="text-[11px] font-medium text-gray-700 truncate flex-1">{f.fileName}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => openAttachmentPreview({
+                                    id: f.id,
+                                    jobId: job?.id ?? "",
+                                    fileName: f.fileName,
+                                    fileKey: "",
+                                    fileUrl: f.fileUrl,
+                                    fileType: f.fileType,
+                                    fileSize: f.fileSize,
+                                    uploadedById: f.uploadedBy?.id ?? "",
+                                    createdAt: f.createdAt,
+                                    uploadedBy: f.uploadedBy,
+                                  })}
+                                  className="p-1 text-gray-400 hover:text-primary rounded"
+                                  title="Preview"
+                                >
+                                  <Eye size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => downloadAttachment({
+                                    id: f.id,
+                                    jobId: job?.id ?? "",
+                                    fileName: f.fileName,
+                                    fileKey: "",
+                                    fileUrl: f.fileUrl,
+                                    fileType: f.fileType,
+                                    fileSize: f.fileSize,
+                                    uploadedById: f.uploadedBy?.id ?? "",
+                                    createdAt: f.createdAt,
+                                    uploadedBy: f.uploadedBy,
+                                  })}
+                                  className="p-1 text-gray-400 hover:text-primary rounded"
+                                  title="Download"
+                                >
+                                  <Download size={12} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <ChevronDown size={16} className="-rotate-90 text-gray-300 group-hover:text-gray-400" />
                     </motion.button>
@@ -1302,19 +1420,81 @@ export default function JobDetail({ role = "user", id }: Props) {
                       </div>
                     </div>
 
+                    <div>
+                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Checklist Files</div>
+                      {(selectedChecklistItem.files ?? []).length === 0 ? (
+                        <p className="text-[11px] text-gray-400 mb-3">No files attached to this checklist item yet.</p>
+                      ) : (
+                        <div className="space-y-2 mb-3">
+                          {(selectedChecklistItem.files ?? []).map((f) => (
+                            <div key={f.id} className="flex items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                              <FileText size={14} className="text-primary shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-semibold text-gray-900 truncate">{f.fileName}</div>
+                                <div className="text-[10px] text-gray-500">{f.uploadedBy?.name ?? "—"}</div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => openAttachmentPreview({
+                                  id: f.id,
+                                  jobId: job?.id ?? "",
+                                  fileName: f.fileName,
+                                  fileKey: "",
+                                  fileUrl: f.fileUrl,
+                                  fileType: f.fileType,
+                                  fileSize: f.fileSize,
+                                  uploadedById: f.uploadedBy?.id ?? "",
+                                  createdAt: f.createdAt,
+                                  uploadedBy: f.uploadedBy,
+                                })}
+                                className="p-1.5 text-gray-400 hover:text-primary rounded-lg"
+                                title="Preview"
+                              >
+                                <Eye size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => downloadAttachment({
+                                  id: f.id,
+                                  jobId: job?.id ?? "",
+                                  fileName: f.fileName,
+                                  fileKey: "",
+                                  fileUrl: f.fileUrl,
+                                  fileType: f.fileType,
+                                  fileSize: f.fileSize,
+                                  uploadedById: f.uploadedBy?.id ?? "",
+                                  createdAt: f.createdAt,
+                                  uploadedBy: f.uploadedBy,
+                                })}
+                                className="p-1.5 text-gray-400 hover:text-primary rounded-lg"
+                                title="Download"
+                              >
+                                <Download size={14} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <button
+                        onClick={() => handleChecklistUpload(selectedChecklistItem.id)}
+                        className="w-full py-2 bg-primary text-white text-[11px] font-bold rounded-lg shadow-md shadow-primary/20 flex items-center justify-center gap-2"
+                      >
+                        <Upload size={12} /> Upload Checklist File
+                      </button>
+                    </div>
+
                     {selectedChecklistItem.attachmentRequired && (
                       <div>
-                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Mandatory Attachment</div>
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Mandatory Worker Upload</div>
                         <div className="p-4 border-2 border-dashed border-gray-100 rounded-xl bg-gray-50/50 flex flex-col items-center justify-center text-center">
                           <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-primary mb-2">
                             <Upload size={18} />
                           </div>
-                          <div className="text-xs font-bold text-gray-900">Upload Task File</div>
-                          <p className="text-[10px] text-gray-500 mt-1 max-w-[160px]">Drag & drop or click to browse for the required file.</p>
+                          <div className="text-xs font-bold text-gray-900">Worker must upload a file</div>
+                          <p className="text-[10px] text-gray-500 mt-1 max-w-[160px]">Completion uploads for this task.</p>
                           <div className="mt-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
                             Uploaded: {checklistUploads[selectedChecklistItem.id] ?? 0}
                           </div>
-                          <button onClick={() => handleChecklistUpload(selectedChecklistItem.id)} className="mt-3 px-4 py-1.5 bg-primary text-white text-[11px] font-bold rounded-lg shadow-md shadow-primary/20">Browse Files</button>
                         </div>
                       </div>
                     )}
@@ -1411,8 +1591,10 @@ export default function JobDetail({ role = "user", id }: Props) {
 
         {tab === "files" && (() => {
           const q = fileSearch.toLowerCase();
-          const inputFiles = attachments.filter((a) => (a.uploadedBy?.role ?? "supervisor") !== "user");
-          const outputFiles = attachments.filter((a) => (a.uploadedBy?.role ?? "supervisor") === "user");
+          // Keep checklist-linked files on Checklist tab — hide them from Job Files
+          const nonChecklist = attachments.filter((a) => a.checklistItemId == null);
+          const inputFiles = nonChecklist.filter((a) => (a.uploadedBy?.role ?? "supervisor") !== "user");
+          const outputFiles = nonChecklist.filter((a) => (a.uploadedBy?.role ?? "supervisor") === "user");
           const filteredInput = inputFiles.filter((a) => a.fileName.toLowerCase().includes(q));
           const filteredOutputServer = outputFiles.filter((a) => a.fileName.toLowerCase().includes(q));
 

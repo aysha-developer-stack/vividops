@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, MoreVertical, Edit2, Trash2, UserPlus, X,
-  Calendar, ExternalLink, CheckCircle2, Download, Loader2,
+  Calendar, ExternalLink, CheckCircle2, Download, Loader2, FileText,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -241,6 +241,9 @@ export default function JobManagement(
   const [editLoading, setEditLoading] = useState(false);
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [checklistTemplate, setChecklistTemplate] = useState<ChecklistTemplateItem[]>([]);
+  const [checklistItemFiles, setChecklistItemFiles] = useState<Record<number, File[]>>({});
+  const [checkPendingFile, setCheckPendingFile] = useState<File | null>(null);
+  const checklistItemFileRef = useRef<HTMLInputElement>(null);
   const [savedTemplates, setSavedTemplates] = useState<Array<{ id: string; name: string; items: ChecklistTemplateItem[] }>>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [templateName, setTemplateName] = useState("");
@@ -461,16 +464,30 @@ export default function JobManagement(
     const text = checkText.trim();
     if (!text) return;
     const desc = checkDesc.trim() ? checkDesc.trim() : undefined;
+    const nextIndex = checklistTemplate.length;
     setChecklistTemplate([
       ...checklistTemplate,
       { text, desc, attachmentRequired: checkNeedsFile || undefined },
     ]);
+    if (checkPendingFile) {
+      setChecklistItemFiles((prev) => ({ ...prev, [nextIndex]: [checkPendingFile] }));
+    }
     setCheckText("");
     setCheckDesc("");
     setCheckNeedsFile(false);
+    setCheckPendingFile(null);
   };
   const removeChecklistItem = (idx: number) => {
     setChecklistTemplate(checklistTemplate.filter((_, i) => i !== idx));
+    setChecklistItemFiles((prev) => {
+      const next: Record<number, File[]> = {};
+      for (const [key, files] of Object.entries(prev)) {
+        const i = Number(key);
+        if (i === idx) continue;
+        next[i > idx ? i - 1 : i] = files;
+      }
+      return next;
+    });
   };
 
   useEffect(() => {
@@ -491,6 +508,7 @@ export default function JobManagement(
     const selected = savedTemplates.find((t) => t.id === selectedTemplateId);
     if (!selected) return;
     setChecklistTemplate(Array.isArray(selected.items) ? selected.items : []);
+    setChecklistItemFiles({});
   };
 
   const saveCurrentAsTemplate = async () => {
@@ -608,7 +626,6 @@ export default function JobManagement(
     };
 
     const uploadAllFiles = async (jobId: string) => {
-      if (jobFiles.length === 0) return;
       setUploadingFiles(true);
       try {
         for (const file of jobFiles) {
@@ -622,6 +639,24 @@ export default function JobManagement(
           if (!res.ok) {
             const text = await res.text();
             throw new Error(text || `Upload failed (${res.status})`);
+          }
+        }
+        for (const [indexStr, files] of Object.entries(checklistItemFiles)) {
+          const itemId = Number(indexStr) + 1;
+          if (!Number.isFinite(itemId) || itemId <= 0) continue;
+          for (const file of files) {
+            const fd = new FormData();
+            fd.append("file", file);
+            fd.append("checklistItemId", String(itemId));
+            const res = await fetch(`/api/jobs/${jobId}/attachments`, {
+              method: "POST",
+              body: fd,
+              credentials: "include",
+            });
+            if (!res.ok) {
+              const text = await res.text();
+              throw new Error(text || `Checklist file upload failed (${res.status})`);
+            }
           }
         }
       } finally {
@@ -646,6 +681,8 @@ export default function JobManagement(
       setExistingAttachments([]);
       setMemberIds([]);
       setChecklistTemplate([]);
+      setChecklistItemFiles({});
+      setCheckPendingFile(null);
       setCheckText("");
       setCheckDesc("");
       setCheckNeedsFile(false);
@@ -661,6 +698,8 @@ export default function JobManagement(
     setModalOpen(false);
     setEditingId(null);
     setChecklistTemplate([]);
+    setChecklistItemFiles({});
+    setCheckPendingFile(null);
     setCheckText("");
     setCheckDesc("");
     setCheckNeedsFile(false);
@@ -1134,6 +1173,11 @@ export default function JobManagement(
                               <div className="text-sm font-semibold text-gray-900 truncate">{it.text}</div>
                               {it.desc && <div className="text-[11px] text-gray-500 mt-0.5">{it.desc}</div>}
                               {it.attachmentRequired && <div className="mt-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">File required</div>}
+                              {(checklistItemFiles[idx] ?? []).map((f) => (
+                                <div key={f.name} className="mt-1 text-[11px] text-primary font-medium truncate flex items-center gap-1">
+                                  <FileText size={11} /> {f.name}
+                                </div>
+                              ))}
                             </div>
                             <button onClick={() => removeChecklistItem(idx)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
                               <Trash2 size={14} />
@@ -1155,8 +1199,37 @@ export default function JobManagement(
                     </div>
                     <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
                       <input type="checkbox" checked={checkNeedsFile} onChange={(e) => setCheckNeedsFile(e.target.checked)} className="h-4 w-4" />
-                      File upload required
+                      File upload required from worker
                     </label>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Attach checklist file (optional)</label>
+                      <input
+                        ref={checklistItemFileRef}
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0] ?? null;
+                          setCheckPendingFile(f);
+                          e.target.value = "";
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => checklistItemFileRef.current?.click()}
+                        className="w-full px-3 py-2.5 bg-white border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-700 hover:border-primary/40 hover:bg-primary/5"
+                      >
+                        {checkPendingFile ? checkPendingFile.name : "Choose file for this checklist item"}
+                      </button>
+                      {checkPendingFile && (
+                        <button
+                          type="button"
+                          onClick={() => setCheckPendingFile(null)}
+                          className="mt-1 text-[11px] text-red-600 font-semibold"
+                        >
+                          Remove file
+                        </button>
+                      )}
+                    </div>
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}

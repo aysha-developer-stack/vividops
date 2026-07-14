@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq, desc, inArray, sql as dsql } from "drizzle-orm";
 import { upload, uploadToSupabase, supabase } from "../lib/storage";
-import { db, jobs, users, jobAttachments, jobMembers, type JobRow, type UserRow, sql } from "@workspace/db";
+import { db, jobs, users, jobAttachments, jobChecklistAttachments, jobMembers, type JobRow, type UserRow, sql } from "@workspace/db";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth";
 import { io } from "../lib/socket";
@@ -50,9 +50,11 @@ router.get("/jobs/:jobId/attachments", requireAuth, async (req, res) => {
       .select({
         attachment: jobAttachments,
         uploadedBy: { id: users.id, name: users.name, role: users.role },
+        checklistItemId: jobChecklistAttachments.itemId,
       })
       .from(jobAttachments)
       .leftJoin(users, eq(users.id, jobAttachments.uploadedById))
+      .leftJoin(jobChecklistAttachments, eq(jobChecklistAttachments.attachmentId, jobAttachments.id))
       .where(eq(jobAttachments.jobId, jobId))
       .orderBy(desc(jobAttachments.createdAt));
 
@@ -60,6 +62,7 @@ router.get("/jobs/:jobId/attachments", requireAuth, async (req, res) => {
       rows.map((r) => ({
         ...r.attachment,
         uploadedBy: r.uploadedBy?.id ? r.uploadedBy : null,
+        checklistItemId: r.checklistItemId ?? null,
       })),
     );
     return;
@@ -180,6 +183,8 @@ router.post(
       const checklistItemIdRaw = typeof (req.body as any)?.checklistItemId === "string" ? String((req.body as any).checklistItemId) : "";
       const checklistItemId = Number(checklistItemIdRaw);
       if (Number.isFinite(checklistItemId) && checklistItemId > 0) {
+        const linkUserId =
+          actor.role === "user" ? actor.id : (jobRow.assigneeId ?? actor.id);
         await db.execute(sql`
           CREATE TABLE IF NOT EXISTS job_checklist_attachments (
             id uuid PRIMARY KEY,
@@ -196,7 +201,7 @@ router.post(
 
         await db.execute(sql`
           INSERT INTO job_checklist_attachments (id, job_id, user_id, item_id, attachment_id)
-          VALUES (${randomUUID()}::uuid, ${jobId}::uuid, ${actor.id}::uuid, ${checklistItemId}, ${attachment.id}::uuid)
+          VALUES (${randomUUID()}::uuid, ${jobId}::uuid, ${linkUserId}::uuid, ${checklistItemId}, ${attachment.id}::uuid)
         `);
       }
 
