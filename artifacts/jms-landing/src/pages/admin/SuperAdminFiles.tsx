@@ -6,6 +6,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import { useListJobs, type Job as ApiJob } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
+import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } from "@/lib/downloadFile";
 
 type FileRow = {
   id: string;
@@ -280,7 +281,11 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
                                 <div className="inline-flex items-center gap-2">
                                   <button
                                     onClick={() => {
-                                      if (f.url) window.open(f.url, "_blank", "noopener,noreferrer");
+                                      window.open(
+                                        jobAttachmentPreviewUrl(f.jobId, f.id),
+                                        "_blank",
+                                        "noopener,noreferrer",
+                                      );
                                     }}
                                     className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
                                     title="View"
@@ -289,7 +294,12 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
                                   </button>
                                   <button
                                     onClick={() => {
-                                      if (f.url) window.open(f.url, "_blank", "noopener,noreferrer");
+                                      void downloadNamedFile(
+                                        jobAttachmentDownloadUrl(f.jobId, f.id),
+                                        f.name,
+                                      ).catch(() => {
+                                        window.alert("Download failed. Please try again.");
+                                      });
                                     }}
                                     className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
                                     title="Download"

@@ -114,11 +114,17 @@ router.get("/jobs/:jobId/attachments/:attachmentId/view", requireAuth, async (re
     }
 
     const buffer = Buffer.from(await data.arrayBuffer());
-    const safeName = attachment.fileName.replace(/[^\w.\- ()[\]]+/g, "_") || "file";
+    const rawName = (attachment.fileName || "file").split(/[/\\]/).pop() || "file";
+    const safeName = rawName.replace(/[\r\n"]+/g, "_").trim() || "file";
+    const encodedName = encodeURIComponent(safeName).replace(/['()]/g, escape);
     const contentType = attachment.fileType || "application/octet-stream";
     res.setHeader("Content-Type", contentType);
     res.setHeader("Content-Length", String(buffer.length));
-    res.setHeader("Content-Disposition", `${disposition}; filename="${safeName}"`);
+    res.setHeader(
+      "Content-Disposition",
+      `${disposition}; filename="${safeName}"; filename*=UTF-8''${encodedName}`,
+    );
+    res.setHeader("Cache-Control", "private, no-store");
     res.send(buffer);
     return;
   } catch (err) {

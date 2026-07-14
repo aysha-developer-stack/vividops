@@ -32,6 +32,7 @@ import {
 import { statusToUi, priorityToUi, formatShortDate } from "@/lib/jobMappers";
 import { parseJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
 import { postTimerNotification } from "@/lib/timerNotifications";
+import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } from "@/lib/downloadFile";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface Props { role?: Role; id?: string }
@@ -848,10 +849,17 @@ export default function JobDetail({ role = "user", id }: Props) {
     return "doc";
   };
   const attachmentViewUrl = (attachmentId: string, asAttachment = false) =>
-    `/api/jobs/${job?.id}/attachments/${attachmentId}/view?disposition=${asAttachment ? "attachment" : "inline"}`;
+    asAttachment
+      ? jobAttachmentDownloadUrl(job?.id ?? "", attachmentId)
+      : jobAttachmentPreviewUrl(job?.id ?? "", attachmentId);
   const downloadAttachment = (attachment: AttachmentApi) => {
     if (!job?.id) return;
-    window.open(attachmentViewUrl(attachment.id, true), "_blank", "noopener,noreferrer");
+    void downloadNamedFile(
+      jobAttachmentDownloadUrl(job.id, attachment.id),
+      attachment.fileName,
+    ).catch(() => {
+      window.alert("Download failed. Please try again.");
+    });
   };
   const openAttachmentPreview = (attachment: AttachmentApi) => {
     if (!job?.id) return;

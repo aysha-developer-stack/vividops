@@ -31,6 +31,7 @@ import {
   serializeJobMeta,
   type ChecklistTemplateItem,
 } from "@/lib/jobMeta";
+import { downloadNamedFile, jobAttachmentDownloadUrl } from "@/lib/downloadFile";
 
 import {
   DropdownMenu,
@@ -1255,16 +1256,23 @@ export default function JobManagement(
                               <div className="text-sm font-semibold text-gray-900 truncate">{f.fileName}</div>
                               {f.fileSize && <div className="text-[11px] text-gray-500">{f.fileSize}</div>}
                             </div>
-                            {f.fileUrl && (
-                              <a
-                                href={f.fileUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                            {(editingId || f.fileUrl) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!editingId) return;
+                                  void downloadNamedFile(
+                                    jobAttachmentDownloadUrl(editingId, f.id),
+                                    f.fileName,
+                                  ).catch(() => {
+                                    window.alert("Download failed. Please try again.");
+                                  });
+                                }}
                                 className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg"
                                 title="Download"
                               >
                                 <Download size={14} />
-                              </a>
+                              </button>
                             )}
                           </div>
                         ))}
