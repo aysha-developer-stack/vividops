@@ -1,12 +1,13 @@
 import { Router, type IRouter } from "express";
 import { and, eq, or, desc, inArray, ne, sql as dsql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { db, jobs, users, jobMembers, type JobRow, type UserRow, sql } from "@workspace/db";
+import { db, jobs, users, jobMembers, jobAttachments, jobChecklistAttachments, type JobRow, type UserRow, sql } from "@workspace/db";
 import { createNotification, createNotificationOnce } from "../lib/notifications";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { CreateJobBody, UpdateJobBody } from "@workspace/api-zod";
 import { buildJobAssignees, publicJob } from "../lib/serialize";
+import { parseJobMeta, serializeJobMeta } from "../lib/jobMeta";
 import { requireAuth, requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { getZohoCliqAccessToken } from "../lib/zoho";
@@ -84,7 +85,50 @@ function rowToPublic({ job, assignee, supervisor }: JobWithRefs, assignees: User
 async function toPublicWithAssignees(full: JobWithRefs) {
   try {
     const membersByJob = await loadExtraMembersByJobIds([full.job.id]);
-    return rowToPublic(full, membersByJob.get(full.job.id) ?? []);
+    let pub = rowToPublic(full, membersByJob.get(full.job.id) ?? []);
+
+    // Recover checklist from uploaded checklist files when job meta has none
+    if (!Array.isArray(pub.checklist) || pub.checklist.length === 0) {
+      try {
+        const linked = await db
+          .select({
+            itemId: jobChecklistAttachments.itemId,
+            fileName: jobAttachments.fileName,
+          })
+          .from(jobChecklistAttachments)
+          .innerJoin(jobAttachments, eq(jobAttachments.id, jobChecklistAttachments.attachmentId))
+          .where(eq(jobChecklistAttachments.jobId, full.job.id))
+          .orderBy(jobChecklistAttachments.itemId);
+
+        if (linked.length > 0) {
+          const byItem = new Map<number, string>();
+          for (const row of linked) {
+            if (!byItem.has(row.itemId)) byItem.set(row.itemId, row.fileName);
+          }
+          const checklist = [...byItem.entries()]
+            .sort((a, b) => a[0] - b[0])
+            .map(([, fileName]) => ({ text: fileName }));
+
+          const meta = parseJobMeta(full.job.description);
+          const description = serializeJobMeta(meta.descriptionText || pub.descriptionText || "", checklist);
+          await db
+            .update(jobs)
+            .set({ description, updatedAt: new Date() })
+            .where(eq(jobs.id, full.job.id));
+
+          pub = {
+            ...pub,
+            description,
+            checklist,
+            descriptionText: meta.descriptionText || pub.descriptionText || "",
+          };
+        }
+      } catch (err) {
+        logger.warn({ err, jobId: full.job.id }, "Failed to recover checklist from attachments");
+      }
+    }
+
+    return pub;
   } catch (err) {
     logger.warn({ err, jobId: full.job.id }, "Failed to load job assignees");
     return rowToPublic(full, []);

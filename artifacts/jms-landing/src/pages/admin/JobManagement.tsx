@@ -460,19 +460,17 @@ export default function JobManagement(
   const removeJobFile = (idx: number) => {
     setJobFiles(jobFiles.filter((_, i) => i !== idx));
   };
-  const addChecklistItem = () => {
-    if (!checkPendingFile) {
-      setError("Choose a checklist file — the file name becomes the task name.");
-      return;
-    }
-    const text = checkPendingFile.name.trim();
+  const addChecklistFromFile = (file: File, requireWorkerUpload: boolean) => {
+    const text = file.name.trim();
     if (!text) return;
-    const nextIndex = checklistTemplate.length;
-    setChecklistTemplate([
-      ...checklistTemplate,
-      { text, attachmentRequired: checkNeedsFile || undefined },
-    ]);
-    setChecklistItemFiles((prev) => ({ ...prev, [nextIndex]: [checkPendingFile] }));
+    setChecklistTemplate((prev) => {
+      const nextIndex = prev.length;
+      setChecklistItemFiles((filesPrev) => ({ ...filesPrev, [nextIndex]: [file] }));
+      return [
+        ...prev,
+        { text, attachmentRequired: requireWorkerUpload || undefined },
+      ];
+    });
     setCheckNeedsFile(false);
     setCheckPendingFile(null);
     setError(null);
@@ -585,11 +583,25 @@ export default function JobManagement(
       setError("Supervisor is required");
       return;
     }
+
+    // Flush a selected-but-not-added checklist file into the template before save
+    let finalChecklist = checklistTemplate;
+    let finalChecklistFiles = checklistItemFiles;
+    if (checkPendingFile) {
+      const nextIndex = checklistTemplate.length;
+      finalChecklist = [
+        ...checklistTemplate,
+        { text: checkPendingFile.name.trim(), attachmentRequired: checkNeedsFile || undefined },
+      ];
+      finalChecklistFiles = { ...checklistItemFiles, [nextIndex]: [checkPendingFile] };
+    }
+    if (finalChecklist.length === 0) {
+      setError("Add at least one checklist file — the file name becomes the task name.");
+      return;
+    }
+
     setError(null);
-    const descriptionPayload =
-      editingId !== null || form.description.trim() || checklistTemplate.length > 0
-        ? serializeJobMeta(form.description, checklistTemplate)
-        : undefined;
+    const descriptionPayload = serializeJobMeta(form.description, finalChecklist);
     const payload = {
       jobNumber: form.jobNumber.trim() || null,
       title: form.title,
@@ -651,7 +663,7 @@ export default function JobManagement(
             throw new Error(text || `Upload failed (${res.status})`);
           }
         }
-        for (const [indexStr, files] of Object.entries(checklistItemFiles)) {
+        for (const [indexStr, files] of Object.entries(finalChecklistFiles)) {
           const itemId = Number(indexStr) + 1;
           if (!Number.isFinite(itemId) || itemId <= 0) continue;
           for (const file of files) {
@@ -1227,47 +1239,25 @@ export default function JobManagement(
                     </label>
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Attach checklist file</label>
-                      <p className="text-[11px] text-gray-500 mb-1.5">The file name becomes the task name.</p>
+                      <p className="text-[11px] text-gray-500 mb-1.5">Choosing a file adds it as a checklist task (file name = task name).</p>
                       <input
                         ref={checklistItemFileRef}
                         type="file"
                         className="hidden"
                         onChange={(e) => {
                           const f = e.target.files?.[0] ?? null;
-                          setCheckPendingFile(f);
                           e.target.value = "";
+                          if (f) addChecklistFromFile(f, checkNeedsFile);
                         }}
                       />
                       <button
                         type="button"
                         onClick={() => checklistItemFileRef.current?.click()}
-                        className="w-full px-3 py-2.5 bg-white border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-700 hover:border-primary/40 hover:bg-primary/5"
+                        className="w-full px-3 py-2.5 bg-white border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-700 hover:border-primary/40 hover:bg-primary/5 flex items-center justify-center gap-2"
                       >
-                        {checkPendingFile ? checkPendingFile.name : "Choose file for this checklist item"}
+                        <Plus size={14} /> Choose checklist file to add
                       </button>
-                      {checkPendingFile && (
-                        <button
-                          type="button"
-                          onClick={() => setCheckPendingFile(null)}
-                          className="mt-1 text-[11px] text-red-600 font-semibold"
-                        >
-                          Remove file
-                        </button>
-                      )}
                     </div>
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={addChecklistItem}
-                      disabled={!checkPendingFile}
-                      className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold shadow-md ${
-                        checkPendingFile
-                          ? "bg-primary text-white shadow-primary/30"
-                          : "bg-gray-200 text-gray-500 cursor-not-allowed shadow-none"
-                      }`}
-                    >
-                      <Plus size={14} /> Add Checklist Item
-                    </motion.button>
                   </div>
 
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Job Files</div>

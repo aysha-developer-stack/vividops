@@ -508,15 +508,39 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   useEffect(() => {
     if (!job?.id) return;
-    const template = meta.checklist;
-    const nextChecklist: ChecklistItem[] = template.map((t, idx) => ({
-      id: idx + 1,
-      text: t.text,
-      done: false,
-      desc: t.desc,
-      attachmentRequired: t.attachmentRequired,
-      status: "pending",
-    }));
+
+    const fromMeta = meta.checklist;
+    const fromAttachments = (() => {
+      const byItem = new Map<number, string>();
+      for (const a of attachments) {
+        if (a.checklistItemId == null) continue;
+        const id = Number(a.checklistItemId);
+        if (!Number.isFinite(id) || id <= 0) continue;
+        if (!byItem.has(id)) byItem.set(id, a.fileName);
+      }
+      return [...byItem.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([id, fileName]) => ({ id, text: fileName, attachmentRequired: false as boolean | undefined }));
+    })();
+
+    const nextChecklist: ChecklistItem[] =
+      fromMeta.length > 0
+        ? fromMeta.map((t, idx) => ({
+            id: idx + 1,
+            text: t.text,
+            done: false,
+            desc: t.desc,
+            attachmentRequired: t.attachmentRequired,
+            status: "pending",
+          }))
+        : fromAttachments.map((t) => ({
+            id: t.id,
+            text: t.text,
+            done: false,
+            attachmentRequired: t.attachmentRequired,
+            status: "pending" as const,
+          }));
+
     let cancelled = false;
     (async () => {
       try {
@@ -547,25 +571,42 @@ export default function JobDetail({ role = "user", id }: Props) {
             files: Array.isArray(r.files) ? r.files : [],
           });
         }
-        const hydrated = nextChecklist.map((c) => {
+
+        // If still no template, create items from checklist-state file rows
+        let base = nextChecklist;
+        if (base.length === 0) {
+          base = [...byId.entries()]
+            .filter(([, v]) => v.files.length > 0)
+            .sort((a, b) => a[0] - b[0])
+            .map(([id, v]) => ({
+              id,
+              text: v.files[0]?.fileName ?? `Task ${id}`,
+              done: false,
+              status: "pending" as const,
+              files: v.files,
+            }));
+        }
+
+        const hydrated = base.map((c) => {
           const saved = byId.get(c.id);
           if (!saved) return c;
           return {
             ...c,
             done: saved.status === "completed",
             status: saved.status,
-            files: saved.files,
+            files: saved.files.length > 0 ? saved.files : c.files,
             ...(saved.reworkReason ? { reworkReason: saved.reworkReason } : {}),
           };
         });
-        // Also attach files for items that only have file rows
-        for (const [id, v] of byId.entries()) {
-          if (!hydrated.find((c) => c.id === id) && v.files.length > 0) {
-            // ignore orphaned file rows without template items
-          }
-        }
         const uploads: Record<number, number> = {};
         for (const [id, v] of byId.entries()) uploads[id] = v.attachmentCount ?? 0;
+        // Count instruction files (admin uploads) separately from worker completion uploads —
+        // show attached instruction files on the item either way.
+        for (const a of attachments) {
+          if (a.checklistItemId == null) continue;
+          const id = Number(a.checklistItemId);
+          if (!uploads[id]) uploads[id] = 0;
+        }
         if (!cancelled) {
           setChecklist(hydrated);
           setChecklistUploads(uploads);
@@ -573,36 +614,16 @@ export default function JobDetail({ role = "user", id }: Props) {
           uploadChecklistIdRef.current = null;
         }
       } catch {
-        const stored = readChecklistState(job.id);
-        const storedById = new Map<number, LocalChecklistState["items"][number]>();
-        for (const it of stored?.items ?? []) storedById.set(it.id, it);
-        const jobProgress = job.progress ?? 0;
-        const jobCompleted = job.status === "completed" || jobProgress >= 100;
-        const approxCompleted = template.length > 0 ? Math.round((Math.max(0, Math.min(100, jobProgress)) / 100) * template.length) : 0;
-        const hydrated = nextChecklist.map((c, idx) => {
-          const saved = storedById.get(c.id);
-          if (saved) {
-            return {
-              ...c,
-              done: saved.done,
-              status: saved.status,
-              ...(saved.reworkReason ? { reworkReason: saved.reworkReason } : {}),
-            };
-          }
-          if (jobCompleted) return { ...c, done: true, status: "completed" as const };
-          if (approxCompleted > 0 && idx < approxCompleted) return { ...c, done: true, status: "completed" as const };
-          return c;
-        });
         if (!cancelled) {
-          setChecklist(hydrated);
+          setChecklist(nextChecklist);
           setSelectedChecklistItem(null);
-          setChecklistUploads(stored?.uploads ? Object.fromEntries(Object.entries(stored.uploads).map(([k, v]) => [Number(k), v])) as any : {});
+          setChecklistUploads({});
           uploadChecklistIdRef.current = null;
         }
       }
     })();
     return () => { cancelled = true; };
-  }, [job?.id, job?.description, checklistTemplateKey, role, job?.assignee?.id, job?.progress, job?.status]);
+  }, [job?.id, job?.description, checklistTemplateKey, role, job?.assignee?.id, job?.progress, job?.status, attachments]);
 
   // Trigger hourly check-in: every PING_INTERVAL_S of running time, show popup
   useEffect(() => {
