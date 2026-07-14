@@ -1239,7 +1239,6 @@ export default function JobManagement(
                     </label>
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Attach checklist file</label>
-                      <p className="text-[11px] text-gray-500 mb-1.5">Choosing a file adds it as a checklist task (file name = task name).</p>
                       <input
                         ref={checklistItemFileRef}
                         type="file"
