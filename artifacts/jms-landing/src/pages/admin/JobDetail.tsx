@@ -509,17 +509,23 @@ export default function JobDetail({ role = "user", id }: Props) {
   useEffect(() => {
     if (role !== "user") return;
     if (!job?.id) return;
-    if (job.status === "completed") return;
+    if (job.status === "completed" || job.status === "awaiting_supervisor" || job.status === "awaiting_admin") return;
     if ((job.progress ?? 0) < 100) return;
     if (autoCompleteRef.current === job.id) return;
     autoCompleteRef.current = job.id;
-    updateJobMutation
-      .mutateAsync({ id: job.id, data: { status: "completed" as any } })
-      .then(async () => {
+    void fetch(`/api/jobs/${job.id}/review`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "submit_for_supervisor" }),
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Failed to submit for review");
         await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
         await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
       })
       .catch(() => {
+        autoCompleteRef.current = null;
       });
   }, [role, job?.id, job?.status, job?.progress]);
 
@@ -1017,28 +1023,47 @@ export default function JobDetail({ role = "user", id }: Props) {
     const total = nextChecklist.length;
     const done = nextChecklist.filter((c) => c.status === "completed").length;
     const nextProgress = total > 0 ? Math.round((done / total) * 100) : 0;
-    const shouldComplete = total > 0 && done === total;
+    const shouldSubmitReview = total > 0 && done === total;
     const shouldAutoStart =
       job.status === "pending" && total > 0 && done > 0;
     const shouldUpdateProgress = (job.progress ?? 0) !== nextProgress;
     const nextStatus =
-      shouldComplete ? ("completed" as const)
+      shouldSubmitReview ? ("awaiting_supervisor" as const)
       : shouldAutoStart ? ("in_progress" as const)
       : null;
     const shouldUpdateStatus = nextStatus != null && job.status !== nextStatus;
     if (!shouldUpdateProgress && !shouldUpdateStatus) return;
     try {
-      await updateJobMutation.mutateAsync({
-        id: job.id,
-        data: {
-          ...(shouldUpdateProgress ? { progress: nextProgress } : {}),
-          ...(shouldUpdateStatus ? { status: nextStatus as any } : {}),
-        },
-      });
+      if (shouldSubmitReview) {
+        const res = await fetch(`/api/jobs/${job.id}/review`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "submit_for_supervisor" }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error((data as any).error || "Failed to submit for review");
+        }
+        if (shouldUpdateProgress) {
+          await updateJobMutation.mutateAsync({
+            id: job.id,
+            data: { progress: nextProgress },
+          });
+        }
+      } else {
+        await updateJobMutation.mutateAsync({
+          id: job.id,
+          data: {
+            ...(shouldUpdateProgress ? { progress: nextProgress } : {}),
+            ...(shouldUpdateStatus ? { status: nextStatus as any } : {}),
+          },
+        });
+      }
       await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
       await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "Failed to update progress";
+      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Failed to update progress";
       console.error(msg);
     }
   };
@@ -1113,7 +1138,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 <Users size={12} /> Reassign
               </motion.button>
             )}
-            {(role === "supervisor" || role === "admin" || role === "super-admin") && (
+            {(role === "supervisor" || role === "admin" || role === "super-admin") && job?.status !== "completed" && job?.status !== "cancelled" && (
               <>
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -1123,14 +1148,26 @@ export default function JobDetail({ role = "user", id }: Props) {
                 >
                   <RefreshCw size={12} /> Mark for Rework
                 </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setApproveOpen(true)}
-                  className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
-                >
-                  <CheckCircle2 size={12} /> Approve &amp; Complete
-                </motion.button>
+                {role === "supervisor" && job?.status !== "awaiting_admin" && (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setApproveOpen(true)}
+                    className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
+                  >
+                    <CheckCircle2 size={12} /> Approve for Admin
+                  </motion.button>
+                )}
+                {(role === "admin" || role === "super-admin") && (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setApproveOpen(true)}
+                    className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
+                  >
+                    <CheckCircle2 size={12} /> Complete Job
+                  </motion.button>
+                )}
               </>
             )}
             {role === "user" && (
@@ -2065,7 +2102,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 </div>
                 <button onClick={() => setReworkOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
               </div>
-              <p className="text-sm text-gray-500 mb-4">This job will be flagged and the supervisor will be notified.</p>
+              <p className="text-sm text-gray-500 mb-4">The assigned worker will be notified to redo the work.</p>
               <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Reason</label>
               <textarea
                 value={reworkReason}
@@ -2076,7 +2113,30 @@ export default function JobDetail({ role = "user", id }: Props) {
               />
               <div className="flex gap-2">
                 <button onClick={() => setReworkOpen(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200">Cancel</button>
-                <button onClick={() => setReworkOpen(false)} className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-semibold hover:bg-amber-600 flex items-center justify-center gap-2">
+                <button
+                  onClick={async () => {
+                    if (!job?.id) return;
+                    try {
+                      const res = await fetch(`/api/jobs/${job.id}/review`, {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "rework", reason: reworkReason }),
+                      });
+                      if (!res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        throw new Error((data as any).error || "Failed to mark for rework");
+                      }
+                      await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+                      await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                      setReworkReason("");
+                      setReworkOpen(false);
+                    } catch (err) {
+                      console.error(err instanceof Error ? err.message : "Failed to mark for rework");
+                    }
+                  }}
+                  className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-semibold hover:bg-amber-600 flex items-center justify-center gap-2"
+                >
                   <RefreshCw size={14} /> Submit
                 </button>
               </div>
@@ -2089,19 +2149,29 @@ export default function JobDetail({ role = "user", id }: Props) {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center"><CheckCircle2 size={18} /></div>
-                  <h3 className="text-lg font-bold text-gray-900">Approve &amp; Complete Job</h3>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    {role === "supervisor" ? "Approve for Admin Review" : "Complete Job"}
+                  </h3>
                 </div>
                 <button onClick={() => setApproveOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
               </div>
               {jobApproved ? (
                 <div className="py-6 text-center">
                   <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3"><CheckCircle2 size={28} /></div>
-                  <div className="text-base font-bold text-gray-900">Job approved &amp; marked complete</div>
-                  <div className="text-xs text-gray-500 mt-1">The user has been notified.</div>
+                  <div className="text-base font-bold text-gray-900">
+                    {role === "supervisor" ? "Sent to admin for completion" : "Job marked complete"}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {role === "supervisor" ? "Admins have been notified." : "The worker has been notified."}
+                  </div>
                 </div>
               ) : (
                 <>
-                  <p className="text-sm text-gray-600 mb-4">Confirm that the deliverables, checklist and time logs all look good. The job will be marked <b>Completed</b> and the user notified.</p>
+                  <p className="text-sm text-gray-600 mb-4">
+                    {role === "supervisor"
+                      ? "Confirm the deliverables look good. The job will move to admin/super-admin for final completion."
+                      : "Confirm that the deliverables, checklist and time logs all look good. The job will be marked Completed and the worker notified."}
+                  </p>
                   <div className="space-y-2 mb-5 text-xs">
                     <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> Checklist reviewed ({checklist.filter((c) => c.status === "completed").length}/{checklist.length} done)</div>
                     <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> {attachments.filter((a) => (a.uploadedBy?.role ?? "supervisor") === "user").length} completed file(s) submitted</div>
@@ -2113,20 +2183,30 @@ export default function JobDetail({ role = "user", id }: Props) {
                       onClick={async () => {
                         if (job?.id) {
                           try {
-                            await updateJobMutation.mutateAsync({ id: job.id, data: { status: "completed" as any } });
+                            const action = role === "supervisor" ? "supervisor_approve" : "admin_complete";
+                            const res = await fetch(`/api/jobs/${job.id}/review`, {
+                              method: "POST",
+                              credentials: "include",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ action }),
+                            });
+                            if (!res.ok) {
+                              const data = await res.json().catch(() => ({}));
+                              throw new Error((data as any).error || "Failed to approve job");
+                            }
                             await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
                             await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                            setJobApproved(true);
+                            setTimeout(() => { setApproveOpen(false); setJobApproved(false); }, 1400);
                           } catch (err) {
-                            const msg = err instanceof ApiError ? err.message : "Failed to complete job";
+                            const msg = err instanceof Error ? err.message : "Failed to approve job";
                             console.error(msg);
                           }
                         }
-                        setJobApproved(true);
-                        setTimeout(() => { setApproveOpen(false); }, 1400);
                       }}
                       className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2"
                     >
-                      <CheckCircle2 size={14} /> Approve
+                      <CheckCircle2 size={14} /> {role === "supervisor" ? "Approve" : "Complete"}
                     </button>
                   </div>
                 </>

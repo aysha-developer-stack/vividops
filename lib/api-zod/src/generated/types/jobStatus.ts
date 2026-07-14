@@ -11,6 +11,9 @@ export type JobStatus = (typeof JobStatus)[keyof typeof JobStatus];
 export const JobStatus = {
   pending: "pending",
   in_progress: "in_progress",
+  awaiting_supervisor: "awaiting_supervisor",
+  awaiting_admin: "awaiting_admin",
   completed: "completed",
   cancelled: "cancelled",
+  rework: "rework",
 } as const;

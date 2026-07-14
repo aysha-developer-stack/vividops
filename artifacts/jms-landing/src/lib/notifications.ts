@@ -1,6 +1,6 @@
 import { 
   Briefcase, Edit3, AlertTriangle, Clock, RefreshCw, Bell, 
-  ListChecks, Folder, GraduationCap, BarChart3,
+  ListChecks, Folder, GraduationCap, BarChart3, CheckCircle2,
   type LucideIcon 
 } from "lucide-react";
 import type { Role } from "./roles";
@@ -16,7 +16,8 @@ export type NotifType =
   | "file"
   | "training"
   | "error"
-  | "progress";
+  | "progress"
+  | "completed";
 
 /** Client-spec priority: urgent job alerts first, then assignments, timer, rework, messages, reports. */
 export const NOTIFICATION_PRIORITY: Record<string, number> = {
@@ -28,9 +29,10 @@ export const NOTIFICATION_PRIORITY: Record<string, number> = {
   updated: 5,
   job_message: 6,
   checklist: 7,
-  file: 8,
-  training: 9,
-  progress: 10,
+  completed: 8,
+  file: 9,
+  training: 10,
+  progress: 11,
 };
 
 export const sortNotificationsByPriority = <T extends { type: string; unread?: boolean; isRead?: boolean }>(
@@ -65,6 +67,7 @@ export const NOTIF_STYLE: Record<string, { icon: LucideIcon; color: string; labe
   rework: { icon: RefreshCw, color: "bg-orange-50 text-orange-600", label: "Rework" },
   job_message: { icon: Bell, color: "bg-sky-50 text-sky-600", label: "Message" },
   checklist: { icon: ListChecks, color: "bg-emerald-50 text-emerald-600", label: "Checklist" },
+  completed: { icon: CheckCircle2, color: "bg-emerald-50 text-emerald-700", label: "Completed" },
   file: { icon: Folder, color: "bg-indigo-50 text-indigo-600", label: "File" },
   training: { icon: GraduationCap, color: "bg-rose-50 text-rose-600", label: "Training" },
   error: { icon: AlertTriangle, color: "bg-red-100 text-red-700", label: "Error" },

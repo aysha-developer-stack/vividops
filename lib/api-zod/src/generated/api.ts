@@ -346,7 +346,7 @@ export const ListJobsResponseItem = zod.object({
   client: zod.string(),
   address: zod.string().nullish(),
   description: zod.string().nullish(),
-  status: zod.enum(["pending", "in_progress", "completed", "cancelled"]),
+  status: zod.enum(["pending", "in_progress", "awaiting_supervisor", "awaiting_admin", "completed", "cancelled", "rework"]),
   priority: zod.enum(["low", "medium", "high"]),
   progress: zod
     .number()
@@ -422,7 +422,7 @@ export const GetJobResponse = zod.object({
   client: zod.string(),
   address: zod.string().nullish(),
   description: zod.string().nullish(),
-  status: zod.enum(["pending", "in_progress", "completed", "cancelled"]),
+  status: zod.enum(["pending", "in_progress", "awaiting_supervisor", "awaiting_admin", "completed", "cancelled", "rework"]),
   priority: zod.enum(["low", "medium", "high"]),
   progress: zod
     .number()
@@ -482,7 +482,7 @@ export const UpdateJobBody = zod.object({
   description: zod.string().nullish(),
   priority: zod.enum(["low", "medium", "high"]).optional(),
   status: zod
-    .enum(["pending", "in_progress", "completed", "cancelled"])
+    .enum(["pending", "in_progress", "awaiting_supervisor", "awaiting_admin", "completed", "cancelled", "rework"])
     .optional(),
   assigneeId: zod.string().uuid().nullish(),
   supervisorId: zod.string().uuid().nullish(),
@@ -504,7 +504,7 @@ export const UpdateJobResponse = zod.object({
   client: zod.string(),
   address: zod.string().nullish(),
   description: zod.string().nullish(),
-  status: zod.enum(["pending", "in_progress", "completed", "cancelled"]),
+  status: zod.enum(["pending", "in_progress", "awaiting_supervisor", "awaiting_admin", "completed", "cancelled", "rework"]),
   priority: zod.enum(["low", "medium", "high"]),
   progress: zod
     .number()
@@ -606,7 +606,7 @@ export const GetDashboardStatsResponse = zod.object({
       client: zod.string(),
       address: zod.string().nullish(),
       description: zod.string().nullish(),
-      status: zod.enum(["pending", "in_progress", "completed", "cancelled"]),
+      status: zod.enum(["pending", "in_progress", "awaiting_supervisor", "awaiting_admin", "completed", "cancelled", "rework"]),
       priority: zod.enum(["low", "medium", "high"]),
       progress: zod
         .number()
@@ -662,7 +662,7 @@ export const GetDashboardSupervisorResponse = zod.object({
       client: zod.string(),
       address: zod.string().nullish(),
       description: zod.string().nullish(),
-      status: zod.enum(["pending", "in_progress", "completed", "cancelled"]),
+      status: zod.enum(["pending", "in_progress", "awaiting_supervisor", "awaiting_admin", "completed", "cancelled", "rework"]),
       priority: zod.enum(["low", "medium", "high"]),
       progress: zod
         .number()

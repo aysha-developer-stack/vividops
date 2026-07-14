@@ -29,6 +29,7 @@ const FILTERS: Array<{ id: "all" | "unread" | NotifType; label: string }> = [
   { id: "job_message", label: "Messages" },
   { id: "rework", label: "Rework" },
   { id: "checklist", label: "Checklist" },
+  { id: "completed", label: "Completed" },
   { id: "file", label: "Files" },
   { id: "training", label: "Training" },
   { id: "error", label: "Errors" },

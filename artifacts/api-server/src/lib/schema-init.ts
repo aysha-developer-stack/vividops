@@ -43,6 +43,15 @@ export async function ensureJobWriteSchema() {
       WHERE job_number IS NOT NULL
     `);
 
+    // Review pipeline statuses (safe if already present)
+    for (const value of ["awaiting_supervisor", "awaiting_admin", "rework"] as const) {
+      try {
+        await db.execute(sql.raw(`ALTER TYPE job_status ADD VALUE IF NOT EXISTS '${value}'`));
+      } catch (err) {
+        logger.warn({ err, value }, "job_status enum value may already exist");
+      }
+    }
+
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS job_members (
         id uuid PRIMARY KEY,

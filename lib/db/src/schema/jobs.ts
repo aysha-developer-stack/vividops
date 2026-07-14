@@ -15,6 +15,8 @@ export const jobPriorityEnum = pgEnum("job_priority", ["low", "medium", "high"])
 export const jobStatusEnum = pgEnum("job_status", [
   "pending",
   "in_progress",
+  "awaiting_supervisor",
+  "awaiting_admin",
   "completed",
   "cancelled",
   "rework",

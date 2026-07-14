@@ -1,7 +1,7 @@
 import { db, userSettings, eq, and, gte, notifications, users } from "@workspace/db";
 import { logger } from "./logger";
 
-export type NotificationType = "assigned" | "updated" | "overdue" | "timer" | "rework" | "job_message" | "checklist" | "file" | "training" | "progress" | "error";
+export type NotificationType = "assigned" | "updated" | "overdue" | "timer" | "rework" | "job_message" | "checklist" | "file" | "training" | "progress" | "error" | "completed";
 
 export interface CreateNotificationOptions {
   userId: string;

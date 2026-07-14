@@ -16,10 +16,13 @@ import {
 import { requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { createNotification } from "../lib/notifications";
+import { ensureJobWriteSchema } from "../lib/schema-init";
 
 const router: IRouter = Router();
 
-const ensureSchema = async () => {};
+const ensureSchema = async () => {
+  await ensureJobWriteSchema();
+};
 
 async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
@@ -272,34 +275,40 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         const done = rows.filter((r) => r.status === "completed").length;
         const nextProgress = Math.round((done / total) * 100);
         const hasRework = rows.some((r) => r.status === "rework");
-        const nextStatus = hasRework ? "rework" : nextProgress >= 100 ? "completed" : nextProgress > 0 ? "in_progress" : "pending";
+        // Worker checklist 100% → supervisor review (not final completed)
+        const nextStatus = hasRework
+          ? "rework"
+          : nextProgress >= 100
+            ? "awaiting_supervisor"
+            : nextProgress > 0
+              ? "in_progress"
+              : "pending";
+        const previousStatus = job.status;
         await db
           .update(jobs)
           .set({
             progress: nextProgress,
             status: nextStatus as any,
-            completedAt: nextStatus === "completed" ? new Date() : null,
+            completedAt: null,
             updatedAt: new Date(),
           })
           .where(eq(jobs.id, jobId));
 
-        // Notify Supervisor on Completion
-        if (nextStatus === "completed" && job.supervisorId) {
-          await createNotification({
-            userId: job.supervisorId,
-            jobId: jobId,
-            title: `Checklist Completed: ${job.title}`,
-            description: `Checklist for job ${job.title} has been completed by ${actor.name}.`,
-            type: "checklist"
-          });
-        }
-
-        if (nextStatus === "completed" && targetUserId !== actor.id) {
+        if (nextStatus === "awaiting_supervisor" && previousStatus !== "awaiting_supervisor") {
+          if (job.supervisorId) {
+            await createNotification({
+              userId: job.supervisorId,
+              jobId: jobId,
+              title: `Ready for Supervisor Review: ${job.title}`,
+              description: `Checklist for job ${job.title} has been completed by ${actor.name}. Please review.`,
+              type: "checklist",
+            });
+          }
           await createNotification({
             userId: targetUserId,
             jobId,
-            title: `Checklist Completed: ${job.title}`,
-            description: `Your checklist for ${job.title} is complete and ready for review.`,
+            title: `Submitted for Review: ${job.title}`,
+            description: `Your checklist for ${job.title} is complete and awaiting supervisor review.`,
             type: "checklist",
           });
         }

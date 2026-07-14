@@ -739,7 +739,16 @@ components:
 
     JobStatus:
       type: string
-      enum: [pending, in_progress, completed, cancelled]
+      enum:
+        [
+          pending,
+          in_progress,
+          awaiting_supervisor,
+          awaiting_admin,
+          completed,
+          cancelled,
+          rework,
+        ]
 
     JobPriority:
       type: string

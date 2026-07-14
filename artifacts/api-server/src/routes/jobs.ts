@@ -16,6 +16,13 @@ import {
   ensureJobWriteSchema,
   ensureLegacySupervisorAssignments,
 } from "../lib/schema-init";
+import {
+  applyJobReview,
+  coerceCompletionStatus,
+  notifyStatusTransition,
+  type JobReviewAction,
+  type ReviewableStatus,
+} from "../lib/job-review";
 
 import { shouldSendNotification } from "../lib/notifications";
 
@@ -1701,6 +1708,13 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "Job number already exists" });
   }
 
+  const previousStatus = full.job.status;
+  let nextStatus: ReviewableStatus | undefined =
+    body.status !== undefined ? (body.status as ReviewableStatus) : undefined;
+  if (nextStatus === "completed") {
+    nextStatus = coerceCompletionStatus(actor, isManager);
+  }
+
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (body.jobNumber !== undefined) patch.jobNumber = jobNumber;
   if (body.title !== undefined) patch.title = body.title;
@@ -1708,9 +1722,9 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   if (body.address !== undefined) patch.address = body.address;
   if (body.description !== undefined) patch.description = body.description;
   if (body.priority !== undefined) patch.priority = body.priority;
-  if (body.status !== undefined) {
-    patch.status = body.status;
-    if (body.status === "completed") {
+  if (nextStatus !== undefined) {
+    patch.status = nextStatus;
+    if (nextStatus === "completed") {
       patch.completedAt = new Date();
       patch.progress = 100;
     } else {
@@ -1730,6 +1744,15 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   await db.update(jobs).set(patch).where(eq(jobs.id, id));
   const after = await loadJob(id);
   if (after) {
+    if (nextStatus !== undefined && nextStatus !== previousStatus) {
+      await notifyStatusTransition({
+        actor,
+        job: after.job,
+        previousStatus,
+        nextStatus,
+      });
+    }
+
     // Check for reassignment
     if (body.assigneeId !== undefined && body.assigneeId !== oldAssigneeId) {
       if (oldAssigneeId) {
@@ -1796,6 +1819,48 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     });
   }
   return res.json(await toPublicWithAssignees(after!));
+});
+
+router.post("/jobs/:id/review", requireAuth, async (req, res) => {
+  try {
+    await ensureJobWriteSchema();
+    const id = req.params.id as string;
+    const actor = req.session!.user;
+    const action = req.body?.action as JobReviewAction | undefined;
+    const reason = typeof req.body?.reason === "string" ? req.body.reason : null;
+    const allowed: JobReviewAction[] = [
+      "submit_for_supervisor",
+      "supervisor_approve",
+      "admin_complete",
+      "rework",
+    ];
+    if (!action || !allowed.includes(action)) {
+      return res.status(400).json({ error: "Invalid review action" });
+    }
+
+    const full = await loadJob(id);
+    if (!full) return res.status(404).json({ error: "Job not found" });
+    if (!(await canViewJob(actor, full.job))) {
+      return res.status(403).json({ error: "You cannot review this job" });
+    }
+
+    const result = await applyJobReview({
+      actor,
+      job: full.job,
+      action,
+      reason,
+      canManage: canManageJob(actor, full.job),
+    });
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error });
+    }
+
+    const after = await loadJob(id);
+    return res.json(await toPublicWithAssignees(after!));
+  } catch (err) {
+    logger.error({ err }, "Failed to review job");
+    return res.status(500).json({ error: "Failed to review job" });
+  }
 });
 
 router.delete("/jobs/:id", creatorRole, async (req, res) => {

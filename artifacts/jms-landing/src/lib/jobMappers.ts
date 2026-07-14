@@ -1,11 +1,20 @@
 import type { Job as ApiJob, JobStatus, JobPriority } from "@workspace/api-client-react";
 
-export type UiStatus = "Pending" | "In Progress" | "Completed" | "Overdue" | "Rework";
+export type UiStatus =
+  | "Pending"
+  | "In Progress"
+  | "Awaiting Supervisor"
+  | "Awaiting Admin"
+  | "Completed"
+  | "Overdue"
+  | "Rework";
 export type UiPriority = "Low" | "Medium" | "High";
 
 const STATUS_API_TO_UI: Record<string, UiStatus> = {
   pending: "Pending",
   in_progress: "In Progress",
+  awaiting_supervisor: "Awaiting Supervisor",
+  awaiting_admin: "Awaiting Admin",
   completed: "Completed",
   cancelled: "Pending",
   rework: "Rework",
@@ -20,6 +29,8 @@ const PRIORITY_API_TO_UI: Record<JobPriority, UiPriority> = {
 export const STATUS_UI_TO_API: Record<Exclude<UiStatus, "Overdue">, string> = {
   Pending: "pending",
   "In Progress": "in_progress",
+  "Awaiting Supervisor": "awaiting_supervisor",
+  "Awaiting Admin": "awaiting_admin",
   Completed: "completed",
   Rework: "rework",
 };
@@ -32,7 +43,7 @@ export const PRIORITY_UI_TO_API: Record<UiPriority, JobPriority> = {
 
 export function statusToUi(j: ApiJob): UiStatus {
   if (j.isOverdue) return "Overdue";
-  return STATUS_API_TO_UI[j.status];
+  return STATUS_API_TO_UI[j.status] ?? "Pending";
 }
 
 export function priorityToUi(p: JobPriority): UiPriority {
