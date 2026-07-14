@@ -1491,66 +1491,88 @@ export default function JobDetail({ role = "user", id }: Props) {
                     </div>
 
                     <div>
-                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Checklist Files</div>
-                      {(selectedChecklistItem.files ?? []).length === 0 ? (
-                        <p className="text-[11px] text-gray-400 mb-3">No files attached to this checklist item yet.</p>
-                      ) : (
-                        <div className="space-y-2 mb-3">
-                          {(selectedChecklistItem.files ?? []).map((f) => (
-                            <div key={f.id} className="flex items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
-                              <FileText size={14} className="text-primary shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <div className="text-xs font-semibold text-gray-900 truncate">{f.fileName}</div>
-                                <div className="text-[10px] text-gray-500">{f.uploadedBy?.name ?? "—"}</div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => openAttachmentPreview({
-                                  id: f.id,
-                                  jobId: job?.id ?? "",
-                                  fileName: f.fileName,
-                                  fileKey: "",
-                                  fileUrl: f.fileUrl,
-                                  fileType: f.fileType,
-                                  fileSize: f.fileSize,
-                                  uploadedById: f.uploadedBy?.id ?? "",
-                                  createdAt: f.createdAt,
-                                  uploadedBy: f.uploadedBy,
-                                })}
-                                className="p-1.5 text-gray-400 hover:text-primary rounded-lg"
-                                title="Preview"
-                              >
-                                <Eye size={14} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => downloadAttachment({
-                                  id: f.id,
-                                  jobId: job?.id ?? "",
-                                  fileName: f.fileName,
-                                  fileKey: "",
-                                  fileUrl: f.fileUrl,
-                                  fileType: f.fileType,
-                                  fileSize: f.fileSize,
-                                  uploadedById: f.uploadedBy?.id ?? "",
-                                  createdAt: f.createdAt,
-                                  uploadedBy: f.uploadedBy,
-                                })}
-                                className="p-1.5 text-gray-400 hover:text-primary rounded-lg"
-                                title="Download"
-                              >
-                                <Download size={14} />
-                              </button>
+                      {(() => {
+                        const allFiles = selectedChecklistItem.files ?? [];
+                        const instructionFiles = allFiles.filter((f) => (f.uploadedBy?.role ?? "supervisor") !== "user");
+                        const completedFiles = allFiles.filter((f) => (f.uploadedBy?.role ?? "supervisor") === "user");
+                        const renderFileRow = (f: ChecklistFileApi) => (
+                          <div key={f.id} className="flex items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                            <FileText size={14} className="text-primary shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-semibold text-gray-900 truncate">{f.fileName}</div>
+                              <div className="text-[10px] text-gray-500">{f.uploadedBy?.name ?? "—"}</div>
                             </div>
-                          ))}
-                        </div>
+                            <button
+                              type="button"
+                              onClick={() => openAttachmentPreview({
+                                id: f.id,
+                                jobId: job?.id ?? "",
+                                fileName: f.fileName,
+                                fileKey: "",
+                                fileUrl: f.fileUrl,
+                                fileType: f.fileType,
+                                fileSize: f.fileSize,
+                                uploadedById: f.uploadedBy?.id ?? "",
+                                createdAt: f.createdAt,
+                                uploadedBy: f.uploadedBy,
+                              })}
+                              className="p-1.5 text-gray-400 hover:text-primary rounded-lg"
+                              title="Preview"
+                            >
+                              <Eye size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => downloadAttachment({
+                                id: f.id,
+                                jobId: job?.id ?? "",
+                                fileName: f.fileName,
+                                fileKey: "",
+                                fileUrl: f.fileUrl,
+                                fileType: f.fileType,
+                                fileSize: f.fileSize,
+                                uploadedById: f.uploadedBy?.id ?? "",
+                                createdAt: f.createdAt,
+                                uploadedBy: f.uploadedBy,
+                              })}
+                              className="p-1.5 text-gray-400 hover:text-primary rounded-lg"
+                              title="Download"
+                            >
+                              <Download size={14} />
+                            </button>
+                          </div>
+                        );
+                        return (
+                          <>
+                            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Task files</div>
+                            {instructionFiles.length === 0 ? (
+                              <p className="text-[11px] text-gray-400 mb-3">No instruction file for this task.</p>
+                            ) : (
+                              <div className="space-y-2 mb-4">{instructionFiles.map(renderFileRow)}</div>
+                            )}
+
+                            <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider mb-2">Completed uploads</div>
+                            {completedFiles.length === 0 ? (
+                              <p className="text-[11px] text-gray-400 mb-3">No worker completion files yet.</p>
+                            ) : (
+                              <div className="space-y-2 mb-3">{completedFiles.map(renderFileRow)}</div>
+                            )}
+                          </>
+                        );
+                      })()}
+                      {(role === "user" || role === "super-admin" || role === "admin" || role === "supervisor") && (
+                        <button
+                          onClick={() => handleChecklistUpload(selectedChecklistItem.id)}
+                          className={`w-full py-2 text-white text-[11px] font-bold rounded-lg shadow-md flex items-center justify-center gap-2 ${
+                            role === "user"
+                              ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
+                              : "bg-primary shadow-primary/20"
+                          }`}
+                        >
+                          <Upload size={12} />
+                          {role === "user" ? "Upload Completed File" : "Upload Task File"}
+                        </button>
                       )}
-                      <button
-                        onClick={() => handleChecklistUpload(selectedChecklistItem.id)}
-                        className="w-full py-2 bg-primary text-white text-[11px] font-bold rounded-lg shadow-md shadow-primary/20 flex items-center justify-center gap-2"
-                      >
-                        <Upload size={12} /> Upload Checklist File
-                      </button>
                     </div>
 
                     {selectedChecklistItem.attachmentRequired && (
