@@ -241,10 +241,15 @@ export default function JobManagement(
   const [editLoading, setEditLoading] = useState(false);
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [checklistTemplate, setChecklistTemplate] = useState<ChecklistTemplateItem[]>([]);
+  const [savedTemplates, setSavedTemplates] = useState<Array<{ id: string; name: string; items: ChecklistTemplateItem[] }>>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [templateName, setTemplateName] = useState("");
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const [checkText, setCheckText] = useState("");
   const [checkDesc, setCheckDesc] = useState("");
   const [checkNeedsFile, setCheckNeedsFile] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const assigneeMenuRef = useRef<HTMLDivElement>(null);
@@ -417,8 +422,37 @@ export default function JobManagement(
   const onFilesPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
     const picked = Array.from(e.target.files ?? []);
     if (picked.length === 0) return;
-    setJobFiles([...jobFiles, ...picked]);
+    setJobFiles((prev) => [...prev, ...picked]);
     e.target.value = "";
+  };
+  const addDroppedFiles = (fileList: FileList | File[]) => {
+    const picked = Array.from(fileList).filter((f) => f && typeof f.name === "string");
+    if (picked.length === 0) return;
+    setJobFiles((prev) => [...prev, ...picked]);
+  };
+  const onFilesDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (Array.from(e.dataTransfer.types).includes("Files")) setIsDraggingFiles(true);
+  };
+  const onFilesDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+    if (!isDraggingFiles) setIsDraggingFiles(true);
+  };
+  const onFilesDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const next = e.relatedTarget as Node | null;
+    if (next && e.currentTarget.contains(next)) return;
+    setIsDraggingFiles(false);
+  };
+  const onFilesDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingFiles(false);
+    if (e.dataTransfer.files?.length) addDroppedFiles(e.dataTransfer.files);
   };
   const removeJobFile = (idx: number) => {
     setJobFiles(jobFiles.filter((_, i) => i !== idx));
@@ -437,6 +471,47 @@ export default function JobManagement(
   };
   const removeChecklistItem = (idx: number) => {
     setChecklistTemplate(checklistTemplate.filter((_, i) => i !== idx));
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/checklist-templates", { credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as Array<{ id: string; name: string; items: ChecklistTemplateItem[] }>;
+        if (!cancelled && Array.isArray(data)) setSavedTemplates(data);
+      } catch {
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [modalOpen]);
+
+  const applySavedTemplate = () => {
+    const selected = savedTemplates.find((t) => t.id === selectedTemplateId);
+    if (!selected) return;
+    setChecklistTemplate(Array.isArray(selected.items) ? selected.items : []);
+  };
+
+  const saveCurrentAsTemplate = async () => {
+    const name = templateName.trim();
+    if (!name || checklistTemplate.length === 0) return;
+    setSavingTemplate(true);
+    try {
+      const res = await fetch("/api/checklist-templates", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, items: checklistTemplate }),
+      });
+      if (!res.ok) return;
+      const created = (await res.json()) as { id: string; name: string; items: ChecklistTemplateItem[] };
+      setSavedTemplates((prev) => [created, ...prev]);
+      setSelectedTemplateId(created.id);
+      setTemplateName("");
+    } finally {
+      setSavingTemplate(false);
+    }
   };
 
   const filtered = jobs.filter((j) =>
@@ -1001,6 +1076,46 @@ export default function JobManagement(
                 <div className="space-y-4 md:border-l md:border-gray-100 md:pl-6">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Checklist</div>
 
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Saved templates</div>
+                    <div className="flex gap-2">
+                      <select
+                        value={selectedTemplateId}
+                        onChange={(e) => setSelectedTemplateId(e.target.value)}
+                        className="flex-1 px-3 py-2 bg-white border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary"
+                      >
+                        <option value="">Select template</option>
+                        {savedTemplates.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={applySavedTemplate}
+                        disabled={!selectedTemplateId}
+                        className="px-3 py-2 rounded-xl text-xs font-semibold bg-white border-2 border-gray-200 text-gray-700 disabled:opacity-50"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        value={templateName}
+                        onChange={(e) => setTemplateName(e.target.value)}
+                        placeholder="Save current as template name"
+                        className="flex-1 px-3 py-2 bg-white border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary"
+                      />
+                      <button
+                        type="button"
+                        onClick={saveCurrentAsTemplate}
+                        disabled={!templateName.trim() || checklistTemplate.length === 0 || savingTemplate}
+                        className="px-3 py-2 rounded-xl text-xs font-semibold bg-primary text-white disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                     <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                       <div className="text-xs font-bold text-gray-900">Items</div>
@@ -1096,13 +1211,23 @@ export default function JobManagement(
                     tabIndex={0}
                     onClick={() => fileInputRef.current?.click()}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click(); }}
-                    className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center cursor-pointer transition-colors hover:bg-blue-50/40 hover:border-primary/40"
+                    onDragEnter={onFilesDragEnter}
+                    onDragOver={onFilesDragOver}
+                    onDragLeave={onFilesDragLeave}
+                    onDrop={onFilesDrop}
+                    className={`rounded-xl border-2 border-dashed px-4 py-6 text-center cursor-pointer transition-colors ${
+                      isDraggingFiles
+                        ? "border-primary bg-primary/10"
+                        : "border-gray-200 bg-gray-50 hover:bg-blue-50/40 hover:border-primary/40"
+                    }`}
                   >
                     <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-2">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
                     </div>
-                    <div className="text-xs font-semibold text-gray-700">Upload drawings, instructions, site photos, or client docs</div>
-                    <div className="text-[10px] text-gray-500 mt-1">These appear in Job Detail → Files tab for the assigned user</div>
+                    <div className="text-xs font-semibold text-gray-700">
+                      {isDraggingFiles ? "Drop files here" : "Drag & drop files here, or click to browse"}
+                    </div>
+                    <div className="text-[10px] text-gray-500 mt-1">Drawings, instructions, site photos, or client docs · appear in Job Detail → Files</div>
                   </div>
                   {jobFiles.length > 0 && (
                     <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">

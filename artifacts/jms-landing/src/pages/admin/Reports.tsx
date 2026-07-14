@@ -8,6 +8,7 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
+import { formatMistakeCategory } from "@/lib/mistakeCategories";
 import logoImg from "@assets/vv_1778503190047.png";
 import { useAuth } from "@/lib/auth";
 import {
@@ -54,6 +55,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     createdById: string;
     title: string;
     description: string;
+    category?: string;
     severity: "low" | "medium" | "high";
     status: "open" | "resolved";
     createdAt: string;
@@ -63,6 +65,12 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     createdBy: { id: string; name: string } | null;
   }>>([]);
   const [errorsLoading, setErrorsLoading] = useState(false);
+  const [mistakeAnalytics, setMistakeAnalytics] = useState<{
+    byUser: Array<{ userId: string; name: string; count: number; openCount: number }>;
+    byCategory: Array<{ category: string; count: number }>;
+    total: number;
+    open: number;
+  } | null>(null);
   const [selectedError, setSelectedError] = useState<(typeof errorReports)[number] | null>(null);
   const [updatingError, setUpdatingError] = useState(false);
   const [jobMemberships, setJobMemberships] = useState<Record<string, string[]>>({});
@@ -94,11 +102,18 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     setErrorsLoading(true);
     (async () => {
       try {
-        const res = await fetch("/api/error-reports", { credentials: "include" });
-        if (!res.ok) return;
-        const data = (await res.json()) as unknown;
-        if (!Array.isArray(data)) return;
-        if (!cancelled) setErrorReports(data as any[]);
+        const [reportsRes, analyticsRes] = await Promise.all([
+          fetch("/api/error-reports", { credentials: "include" }),
+          fetch("/api/error-reports/analytics", { credentials: "include" }),
+        ]);
+        if (reportsRes.ok) {
+          const data = (await reportsRes.json()) as unknown;
+          if (Array.isArray(data) && !cancelled) setErrorReports(data as any[]);
+        }
+        if (analyticsRes.ok) {
+          const analytics = await analyticsRes.json();
+          if (!cancelled) setMistakeAnalytics(analytics);
+        }
       } catch {
       } finally {
         if (!cancelled) setErrorsLoading(false);
@@ -1157,6 +1172,33 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 
               {activeTab === "errors" && (
                 <div className="space-y-2">
+                  {mistakeAnalytics && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                      <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                        <p className="text-[10px] uppercase font-bold text-gray-500">Total mistakes</p>
+                        <p className="text-xl font-bold text-gray-900">{mistakeAnalytics.total}</p>
+                        <p className="text-xs text-amber-700">{mistakeAnalytics.open} open</p>
+                      </div>
+                      <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                        <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Who errs most</p>
+                        {(mistakeAnalytics.byUser ?? []).slice(0, 3).map((u) => (
+                          <div key={u.userId} className="flex justify-between text-xs gap-2">
+                            <span className="truncate text-gray-700">{u.name}</span>
+                            <span className="font-semibold text-red-600">{u.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                        <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Mistake types</p>
+                        {(mistakeAnalytics.byCategory ?? []).slice(0, 3).map((c) => (
+                          <div key={c.category} className="flex justify-between text-xs gap-2">
+                            <span className="truncate text-gray-700">{formatMistakeCategory(c.category)}</span>
+                            <span className="font-semibold text-gray-900">{c.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {filteredErrors.length === 0 && <div className="text-center py-8 text-sm text-gray-400">No errors match current filters.</div>}
                   {errorsP.pageItems.map((e, i) => (
                     <motion.div
@@ -1177,7 +1219,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                           <span className="text-xs text-gray-400 font-mono">{e.jobNumber ?? e.id}</span>
                         </div>
                         <div className="text-xs text-gray-500 mt-0.5">
-                          {e.user?.name ?? "—"} · {e.jobTitle ?? "—"} · {new Date(e.createdAt).toLocaleString()}
+                          {e.user?.name ?? "—"} · {formatMistakeCategory(e.category)} · {e.jobTitle ?? "—"} · {new Date(e.createdAt).toLocaleString()}
                         </div>
                       </div>
                       <span className={`px-2 py-1 rounded-lg border text-[10px] font-semibold uppercase ${e.status === "resolved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-700 border-gray-200"}`}>{e.status}</span>

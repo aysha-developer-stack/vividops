@@ -168,6 +168,28 @@ const FILE_ICON: Record<FileItem["type"], string> = {
   pdf: "bg-red-50 text-red-600",
 };
 
+function attachmentExtension(name: string): string {
+  return name.split(".").pop()?.toLowerCase() ?? "";
+}
+
+function canPreviewAttachment(fileName: string, fileType?: string | null): boolean {
+  const ext = attachmentExtension(fileName);
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "pdf", "txt"].includes(ext)) return true;
+  const mime = (fileType || "").toLowerCase();
+  return mime.startsWith("image/") || mime === "application/pdf" || mime.startsWith("text/");
+}
+
+function fileTypeLabel(name: string): string {
+  const ext = attachmentExtension(name);
+  if (["png", "jpg", "jpeg", "gif", "svg", "webp"].includes(ext)) return "Image";
+  if (ext === "pdf") return "PDF";
+  if (["zip", "rar", "7z"].includes(ext)) return "Archive";
+  if (["doc", "docx"].includes(ext)) return "Word";
+  if (["xls", "xlsx", "csv"].includes(ext)) return "Spreadsheet";
+  if (ext === "txt") return "Text";
+  return ext ? ext.toUpperCase() : "File";
+}
+
 function formatTime(s: number) {
   return `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
@@ -282,6 +304,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [autoStopCountdown, setAutoStopCountdown] = useState(300);
   const [fileSubTab, setFileSubTab] = useState<"input" | "output" | "notes">("input");
   const [fileSearch, setFileSearch] = useState("");
+  const [previewAttachment, setPreviewAttachment] = useState<AttachmentApi | null>(null);
   const [notes, setNotes] = useState(INITIAL_NOTES);
   const [noteDraft, setNoteDraft] = useState("");
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
@@ -788,10 +811,24 @@ export default function JobDetail({ role = "user", id }: Props) {
   const reuploadGroupRef = useRef<string | null>(null);
   const formatSize = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   const detectType = (name: string): FileItem["type"] => {
-    const ext = name.split(".").pop()?.toLowerCase() ?? "";
+    const ext = attachmentExtension(name);
     if (["png", "jpg", "jpeg", "gif", "svg", "webp"].includes(ext)) return "image";
-    if (["doc", "docx", "xls", "xlsx", "csv", "txt"].includes(ext)) return "doc";
-    return "pdf";
+    if (ext === "pdf") return "pdf";
+    return "doc";
+  };
+  const attachmentViewUrl = (attachmentId: string, asAttachment = false) =>
+    `/api/jobs/${job?.id}/attachments/${attachmentId}/view?disposition=${asAttachment ? "attachment" : "inline"}`;
+  const downloadAttachment = (attachment: AttachmentApi) => {
+    if (!job?.id) return;
+    window.open(attachmentViewUrl(attachment.id, true), "_blank", "noopener,noreferrer");
+  };
+  const openAttachmentPreview = (attachment: AttachmentApi) => {
+    if (!job?.id) return;
+    if (!canPreviewAttachment(attachment.fileName, attachment.fileType)) {
+      window.alert("This file type cannot be previewed in the browser. Please use Download.");
+      return;
+    }
+    setPreviewAttachment(attachment);
   };
   const handleUpload = (tag: FileItem["tag"]) => {
     if (tag === "input") inputPickerRef.current?.click();
@@ -1448,11 +1485,11 @@ export default function JobDetail({ role = "user", id }: Props) {
                             </td>
                             <td className="px-6 py-4 text-xs text-gray-600">{who}</td>
                             <td className="px-6 py-4 text-xs text-gray-600">{when}</td>
-                            <td className="px-6 py-4 text-xs uppercase font-bold text-gray-400">{t}</td>
+                            <td className="px-6 py-4 text-xs uppercase font-bold text-gray-400">{fileTypeLabel(a.fileName)}</td>
                             <td className="px-6 py-4 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                <button onClick={() => window.open(a.fileUrl, "_blank", "noopener,noreferrer")} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="View"><Eye size={14} /></button>
-                                <button onClick={() => window.open(a.fileUrl, "_blank", "noopener,noreferrer")} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
+                                <button onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
+                                <button onClick={() => downloadAttachment(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
                               </div>
                             </td>
                           </tr>
@@ -1507,8 +1544,8 @@ export default function JobDetail({ role = "user", id }: Props) {
                             </td>
                             <td className="px-6 py-4 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                <button onClick={() => window.open(a.fileUrl, "_blank", "noopener,noreferrer")} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="View"><Eye size={14} /></button>
-                                <button onClick={() => window.open(a.fileUrl, "_blank", "noopener,noreferrer")} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
+                                <button onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
+                                <button onClick={() => downloadAttachment(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
                               </div>
                             </td>
                           </tr>
@@ -1959,6 +1996,68 @@ export default function JobDetail({ role = "user", id }: Props) {
             >
               Start
             </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!previewAttachment} onOpenChange={(open) => !open && setPreviewAttachment(null)}>
+        <DialogContent className="max-w-5xl w-[95vw]">
+          <DialogHeader>
+            <DialogTitle>{previewAttachment?.fileName ?? "File preview"}</DialogTitle>
+            <DialogDescription>Preview opens inside Vivid OPS. Use Download to save the file.</DialogDescription>
+          </DialogHeader>
+          {previewAttachment && job?.id && (
+            <div className="max-h-[75vh] overflow-auto rounded-xl border border-gray-100 bg-gray-50">
+              {(() => {
+                const ext = attachmentExtension(previewAttachment.fileName);
+                const url = attachmentViewUrl(previewAttachment.id, false);
+                if (
+                  ["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext) ||
+                  (previewAttachment.fileType || "").startsWith("image/")
+                ) {
+                  return (
+                    <img
+                      src={url}
+                      alt={previewAttachment.fileName}
+                      className="max-w-full mx-auto block"
+                    />
+                  );
+                }
+                if (ext === "pdf" || previewAttachment.fileType === "application/pdf") {
+                  return (
+                    <iframe
+                      src={url}
+                      title={previewAttachment.fileName}
+                      className="w-full h-[75vh] bg-white"
+                    />
+                  );
+                }
+                if (ext === "txt" || (previewAttachment.fileType || "").startsWith("text/")) {
+                  return (
+                    <iframe
+                      src={url}
+                      title={previewAttachment.fileName}
+                      className="w-full h-[75vh] bg-white"
+                    />
+                  );
+                }
+                return (
+                  <div className="p-8 text-center text-sm text-gray-500">
+                    Preview is not available for this file type.
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+          <DialogFooter>
+            {previewAttachment && (
+              <button
+                type="button"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
+                onClick={() => previewAttachment && downloadAttachment(previewAttachment)}
+              >
+                Download
+              </button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

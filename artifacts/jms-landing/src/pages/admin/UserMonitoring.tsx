@@ -16,6 +16,11 @@ import {
 } from "@workspace/api-client-react";
 
 import type { Role } from "@/lib/roles";
+import {
+  MISTAKE_CATEGORIES,
+  formatMistakeCategory,
+  type MistakeCategory,
+} from "@/lib/mistakeCategories";
 
 interface Worker {
   id: string;
@@ -37,6 +42,9 @@ type ApiErrorReport = {
   createdById: string;
   title: string;
   description: string;
+  category?: string;
+  checklistItemId?: number | null;
+  source?: string;
   severity: "low" | "medium" | "high";
   status: "open" | "resolved";
   createdAt: string;
@@ -46,6 +54,13 @@ type ApiErrorReport = {
   jobTitle: string | null;
   user: { id: string; name: string; role: string } | null;
   createdBy: { id: string; name: string; role: string } | null;
+};
+
+type MistakeAnalytics = {
+  byUser: Array<{ userId: string; name: string; count: number; openCount: number }>;
+  byCategory: Array<{ category: string; count: number }>;
+  total: number;
+  open: number;
 };
 
 const SEVERITY: Record<"high" | "medium" | "low", string> = {
@@ -143,13 +158,22 @@ export default function UserMonitoring(
   const [selectedError, setSelectedError] = useState<ApiErrorReport | null>(null);
   const [updatingError, setUpdatingError] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [draft, setDraft] = useState<{ jobId: string; userId: string; title: string; severity: "low" | "medium" | "high"; desc: string }>({
+  const [draft, setDraft] = useState<{
+    jobId: string;
+    userId: string;
+    title: string;
+    severity: "low" | "medium" | "high";
+    desc: string;
+    category: MistakeCategory;
+  }>({
     jobId: "",
     userId: "",
     title: "",
     severity: "medium",
     desc: "",
+    category: "other",
   });
+  const [analytics, setAnalytics] = useState<MistakeAnalytics | null>(null);
 
   useEffect(() => {
     setTab(initialTab);
@@ -169,6 +193,21 @@ export default function UserMonitoring(
     })();
     return () => { cancelled = true; };
   }, [tab]);
+
+  useEffect(() => {
+    if (tab !== "errors") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/error-reports/analytics", { credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as MistakeAnalytics;
+        if (!cancelled) setAnalytics(data);
+      } catch {
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tab, errors]);
 
   useEffect(() => {
     let cancelled = false;
@@ -319,6 +358,8 @@ export default function UserMonitoring(
           title: draft.title.trim(),
           description: draft.desc.trim(),
           severity: draft.severity,
+          category: draft.category,
+          source: "manual",
         }),
       });
       if (!res.ok) return;
@@ -326,7 +367,7 @@ export default function UserMonitoring(
       setErrors((prev) => [created, ...prev]);
       setErrorModal(false);
       setTab("errors");
-      setDraft({ jobId: "", userId: "", title: "", severity: "medium", desc: "" });
+      setDraft({ jobId: "", userId: "", title: "", severity: "medium", desc: "", category: "other" });
     } finally {
       setSaving(false);
     }
@@ -464,10 +505,43 @@ export default function UserMonitoring(
             className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
           >
             <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="font-bold text-gray-900">Error Reports</h3>
+              <h3 className="font-bold text-gray-900">Mistake Records</h3>
               <p className="text-xs text-gray-500 mt-0.5">
                 {errors.filter((e) => e.createdBy?.id === currentUser?.id && Date.now() - new Date(e.createdAt).getTime() < 30 * 24 * 60 * 60 * 1000).length} reports filed by you in the last 30 days
               </p>
+              {analytics && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                    <p className="text-[10px] uppercase font-bold text-gray-500">Total mistakes</p>
+                    <p className="text-xl font-bold text-gray-900">{analytics.total}</p>
+                    <p className="text-xs text-amber-700">{analytics.open} open</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                    <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Top users</p>
+                    <div className="space-y-1">
+                      {(analytics.byUser ?? []).slice(0, 3).map((u) => (
+                        <div key={u.userId} className="flex justify-between text-xs gap-2">
+                          <span className="text-gray-700 truncate">{u.name}</span>
+                          <span className="font-semibold text-red-600">{u.count}</span>
+                        </div>
+                      ))}
+                      {(analytics.byUser?.length ?? 0) === 0 && <p className="text-xs text-gray-400">No records yet</p>}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                    <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Top mistake types</p>
+                    <div className="space-y-1">
+                      {(analytics.byCategory ?? []).slice(0, 3).map((c) => (
+                        <div key={c.category} className="flex justify-between text-xs gap-2">
+                          <span className="text-gray-700 truncate">{formatMistakeCategory(c.category)}</span>
+                          <span className="font-semibold text-gray-900">{c.count}</span>
+                        </div>
+                      ))}
+                      {(analytics.byCategory?.length ?? 0) === 0 && <p className="text-xs text-gray-400">No records yet</p>}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="px-5 py-4 border-b border-gray-100">
               <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 max-w-md focus-within:border-primary transition-colors">
@@ -495,6 +569,7 @@ export default function UserMonitoring(
                       <span className="text-xs text-gray-400">·</span>
                       <span className="text-xs text-primary font-medium">{e.jobNumber ?? "—"}</span>
                       <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${SEVERITY[e.severity]}`}>{e.severity}</span>
+                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border bg-violet-50 text-violet-700 border-violet-200">{formatMistakeCategory(e.category)}</span>
                       <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${e.status === "resolved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-700 border-gray-200"}`}>{e.status}</span>
                     </div>
                     <p className="text-sm font-semibold text-gray-900">{e.title}</p>
@@ -649,6 +724,18 @@ export default function UserMonitoring(
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Title</label>
                   <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="w-full bg-white !text-gray-900 !placeholder:text-gray-400 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary" placeholder="Missing dimensions" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Mistake type</label>
+                  <select
+                    value={draft.category}
+                    onChange={(e) => setDraft({ ...draft, category: e.target.value as MistakeCategory })}
+                    className="w-full bg-white !text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
+                  >
+                    {MISTAKE_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>{formatMistakeCategory(c)}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Severity</label>

@@ -275,14 +275,32 @@ export async function ensureAllSchemas() {
         created_by_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         title text NOT NULL,
         description text NOT NULL,
+        category text NOT NULL DEFAULT 'other',
+        checklist_item_id integer,
+        source text NOT NULL DEFAULT 'manual',
         severity error_severity NOT NULL DEFAULT 'medium',
         status error_report_status NOT NULL DEFAULT 'open',
         resolved_at timestamptz,
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
       );
+      ALTER TABLE error_reports ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT 'other';
+      ALTER TABLE error_reports ADD COLUMN IF NOT EXISTS checklist_item_id integer;
+      ALTER TABLE error_reports ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual';
       CREATE INDEX IF NOT EXISTS error_reports_job_idx ON error_reports(job_id);
       CREATE INDEX IF NOT EXISTS error_reports_status_idx ON error_reports(status);
+      CREATE INDEX IF NOT EXISTS error_reports_category_idx ON error_reports(category);
+
+      CREATE TABLE IF NOT EXISTS checklist_templates (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        name text NOT NULL,
+        description text,
+        items jsonb NOT NULL DEFAULT '[]'::jsonb,
+        created_by_id uuid REFERENCES users(id) ON DELETE SET NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS checklist_templates_name_idx ON checklist_templates(name);
 
       -- Checklist
       CREATE TABLE IF NOT EXISTS job_checklist_state (

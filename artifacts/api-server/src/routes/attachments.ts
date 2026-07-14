@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, eq, desc, inArray, sql as dsql } from "drizzle-orm";
-import { upload, uploadToSupabase } from "../lib/storage";
+import { upload, uploadToSupabase, supabase } from "../lib/storage";
 import { db, jobs, users, jobAttachments, jobMembers, type JobRow, type UserRow, sql } from "@workspace/db";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth";
@@ -73,6 +73,60 @@ router.get("/jobs/:jobId/attachments", requireAuth, async (req, res) => {
 });
 
 // Endpoint to upload an attachment to a job
+router.get("/jobs/:jobId/attachments/:attachmentId/view", requireAuth, async (req, res) => {
+  try {
+    await ensureAttachmentsSchema();
+    const jobId = Array.isArray(req.params.jobId) ? req.params.jobId[0] : req.params.jobId;
+    const attachmentId = Array.isArray(req.params.attachmentId)
+      ? req.params.attachmentId[0]
+      : req.params.attachmentId;
+    const disposition = req.query.disposition === "attachment" ? "attachment" : "inline";
+    const actor = req.session!.user;
+
+    const [jobRow] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    if (!jobRow) {
+      res.status(404).json({ message: "Job not found" });
+      return;
+    }
+    if (!(await canViewJob(actor, jobRow))) {
+      res.status(403).json({ message: "Forbidden" });
+      return;
+    }
+
+    const [attachment] = await db
+      .select()
+      .from(jobAttachments)
+      .where(and(eq(jobAttachments.id, attachmentId), eq(jobAttachments.jobId, jobId)))
+      .limit(1);
+    if (!attachment) {
+      res.status(404).json({ message: "Attachment not found" });
+      return;
+    }
+
+    const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "vivid-ops-files";
+    const { data, error } = await supabase.storage.from(bucketName).download(attachment.fileKey);
+    if (error || !data) {
+      res.status(404).json({ message: "File not found in storage" });
+      return;
+    }
+
+    const buffer = Buffer.from(await data.arrayBuffer());
+    const safeName = attachment.fileName.replace(/[^\w.\- ()[\]]+/g, "_") || "file";
+    const contentType = attachment.fileType || "application/octet-stream";
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Length", String(buffer.length));
+    res.setHeader("Content-Disposition", `${disposition}; filename="${safeName}"`);
+    res.send(buffer);
+    return;
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : typeof err === "string" ? err : "Internal server error";
+    logger.error({ err, message }, "Failed to view attachment");
+    res.status(500).json({ message });
+    return;
+  }
+});
+
 router.post(
   "/jobs/:jobId/attachments",
   requireAuth,

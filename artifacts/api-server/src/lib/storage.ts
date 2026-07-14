@@ -79,6 +79,7 @@ export async function uploadToSupabase(file: Express.Multer.File, options?: { pr
     .from(bucketName)
     .upload(key, file.buffer, {
       upsert: false,
+      contentType: file.mimetype || "application/octet-stream",
     });
 
   if (error) {

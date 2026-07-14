@@ -9,6 +9,7 @@ import {
   jobChecklistState,
   jobMembers,
   users,
+  errorReports,
   type JobRow,
   type UserRow,
 } from "@workspace/db";
@@ -158,7 +159,33 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         })
         .where(eq(jobs.id, jobId));
 
-      // Notify User about Rework
+      // Keep a personal mistake record for analytics / coaching
+      let checklistItemLabel = `Checklist item #${itemId}`;
+      try {
+        const parsed = JSON.parse(typeof job.description === "string" ? job.description : "{}") as any;
+        const list = Array.isArray(parsed?.checklist) ? parsed.checklist : [];
+        const item = list[itemId - 1];
+        if (item && typeof item.text === "string" && item.text.trim()) {
+          checklistItemLabel = item.text.trim();
+        }
+      } catch {
+        // keep default label
+      }
+
+      await db.insert(errorReports).values({
+        jobId,
+        userId: targetUserId,
+        createdById: actor.id,
+        title: `Rework: ${checklistItemLabel}`,
+        description: reworkReason?.trim() || `Rework requested on checklist item "${checklistItemLabel}".`,
+        category: "rework",
+        checklistItemId: itemId,
+        source: "checklist_rework",
+        severity: "medium",
+        status: "open",
+        updatedAt: new Date(),
+      });
+
       await createNotification({
         userId: targetUserId,
         jobId: jobId,

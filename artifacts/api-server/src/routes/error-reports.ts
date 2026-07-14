@@ -7,8 +7,10 @@ import {
   jobs,
   jobMembers,
   users,
+  MISTAKE_CATEGORIES,
   type ErrorReportRow,
   type JobRow,
+  type MistakeCategory,
   type UserRow,
 } from "@workspace/db";
 import { requireAuth, requireRole } from "../middlewares/requireAuth";
@@ -20,6 +22,10 @@ const targetUserAlias = alias(users, "target_user");
 const creatorAlias = alias(users, "creator_user");
 
 const ensureSchema = async () => {};
+
+function isMistakeCategory(value: unknown): value is MistakeCategory {
+  return typeof value === "string" && (MISTAKE_CATEGORIES as readonly string[]).includes(value);
+}
 
 function canViewJob(actor: UserRow, job: JobRow): boolean {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
@@ -59,9 +65,81 @@ function toPublic(row: {
   };
 }
 
+router.get("/error-reports/categories", requireAuth, (_req, res) => {
+  res.json(MISTAKE_CATEGORIES);
+  return;
+});
+
+router.get("/error-reports/analytics", requireAuth, async (req, res) => {
+  await ensureSchema();
+  const actor = req.session!.user;
+
+  let scopedUserFilter: { userId?: string; jobIds?: string[] } = {};
+  if (actor.role === "user") {
+    scopedUserFilter = { userId: actor.id };
+  } else if (actor.role === "supervisor") {
+    const managedJobs = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.supervisorId, actor.id));
+    scopedUserFilter = { jobIds: managedJobs.map((j) => j.id) };
+    if (scopedUserFilter.jobIds!.length === 0) {
+      return res.json({ byUser: [], byCategory: [], total: 0, open: 0 });
+    }
+  }
+
+  const conditions = [];
+  if (scopedUserFilter.userId) conditions.push(eq(errorReports.userId, scopedUserFilter.userId));
+  if (scopedUserFilter.jobIds) conditions.push(inArray(errorReports.jobId, scopedUserFilter.jobIds));
+
+  const baseWhere = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const byUserQuery = db
+    .select({
+      userId: errorReports.userId,
+      name: users.name,
+      count: sql<number>`count(*)::int`,
+      openCount: sql<number>`count(*) filter (where ${errorReports.status} = 'open')::int`,
+    })
+    .from(errorReports)
+    .innerJoin(users, eq(users.id, errorReports.userId))
+    .groupBy(errorReports.userId, users.name)
+    .orderBy(desc(sql`count(*)`))
+    .limit(20);
+
+  const byCategoryQuery = db
+    .select({
+      category: errorReports.category,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(errorReports)
+    .groupBy(errorReports.category)
+    .orderBy(desc(sql`count(*)`));
+
+  const totalsQuery = db
+    .select({
+      total: sql<number>`count(*)::int`,
+      open: sql<number>`count(*) filter (where ${errorReports.status} = 'open')::int`,
+    })
+    .from(errorReports);
+
+  const [byUser, byCategory, totals] = await Promise.all([
+    baseWhere ? byUserQuery.where(baseWhere) : byUserQuery,
+    baseWhere ? byCategoryQuery.where(baseWhere) : byCategoryQuery,
+    baseWhere ? totalsQuery.where(baseWhere) : totalsQuery,
+  ]);
+
+  res.json({
+    byUser,
+    byCategory,
+    total: totals[0]?.total ?? 0,
+    open: totals[0]?.open ?? 0,
+  });
+  return;
+});
+
 router.get("/error-reports", requireAuth, async (req, res) => {
   await ensureSchema();
   const actor = req.session!.user;
+  const userIdFilter = typeof req.query.userId === "string" ? req.query.userId : null;
+  const categoryFilter = typeof req.query.category === "string" ? req.query.category : null;
 
   const q = db
     .select({
@@ -76,8 +154,12 @@ router.get("/error-reports", requireAuth, async (req, res) => {
     .leftJoin(creatorAlias, eq(creatorAlias.id, errorReports.createdById))
     .orderBy(desc(errorReports.createdAt));
 
+  const filters = [];
+  if (userIdFilter) filters.push(eq(errorReports.userId, userIdFilter));
+  if (categoryFilter && isMistakeCategory(categoryFilter)) filters.push(eq(errorReports.category, categoryFilter));
+
   if (actor.role === "super-admin" || actor.role === "admin") {
-    const rows = await q;
+    const rows = filters.length ? await q.where(and(...filters)) : await q;
     res.json(rows.map(toPublic));
     return;
   }
@@ -94,12 +176,12 @@ router.get("/error-reports", requireAuth, async (req, res) => {
       return;
     }
 
-    const rows = await q.where(inArray(errorReports.jobId, jobIds));
+    const rows = await q.where(and(inArray(errorReports.jobId, jobIds), ...filters));
     res.json(rows.map(toPublic));
     return;
   }
 
-  const rows = await q.where(eq(errorReports.userId, actor.id));
+  const rows = await q.where(and(eq(errorReports.userId, actor.id), ...filters));
   res.json(rows.map(toPublic));
 });
 
@@ -114,6 +196,9 @@ router.post("/error-reports", creatorOnly, async (req, res) => {
     title: string;
     description: string;
     severity: "low" | "medium" | "high";
+    category: string;
+    checklistItemId: number | null;
+    source: string;
   }>;
 
   if (!body.userId || !body.title || !body.description) {
@@ -125,6 +210,13 @@ router.post("/error-reports", creatorOnly, async (req, res) => {
     res.status(400).json({ error: "Invalid severity" });
     return;
   }
+
+  const category: MistakeCategory = isMistakeCategory(body.category) ? body.category : "other";
+  const checklistItemId =
+    typeof body.checklistItemId === "number" && Number.isFinite(body.checklistItemId)
+      ? body.checklistItemId
+      : null;
+  const source = typeof body.source === "string" && body.source.trim() ? body.source.trim() : "manual";
 
   let jobRow: JobRow | null = null;
   const jobId = body.jobId ?? null;
@@ -165,19 +257,21 @@ router.post("/error-reports", creatorOnly, async (req, res) => {
       createdById: actor.id,
       title: body.title,
       description: body.description,
+      category,
+      checklistItemId,
+      source,
       severity,
       status: "open",
       updatedAt: new Date(),
     })
     .returning();
 
-  // Notify User about New Error Report
   await createNotification({
     userId: created.userId,
     jobId: created.jobId ?? undefined,
-    title: `New Error Report: ${created.title}`,
-    description: `An error report has been added for you: ${created.title}. Description: ${created.description}`,
-    type: "error"
+    title: `New Mistake Record: ${created.title}`,
+    description: `A mistake record (${category.replaceAll("_", " ")}) has been added for you: ${created.title}. ${created.description}`,
+    type: "error",
   });
 
   const userRow = await db
@@ -200,7 +294,7 @@ router.patch("/error-reports/:id", requireAuth, async (req, res) => {
   await ensureSchema();
   const actor = req.session!.user;
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const body = req.body as Partial<{ status: "open" | "resolved" }>;
+  const body = req.body as Partial<{ status: "open" | "resolved"; category: string }>;
 
   const [existing] = await db.select().from(errorReports).where(eq(errorReports.id, id)).limit(1);
   if (!existing) {
@@ -225,24 +319,28 @@ router.patch("/error-reports/:id", requireAuth, async (req, res) => {
     }
   }
 
-  const status = body.status;
-  if (status !== "open" && status !== "resolved") {
-    res.status(400).json({ error: "Invalid status" });
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  if (body.status === "open" || body.status === "resolved") {
+    patch.status = body.status;
+    patch.resolvedAt = body.status === "resolved" ? new Date() : null;
+  }
+  if (isMistakeCategory(body.category)) {
+    patch.category = body.category;
+  }
+
+  if (patch.status == null && patch.category == null) {
+    res.status(400).json({ error: "No valid fields to update" });
     return;
   }
 
-  const patch: Record<string, unknown> = { status, updatedAt: new Date() };
-  if (status === "resolved") patch.resolvedAt = new Date();
-  if (status === "open") patch.resolvedAt = null;
-
   const [updated] = await db.update(errorReports).set(patch).where(eq(errorReports.id, id)).returning();
 
-  if (status === "resolved" && updated.userId) {
+  if (patch.status === "resolved" && updated.userId) {
     await createNotification({
       userId: updated.userId,
       jobId: updated.jobId ?? undefined,
-      title: `Error Report Resolved: ${updated.title}`,
-      description: `Your error report "${updated.title}" has been marked resolved.`,
+      title: `Mistake Record Resolved: ${updated.title}`,
+      description: `Your mistake record "${updated.title}" has been marked resolved.`,
       type: "error",
     });
   }
@@ -280,13 +378,12 @@ router.post("/error-reports/:id/acknowledge", requireAuth, async (req, res) => {
     return res.status(403).json({ error: "Only the target user can acknowledge" });
   }
 
-  // Notify Creator (Supervisor/Admin)
   await createNotification({
     userId: existing.createdById,
     jobId: existing.jobId ?? undefined,
-    title: `Error Report Acknowledged: ${existing.title}`,
-    description: `${actor.name} has viewed the error report: ${existing.title}.`,
-    type: "error"
+    title: `Mistake Record Acknowledged: ${existing.title}`,
+    description: `${actor.name} has viewed the mistake record: ${existing.title}.`,
+    type: "error",
   });
 
   return res.status(204).end();
