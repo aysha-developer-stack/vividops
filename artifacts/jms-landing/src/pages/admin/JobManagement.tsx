@@ -1199,39 +1199,6 @@ export default function JobManagement(
                     </div>
                   </div>
 
-                  <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-                    <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                      <div className="text-xs font-bold text-gray-900">Items</div>
-                      <div className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                        {checklistTemplate.length}
-                      </div>
-                    </div>
-                    {checklistTemplate.length === 0 ? (
-                      <div className="px-4 py-8 text-center text-xs text-gray-400">No checklist items yet</div>
-                    ) : (
-                      <div className="divide-y divide-gray-50">
-                        {checklistTemplate.map((it, idx) => (
-                          <div key={`${idx}-${it.text}`} className="px-4 py-3 flex items-start gap-3">
-                            <div className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-[11px] font-bold shrink-0">{idx + 1}</div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold text-gray-900 truncate">{it.text}</div>
-                              {it.desc && <div className="text-[11px] text-gray-500 mt-0.5">{it.desc}</div>}
-                              {it.attachmentRequired && <div className="mt-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">File required</div>}
-                              {(checklistItemFiles[idx] ?? []).map((f) => (
-                                <div key={f.name} className="mt-1 text-[11px] text-primary font-medium truncate flex items-center gap-1">
-                                  <FileText size={11} /> {f.name}
-                                </div>
-                              ))}
-                            </div>
-                            <button onClick={() => removeChecklistItem(idx)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
                   <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4 space-y-3">
                     <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
                       <input type="checkbox" checked={checkNeedsFile} onChange={(e) => setCheckNeedsFile(e.target.checked)} className="h-4 w-4" />
@@ -1259,7 +1226,71 @@ export default function JobManagement(
                     </div>
                   </div>
 
+                  <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                      <div className="text-xs font-bold text-gray-900">Attached checklist files</div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                        {checklistTemplate.length}
+                      </div>
+                    </div>
+                    {checklistTemplate.length === 0 ? (
+                      <div className="px-4 py-8 text-center text-xs text-gray-400">No checklist files attached yet</div>
+                    ) : (
+                      <div className="divide-y divide-gray-50">
+                        {checklistTemplate.map((it, idx) => (
+                          <div key={`${idx}-${it.text}`} className="px-4 py-3 flex items-start gap-3">
+                            <div className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-[11px] font-bold shrink-0">{idx + 1}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-semibold text-gray-900 truncate">{it.text}</div>
+                              {it.desc && <div className="text-[11px] text-gray-500 mt-0.5">{it.desc}</div>}
+                              {it.attachmentRequired && <div className="mt-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">File required</div>}
+                              {(checklistItemFiles[idx] ?? []).map((f) => (
+                                <div key={f.name} className="mt-1 text-[11px] text-primary font-medium truncate flex items-center gap-1">
+                                  <FileText size={11} /> {f.name}
+                                </div>
+                              ))}
+                            </div>
+                            <button onClick={() => removeChecklistItem(idx)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Job Files</div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={onFilesPicked}
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.svg,.zip,.dwg,.dxf"
+                  />
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => fileInputRef.current?.click()}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click(); }}
+                    onDragEnter={onFilesDragEnter}
+                    onDragOver={onFilesDragOver}
+                    onDragLeave={onFilesDragLeave}
+                    onDrop={onFilesDrop}
+                    className={`rounded-xl border-2 border-dashed px-4 py-6 text-center cursor-pointer transition-colors ${
+                      isDraggingFiles
+                        ? "border-primary bg-primary/10"
+                        : "border-gray-200 bg-gray-50 hover:bg-blue-50/40 hover:border-primary/40"
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-2">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                    </div>
+                    <div className="text-xs font-semibold text-gray-700">
+                      {isDraggingFiles ? "Drop files here" : "Drag & drop files here, or click to browse"}
+                    </div>
+                    <div className="text-[10px] text-gray-500 mt-1">Drawings, instructions, site photos, or client docs · appear in Job Detail → Files</div>
+                  </div>
                   {existingAttachments.length > 0 && (
                     <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-3">
                       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
@@ -1297,41 +1328,10 @@ export default function JobManagement(
                       </div>
                     </div>
                   )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={onFilesPicked}
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.svg,.zip,.dwg,.dxf"
-                  />
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => fileInputRef.current?.click()}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click(); }}
-                    onDragEnter={onFilesDragEnter}
-                    onDragOver={onFilesDragOver}
-                    onDragLeave={onFilesDragLeave}
-                    onDrop={onFilesDrop}
-                    className={`rounded-xl border-2 border-dashed px-4 py-6 text-center cursor-pointer transition-colors ${
-                      isDraggingFiles
-                        ? "border-primary bg-primary/10"
-                        : "border-gray-200 bg-gray-50 hover:bg-blue-50/40 hover:border-primary/40"
-                    }`}
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-2">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-                    </div>
-                    <div className="text-xs font-semibold text-gray-700">
-                      {isDraggingFiles ? "Drop files here" : "Drag & drop files here, or click to browse"}
-                    </div>
-                    <div className="text-[10px] text-gray-500 mt-1">Drawings, instructions, site photos, or client docs · appear in Job Detail → Files</div>
-                  </div>
                   {jobFiles.length > 0 && (
                     <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                        <div className="text-xs font-bold text-gray-900">Selected files</div>
+                        <div className="text-xs font-bold text-gray-900">Attached files</div>
                         <div className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary">{jobFiles.length}</div>
                       </div>
                       <div className="divide-y divide-gray-50 max-h-[220px] overflow-y-auto">
