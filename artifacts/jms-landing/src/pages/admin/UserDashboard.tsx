@@ -38,14 +38,16 @@ export default function UserDashboard() {
   const { user: currentUser } = useAuth();
   const qc = useQueryClient();
   const { isLoading: statsLoading } = useGetDashboardStats();
+  const notificationsBaseQueryKey = getGetNotificationsQueryKey();
   const { data: apiNotifs, isLoading: notifsLoading } = useGetNotifications({
     query: {
+      queryKey: notificationsBaseQueryKey,
       staleTime: 0,
       refetchInterval: 30000,
     },
   });
   const markReadMutation = useMarkNotificationRead();
-  const notificationsQueryKey = [...getGetNotificationsQueryKey(), currentUser?.id ?? "anonymous"];
+  const notificationsQueryKey = [...notificationsBaseQueryKey, currentUser?.id ?? "anonymous"];
   const { data: apiPosts, isLoading: postsLoading } = useGetPosts();
   const { data: apiJobs, isLoading: jobsLoading } = useListJobs();
   const { data: apiTimeLogs, isLoading: logsLoading } = useGetTimeLogs();

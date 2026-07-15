@@ -9,7 +9,6 @@ import {
   jobChecklistState,
   jobMembers,
   users,
-  errorReports,
   type JobRow,
   type UserRow,
 } from "@workspace/db";
@@ -17,6 +16,7 @@ import { requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { createNotification } from "../lib/notifications";
 import { ensureJobWriteSchema } from "../lib/schema-init";
+import { createReworkWithErrorReport, markOpenReworksAwaitingReview } from "../lib/reworks";
 
 const router: IRouter = Router();
 
@@ -155,6 +155,10 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
     const itemId = Number(req.body?.itemId);
     const status = req.body?.status;
     const reworkReason = typeof req.body?.reworkReason === "string" ? req.body.reworkReason : null;
+    const category = typeof req.body?.category === "string" ? req.body.category : null;
+    const comments = typeof req.body?.comments === "string" ? req.body.comments : null;
+    const dueAt = typeof req.body?.dueAt === "string" ? req.body.dueAt : null;
+    const severity = typeof req.body?.severity === "string" ? req.body.severity : null;
     const userIdParam = typeof req.body?.userId === "string" ? req.body.userId : null;
 
     if (!Number.isFinite(itemId) || itemId <= 0) return res.status(400).json({ error: "itemId is required" });
@@ -261,18 +265,18 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         // keep default label
       }
 
-      await db.insert(errorReports).values({
-        jobId,
+      await createReworkWithErrorReport({
+        actor,
+        job,
         userId: targetUserId,
-        createdById: actor.id,
-        title: `Rework: ${checklistItemLabel}`,
-        description: reworkReason?.trim() || `Rework requested on checklist item "${checklistItemLabel}".`,
-        category: "rework",
         checklistItemId: itemId,
+        reason: reworkReason?.trim() || `Rework requested on checklist item "${checklistItemLabel}".`,
+        category,
+        comments,
+        dueAt,
+        severity,
         source: "checklist_rework",
-        severity: "medium",
-        status: "open",
-        updatedAt: new Date(),
+        title: `Rework: ${checklistItemLabel}`,
       });
 
       await createNotification({
@@ -314,6 +318,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
           const { assertWorkerChecklistReady } = await import("../lib/job-review");
           const checklistError = await assertWorkerChecklistReady(job, targetUserId);
           if (!checklistError) {
+            await markOpenReworksAwaitingReview(job.id, targetUserId);
             nextStatus = "awaiting_supervisor";
           }
         }

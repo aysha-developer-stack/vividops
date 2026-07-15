@@ -33,6 +33,7 @@ import { statusToUi, priorityToUi, formatShortDate } from "@/lib/jobMappers";
 import { parseJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
 import { postTimerNotification } from "@/lib/timerNotifications";
 import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } from "@/lib/downloadFile";
+import { MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategories";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface Props { role?: Role; id?: string }
@@ -115,6 +116,24 @@ type JobCliqChannelApi = {
   channelUrl: string | null;
   chatId?: string | null;
   status: string;
+};
+
+type JobReworkApi = {
+  id: string;
+  checklistItemId: number | null;
+  cycleNumber: number;
+  reason: string;
+  category: string;
+  comments: string | null;
+  severity: "low" | "medium" | "high" | string;
+  status: string;
+  dueAt: string | null;
+  assignedAt: string;
+  completedAt: string | null;
+  approvedAt: string | null;
+  errorReportId: string | null;
+  user: { id: string; name: string; role: Role } | null;
+  createdBy: { id: string; name: string; role: Role } | null;
 };
 
 const CLIQ_WEB_ROOT = "https://cliq.zoho.com.au";
@@ -324,7 +343,13 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [running, setRunning] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [reworkOpen, setReworkOpen] = useState(false);
+  const [reworkTargetItem, setReworkTargetItem] = useState<ChecklistItem | null>(null);
   const [reworkReason, setReworkReason] = useState("");
+  const [reworkCategory, setReworkCategory] = useState("rework");
+  const [reworkSeverity, setReworkSeverity] = useState<"low" | "medium" | "high">("medium");
+  const [reworkComments, setReworkComments] = useState("");
+  const [reworkDueAt, setReworkDueAt] = useState("");
+  const [reworks, setReworks] = useState<JobReworkApi[]>([]);
   const [approveOpen, setApproveOpen] = useState(false);
   const [jobApproved, setJobApproved] = useState(false);
   const [showActivityPing, setShowActivityPing] = useState(false);
@@ -348,6 +373,25 @@ export default function JobDetail({ role = "user", id }: Props) {
   const autoCompleteRef = useRef<string | null>(null);
   const PING_INTERVAL_S = 60 * 60;
   const AUTO_STOP_S = 5 * 60;
+
+  const loadReworks = async () => {
+    if (!job?.id) {
+      setReworks([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/reworks`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load reworks");
+      const data = (await res.json()) as unknown;
+      setReworks(Array.isArray(data) ? (data as JobReworkApi[]) : []);
+    } catch {
+      setReworks([]);
+    }
+  };
+
+  useEffect(() => {
+    void loadReworks();
+  }, [job?.id]);
 
   const timerStorageKey = (jid: string) => `job_timer_v1:${jid}`;
   const readTimerState = (jid: string) => {
@@ -715,6 +759,10 @@ export default function JobDetail({ role = "user", id }: Props) {
   const completedCount = checklist.filter((c) => c.status === "completed").length;
   const checklistProgress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
   const progress = Math.max(job?.progress ?? 0, checklistProgress);
+  const activeReworks = reworks.filter((r) => r.status === "open" || r.status === "awaiting_review" || r.status === "needs_correction");
+  const selectedItemRework = selectedChecklistItem
+    ? activeReworks.find((r) => r.checklistItemId === selectedChecklistItem.id)
+    : null;
 
   useEffect(() => {
     if (role !== "user") return;
@@ -737,6 +785,7 @@ export default function JobDetail({ role = "user", id }: Props) {
         }
         await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
         await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+        await loadReworks();
       })
       .catch(() => {
         autoCompleteRef.current = null;
@@ -1183,12 +1232,20 @@ export default function JobDetail({ role = "user", id }: Props) {
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => setReworkOpen(true)}
+                  onClick={() => {
+                    setReworkTargetItem(null);
+                    setReworkReason("");
+                    setReworkCategory("rework");
+                    setReworkSeverity("medium");
+                    setReworkComments("");
+                    setReworkDueAt("");
+                    setReworkOpen(true);
+                  }}
                   className="flex items-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-semibold"
                 >
                   <RefreshCw size={12} /> Mark for Rework
                 </motion.button>
-                {role === "supervisor" && job?.status !== "awaiting_admin" && (
+                {role === "supervisor" && job?.status !== "awaiting_admin" && job?.status !== "rework" && (
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -1198,7 +1255,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <CheckCircle2 size={12} /> Approve for Admin
                   </motion.button>
                 )}
-                {(role === "admin" || role === "super-admin") && (
+                {(role === "admin" || role === "super-admin") && job?.status !== "rework" && (
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -1253,6 +1310,41 @@ export default function JobDetail({ role = "user", id }: Props) {
           </div>
         </div>
       </motion.div>
+
+      {activeReworks.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <div className="flex items-start justify-between gap-4 mb-3">
+            <div>
+              <div className="flex items-center gap-2 text-amber-800 font-bold">
+                <AlertTriangle size={16} /> Rework Required
+              </div>
+              <p className="text-xs text-amber-800/80 mt-1">
+                Fix the issues below, upload corrected files, start/stop the timer for the correction work, then mark the checklist complete again.
+              </p>
+            </div>
+            <span className="text-xs font-bold text-amber-900 bg-white/70 border border-amber-200 rounded-full px-3 py-1">
+              {activeReworks.length} active
+            </span>
+          </div>
+          <div className="grid md:grid-cols-2 gap-3">
+            {activeReworks.slice(0, 4).map((rw) => (
+              <div key={rw.id} className="rounded-xl bg-white border border-amber-100 p-3">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-xs font-bold text-gray-900">Rework #{rw.cycleNumber}{rw.checklistItemId ? ` · Item ${rw.checklistItemId}` : ""}</span>
+                  <span className="text-[10px] uppercase font-bold text-amber-700">{rw.status.replace("_", " ")}</span>
+                </div>
+                <p className="text-xs text-gray-700">{rw.reason}</p>
+                {rw.comments && <p className="text-[11px] text-gray-500 mt-1">Instructions: {rw.comments}</p>}
+                <div className="flex flex-wrap gap-2 mt-2 text-[10px] font-bold uppercase">
+                  <span className="text-purple-700 bg-purple-50 rounded-full px-2 py-0.5">{formatMistakeCategory(rw.category)}</span>
+                  <span className="text-red-700 bg-red-50 rounded-full px-2 py-0.5">{rw.severity}</span>
+                  {rw.dueAt && <span className="text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">Due {new Date(rw.dueAt).toLocaleDateString()}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       {/* Start Work / Timer card (USER only or visible on overview) */}
       {role === "user" && (
@@ -1481,7 +1573,15 @@ export default function JobDetail({ role = "user", id }: Props) {
                         <div className="flex items-center gap-2 text-purple-700 font-bold text-[10px] uppercase mb-1">
                           <AlertTriangle size={12} /> Rework Reason
                         </div>
-                        <p className="text-xs text-purple-900 mb-3">{selectedChecklistItem.reworkReason ?? "Please review the requirements and resubmit."}</p>
+                        <p className="text-xs text-purple-900 mb-2">{selectedItemRework?.reason ?? selectedChecklistItem.reworkReason ?? "Please review the requirements and resubmit."}</p>
+                        {selectedItemRework && (
+                          <div className="space-y-1 mb-3 text-[11px] text-purple-900/80">
+                            <div><span className="font-bold">Error type:</span> {formatMistakeCategory(selectedItemRework.category)}</div>
+                            <div><span className="font-bold">Severity:</span> {selectedItemRework.severity}</div>
+                            {selectedItemRework.comments && <div><span className="font-bold">Instructions:</span> {selectedItemRework.comments}</div>}
+                            {selectedItemRework.dueAt && <div><span className="font-bold">Due:</span> {new Date(selectedItemRework.dueAt).toLocaleString()}</div>}
+                          </div>
+                        )}
                         <button 
                           onClick={() => handleChecklistUpload(selectedChecklistItem.id)}
                           className="w-full py-2 bg-purple-600 text-white text-[10px] font-bold rounded-lg shadow-md shadow-purple-600/20 flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors"
@@ -1640,6 +1740,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                               setSelectedChecklistItem({ ...selectedChecklistItem, status: "completed" as const, done: true });
                               persistLocalChecklist(next, checklistUploads);
                               await persistProgress(next);
+                              await loadReworks();
                               await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
                               await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
                             } catch (err) {
@@ -1693,34 +1794,16 @@ export default function JobDetail({ role = "user", id }: Props) {
                           Upload a checklist file above, then mark this item complete.
                         </p>
                       )}
-                      {selectedChecklistItem.status === "completed" && role === "supervisor" && (
+                      {selectedChecklistItem.status === "completed" && (role === "supervisor" || role === "admin" || role === "super-admin") && (
                         <button 
-                          onClick={async () => {
-                            const reason = prompt("Reason for rework?");
-                            if (reason) {
-                              const next = checklist.map((i) =>
-                                i.id === selectedChecklistItem.id
-                                  ? { ...i, status: "rework" as const, done: false, reworkReason: reason }
-                                  : i
-                              );
-                              setChecklist(next);
-                              setSelectedChecklistItem({ ...selectedChecklistItem, status: "rework" as const, done: false, reworkReason: reason });
-                              persistLocalChecklist(next, checklistUploads);
-                              if (job?.id) {
-                                try {
-                                  const res = await fetch(`/api/jobs/${job.id}/checklist-state`, {
-                                    method: "PATCH",
-                                    credentials: "include",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ itemId: selectedChecklistItem.id, status: "rework", reworkReason: reason, userId: job.assignee?.id ?? undefined }),
-                                  });
-                                  if (!res.ok) throw new Error("Failed");
-                                  await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
-                                  await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-                                } catch {
-                                }
-                              }
-                            }
+                          onClick={() => {
+                            setReworkTargetItem(selectedChecklistItem);
+                            setReworkReason("");
+                            setReworkCategory("rework");
+                            setReworkSeverity("medium");
+                            setReworkComments("");
+                            setReworkDueAt("");
+                            setReworkOpen(true);
                           }}
                           className="flex-1 py-2.5 bg-purple-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-600/20 flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors"
                         >
@@ -2210,7 +2293,7 @@ export default function JobDetail({ role = "user", id }: Props) {
               exit={{ scale: 0.9, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl p-6 max-w-md w-full"
+              className="bg-white rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto"
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -2221,7 +2304,11 @@ export default function JobDetail({ role = "user", id }: Props) {
                 </div>
                 <button onClick={() => setReworkOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
               </div>
-              <p className="text-sm text-gray-500 mb-4">The assigned worker will be notified to redo the work.</p>
+              <p className="text-sm text-gray-500 mb-4">
+                {reworkTargetItem
+                  ? `The assigned worker will redo checklist item #${reworkTargetItem.id}.`
+                  : "The assigned worker will be notified to redo the work."}
+              </p>
               <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Reason</label>
               <textarea
                 value={reworkReason}
@@ -2230,28 +2317,111 @@ export default function JobDetail({ role = "user", id }: Props) {
                 placeholder="What needs to be redone?"
                 className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary resize-none mb-4"
               />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Error Type</label>
+                  <select
+                    value={reworkCategory}
+                    onChange={(e) => setReworkCategory(e.target.value)}
+                    className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                  >
+                    {MISTAKE_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>{formatMistakeCategory(c)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Severity</label>
+                  <select
+                    value={reworkSeverity}
+                    onChange={(e) => setReworkSeverity(e.target.value as "low" | "medium" | "high")}
+                    className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+              </div>
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Supervisor Comments / Instructions</label>
+              <textarea
+                value={reworkComments}
+                onChange={(e) => setReworkComments(e.target.value)}
+                rows={3}
+                placeholder="Add correction instructions for the worker..."
+                className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary resize-none mb-4"
+              />
+              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Rework Due Date</label>
+              <input
+                type="datetime-local"
+                value={reworkDueAt}
+                onChange={(e) => setReworkDueAt(e.target.value)}
+                className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-primary mb-4"
+              />
               <div className="flex gap-2">
                 <button onClick={() => setReworkOpen(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200">Cancel</button>
                 <button
                   onClick={async () => {
                     if (!job?.id) return;
+                    if (!reworkReason.trim()) {
+                      alert("Rework reason is required.");
+                      return;
+                    }
                     try {
-                      const res = await fetch(`/api/jobs/${job.id}/review`, {
-                        method: "POST",
-                        credentials: "include",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ action: "rework", reason: reworkReason }),
-                      });
+                      const payload = {
+                        reason: reworkReason,
+                        category: reworkCategory,
+                        severity: reworkSeverity,
+                        comments: reworkComments,
+                        dueAt: reworkDueAt,
+                      };
+                      const res = reworkTargetItem
+                        ? await fetch(`/api/jobs/${job.id}/checklist-state`, {
+                            method: "PATCH",
+                            credentials: "include",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              itemId: reworkTargetItem.id,
+                              status: "rework",
+                              reworkReason,
+                              userId: job.assignee?.id ?? undefined,
+                              ...payload,
+                            }),
+                          })
+                        : await fetch(`/api/jobs/${job.id}/review`, {
+                            method: "POST",
+                            credentials: "include",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ action: "rework", ...payload }),
+                          });
                       if (!res.ok) {
                         const data = await res.json().catch(() => ({}));
                         throw new Error((data as any).error || "Failed to mark for rework");
                       }
+                      if (reworkTargetItem) {
+                        const next = checklist.map((i) =>
+                          i.id === reworkTargetItem.id
+                            ? { ...i, status: "rework" as const, done: false, reworkReason }
+                            : i
+                        );
+                        setChecklist(next);
+                        if (selectedChecklistItem?.id === reworkTargetItem.id) {
+                          setSelectedChecklistItem({ ...reworkTargetItem, status: "rework" as const, done: false, reworkReason });
+                        }
+                        persistLocalChecklist(next, checklistUploads);
+                      }
                       await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
                       await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                      await loadReworks();
                       setReworkReason("");
+                      setReworkCategory("rework");
+                      setReworkSeverity("medium");
+                      setReworkComments("");
+                      setReworkDueAt("");
+                      setReworkTargetItem(null);
                       setReworkOpen(false);
                     } catch (err) {
-                      console.error(err instanceof Error ? err.message : "Failed to mark for rework");
+                      alert(err instanceof Error ? err.message : "Failed to mark for rework");
                     }
                   }}
                   className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-semibold hover:bg-amber-600 flex items-center justify-center gap-2"
@@ -2315,6 +2485,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                             }
                             await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
                             await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                            await loadReworks();
                             setJobApproved(true);
                             setTimeout(() => { setApproveOpen(false); setJobApproved(false); }, 1400);
                           } catch (err) {

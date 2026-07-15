@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq, or, desc, inArray, ne, sql as dsql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { db, jobs, users, jobMembers, jobAttachments, jobChecklistAttachments, type JobRow, type UserRow, sql } from "@workspace/db";
+import { db, jobs, users, jobMembers, jobAttachments, jobChecklistAttachments, jobReworks, errorReports, type JobRow, type UserRow, sql } from "@workspace/db";
 import { createNotification, createNotificationOnce } from "../lib/notifications";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -31,6 +31,8 @@ const router: IRouter = Router();
 
 const assigneeAlias = alias(users, "assignee");
 const supervisorAlias = alias(users, "supervisor");
+const reworkUserAlias = alias(users, "rework_user");
+const reworkCreatorAlias = alias(users, "rework_creator");
 
 const ensureJobMembersSchema = ensureJobWriteSchema;
 const ensureJobMessagesSchema = ensureAllSchemas;
@@ -1911,6 +1913,10 @@ router.post("/jobs/:id/review", requireAuth, async (req, res) => {
     const actor = req.session!.user;
     const action = req.body?.action as JobReviewAction | undefined;
     const reason = typeof req.body?.reason === "string" ? req.body.reason : null;
+    const category = typeof req.body?.category === "string" ? req.body.category : null;
+    const comments = typeof req.body?.comments === "string" ? req.body.comments : null;
+    const dueAt = typeof req.body?.dueAt === "string" ? req.body.dueAt : null;
+    const severity = typeof req.body?.severity === "string" ? req.body.severity : null;
     const allowed: JobReviewAction[] = [
       "submit_for_supervisor",
       "supervisor_approve",
@@ -1932,6 +1938,10 @@ router.post("/jobs/:id/review", requireAuth, async (req, res) => {
       job: full.job,
       action,
       reason,
+      category,
+      comments,
+      dueAt,
+      severity,
       canManage: canManageJob(actor, full.job),
     });
     if (!result.ok) {
@@ -1943,6 +1953,59 @@ router.post("/jobs/:id/review", requireAuth, async (req, res) => {
   } catch (err) {
     logger.error({ err }, "Failed to review job");
     return res.status(500).json({ error: "Failed to review job" });
+  }
+});
+
+router.get("/jobs/:id/reworks", requireAuth, async (req, res) => {
+  try {
+    await ensureJobWriteSchema();
+    const id = req.params.id as string;
+    const actor = req.session!.user;
+    const full = await loadJob(id);
+    if (!full) return res.status(404).json({ error: "Job not found" });
+    if (!(await canViewJob(actor, full.job))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const rows = await db
+      .select({
+        rework: jobReworks,
+        user: { id: reworkUserAlias.id, name: reworkUserAlias.name, role: reworkUserAlias.role },
+        createdBy: { id: reworkCreatorAlias.id, name: reworkCreatorAlias.name, role: reworkCreatorAlias.role },
+        errorReportId: errorReports.id,
+      })
+      .from(jobReworks)
+      .leftJoin(reworkUserAlias, eq(reworkUserAlias.id, jobReworks.userId))
+      .leftJoin(reworkCreatorAlias, eq(reworkCreatorAlias.id, jobReworks.createdById))
+      .leftJoin(errorReports, eq(errorReports.reworkId, jobReworks.id))
+      .where(eq(jobReworks.jobId, id))
+      .orderBy(desc(jobReworks.assignedAt));
+
+    return res.json(
+      rows.map((row) => ({
+        id: row.rework.id,
+        jobId: row.rework.jobId,
+        userId: row.rework.userId,
+        createdById: row.rework.createdById,
+        checklistItemId: row.rework.checklistItemId,
+        cycleNumber: row.rework.cycleNumber,
+        reason: row.rework.reason,
+        category: row.rework.category,
+        comments: row.rework.comments,
+        severity: row.rework.severity,
+        status: row.rework.status,
+        dueAt: row.rework.dueAt,
+        assignedAt: row.rework.assignedAt,
+        completedAt: row.rework.completedAt,
+        approvedAt: row.rework.approvedAt,
+        errorReportId: row.errorReportId ?? null,
+        user: row.user?.id ? row.user : null,
+        createdBy: row.createdBy?.id ? row.createdBy : null,
+      })),
+    );
+  } catch (err) {
+    logger.error({ err }, "Failed to load job reworks");
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 

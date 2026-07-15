@@ -10,6 +10,11 @@ import {
 } from "@workspace/db";
 import { createNotification } from "./notifications";
 import type { NotificationType } from "./notifications";
+import {
+  createReworkWithErrorReport,
+  markOpenReworksAwaitingReview,
+  resolveJobReworks,
+} from "./reworks";
 
 export type JobReviewAction =
   | "submit_for_supervisor"
@@ -236,9 +241,13 @@ export async function applyJobReview(opts: {
   job: JobRow;
   action: JobReviewAction;
   reason?: string | null;
+  category?: string | null;
+  comments?: string | null;
+  dueAt?: string | null;
+  severity?: string | null;
   canManage: boolean;
 }): Promise<{ ok: true; nextStatus: ReviewableStatus } | { ok: false; status: number; error: string }> {
-  const { actor, job, action, reason, canManage } = opts;
+  const { actor, job, action, reason, category, comments, dueAt, severity, canManage } = opts;
   const isAssignee = job.assigneeId === actor.id;
   let nextStatus: ReviewableStatus;
 
@@ -254,23 +263,50 @@ export async function applyJobReview(opts: {
     if (checklistError) {
       return { ok: false, status: 400, error: checklistError };
     }
+    await markOpenReworksAwaitingReview(job.id, workerId);
     nextStatus = "awaiting_supervisor";
   } else if (action === "supervisor_approve") {
     if (actor.role !== "supervisor" || !canManage) {
       return { ok: false, status: 403, error: "Only the job supervisor can approve for admin review" };
     }
-    if (job.status !== "awaiting_supervisor" && job.status !== "in_progress" && job.status !== "rework") {
+    if (job.status === "rework") {
+      return { ok: false, status: 400, error: "The worker must complete and resubmit the rework before approval" };
+    }
+    if (job.status !== "awaiting_supervisor" && job.status !== "in_progress") {
       return { ok: false, status: 400, error: "Job is not awaiting supervisor approval" };
     }
+    await resolveJobReworks(job.id);
     nextStatus = "awaiting_admin";
   } else if (action === "admin_complete") {
     if (actor.role !== "admin" && actor.role !== "super-admin") {
       return { ok: false, status: 403, error: "Only admin or super-admin can complete the job" };
     }
+    await resolveJobReworks(job.id);
     nextStatus = "completed";
   } else if (action === "rework") {
     if (!canManage) {
       return { ok: false, status: 403, error: "You cannot mark this job for rework" };
+    }
+    if (!reason?.trim()) {
+      return { ok: false, status: 400, error: "Rework reason is required" };
+    }
+    try {
+      await createReworkWithErrorReport({
+        actor,
+        job,
+        reason,
+        category,
+        comments,
+        dueAt,
+        severity,
+        source: "job_rework",
+      });
+    } catch (err) {
+      return {
+        ok: false,
+        status: 400,
+        error: err instanceof Error ? err.message : "Failed to create rework",
+      };
     }
     nextStatus = "rework";
   } else {

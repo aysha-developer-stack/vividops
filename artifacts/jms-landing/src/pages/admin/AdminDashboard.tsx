@@ -65,8 +65,8 @@ export default function AdminDashboard() {
     const totalUsers = dashboardData?.stats.totalUsers ?? 0;
     const activeJobs = dashboardData?.stats.activeJobs ?? 0;
     const overdueJobs = dashboardData?.stats.overdueJobs ?? 0;
-    const dueToday = dashboardData?.stats.dueToday ?? 0;
-    const waitingReview = dashboardData?.stats.waitingReview ?? 0;
+    const dueToday = (dashboardData?.stats as any)?.dueToday ?? 0;
+    const waitingReview = (dashboardData?.stats as any)?.waitingReview ?? 0;
 
     const jobsChange = pctChange(totalJobs, jobsPrev);
     const usersChange = pctChange(totalUsers, usersPrev);

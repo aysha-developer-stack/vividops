@@ -1,4 +1,13 @@
 export const MISTAKE_CATEGORIES = [
+  "wrong_data_entry",
+  "wrong_measurement",
+  "missing_file",
+  "incorrect_file_upload",
+  "checklist_incomplete",
+  "missed_deadline",
+  "communication_issue",
+  "safety_procedure_not_followed",
+  "client_requirement_missed",
   "drawing_error",
   "measurement_error",
   "missing_info",
@@ -13,6 +22,15 @@ export const MISTAKE_CATEGORIES = [
 export type MistakeCategory = (typeof MISTAKE_CATEGORIES)[number];
 
 export const MISTAKE_CATEGORY_LABELS: Record<MistakeCategory, string> = {
+  wrong_data_entry: "Wrong Data Entry",
+  wrong_measurement: "Wrong Measurement",
+  missing_file: "Missing File",
+  incorrect_file_upload: "Incorrect File Upload",
+  checklist_incomplete: "Checklist Incomplete",
+  missed_deadline: "Missed Deadline",
+  communication_issue: "Communication Issue",
+  safety_procedure_not_followed: "Safety Procedure Not Followed",
+  client_requirement_missed: "Client Requirement Missed",
   drawing_error: "Drawing Error",
   measurement_error: "Measurement Error",
   missing_info: "Missing Information",

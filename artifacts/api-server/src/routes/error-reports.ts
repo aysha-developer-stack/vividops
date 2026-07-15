@@ -97,6 +97,7 @@ router.get("/error-reports/analytics", requireAuth, async (req, res) => {
       name: users.name,
       count: sql<number>`count(*)::int`,
       openCount: sql<number>`count(*) filter (where ${errorReports.status} = 'open')::int`,
+      reworkCount: sql<number>`count(*) filter (where ${errorReports.reworkId} is not null or ${errorReports.category} = 'rework')::int`,
     })
     .from(errorReports)
     .innerJoin(users, eq(users.id, errorReports.userId))
@@ -117,6 +118,8 @@ router.get("/error-reports/analytics", requireAuth, async (req, res) => {
     .select({
       total: sql<number>`count(*)::int`,
       open: sql<number>`count(*) filter (where ${errorReports.status} = 'open')::int`,
+      reworkCount: sql<number>`count(*) filter (where ${errorReports.reworkId} is not null or ${errorReports.category} = 'rework')::int`,
+      highSeverity: sql<number>`count(*) filter (where ${errorReports.severity} = 'high')::int`,
     })
     .from(errorReports);
 
@@ -131,6 +134,8 @@ router.get("/error-reports/analytics", requireAuth, async (req, res) => {
     byCategory,
     total: totals[0]?.total ?? 0,
     open: totals[0]?.open ?? 0,
+    reworkCount: totals[0]?.reworkCount ?? 0,
+    highSeverity: totals[0]?.highSeverity ?? 0,
   });
   return;
 });

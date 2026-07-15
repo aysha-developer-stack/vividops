@@ -276,6 +276,39 @@ export async function ensureAllSchemas() {
       CREATE INDEX IF NOT EXISTS job_cliq_channels_status_idx ON job_cliq_channels (status);
       ALTER TABLE job_cliq_channels ADD COLUMN IF NOT EXISTS chat_id text;
 
+      -- Rework Cycles
+      CREATE TABLE IF NOT EXISTS job_reworks (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_by_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        checklist_item_id integer,
+        cycle_number integer NOT NULL DEFAULT 1,
+        reason text NOT NULL,
+        category text NOT NULL DEFAULT 'other',
+        comments text,
+        severity text NOT NULL DEFAULT 'medium',
+        status text NOT NULL DEFAULT 'open',
+        due_at timestamptz,
+        assigned_at timestamptz NOT NULL DEFAULT now(),
+        completed_at timestamptz,
+        approved_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      ALTER TABLE job_reworks ADD COLUMN IF NOT EXISTS checklist_item_id integer;
+      ALTER TABLE job_reworks ADD COLUMN IF NOT EXISTS cycle_number integer NOT NULL DEFAULT 1;
+      ALTER TABLE job_reworks ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT 'other';
+      ALTER TABLE job_reworks ADD COLUMN IF NOT EXISTS comments text;
+      ALTER TABLE job_reworks ADD COLUMN IF NOT EXISTS severity text NOT NULL DEFAULT 'medium';
+      ALTER TABLE job_reworks ADD COLUMN IF NOT EXISTS due_at timestamptz;
+      ALTER TABLE job_reworks ADD COLUMN IF NOT EXISTS completed_at timestamptz;
+      ALTER TABLE job_reworks ADD COLUMN IF NOT EXISTS approved_at timestamptz;
+      CREATE INDEX IF NOT EXISTS job_reworks_job_idx ON job_reworks(job_id);
+      CREATE INDEX IF NOT EXISTS job_reworks_user_idx ON job_reworks(user_id);
+      CREATE INDEX IF NOT EXISTS job_reworks_status_idx ON job_reworks(status);
+      CREATE INDEX IF NOT EXISTS job_reworks_category_idx ON job_reworks(category);
+
       -- Error Reports
       CREATE TABLE IF NOT EXISTS error_reports (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -287,6 +320,7 @@ export async function ensureAllSchemas() {
         category text NOT NULL DEFAULT 'other',
         checklist_item_id integer,
         source text NOT NULL DEFAULT 'manual',
+        rework_id uuid REFERENCES job_reworks(id) ON DELETE SET NULL,
         severity error_severity NOT NULL DEFAULT 'medium',
         status error_report_status NOT NULL DEFAULT 'open',
         resolved_at timestamptz,
@@ -296,9 +330,11 @@ export async function ensureAllSchemas() {
       ALTER TABLE error_reports ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT 'other';
       ALTER TABLE error_reports ADD COLUMN IF NOT EXISTS checklist_item_id integer;
       ALTER TABLE error_reports ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual';
+      ALTER TABLE error_reports ADD COLUMN IF NOT EXISTS rework_id uuid REFERENCES job_reworks(id) ON DELETE SET NULL;
       CREATE INDEX IF NOT EXISTS error_reports_job_idx ON error_reports(job_id);
       CREATE INDEX IF NOT EXISTS error_reports_status_idx ON error_reports(status);
       CREATE INDEX IF NOT EXISTS error_reports_category_idx ON error_reports(category);
+      CREATE INDEX IF NOT EXISTS error_reports_rework_idx ON error_reports(rework_id);
 
       CREATE TABLE IF NOT EXISTS checklist_templates (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

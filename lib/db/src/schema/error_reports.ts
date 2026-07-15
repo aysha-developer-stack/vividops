@@ -1,11 +1,21 @@
 import { pgTable, uuid, text, timestamp, integer, pgEnum, index } from "drizzle-orm/pg-core";
 import { jobs } from "./jobs";
 import { users } from "./users";
+import { jobReworks } from "./job_reworks";
 
 export const errorSeverityEnum = pgEnum("error_severity", ["low", "medium", "high"]);
 export const errorReportStatusEnum = pgEnum("error_report_status", ["open", "resolved"]);
 
 export const MISTAKE_CATEGORIES = [
+  "wrong_data_entry",
+  "wrong_measurement",
+  "missing_file",
+  "incorrect_file_upload",
+  "checklist_incomplete",
+  "missed_deadline",
+  "communication_issue",
+  "safety_procedure_not_followed",
+  "client_requirement_missed",
   "drawing_error",
   "measurement_error",
   "missing_info",
@@ -31,6 +41,7 @@ export const errorReports = pgTable(
     category: text("category").notNull().default("other"),
     checklistItemId: integer("checklist_item_id"),
     source: text("source").notNull().default("manual"),
+    reworkId: uuid("rework_id").references(() => jobReworks.id, { onDelete: "set null" }),
     severity: errorSeverityEnum("severity").notNull().default("medium"),
     status: errorReportStatusEnum("status").notNull().default("open"),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
@@ -44,6 +55,7 @@ export const errorReports = pgTable(
     index("error_reports_status_idx").on(t.status),
     index("error_reports_severity_idx").on(t.severity),
     index("error_reports_category_idx").on(t.category),
+    index("error_reports_rework_idx").on(t.reworkId),
   ],
 );
 

@@ -66,10 +66,12 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   }>>([]);
   const [errorsLoading, setErrorsLoading] = useState(false);
   const [mistakeAnalytics, setMistakeAnalytics] = useState<{
-    byUser: Array<{ userId: string; name: string; count: number; openCount: number }>;
+    byUser: Array<{ userId: string; name: string; count: number; openCount: number; reworkCount?: number }>;
     byCategory: Array<{ category: string; count: number }>;
     total: number;
     open: number;
+    reworkCount?: number;
+    highSeverity?: number;
   } | null>(null);
   const [selectedError, setSelectedError] = useState<(typeof errorReports)[number] | null>(null);
   const [updatingError, setUpdatingError] = useState(false);
@@ -1173,18 +1175,23 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
               {activeTab === "errors" && (
                 <div className="space-y-2">
                   {mistakeAnalytics && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
                       <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
                         <p className="text-[10px] uppercase font-bold text-gray-500">Total mistakes</p>
                         <p className="text-xl font-bold text-gray-900">{mistakeAnalytics.total}</p>
                         <p className="text-xs text-amber-700">{mistakeAnalytics.open} open</p>
+                      </div>
+                      <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
+                        <p className="text-[10px] uppercase font-bold text-amber-700">Rework cycles</p>
+                        <p className="text-xl font-bold text-amber-900">{mistakeAnalytics.reworkCount ?? 0}</p>
+                        <p className="text-xs text-amber-700">{mistakeAnalytics.highSeverity ?? 0} high severity</p>
                       </div>
                       <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
                         <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Who errs most</p>
                         {(mistakeAnalytics.byUser ?? []).slice(0, 3).map((u) => (
                           <div key={u.userId} className="flex justify-between text-xs gap-2">
                             <span className="truncate text-gray-700">{u.name}</span>
-                            <span className="font-semibold text-red-600">{u.count}</span>
+                            <span className="font-semibold text-red-600">{u.count} / {u.reworkCount ?? 0} rw</span>
                           </div>
                         ))}
                       </div>
