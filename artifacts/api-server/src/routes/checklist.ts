@@ -238,11 +238,19 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       });
 
     if (status === "rework") {
+      const rows = await db
+        .select({ itemId: jobChecklistState.itemId, status: jobChecklistState.status })
+        .from(jobChecklistState)
+        .where(and(eq(jobChecklistState.jobId, jobId), eq(jobChecklistState.userId, targetUserId)));
+      const done = rows.filter((r) => r.status === "completed").length;
+      const nextProgress = checklistList.length > 0 ? Math.round((done / checklistList.length) * 100) : 0;
+
       await db
         .update(jobs)
         .set({
           status: "rework" as any,
           completedAt: null,
+          progress: nextProgress,
           updatedAt: new Date(),
         })
         .where(eq(jobs.id, jobId));

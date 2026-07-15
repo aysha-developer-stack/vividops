@@ -1,4 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import {
   db,
   jobs,
@@ -101,6 +102,34 @@ export async function assertWorkerChecklistReady(
   }
 
   return null;
+}
+
+async function reopenChecklistForRework(job: JobRow, workerUserId: string, reason: string) {
+  const list = parseJobChecklist(job);
+  if (list.length === 0) return;
+
+  for (let i = 0; i < list.length; i++) {
+    const itemId = i + 1;
+    await db
+      .insert(jobChecklistState)
+      .values({
+        id: randomUUID(),
+        jobId: job.id,
+        userId: workerUserId,
+        itemId,
+        status: "rework",
+        reworkReason: reason,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [jobChecklistState.jobId, jobChecklistState.userId, jobChecklistState.itemId],
+        set: {
+          status: "rework",
+          reworkReason: reason,
+          updatedAt: new Date(),
+        },
+      });
+  }
 }
 
 /** Map a raw "completed" request into the correct stage for the actor's role. */
@@ -295,6 +324,9 @@ export async function applyJobReview(opts: {
         severity,
         source: "job_rework",
       });
+      if (job.assigneeId) {
+        await reopenChecklistForRework(job, job.assigneeId, reason.trim());
+      }
     } catch (err) {
       return {
         ok: false,
@@ -313,7 +345,7 @@ export async function applyJobReview(opts: {
     .set({
       status: nextStatus as any,
       completedAt: nextStatus === "completed" ? new Date() : null,
-      progress: nextStatus === "completed" ? 100 : job.progress,
+      progress: nextStatus === "completed" ? 100 : nextStatus === "rework" ? 0 : job.progress,
       updatedAt: new Date(),
     })
     .where(eq(jobs.id, job.id));

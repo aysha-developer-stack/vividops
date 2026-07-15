@@ -761,7 +761,7 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   const completedCount = checklist.filter((c) => c.status === "completed").length;
   const checklistProgress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
-  const progress = Math.max(job?.progress ?? 0, checklistProgress);
+  const progress = checklist.length > 0 ? checklistProgress : (job?.progress ?? 0);
   const activeReworks = reworks.filter((r) => r.status === "open" || r.status === "awaiting_review" || r.status === "needs_correction");
   const selectedItemRework = selectedChecklistItem
     ? activeReworks.find((r) => r.checklistItemId === selectedChecklistItem.id)
