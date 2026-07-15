@@ -70,16 +70,12 @@ function buildFallbackCliqChannelName(job: ApiJob | undefined, jobId: string): s
   const jobNumberSource = (job?.number || `job-${jobId}`).replace(/^job[\s-]*/i, "");
   const numberPart = `job-${slugifyCliqChannelPart(jobNumberSource) || jobId}`;
   const titlePart = slugifyCliqChannelPart(job?.title || "job");
-  return [numberPart, titlePart].filter(Boolean).join("-").slice(0, 60);
+  const addressPart = slugifyCliqChannelPart(job?.address || "");
+  return [numberPart, titlePart, addressPart].filter(Boolean).join("-").slice(0, 80);
 }
 
 function buildCliqChannelDisplayName(job: ApiJob | undefined, channelName: string): string {
-  if (job?.number || job?.title) {
-    const number = (job?.number || "").replace(/^JOB-/i, "").trim();
-    const title = job?.title?.trim() || "Job";
-    return number ? `JOB-${number} - ${title}` : title;
-  }
-  return channelName.replace(/^job-?/i, "Job ").replace(/-/g, " ");
+  return channelName;
 }
 
 interface FileItem { id: number; name: string; size: string; type: "doc" | "image" | "pdf"; uploadedBy: string; uploadedAt: string; tag: "input" | "output"; version?: number; group?: string }

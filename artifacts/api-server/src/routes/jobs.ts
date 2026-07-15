@@ -227,14 +227,12 @@ function computeCliqChannelName(job: JobRow): string {
   const numberSeed = job.jobNumber?.trim() || String(job.serial);
   const numberPart = `job-${slugifyChannel(numberSeed) || job.serial}`;
   const titlePart = slugifyChannel(job.title || "job");
-  return [numberPart, titlePart].filter(Boolean).join("-").slice(0, 60);
+  const addressPart = slugifyChannel(job.address || "");
+  return [numberPart, titlePart, addressPart].filter(Boolean).join("-").slice(0, 80);
 }
 
 function computeCliqChannelDisplayName(job: JobRow): string {
-  const numberSeed = job.jobNumber?.trim() || String(job.serial);
-  const cleanNumber = numberSeed.replace(/^job[\s-]*/i, "").trim() || String(job.serial);
-  const title = (job.title || "Job").trim();
-  return `JOB-${cleanNumber} - ${title}`.slice(0, 80);
+  return computeCliqChannelName(job);
 }
 
 function normalizeJobNumber(value: unknown): string | null {
@@ -1415,7 +1413,7 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
 
     const createBody: Record<string, unknown> = {
       level,
-      name: computeCliqChannelDisplayName(job),
+      name: channelName,
       unique_name: channelName,
       description: `Job channel for ${computeCliqChannelDisplayName(job)}`,
     };
