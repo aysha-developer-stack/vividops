@@ -326,13 +326,19 @@ function cliqWebRoot(): string {
 
 function computeCliqChannelUrl(channelName: string): string | null {
   if (!channelName) return null;
-  return `${cliqWebRoot()}/channels/${encodeURIComponent(channelName)}`;
+  // Zoho Cliq does not reliably open channels by guessed /channels/<unique_name> URLs.
+  // Prefer URLs returned by Cliq or /app/chats/<chat_id> when a chat id is known.
+  return null;
 }
 
 function computeCliqChatUrl(chatId: string | null): string | null {
   const value = pickString(chatId);
   if (!value) return null;
   return `${cliqWebRoot()}/app/chats/${encodeURIComponent(value)}`;
+}
+
+function isGeneratedCliqChannelUrl(url: string | null | undefined): boolean {
+  return typeof url === "string" && /\/channels\/[^/]+$/i.test(url);
 }
 
 function pickString(v: unknown): string | null {
@@ -392,10 +398,12 @@ function parseCliqChannelLookup(raw: any): CliqChannelLookup | null {
     pickString(item.chatId);
   const channelUrl =
     pickString(item.permalink) ??
-    computeCliqChannelUrl(channelName ?? "") ??
-    computeCliqChatUrl(chatId) ??
     pickString(item.channel_url) ??
-    pickString(item.url);
+    pickString(item.url) ??
+    pickString(item.web_url) ??
+    pickString(item.webUrl) ??
+    computeCliqChatUrl(chatId) ??
+    computeCliqChannelUrl(channelName ?? "");
   if (!channelId && !channelName && !channelUrl && !chatId) return null;
   return { channelId, channelName, channelUrl, chatId };
 }
@@ -419,7 +427,7 @@ async function persistJobCliqChannelRecord(
   const channelName = resolved.channelName ?? fallbackName;
   const channelId = resolved.channelId ?? null;
   const chatId = resolved.chatId ?? null;
-  const channelUrl = resolved.channelUrl ?? computeCliqChannelUrl(channelName);
+  const channelUrl = resolved.channelUrl ?? computeCliqChatUrl(chatId) ?? computeCliqChannelUrl(channelName);
   await db.execute(sql`
     UPDATE job_cliq_channels
     SET channel_name = ${channelName},
@@ -503,7 +511,10 @@ async function getOrCreateJobCliqChannel(job: JobRow): Promise<JobCliqChannelRec
     let finalName = existing.channel_name;
     let finalId = existing.channel_id ?? null;
     let finalChatId = existing.chat_id ?? null;
-    let finalUrl = computeCliqChannelUrl(finalName);
+    let finalUrl =
+      isGeneratedCliqChannelUrl(existing.channel_url)
+        ? computeCliqChatUrl(finalChatId)
+        : existing.channel_url ?? computeCliqChatUrl(finalChatId) ?? computeCliqChannelUrl(finalName);
 
     try {
       const token = await getZohoCliqAccessToken();
@@ -531,7 +542,7 @@ async function getOrCreateJobCliqChannel(job: JobRow): Promise<JobCliqChannelRec
         finalId = resolved.channelId ?? finalId;
         finalChatId = resolved.chatId ?? finalChatId;
         finalName = resolved.channelName ?? finalName;
-        finalUrl = resolved.channelUrl ?? computeCliqChannelUrl(finalName);
+        finalUrl = resolved.channelUrl ?? computeCliqChatUrl(finalChatId) ?? computeCliqChannelUrl(finalName);
       } else if (!finalId) {
         finalName = expectedName;
         finalUrl = computeCliqChannelUrl(finalName);
@@ -1456,13 +1467,15 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
 
     const discoveredUrl =
       pickString(createJson?.data?.permalink) ??
-      computeCliqChannelUrl(discoveredName ?? channelName) ??
-      computeCliqChatUrl(discoveredChatId) ??
       pickString(createJson?.data?.channel_url) ??
       pickString(createJson?.data?.url) ??
+      pickString(createJson?.data?.web_url) ??
       pickString(createJson?.permalink) ??
-      pickString(createJson?.url);
-    createdChannelUrl = discoveredUrl ?? computeCliqChannelUrl(createdChannelName);
+      pickString(createJson?.url) ??
+      pickString(createJson?.web_url) ??
+      computeCliqChatUrl(discoveredChatId) ??
+      computeCliqChannelUrl(discoveredName ?? channelName);
+    createdChannelUrl = discoveredUrl ?? computeCliqChatUrl(discoveredChatId) ?? computeCliqChannelUrl(createdChannelName);
   }
 
   await db.execute(sql`
@@ -2252,7 +2265,7 @@ router.post("/jobs/:id/cliq/join", requireAuth, async (req, res) => {
       status: ch.status,
     });
     // #endregion
-    return res.json({ success: true, channelUrl: ch.channelUrl, channelName: ch.channelName });
+    return res.json({ success: true, channelUrl: ch.channelUrl, channelName: ch.channelName, chatId: ch.chatId });
   } catch (err) {
     logger.error({ err }, "Failed to join job Cliq channel");
     return res.status(500).json({ error: "Internal server error" });

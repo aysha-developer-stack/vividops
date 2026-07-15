@@ -113,6 +113,7 @@ type JobMessageApi = {
 type JobCliqChannelApi = {
   channelName: string;
   channelUrl: string | null;
+  chatId?: string | null;
   status: string;
 };
 
@@ -787,6 +788,7 @@ export default function JobDetail({ role = "user", id }: Props) {
           setCliqChannel({
             channelName: obj.channelName,
             channelUrl: typeof obj.channelUrl === "string" ? obj.channelUrl : null,
+            chatId: typeof obj.chatId === "string" ? obj.chatId : null,
             status: typeof obj.status === "string" ? obj.status : "pending",
           });
         }
@@ -1891,7 +1893,9 @@ export default function JobDetail({ role = "user", id }: Props) {
           const fallbackChannelName = buildFallbackCliqChannelName(job, jobId);
           const channelName = cliqChannel?.channelName ?? fallbackChannelName;
           const channelDisplayName = buildCliqChannelDisplayName(job, channelName);
-          const cliqUrl = cliqChannel?.channelUrl ?? `${CLIQ_WEB_ROOT}/channels/${channelName}`;
+          const cliqUrl =
+            cliqChannel?.channelUrl ??
+            (cliqChannel?.chatId ? `${CLIQ_WEB_ROOT}/app/chats/${cliqChannel.chatId}` : null);
           const openCliq = async () => {
             let url = cliqUrl;
             try {
@@ -1903,14 +1907,19 @@ export default function JobDetail({ role = "user", id }: Props) {
                     const next = {
                       channelName: data.channelName,
                       channelUrl: typeof data.channelUrl === "string" ? data.channelUrl : null,
+                      chatId: typeof data.chatId === "string" ? data.chatId : null,
                       status: typeof data.status === "string" ? data.status : (cliqChannel?.status ?? "active"),
                     };
                     setCliqChannel(next);
-                    url = next.channelUrl ?? `${CLIQ_WEB_ROOT}/channels/${next.channelName}`;
+                    url = next.channelUrl ?? (next.chatId ? `${CLIQ_WEB_ROOT}/app/chats/${next.chatId}` : null);
                   }
                 }
               }
             } catch {
+            }
+            if (!url) {
+              window.alert("Cliq channel is active, but Zoho did not return an openable link yet. Please open it from Zoho Cliq search.");
+              return;
             }
             window.open(url, "_blank", "noopener,noreferrer");
           };
