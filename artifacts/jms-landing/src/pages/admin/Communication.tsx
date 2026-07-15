@@ -31,6 +31,7 @@ type JobMessageUi = { id: string; user: string; avatar: string; text: string; ti
 type JobCliqChannelApi = {
   channelName: string;
   channelUrl: string | null;
+  chatId?: string | null;
   status: string;
 };
 
@@ -44,6 +45,15 @@ type JobAttachmentApi = {
 const QUICK_EMOJIS = ["😀", "👍", "🎉", "✅", "🔥", "🙂", "🙏", "😄"];
 const IMAGE_FILE_RE = /\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?.*)?$/i;
 const CLIQ_WEB_ROOT = "https://cliq.zoho.com.au";
+
+function cliqChatUrl(chatId: string | null | undefined): string | null {
+  if (!chatId) return null;
+  const companyId = chatId.match(/_(\d+)$/)?.[1];
+  if (companyId) {
+    return `${CLIQ_WEB_ROOT}/company/${encodeURIComponent(companyId)}/chats/${encodeURIComponent(chatId)}`;
+  }
+  return `${CLIQ_WEB_ROOT}/app/chats/${encodeURIComponent(chatId)}`;
+}
 
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -231,6 +241,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
           setCliqChannel({
             channelName: obj.channelName,
             channelUrl: typeof obj.channelUrl === "string" ? obj.channelUrl : null,
+            chatId: typeof obj.chatId === "string" ? obj.chatId : null,
             status: typeof obj.status === "string" ? obj.status : "pending",
           });
         }
@@ -253,7 +264,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
 
   const openCliq = async () => {
     if (!activeJobId) return;
-    let url = cliqChannel?.channelUrl;
+    let url = cliqChatUrl(cliqChannel?.chatId) ?? cliqChannel?.channelUrl;
     try {
       const res = await fetch(`/api/jobs/${activeJobId}/cliq/join`, { method: "POST", credentials: "include" });
       if (res.ok) {
@@ -262,10 +273,11 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
           const next = {
             channelName: data.channelName,
             channelUrl: typeof data.channelUrl === "string" ? data.channelUrl : null,
+            chatId: typeof data.chatId === "string" ? data.chatId : null,
             status: typeof data.status === "string" ? data.status : (cliqChannel?.status ?? "active"),
           };
           setCliqChannel(next);
-          url = next.channelUrl ?? `${CLIQ_WEB_ROOT}/channels/${next.channelName}`;
+          url = cliqChatUrl(next.chatId) ?? next.channelUrl ?? `${CLIQ_WEB_ROOT}/channels/${next.channelName}`;
         }
       }
     } catch {
@@ -385,7 +397,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
             <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-gray-300">
               <Settings size={12} /> Settings
             </motion.button>
-            <motion.button onClick={openCliq} disabled={!cliqChannel?.channelUrl} whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.97 }} className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed">
+            <motion.button onClick={openCliq} disabled={!cliqChannel?.chatId && !cliqChannel?.channelUrl} whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.97 }} className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed">
               <ExternalLink size={12} /> Open in Cliq
             </motion.button>
           </div>

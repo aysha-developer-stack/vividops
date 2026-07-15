@@ -332,6 +332,13 @@ function computeCliqChannelUrl(channelName: string): string | null {
 function computeCliqChatUrl(chatId: string | null): string | null {
   const value = pickString(chatId);
   if (!value) return null;
+  const companyId =
+    pickString(process.env.ZOHO_CLIQ_COMPANY_ID) ??
+    value.match(/_(\d+)$/)?.[1] ??
+    null;
+  if (companyId) {
+    return `${cliqWebRoot()}/company/${encodeURIComponent(companyId)}/chats/${encodeURIComponent(value)}`;
+  }
   return `${cliqWebRoot()}/app/chats/${encodeURIComponent(value)}`;
 }
 

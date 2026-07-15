@@ -119,6 +119,15 @@ type JobCliqChannelApi = {
 
 const CLIQ_WEB_ROOT = "https://cliq.zoho.com.au";
 
+function cliqChatUrl(chatId: string | null | undefined): string | null {
+  if (!chatId) return null;
+  const companyId = chatId.match(/_(\d+)$/)?.[1];
+  if (companyId) {
+    return `${CLIQ_WEB_ROOT}/company/${encodeURIComponent(companyId)}/chats/${encodeURIComponent(chatId)}`;
+  }
+  return `${CLIQ_WEB_ROOT}/app/chats/${encodeURIComponent(chatId)}`;
+}
+
 type JobMessageUi = { id: string; user: string; avatar: string; text: string; time: string; isMe: boolean };
 
 const INITIAL_MESSAGES: JobMessageUi[] = [];
@@ -1894,7 +1903,7 @@ export default function JobDetail({ role = "user", id }: Props) {
           const channelName = cliqChannel?.channelName ?? fallbackChannelName;
           const channelDisplayName = buildCliqChannelDisplayName(job, channelName);
           const cliqUrl =
-            (cliqChannel?.chatId ? `${CLIQ_WEB_ROOT}/app/chats/${cliqChannel.chatId}` : null) ??
+            cliqChatUrl(cliqChannel?.chatId) ??
             cliqChannel?.channelUrl ??
             `${CLIQ_WEB_ROOT}/channels/${channelName}`;
           const openCliq = async () => {
@@ -1913,7 +1922,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                     };
                     setCliqChannel(next);
                     url =
-                      (next.chatId ? `${CLIQ_WEB_ROOT}/app/chats/${next.chatId}` : null) ??
+                      cliqChatUrl(next.chatId) ??
                       next.channelUrl ??
                       `${CLIQ_WEB_ROOT}/channels/${next.channelName}`;
                   }
