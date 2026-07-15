@@ -985,7 +985,7 @@ function normalizeMirroredCliqText(job: JobRow, text: string): string {
   const prefix = prefixes.find((p) => trimmed.startsWith(`${p}\n`));
   if (!prefix) return trimmed;
   const remainder = trimmed.slice(prefix.length + 1).trim();
-  const website = remainder.match(/^From website\s*\(([^)]+)\):\s*([\s\S]+)$/i);
+  const website = remainder.match(/^(?:From website|Vivid OPS)\s*\(([^)]+)\):\s*([\s\S]+)$/i);
   if (website?.[2]) return website[2].trim();
   const generic = remainder.match(/^[^:\n]{1,120}:\s*([\s\S]+)$/);
   return generic?.[1]?.trim() || remainder;
@@ -1205,7 +1205,7 @@ async function createStoredJobMessage({
 
   if (pushToCliq) {
     const prefix = `JOB-${job.jobNumber?.trim() || job.serial} - ${job.title}`;
-    const payload = `${prefix}\nFrom website (${actor.name}): ${cleanText}`;
+    const payload = `${prefix}\nVivid OPS (${actor.name}): ${cleanText}`;
     logger.info({ jobId: job.id, channelName: computeCliqChannelName(job) }, "[CLIQ-PUSH] Attempting to push message to Zoho Cliq");
     try {
       let ch = await getOrCreateJobCliqChannel(job);

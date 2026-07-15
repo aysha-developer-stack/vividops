@@ -56,7 +56,7 @@ router.post("/jobs/:jobId/cliq/messages", requireAuth, async (req, res) => {
     await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: `${prefix}\nFrom website (${actor.name}): ${text}` }),
+      body: JSON.stringify({ text: `${prefix}\nVivid OPS (${actor.name}): ${text}` }),
     });
 
     return res.status(204).end();
