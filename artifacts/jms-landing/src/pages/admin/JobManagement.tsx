@@ -252,7 +252,6 @@ export default function JobManagement(
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [templateName, setTemplateName] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
-  const [checkNeedsFile, setCheckNeedsFile] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -306,7 +305,6 @@ export default function JobManagement(
     setEditingId(j.id);
     setJobFiles([]);
     setExistingAttachments([]);
-    setCheckNeedsFile(false);
     setCheckPendingFile(null);
     setUploadingFiles(false);
     setError(null);
@@ -461,7 +459,7 @@ export default function JobManagement(
   const removeJobFile = (idx: number) => {
     setJobFiles(jobFiles.filter((_, i) => i !== idx));
   };
-  const addChecklistFromFile = (file: File, requireWorkerUpload: boolean) => {
+  const addChecklistFromFile = (file: File) => {
     const text = file.name.trim();
     if (!text) return;
     setChecklistTemplate((prev) => {
@@ -469,10 +467,9 @@ export default function JobManagement(
       setChecklistItemFiles((filesPrev) => ({ ...filesPrev, [nextIndex]: [file] }));
       return [
         ...prev,
-        { text, attachmentRequired: requireWorkerUpload || undefined },
+        { text, attachmentRequired: true },
       ];
     });
-    setCheckNeedsFile(false);
     setCheckPendingFile(null);
     setError(null);
   };
@@ -592,10 +589,11 @@ export default function JobManagement(
       const nextIndex = checklistTemplate.length;
       finalChecklist = [
         ...checklistTemplate,
-        { text: checkPendingFile.name.trim(), attachmentRequired: checkNeedsFile || undefined },
+        { text: checkPendingFile.name.trim(), attachmentRequired: true },
       ];
       finalChecklistFiles = { ...checklistItemFiles, [nextIndex]: [checkPendingFile] };
     }
+    finalChecklist = finalChecklist.map((item) => ({ ...item, attachmentRequired: true }));
     if (finalChecklist.length === 0) {
       setError("Add at least one checklist file — the file name becomes the task name.");
       return;
@@ -715,7 +713,6 @@ export default function JobManagement(
       setChecklistTemplate([]);
       setChecklistItemFiles({});
       setCheckPendingFile(null);
-      setCheckNeedsFile(false);
       setUploadingFiles(false);
       setEditingId(null);
       setModalOpen(false);
@@ -730,7 +727,6 @@ export default function JobManagement(
     setChecklistTemplate([]);
     setChecklistItemFiles({});
     setCheckPendingFile(null);
-    setCheckNeedsFile(false);
     setJobFiles([]);
     setExistingAttachments([]);
     setMemberIds([]);
@@ -810,7 +806,6 @@ export default function JobManagement(
                 });
                 setEditingId(null);
                 setChecklistTemplate([]);
-                setCheckNeedsFile(false);
                 setCheckPendingFile(null);
                 setJobFiles([]);
                 setExistingAttachments([]);
@@ -1210,10 +1205,6 @@ export default function JobManagement(
                   </div>
 
                   <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4 space-y-3">
-                    <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
-                      <input type="checkbox" checked={checkNeedsFile} onChange={(e) => setCheckNeedsFile(e.target.checked)} className="h-4 w-4" />
-                      File upload required from worker
-                    </label>
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Attach checklist file</label>
                       <input
@@ -1223,7 +1214,7 @@ export default function JobManagement(
                         onChange={(e) => {
                           const f = e.target.files?.[0] ?? null;
                           e.target.value = "";
-                          if (f) addChecklistFromFile(f, checkNeedsFile);
+                          if (f) addChecklistFromFile(f);
                         }}
                       />
                       <button
@@ -1253,7 +1244,7 @@ export default function JobManagement(
                             <div className="flex-1 min-w-0">
                               <div className="text-sm font-semibold text-gray-900 truncate">{it.text}</div>
                               {it.desc && <div className="text-[11px] text-gray-500 mt-0.5">{it.desc}</div>}
-                              {it.attachmentRequired && <div className="mt-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">File required</div>}
+                              <div className="mt-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Worker upload required</div>
                               {(checklistItemFiles[idx] ?? []).map((f) => (
                                 <div key={f.name} className="mt-1 text-[11px] text-primary font-medium truncate flex items-center gap-1">
                                   <FileText size={11} /> {f.name}

@@ -199,26 +199,21 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       if (!template) {
         return res.status(400).json({ error: "Checklist item not found" });
       }
-      const needsFile = Boolean(
-        template?.attachmentRequired ?? template?.fileRequired ?? template?.requiresFile,
-      );
-      if (needsFile) {
-        const [uploaded] = await db
-          .select({ id: jobChecklistAttachments.id })
-          .from(jobChecklistAttachments)
-          .where(
-            and(
-              eq(jobChecklistAttachments.jobId, jobId),
-              eq(jobChecklistAttachments.userId, targetUserId),
-              eq(jobChecklistAttachments.itemId, itemId),
-            ),
-          )
-          .limit(1);
-        if (!uploaded) {
-          return res.status(400).json({
-            error: "Upload a checklist file before marking this item complete.",
-          });
-        }
+      const [uploaded] = await db
+        .select({ id: jobChecklistAttachments.id })
+        .from(jobChecklistAttachments)
+        .where(
+          and(
+            eq(jobChecklistAttachments.jobId, jobId),
+            eq(jobChecklistAttachments.userId, targetUserId),
+            eq(jobChecklistAttachments.itemId, itemId),
+          ),
+        )
+        .limit(1);
+      if (!uploaded) {
+        return res.status(400).json({
+          error: "Upload a checklist file before marking this item complete.",
+        });
       }
     }
 

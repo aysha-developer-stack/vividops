@@ -77,13 +77,7 @@ export async function assertWorkerChecklistReady(
     return `Complete all checklist items before submitting (${incomplete.length} remaining).`;
   }
 
-  const requiredIds = list
-    .map((item, idx) => ({
-      id: idx + 1,
-      required: Boolean(item.attachmentRequired ?? item.fileRequired ?? item.requiresFile),
-    }))
-    .filter((x) => x.required)
-    .map((x) => x.id);
+  const requiredIds = list.map((_item, idx) => idx + 1);
 
   if (requiredIds.length > 0) {
     const uploaded = await db

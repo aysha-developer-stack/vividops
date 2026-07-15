@@ -578,7 +578,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       }
       return [...byItem.entries()]
         .sort((a, b) => a[0] - b[0])
-        .map(([id, fileName]) => ({ id, text: fileName, attachmentRequired: false as boolean | undefined }));
+        .map(([id, fileName]) => ({ id, text: fileName, attachmentRequired: true as boolean | undefined }));
     })();
 
     const nextChecklist: ChecklistItem[] =
@@ -588,14 +588,14 @@ export default function JobDetail({ role = "user", id }: Props) {
             text: t.text,
             done: false,
             desc: t.desc,
-            attachmentRequired: t.attachmentRequired,
+            attachmentRequired: true,
             status: "pending",
           }))
         : fromAttachments.map((t) => ({
             id: t.id,
             text: t.text,
             done: false,
-            attachmentRequired: t.attachmentRequired,
+            attachmentRequired: true,
             status: "pending" as const,
           }));
 
