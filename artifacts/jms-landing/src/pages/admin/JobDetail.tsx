@@ -668,7 +668,10 @@ export default function JobDetail({ role = "user", id }: Props) {
         if (!cancelled) {
           setChecklist(hydrated);
           setChecklistUploads(uploads);
-          setSelectedChecklistItem(null);
+          setSelectedChecklistItem((prev) => {
+            if (!prev) return prev;
+            return hydrated.find((item) => item.id === prev.id) ?? prev;
+          });
           uploadChecklistIdRef.current = null;
         }
       } catch {
@@ -1690,22 +1693,6 @@ export default function JobDetail({ role = "user", id }: Props) {
                       )}
                     </div>
 
-                    {selectedChecklistItem.attachmentRequired && (
-                      <div>
-                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Mandatory Worker Upload</div>
-                        <div className="p-4 border-2 border-dashed border-gray-100 rounded-xl bg-gray-50/50 flex flex-col items-center justify-center text-center">
-                          <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-primary mb-2">
-                            <Upload size={18} />
-                          </div>
-                          <div className="text-xs font-bold text-gray-900">Worker must upload a file</div>
-                          <p className="text-[10px] text-gray-500 mt-1 max-w-[160px]">Completion uploads for this task.</p>
-                          <div className="mt-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                            Uploaded: {checklistUploads[selectedChecklistItem.id] ?? 0}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
                     <div>
                       <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Comments</div>
                       <textarea className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl p-3 text-xs !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary resize-none h-24" placeholder="Add notes about this task..." />
@@ -1737,12 +1724,12 @@ export default function JobDetail({ role = "user", id }: Props) {
                                 i.id === selectedChecklistItem.id ? { ...i, status: "completed" as const, done: true } : i
                               );
                               setChecklist(next);
-                              setSelectedChecklistItem({ ...selectedChecklistItem, status: "completed" as const, done: true });
                               persistLocalChecklist(next, checklistUploads);
                               await persistProgress(next);
                               await loadReworks();
                               await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
                               await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                              setSelectedChecklistItem(null);
                             } catch (err) {
                               alert(err instanceof Error ? err.message : "Failed to mark complete");
                             }
