@@ -69,6 +69,7 @@ function mapJob(j: ApiJob): UiJob {
       ?.filter((a) => a.role === "user")
       .map((a) => ({ id: a.id, name: a.name })) ??
     (j.assignee?.role === "user" ? [{ id: j.assignee.id, name: j.assignee.name }] : []);
+  const primaryAssignee = j.assignee?.role === "user" ? j.assignee : assignees[0] ?? null;
   return {
     id: j.id,
     number: j.number,
@@ -76,7 +77,7 @@ function mapJob(j: ApiJob): UiJob {
     client: j.client,
     assignee: assignees.map((a) => a.name).join(", ") || "Unassigned",
     assignees,
-    assigneeId: j.assignee?.id ?? null,
+    assigneeId: primaryAssignee?.id ?? null,
     supervisor: j.supervisor?.name ?? null,
     supervisorId: j.supervisor?.id ?? null,
     status: statusToUi(j),
@@ -164,7 +165,7 @@ function applyJobToForm(
       : meta.checklist;
   const descriptionText =
     typeof job.descriptionText === "string" ? job.descriptionText : meta.descriptionText;
-  const assigneeId = job.assignee?.id ?? "";
+  const assigneeId = job.assignee?.role === "user" ? job.assignee.id : "";
   const memberIdsFromApi =
     extras.length > 0
       ? extras
@@ -600,6 +601,13 @@ export default function JobManagement(
       return;
     }
 
+    const workerIds = new Set(workers.map((w) => w.id));
+    const selectedValidWorkerIds = selectedWorkerIds.filter((id) => workerIds.has(id));
+    const primaryAssigneeId =
+      form.assigneeId && workerIds.has(form.assigneeId)
+        ? form.assigneeId
+        : selectedValidWorkerIds[0] ?? "";
+
     setError(null);
     const descriptionPayload = serializeJobMeta(form.description, finalChecklist);
     const payload = {
@@ -610,13 +618,15 @@ export default function JobManagement(
       description: descriptionPayload,
       priority: PRIORITY_UI_TO_API[form.priority],
       supervisorId: effectiveSupervisorId || null,
-      assigneeId: form.assigneeId || null,
+      assigneeId: primaryAssigneeId || null,
       dueDate: form.due ? new Date(form.due).toISOString() : null,
     };
 
     const syncMembers = async (jobId: string) => {
       const assigneeId = payload.assigneeId;
-      const desired = Array.from(new Set(memberIds.filter((id) => id && id !== assigneeId)));
+      const desired = Array.from(
+        new Set(selectedValidWorkerIds.filter((id) => id && id !== assigneeId)),
+      );
       try {
         const res = await fetch(`/api/jobs/${jobId}/members`, { credentials: "include" });
         const current = res.ok ? ((await res.json()) as any) : [];
@@ -1392,7 +1402,7 @@ export default function JobManagement(
                 <label className="block text-xs font-semibold text-gray-700">New Assignee</label>
                 <select value={reassignTo} onChange={(e) => setReassignTo(e.target.value)} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white">
                   <option value="">Unassigned</option>
-                  {assignables.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  {workers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </div>
               <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50 shrink-0">
