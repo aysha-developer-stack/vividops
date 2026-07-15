@@ -326,9 +326,7 @@ function cliqWebRoot(): string {
 
 function computeCliqChannelUrl(channelName: string): string | null {
   if (!channelName) return null;
-  // Zoho Cliq does not reliably open channels by guessed /channels/<unique_name> URLs.
-  // Prefer URLs returned by Cliq or /app/chats/<chat_id> when a chat id is known.
-  return null;
+  return `${cliqWebRoot()}/channels/${encodeURIComponent(channelName)}`;
 }
 
 function computeCliqChatUrl(chatId: string | null): string | null {
@@ -513,7 +511,7 @@ async function getOrCreateJobCliqChannel(job: JobRow): Promise<JobCliqChannelRec
     let finalChatId = existing.chat_id ?? null;
     let finalUrl =
       isGeneratedCliqChannelUrl(existing.channel_url)
-        ? computeCliqChatUrl(finalChatId)
+        ? computeCliqChatUrl(finalChatId) ?? existing.channel_url
         : existing.channel_url ?? computeCliqChatUrl(finalChatId) ?? computeCliqChannelUrl(finalName);
 
     try {
@@ -1425,7 +1423,6 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
     const createBody: Record<string, unknown> = {
       level,
       name: channelName,
-      unique_name: channelName,
       description: `Job channel for ${computeCliqChannelDisplayName(job)}`,
     };
     if (level === "private" && participantEmails.length > 0) {

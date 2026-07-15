@@ -1895,7 +1895,7 @@ export default function JobDetail({ role = "user", id }: Props) {
           const channelDisplayName = buildCliqChannelDisplayName(job, channelName);
           const cliqUrl =
             cliqChannel?.channelUrl ??
-            (cliqChannel?.chatId ? `${CLIQ_WEB_ROOT}/app/chats/${cliqChannel.chatId}` : null);
+            (cliqChannel?.chatId ? `${CLIQ_WEB_ROOT}/app/chats/${cliqChannel.chatId}` : `${CLIQ_WEB_ROOT}/channels/${channelName}`);
           const openCliq = async () => {
             let url = cliqUrl;
             try {
@@ -1911,15 +1911,11 @@ export default function JobDetail({ role = "user", id }: Props) {
                       status: typeof data.status === "string" ? data.status : (cliqChannel?.status ?? "active"),
                     };
                     setCliqChannel(next);
-                    url = next.channelUrl ?? (next.chatId ? `${CLIQ_WEB_ROOT}/app/chats/${next.chatId}` : null);
+                    url = next.channelUrl ?? (next.chatId ? `${CLIQ_WEB_ROOT}/app/chats/${next.chatId}` : `${CLIQ_WEB_ROOT}/channels/${next.channelName}`);
                   }
                 }
               }
             } catch {
-            }
-            if (!url) {
-              window.alert("Cliq channel is active, but Zoho did not return an openable link yet. Please open it from Zoho Cliq search.");
-              return;
             }
             window.open(url, "_blank", "noopener,noreferrer");
           };
