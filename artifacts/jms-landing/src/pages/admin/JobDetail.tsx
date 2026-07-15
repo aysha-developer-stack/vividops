@@ -1894,8 +1894,9 @@ export default function JobDetail({ role = "user", id }: Props) {
           const channelName = cliqChannel?.channelName ?? fallbackChannelName;
           const channelDisplayName = buildCliqChannelDisplayName(job, channelName);
           const cliqUrl =
+            (cliqChannel?.chatId ? `${CLIQ_WEB_ROOT}/app/chats/${cliqChannel.chatId}` : null) ??
             cliqChannel?.channelUrl ??
-            (cliqChannel?.chatId ? `${CLIQ_WEB_ROOT}/app/chats/${cliqChannel.chatId}` : `${CLIQ_WEB_ROOT}/channels/${channelName}`);
+            `${CLIQ_WEB_ROOT}/channels/${channelName}`;
           const openCliq = async () => {
             let url = cliqUrl;
             try {
@@ -1911,7 +1912,10 @@ export default function JobDetail({ role = "user", id }: Props) {
                       status: typeof data.status === "string" ? data.status : (cliqChannel?.status ?? "active"),
                     };
                     setCliqChannel(next);
-                    url = next.channelUrl ?? (next.chatId ? `${CLIQ_WEB_ROOT}/app/chats/${next.chatId}` : `${CLIQ_WEB_ROOT}/channels/${next.channelName}`);
+                    url =
+                      (next.chatId ? `${CLIQ_WEB_ROOT}/app/chats/${next.chatId}` : null) ??
+                      next.channelUrl ??
+                      `${CLIQ_WEB_ROOT}/channels/${next.channelName}`;
                   }
                 }
               }

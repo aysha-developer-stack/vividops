@@ -395,12 +395,12 @@ function parseCliqChannelLookup(raw: any): CliqChannelLookup | null {
     pickString(item.chat_id) ??
     pickString(item.chatId);
   const channelUrl =
+    computeCliqChatUrl(chatId) ??
     pickString(item.permalink) ??
     pickString(item.channel_url) ??
     pickString(item.url) ??
     pickString(item.web_url) ??
     pickString(item.webUrl) ??
-    computeCliqChatUrl(chatId) ??
     computeCliqChannelUrl(channelName ?? "");
   if (!channelId && !channelName && !channelUrl && !chatId) return null;
   return { channelId, channelName, channelUrl, chatId };
@@ -425,7 +425,7 @@ async function persistJobCliqChannelRecord(
   const channelName = resolved.channelName ?? fallbackName;
   const channelId = resolved.channelId ?? null;
   const chatId = resolved.chatId ?? null;
-  const channelUrl = resolved.channelUrl ?? computeCliqChatUrl(chatId) ?? computeCliqChannelUrl(channelName);
+  const channelUrl = computeCliqChatUrl(chatId) ?? resolved.channelUrl ?? computeCliqChannelUrl(channelName);
   await db.execute(sql`
     UPDATE job_cliq_channels
     SET channel_name = ${channelName},
@@ -1463,6 +1463,7 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
     createdChannelName = discoveredName ?? channelName;
 
     const discoveredUrl =
+      computeCliqChatUrl(discoveredChatId) ??
       pickString(createJson?.data?.permalink) ??
       pickString(createJson?.data?.channel_url) ??
       pickString(createJson?.data?.url) ??
@@ -1470,9 +1471,8 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
       pickString(createJson?.permalink) ??
       pickString(createJson?.url) ??
       pickString(createJson?.web_url) ??
-      computeCliqChatUrl(discoveredChatId) ??
       computeCliqChannelUrl(discoveredName ?? channelName);
-    createdChannelUrl = discoveredUrl ?? computeCliqChatUrl(discoveredChatId) ?? computeCliqChannelUrl(createdChannelName);
+    createdChannelUrl = discoveredUrl ?? computeCliqChannelUrl(createdChannelName);
   }
 
   await db.execute(sql`
