@@ -220,15 +220,21 @@ function slugifyChannel(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
+    .slice(0, 40);
 }
 
 function computeCliqChannelName(job: JobRow): string {
   const numberSeed = job.jobNumber?.trim() || String(job.serial);
   const numberPart = `job-${slugifyChannel(numberSeed) || job.serial}`;
   const titlePart = slugifyChannel(job.title || "job");
-  const addressPart = slugifyChannel(job.address || "");
-  return [numberPart, titlePart, addressPart].filter(Boolean).join("-").slice(0, 80);
+  return [numberPart, titlePart].filter(Boolean).join("-").slice(0, 60);
+}
+
+function computeCliqChannelDisplayName(job: JobRow): string {
+  const numberSeed = job.jobNumber?.trim() || String(job.serial);
+  const cleanNumber = numberSeed.replace(/^job[\s-]*/i, "").trim() || String(job.serial);
+  const title = (job.title || "Job").trim();
+  return `JOB-${cleanNumber} - ${title}`.slice(0, 80);
 }
 
 function normalizeJobNumber(value: unknown): string | null {
@@ -439,8 +445,15 @@ function uniqueChannelNameCandidates(channelName: string, job: JobRow): string[]
     const trimmed = pickString(value);
     if (trimmed) names.add(trimmed);
   };
+  const numberSeed = job.jobNumber?.trim() || String(job.serial);
+  const numberPart = `job-${slugifyChannel(numberSeed) || job.serial}`;
+  const titlePart = slugifyChannel(job.title || "job");
+  const addressPart = slugifyChannel(job.address || "");
   add(channelName);
   add(computeCliqChannelName(job));
+  add([numberPart, titlePart, addressPart].filter(Boolean).join("-").slice(0, 80)); // previous format
+  add([numberPart, titlePart, addressPart].filter(Boolean).join("").slice(0, 80)); // Cliq-stripped previous format
+  add([numberPart, titlePart].filter(Boolean).join("").slice(0, 60)); // Cliq-stripped current format
   for (const name of [...names]) {
     if (name.length > 1) add(name.slice(0, -1));
     add(`${name}d`);
@@ -951,9 +964,15 @@ async function findUserByEmail(email: string): Promise<UserRow | null> {
 
 function normalizeMirroredCliqText(job: JobRow, text: string): string {
   const trimmed = text.trim();
-  const prefix = `JOB-${job.serial} · ${job.title}`;
-  if (!trimmed.startsWith(`${prefix}\n`)) return trimmed;
+  const prefixes = [
+    `JOB-${job.jobNumber?.trim() || job.serial} - ${job.title}`,
+    `JOB-${job.serial} · ${job.title}`,
+  ];
+  const prefix = prefixes.find((p) => trimmed.startsWith(`${p}\n`));
+  if (!prefix) return trimmed;
   const remainder = trimmed.slice(prefix.length + 1).trim();
+  const website = remainder.match(/^From website\s*\(([^)]+)\):\s*([\s\S]+)$/i);
+  if (website?.[2]) return website[2].trim();
   const generic = remainder.match(/^[^:\n]{1,120}:\s*([\s\S]+)$/);
   return generic?.[1]?.trim() || remainder;
 }
@@ -1171,8 +1190,8 @@ async function createStoredJobMessage({
   let deliveryError: string | null = null;
 
   if (pushToCliq) {
-    const prefix = `JOB-${job.serial} · ${job.title}`;
-    const payload = `${prefix}\n${actor.name}: ${cleanText}`;
+    const prefix = `JOB-${job.jobNumber?.trim() || job.serial} - ${job.title}`;
+    const payload = `${prefix}\nFrom website (${actor.name}): ${cleanText}`;
     logger.info({ jobId: job.id, channelName: computeCliqChannelName(job) }, "[CLIQ-PUSH] Attempting to push message to Zoho Cliq");
     try {
       let ch = await getOrCreateJobCliqChannel(job);
@@ -1375,8 +1394,12 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
     return;
   }
 
-  // First check if channel already exists in Cliq
-  const existingChannel = await resolveCliqChannelByName(token, channelName);
+  // First check if channel already exists in Cliq, including older generated names.
+  let existingChannel: CliqChannelLookup | null = null;
+  for (const candidate of uniqueChannelNameCandidates(channelName, job)) {
+    existingChannel = await resolveCliqChannelByName(token, candidate);
+    if (existingChannel?.channelId || existingChannel?.channelName || existingChannel?.chatId) break;
+  }
   let createdChannelName = existingChannel?.channelName ?? channelName;
   let createdChannelUrl = existingChannel?.channelUrl ?? computeCliqChannelUrl(createdChannelName);
   let discoveredChannelId: string | null = existingChannel?.channelId ?? null;
@@ -1392,8 +1415,9 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
 
     const createBody: Record<string, unknown> = {
       level,
-      name: channelName,
-      description: `Job channel for JOB-${job.serial} · ${job.title}`,
+      name: computeCliqChannelDisplayName(job),
+      unique_name: channelName,
+      description: `Job channel for ${computeCliqChannelDisplayName(job)}`,
     };
     if (level === "private" && participantEmails.length > 0) {
       createBody.email_ids = participantEmails;

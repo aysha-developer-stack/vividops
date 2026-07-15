@@ -70,8 +70,16 @@ function buildFallbackCliqChannelName(job: ApiJob | undefined, jobId: string): s
   const jobNumberSource = (job?.number || `job-${jobId}`).replace(/^job[\s-]*/i, "");
   const numberPart = `job-${slugifyCliqChannelPart(jobNumberSource) || jobId}`;
   const titlePart = slugifyCliqChannelPart(job?.title || "job");
-  const addressPart = slugifyCliqChannelPart(job?.address || "");
-  return [numberPart, titlePart, addressPart].filter(Boolean).join("-").slice(0, 80);
+  return [numberPart, titlePart].filter(Boolean).join("-").slice(0, 60);
+}
+
+function buildCliqChannelDisplayName(job: ApiJob | undefined, channelName: string): string {
+  if (job?.number || job?.title) {
+    const number = (job?.number || "").replace(/^JOB-/i, "").trim();
+    const title = job?.title?.trim() || "Job";
+    return number ? `JOB-${number} - ${title}` : title;
+  }
+  return channelName.replace(/^job-?/i, "Job ").replace(/-/g, " ");
 }
 
 interface FileItem { id: number; name: string; size: string; type: "doc" | "image" | "pdf"; uploadedBy: string; uploadedAt: string; tag: "input" | "output"; version?: number; group?: string }
@@ -1886,6 +1894,7 @@ export default function JobDetail({ role = "user", id }: Props) {
         {tab === "communication" && (() => {
           const fallbackChannelName = buildFallbackCliqChannelName(job, jobId);
           const channelName = cliqChannel?.channelName ?? fallbackChannelName;
+          const channelDisplayName = buildCliqChannelDisplayName(job, channelName);
           const cliqUrl = cliqChannel?.channelUrl ?? `${CLIQ_WEB_ROOT}/channels/${channelName}`;
           const openCliq = async () => {
             let url = cliqUrl;
@@ -1942,9 +1951,11 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/15 text-white/90">Zoho Cliq</span>
                   </div>
                   <h3 className="text-xl font-bold flex items-center gap-2 truncate">
-                    <span className="opacity-70">#</span>{channelName}
+                    <span className="opacity-70">#</span>{channelDisplayName}
                   </h3>
-                  <p className="text-xs text-white/70 mt-1">Dedicated job channel · {members.length} members · Created when job was assigned</p>
+                  <p className="text-xs text-white/70 mt-1">
+                    Dedicated job channel · {members.length} members · {channelName}
+                  </p>
                 </div>
                 <div className="flex flex-col gap-2 shrink-0">
                   <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={openCliq} className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white text-primary rounded-xl font-bold text-sm shadow-lg">

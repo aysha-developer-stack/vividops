@@ -52,11 +52,11 @@ router.post("/jobs/:jobId/cliq/messages", requireAuth, async (req, res) => {
     if (!job) return res.status(404).json({ error: "Job not found" });
     if (!(await canViewJob(actor, job))) return res.status(403).json({ error: "Forbidden" });
 
-    const prefix = `JOB-${job.serial} · ${job.title}`;
+    const prefix = `JOB-${job.jobNumber?.trim() || job.serial} - ${job.title}`;
     await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: `${prefix}\n${actor.name}: ${text}` }),
+      body: JSON.stringify({ text: `${prefix}\nFrom website (${actor.name}): ${text}` }),
     });
 
     return res.status(204).end();
