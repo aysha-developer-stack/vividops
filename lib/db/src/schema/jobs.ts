@@ -44,6 +44,7 @@ export const jobs = pgTable(
       onDelete: "set null",
     }),
     dueDate: timestamp("due_date", { withTimezone: true }),
+    reviewStartedAt: timestamp("review_started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     progress: integer("progress").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })

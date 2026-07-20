@@ -32,6 +32,53 @@ export type ReviewableStatus =
   | "cancelled"
   | "rework";
 
+export function jobStatusPatchFields(opts: {
+  nextStatus: ReviewableStatus;
+  previousStatus?: string;
+  currentProgress?: number;
+}) {
+  const { nextStatus, previousStatus, currentProgress = 0 } = opts;
+  const now = new Date();
+  const patch: {
+    status: ReviewableStatus;
+    updatedAt: Date;
+    completedAt?: Date | null;
+    reviewStartedAt?: Date | null;
+    progress?: number;
+  } = {
+    status: nextStatus,
+    updatedAt: now,
+  };
+
+  if (nextStatus === "completed") {
+    patch.completedAt = now;
+    patch.reviewStartedAt = null;
+    patch.progress = 100;
+    return patch;
+  }
+
+  if (nextStatus === "awaiting_supervisor") {
+    patch.completedAt = null;
+    if (previousStatus !== "awaiting_supervisor") {
+      patch.reviewStartedAt = now;
+    }
+    return patch;
+  }
+
+  if (nextStatus === "awaiting_admin" || nextStatus === "rework") {
+    patch.completedAt = null;
+    patch.reviewStartedAt = null;
+    if (nextStatus === "rework") patch.progress = 0;
+    return patch;
+  }
+
+  patch.completedAt = null;
+  if (nextStatus === "in_progress" || nextStatus === "pending") {
+    patch.progress = currentProgress;
+  }
+  return patch;
+}
+
 type ChecklistTemplateItem = {
   text?: string;
   attachmentRequired?: boolean;
@@ -342,12 +389,7 @@ export async function applyJobReview(opts: {
   const previousStatus = job.status;
   await db
     .update(jobs)
-    .set({
-      status: nextStatus as any,
-      completedAt: nextStatus === "completed" ? new Date() : null,
-      progress: nextStatus === "completed" ? 100 : nextStatus === "rework" ? 0 : job.progress,
-      updatedAt: new Date(),
-    })
+    .set(jobStatusPatchFields({ nextStatus, previousStatus, currentProgress: job.progress }))
     .where(eq(jobs.id, job.id));
 
   await notifyStatusTransition({

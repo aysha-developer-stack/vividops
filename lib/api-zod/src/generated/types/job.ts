@@ -34,6 +34,8 @@ export interface Job {
   /** @nullable */
   dueDate?: Date | null;
   /** @nullable */
+  reviewStartedAt?: Date | null;
+  /** @nullable */
   completedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;

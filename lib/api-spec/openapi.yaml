@@ -804,6 +804,10 @@ components:
         dueDate:
           type: ["string", "null"]
           format: date-time
+        reviewStartedAt:
+          type: ["string", "null"]
+          format: date-time
+          description: When the job entered supervisor review (worker submitted for review)
         completedAt:
           type: ["string", "null"]
           format: date-time

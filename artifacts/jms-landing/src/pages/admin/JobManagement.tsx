@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, MoreVertical, Edit2, Trash2, UserPlus, X,
-  Calendar, ExternalLink, CheckCircle2, Download, Loader2, FileText,
+  Calendar, ExternalLink, CheckCircle2, Download, Loader2, FileText, Clock,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -57,6 +57,31 @@ interface UiJob {
   due: string;
   completed?: string;
   progress: number;
+  reviewStartedAt?: string | null;
+}
+
+function formatReviewTime(seconds: number) {
+  return `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function ReviewTimerBadge({ startedAt }: { startedAt: string }) {
+  const [elapsed, setElapsed] = useState(() =>
+    Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)),
+  );
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setElapsed(Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [startedAt]);
+
+  return (
+    <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-mono font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded px-1.5 py-0.5">
+      <Clock size={10} />
+      {formatReviewTime(elapsed)}
+    </span>
+  );
 }
 
 function initialsForName(name: string) {
@@ -86,6 +111,7 @@ function mapJob(j: ApiJob): UiJob {
     due: j.dueDate ? formatShortDate(j.dueDate) : "TBD",
     completed: j.completedAt ? formatShortDate(j.completedAt) : undefined,
     progress: j.progress,
+    reviewStartedAt: j.reviewStartedAt ?? null,
   };
 }
 
@@ -896,9 +922,14 @@ export default function JobManagement(
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-xs font-semibold ${sCfg.bg} ${sCfg.color}`}>
-                          {j.status}
-                        </span>
+                        <div className="flex flex-col items-start gap-0.5">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-xs font-semibold ${sCfg.bg} ${sCfg.color}`}>
+                            {j.status}
+                          </span>
+                          {j.status === "Awaiting Supervisor" && j.reviewStartedAt && role !== "user" && (
+                            <ReviewTimerBadge startedAt={j.reviewStartedAt} />
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 w-32">

@@ -17,6 +17,7 @@ import { logger } from "../lib/logger";
 import { createNotification } from "../lib/notifications";
 import { ensureJobWriteSchema } from "../lib/schema-init";
 import { createReworkWithErrorReport, markOpenReworksAwaitingReview } from "../lib/reworks";
+import { jobStatusPatchFields } from "../lib/job-review";
 
 const router: IRouter = Router();
 
@@ -250,6 +251,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         .set({
           status: "rework" as any,
           completedAt: null,
+          reviewStartedAt: null,
           progress: nextProgress,
           updatedAt: new Date(),
         })
@@ -327,13 +329,16 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         }
 
         const previousStatus = job.status;
+        const statusPatch = jobStatusPatchFields({
+          nextStatus,
+          previousStatus,
+          currentProgress: nextProgress,
+        });
         await db
           .update(jobs)
           .set({
             progress: nextProgress,
-            status: nextStatus as any,
-            completedAt: null,
-            updatedAt: new Date(),
+            ...statusPatch,
           })
           .where(eq(jobs.id, jobId));
 

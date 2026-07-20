@@ -20,6 +20,7 @@ import {
 import {
   applyJobReview,
   coerceCompletionStatus,
+  jobStatusPatchFields,
   notifyStatusTransition,
   type JobReviewAction,
   type ReviewableStatus,
@@ -1808,13 +1809,14 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   if (body.description !== undefined) patch.description = body.description;
   if (body.priority !== undefined) patch.priority = body.priority;
   if (nextStatus !== undefined) {
-    patch.status = nextStatus;
-    if (nextStatus === "completed") {
-      patch.completedAt = new Date();
-      patch.progress = 100;
-    } else {
-      patch.completedAt = null;
-    }
+    Object.assign(
+      patch,
+      jobStatusPatchFields({
+        nextStatus,
+        previousStatus,
+        currentProgress: body.progress ?? full.job.progress,
+      }),
+    );
   }
   if (body.assigneeId !== undefined) patch.assigneeId = body.assigneeId;
   if (body.supervisorId !== undefined) patch.supervisorId = body.supervisorId;

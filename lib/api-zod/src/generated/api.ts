@@ -383,6 +383,7 @@ export const ListJobsResponseItem = zod.object({
     ])
     .optional(),
   dueDate: zod.coerce.date().nullish(),
+  reviewStartedAt: zod.coerce.date().nullish(),
   completedAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -459,6 +460,7 @@ export const GetJobResponse = zod.object({
     ])
     .optional(),
   dueDate: zod.coerce.date().nullish(),
+  reviewStartedAt: zod.coerce.date().nullish(),
   completedAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -541,6 +543,7 @@ export const UpdateJobResponse = zod.object({
     ])
     .optional(),
   dueDate: zod.coerce.date().nullish(),
+  reviewStartedAt: zod.coerce.date().nullish(),
   completedAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -634,6 +637,7 @@ export const GetDashboardStatsResponse = zod.object({
         ])
         .optional(),
       dueDate: zod.coerce.date().nullish(),
+      reviewStartedAt: zod.coerce.date().nullish(),
       completedAt: zod.coerce.date().nullish(),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),
@@ -690,6 +694,7 @@ export const GetDashboardSupervisorResponse = zod.object({
         ])
         .optional(),
       dueDate: zod.coerce.date().nullish(),
+      reviewStartedAt: zod.coerce.date().nullish(),
       completedAt: zod.coerce.date().nullish(),
       createdAt: zod.coerce.date(),
       updatedAt: zod.coerce.date(),

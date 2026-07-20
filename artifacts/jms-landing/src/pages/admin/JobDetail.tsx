@@ -365,6 +365,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [taskDialogValue, setTaskDialogValue] = useState("");
   const [taskDialogError, setTaskDialogError] = useState<string | null>(null);
+  const [reviewElapsedSeconds, setReviewElapsedSeconds] = useState(0);
   const taskDialogResolverRef = useRef<((task: string | null) => void) | null>(null);
   const intervalRef = useRef<number | null>(null);
   const pingTimerRef = useRef<number | null>(null);
@@ -392,6 +393,25 @@ export default function JobDetail({ role = "user", id }: Props) {
   useEffect(() => {
     void loadReworks();
   }, [job?.id]);
+
+  const showReviewTimer =
+    (role === "supervisor" || role === "admin" || role === "super-admin") &&
+    job?.status === "awaiting_supervisor" &&
+    !!job?.reviewStartedAt;
+
+  useEffect(() => {
+    if (!showReviewTimer || !job?.reviewStartedAt) {
+      setReviewElapsedSeconds(0);
+      return;
+    }
+    const startedMs = new Date(job.reviewStartedAt).getTime();
+    const tick = () => {
+      setReviewElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedMs) / 1000)));
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [showReviewTimer, job?.reviewStartedAt]);
 
   const timerStorageKey = (jid: string) => `job_timer_v1:${jid}`;
   const readTimerState = (jid: string) => {
@@ -1345,6 +1365,39 @@ export default function JobDetail({ role = "user", id }: Props) {
                 </div>
               </div>
             ))}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Supervisor review timer (supervisor, admin, super-admin) */}
+      {showReviewTimer && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="relative bg-gradient-to-br from-sky-600 via-indigo-600 to-sky-700 rounded-2xl p-6 mb-6 overflow-hidden shadow-xl shadow-sky-600/20"
+        >
+          <motion.div
+            className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-white/10 blur-2xl"
+            animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
+            transition={{ duration: 2, repeat: Infinity }}
+          />
+          <div className="relative z-10 flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 rounded-full bg-amber-300 animate-pulse" />
+                <span className="text-xs font-bold text-white/80 uppercase tracking-wider">Awaiting supervisor review</span>
+              </div>
+              <div className="font-mono text-4xl md:text-5xl font-bold text-white tabular-nums">{formatTime(reviewElapsedSeconds)}</div>
+              <p className="text-xs text-white/70 mt-2">
+                Timer started when the worker submitted this job for review
+                {job?.reviewStartedAt ? ` · ${new Date(job.reviewStartedAt).toLocaleString()}` : ""}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm font-semibold">
+              <Clock size={16} />
+              Review in progress
+            </div>
           </div>
         </motion.div>
       )}

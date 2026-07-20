@@ -74,6 +74,7 @@ export function publicJob(
     assignees,
     supervisor: userRef(supervisor),
     dueDate: job.dueDate ? job.dueDate.toISOString() : null,
+    reviewStartedAt: job.reviewStartedAt ? job.reviewStartedAt.toISOString() : null,
     completedAt: job.completedAt ? job.completedAt.toISOString() : null,
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),

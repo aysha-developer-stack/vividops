@@ -53,6 +53,11 @@ export async function ensureJobWriteSchema() {
     }
 
     await db.execute(sql`
+      ALTER TABLE jobs
+      ADD COLUMN IF NOT EXISTS review_started_at timestamptz
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS job_members (
         id uuid PRIMARY KEY,
         job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
