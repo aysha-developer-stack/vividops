@@ -44,6 +44,8 @@ export interface User {
   mustResetPassword: boolean;
   /** @nullable */
   lastSignInAt?: string | null;
+  /** @nullable */
+  lastSeenAt?: string | null;
   createdAt: string;
 }
 

@@ -207,7 +207,8 @@ export async function ensureAllSchemas() {
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS phone text,
         ADD COLUMN IF NOT EXISTS bio text,
-        ADD COLUMN IF NOT EXISTS avatar_url text;
+        ADD COLUMN IF NOT EXISTS avatar_url text,
+        ADD COLUMN IF NOT EXISTS last_seen_at timestamptz;
 
       ALTER TABLE jobs ADD COLUMN IF NOT EXISTS job_number text;
       CREATE UNIQUE INDEX IF NOT EXISTS jobs_job_number_uniq_idx

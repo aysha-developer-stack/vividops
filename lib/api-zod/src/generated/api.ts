@@ -36,6 +36,7 @@ export const LoginResponse = zod.object({
     status: zod.enum(["active", "inactive"]),
     mustResetPassword: zod.boolean(),
     lastSignInAt: zod.coerce.date().nullish(),
+    lastSeenAt: zod.coerce.date().nullish(),
     createdAt: zod.coerce.date(),
   }),
 });
@@ -54,6 +55,7 @@ export const GetMeResponse = zod.object({
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
   lastSignInAt: zod.coerce.date().nullish(),
+  lastSeenAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
 });
 
@@ -203,6 +205,7 @@ export const UpdateProfileResponse = zod.object({
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
   lastSignInAt: zod.coerce.date().nullish(),
+  lastSeenAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
 });
 
@@ -228,6 +231,7 @@ export const ResetPasswordResponse = zod.object({
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
   lastSignInAt: zod.coerce.date().nullish(),
+  lastSeenAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
 });
 
@@ -257,6 +261,7 @@ export const ListUsersResponseItem = zod.object({
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
   lastSignInAt: zod.coerce.date().nullish(),
+  lastSeenAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
 });
 export const ListUsersResponse = zod.array(ListUsersResponseItem);
@@ -292,6 +297,7 @@ export const GetUserResponse = zod.object({
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
   lastSignInAt: zod.coerce.date().nullish(),
+  lastSeenAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
 });
 
@@ -323,6 +329,7 @@ export const UpdateUserResponse = zod.object({
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
   lastSignInAt: zod.coerce.date().nullish(),
+  lastSeenAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
 });
 
@@ -575,6 +582,7 @@ export const ResendInviteResponse = zod.object({
     status: zod.enum(["active", "inactive"]),
     mustResetPassword: zod.boolean(),
     lastSignInAt: zod.coerce.date().nullish(),
+    lastSeenAt: zod.coerce.date().nullish(),
     createdAt: zod.coerce.date(),
   }),
   delivery: zod.enum(["email-invite", "temp-password"]),

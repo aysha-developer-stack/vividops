@@ -27,7 +27,8 @@ async function ensureUserColumns() {
     ALTER TABLE users
       ADD COLUMN IF NOT EXISTS phone text,
       ADD COLUMN IF NOT EXISTS bio text,
-      ADD COLUMN IF NOT EXISTS avatar_url text;
+      ADD COLUMN IF NOT EXISTS avatar_url text,
+      ADD COLUMN IF NOT EXISTS last_seen_at timestamptz;
   `);
 }
 
@@ -92,7 +93,7 @@ router.post("/auth/login", async (req, res) => {
 
     await db
       .update(users)
-      .set({ lastSignInAt: new Date() })
+      .set({ lastSignInAt: new Date(), lastSeenAt: new Date() })
       .where(eq(users.id, user.id));
   } catch (err) {
     logger.error({ err }, "Login failed: DB write error");
@@ -100,12 +101,28 @@ router.post("/auth/login", async (req, res) => {
   }
 
   res.cookie(SESSION_COOKIE, session.id, cookieOpts);
-  return res.json({ user: publicUser({ ...user, lastSignInAt: new Date() }) });
+  return res.json({ user: publicUser({ ...user, lastSignInAt: new Date(), lastSeenAt: new Date() }) });
 });
 
 router.post("/auth/logout", async (req, res) => {
   const sid = req.cookies?.[SESSION_COOKIE];
   if (sid && typeof sid === "string") {
+    try {
+      const rows = await db
+        .select({ userId: sessions.userId })
+        .from(sessions)
+        .where(eq(sessions.id, sid))
+        .limit(1);
+      const userId = rows[0]?.userId;
+      if (userId) {
+        await db
+          .update(users)
+          .set({ lastSeenAt: null, updatedAt: new Date() })
+          .where(eq(users.id, userId));
+      }
+    } catch {
+      // best-effort presence clear
+    }
     await db.delete(sessions).where(eq(sessions.id, sid));
     clearSessionCache(sid);
   }
@@ -298,6 +315,12 @@ router.post("/auth/reset-password-with-token", async (req, res) => {
   await db.execute(sql`DELETE FROM password_reset_tokens WHERE token = ${token}`);
 
   // Automatically log the user in after successful reset
+  const now = new Date();
+  await db
+    .update(users)
+    .set({ lastSignInAt: now, lastSeenAt: now, updatedAt: now })
+    .where(eq(users.id, user.id));
+
   const [session] = await db
     .insert(sessions)
     .values({ userId: user.id, expiresAt: sessionExpiresAt() })
@@ -307,7 +330,7 @@ router.post("/auth/reset-password-with-token", async (req, res) => {
   
   return res.json({ 
     message: "Password has been reset successfully.",
-    user: publicUser(user)
+    user: publicUser({ ...user, lastSignInAt: now, lastSeenAt: now }),
   });
 });
 

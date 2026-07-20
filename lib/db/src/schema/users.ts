@@ -28,6 +28,7 @@ export const users = pgTable("users", {
   bio: text("bio"),
   mustResetPassword: boolean("must_reset_password").notNull().default(false),
   lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

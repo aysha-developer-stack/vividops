@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
 import { db, sessions, users, type UserRow } from "@workspace/db";
 import { SESSION_COOKIE } from "../lib/auth";
+import { touchUserLastSeen } from "../lib/presence";
 
 export interface SessionContext {
   sessionId: string;
@@ -47,6 +48,7 @@ export async function attachSession(
   const cached = sessionCache.get(sid);
   if (cached && cached.cacheUntilMs > Date.now()) {
     req.session = cached.value;
+    touchUserLastSeen(cached.value.user.id);
     return next();
   }
   if (cached) {
@@ -98,6 +100,7 @@ export async function attachSession(
     }
     const value = { sessionId: sid, user: row.user };
     req.session = value;
+    touchUserLastSeen(row.user.id);
     const cacheUntilMs = Math.min(
       row.session.expiresAt.getTime(),
       Date.now() + 30_000,

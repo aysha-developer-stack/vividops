@@ -9,6 +9,7 @@ import Pagination, { usePagination } from "@/components/Pagination";
 import { useAuth } from "@/lib/auth";
 import { useGetTimeLogs, useListJobs, useListUsers, type Job, type TimeLog, type User } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
+import { getPresenceStatus } from "@/lib/presence";
 
 interface Supervisor {
   id: string;
@@ -51,7 +52,9 @@ function formatLastSeen(ms: number | null, status: Supervisor["status"]) {
 
 export default function SupervisorMonitoring({ role = "admin" as Role }: { role?: Role } = {}) {
   const { user: currentUser } = useAuth();
-  const { data: apiUsers, isLoading: usersLoading } = useListUsers();
+  const { data: apiUsers, isLoading: usersLoading } = useListUsers({
+    query: { refetchInterval: 30_000 },
+  });
   const { data: apiJobs, isLoading: jobsLoading } = useListJobs();
   const { data: apiTimeLogs, isLoading: logsLoading } = useGetTimeLogs();
   const [search, setSearch] = useState("");
@@ -112,15 +115,14 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
         const ms = parseMs(log.createdAt) ?? 0;
         return Math.max(max, ms);
       }, 0);
-      const lastActivityMs = Math.max(latestJobActivityMs, latestLogMs);
-      const status: Supervisor["status"] =
-        u.status !== "active"
-          ? "offline"
-          : !lastActivityMs
-            ? "away"
-            : now - lastActivityMs <= 8 * 60 * 60 * 1000
-              ? "online"
-              : "away";
+      const presenceMs = parseMs(u.lastSeenAt) ?? parseMs(u.lastSignInAt);
+      const jobLogMs = Math.max(latestJobActivityMs, latestLogMs);
+      const lastActivityMs = presenceMs ?? (jobLogMs > 0 ? jobLogMs : null);
+      const status = getPresenceStatus({
+        accountStatus: u.status,
+        lastSeenAt: u.lastSeenAt,
+        lastSignInAt: u.lastSignInAt,
+      });
 
       return {
         id: u.id,
@@ -134,7 +136,7 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
         hoursThisWeek: Number(hoursThisWeek.toFixed(1)),
         status,
         trend,
-        lastSeen: formatLastSeen(lastActivityMs || null, status),
+        lastSeen: formatLastSeen(lastActivityMs, status),
       };
     });
   }, [apiJobs, apiTimeLogs, apiUsers, currentUser, role]);

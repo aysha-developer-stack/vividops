@@ -99,10 +99,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     },
     initialData: () => readStoredAuthUser() ?? undefined,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000,
     gcTime: 10 * 60 * 1000,
     retry: false,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: (query) => (query.state.data ? 60_000 : false),
   });
 
   useEffect(() => {

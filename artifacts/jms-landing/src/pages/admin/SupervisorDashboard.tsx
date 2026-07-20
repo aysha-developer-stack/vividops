@@ -192,7 +192,7 @@ export default function SupervisorDashboard() {
                 >
                   <div className="relative">
                     <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-xs font-bold flex items-center justify-center">{t.avatar}</div>
-                    <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-white ${t.status === "online" ? "bg-emerald-400" : "bg-amber-400"}`} />
+                    <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-white ${t.status === "online" ? "bg-emerald-400" : t.status === "away" ? "bg-amber-400" : "bg-gray-400"}`} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <Link href={`/supervisor/monitoring?id=${t.id}`}>

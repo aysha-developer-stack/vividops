@@ -586,6 +586,10 @@ components:
         lastSignInAt:
           type: ["string", "null"]
           format: date-time
+        lastSeenAt:
+          type: ["string", "null"]
+          format: date-time
+          description: Last presence heartbeat while the user has an active session
         createdAt: { type: string, format: date-time }
 
     UserInput:

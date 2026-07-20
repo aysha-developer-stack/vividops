@@ -8,6 +8,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import { useGetDashboardStats, useListUsers, useListJobs, type User } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
+import { formatPresenceLabel, getPresenceStatus } from "@/lib/presence";
 
 function parseMs(iso: string | null | undefined) {
   if (!iso) return null;
@@ -77,7 +78,13 @@ export default function SystemMonitoring({ role = "super-admin" as Role }: { rol
     const weekStart = now - weekMs;
     const prevWeekStart = now - 2 * weekMs;
 
-    const activeUsers = users.filter((u) => u.status === "active").length;
+    const activeUsers = users.filter((u) =>
+      getPresenceStatus({
+        accountStatus: u.status,
+        lastSeenAt: u.lastSeenAt,
+        lastSignInAt: u.lastSignInAt,
+      }) === "online",
+    ).length;
     const signInsThisWeek = users.filter((u) => inWindow(u.lastSignInAt as string, weekStart, now)).length;
     const signInsLastWeek = users.filter((u) => inWindow(u.lastSignInAt as string, prevWeekStart, weekStart)).length;
     const usersTrend = formatCountDelta(signInsThisWeek - signInsLastWeek);
@@ -170,14 +177,20 @@ export default function SystemMonitoring({ role = "super-admin" as Role }: { rol
   }, [dashboardData, apiUsers, apiJobs]);
 
   const liveUsers = useMemo(() => (apiUsers ?? []).map((u: User) => {
-    const isOnline = u.status === 'active';
+    const presence = getPresenceStatus({
+      accountStatus: u.status,
+      lastSeenAt: u.lastSeenAt,
+      lastSignInAt: u.lastSignInAt,
+    });
+    const seenAt = u.lastSeenAt ?? u.lastSignInAt;
     return {
       name: u.name,
       role: u.role.charAt(0).toUpperCase() + u.role.slice(1),
-      status: isOnline ? "Active" : "Idle" as "Active" | "On Job" | "Idle",
-      lastSeen: u.lastSignInAt ? new Date(u.lastSignInAt).toLocaleTimeString() : "Never",
-      action: isOnline ? "Active in system" : "Offline",
-      avatar: u.name.split(" ").map(s => s[0]).join("").toUpperCase()
+      status: presence === "online" ? "Active" : presence === "away" ? "Idle" : "Idle" as "Active" | "On Job" | "Idle",
+      lastSeen: seenAt ? new Date(seenAt).toLocaleTimeString() : "Never",
+      action: formatPresenceLabel(presence),
+      avatar: u.name.split(" ").map(s => s[0]).join("").toUpperCase(),
+      presence,
     };
   }), [apiUsers]);
 

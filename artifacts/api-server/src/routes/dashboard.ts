@@ -3,6 +3,7 @@ import { db, users, jobs, jobMembers, timeLogs, errorReports, sql, desc, eq, and
 import { logger } from "../lib/logger";
 import { requireAuth } from "../middlewares/requireAuth";
 import { ensureLegacySupervisorAssignments } from "../lib/schema-init";
+import { getPresenceStatus } from "../lib/presence";
 
 const router = Router();
 
@@ -208,7 +209,11 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
           jobsToday: uJobs.filter((job) => job.status === "in_progress" || job.status === "rework").length,
           hoursToday: Number(hours.toFixed(1)),
           efficiency: efficiency,
-          status: u.status === "active" ? "online" : "offline"
+          status: getPresenceStatus({
+            accountStatus: u.status,
+            lastSeenAt: u.lastSeenAt,
+            lastSignInAt: u.lastSignInAt,
+          }),
         };
       });
     }

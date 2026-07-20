@@ -21,6 +21,7 @@ import {
   formatMistakeCategory,
   type MistakeCategory,
 } from "@/lib/mistakeCategories";
+import { getPresenceStatus } from "@/lib/presence";
 
 interface Worker {
   id: string;
@@ -97,22 +98,15 @@ function getLatestJobNumber(jobs: Job[]) {
   return latest?.number ?? "None";
 }
 
-function getWorkerStatus(user: User, logs: TimeLog[], jobs: Job[]) {
-  if (user.status !== "active") return "offline" as const;
-
-  const latestLogMs = logs.reduce((max, log) => {
-    const ms = parseMs(log.createdAt) ?? 0;
-    return Math.max(max, ms);
-  }, 0);
-  const latestJobMs = jobs.reduce((max, job) => {
-    const ms = parseMs(job.updatedAt) ?? parseMs(job.createdAt) ?? 0;
-    return Math.max(max, ms);
-  }, 0);
-  const latestActivityMs = Math.max(latestLogMs, latestJobMs);
-
-  if (!latestActivityMs) return "idle" as const;
-  if (Date.now() - latestActivityMs <= 8 * 60 * 60 * 1000) return "active" as const;
-  return "idle" as const;
+function getWorkerStatus(user: User): Worker["status"] {
+  const presence = getPresenceStatus({
+    accountStatus: user.status,
+    lastSeenAt: user.lastSeenAt,
+    lastSignInAt: user.lastSignInAt,
+  });
+  if (presence === "online") return "active";
+  if (presence === "away") return "idle";
+  return "offline";
 }
 
 function getPerformanceScore(jobs: Job[]) {
@@ -146,7 +140,9 @@ export default function UserMonitoring(
   { initialTab = "performance", role = "super-admin" }: { initialTab?: "performance" | "errors", role?: Role } = {}
 ) {
   const { user: currentUser } = useAuth();
-  const { data: apiUsers, isLoading: usersLoading } = useListUsers();
+  const { data: apiUsers, isLoading: usersLoading } = useListUsers({
+    query: { refetchInterval: 30_000 },
+  });
   const { data: apiJobs, isLoading: jobsLoading } = useListJobs();
   const { data: apiTimeLogs, isLoading: logsLoading } = useGetTimeLogs();
 
@@ -320,7 +316,7 @@ export default function UserMonitoring(
           jobsCompleted: userJobs.filter((job) => job.status === "completed").length,
           errors: userErrors.length,
           efficiency: getPerformanceScore(scoreJobs),
-          status: getWorkerStatus(u, userLogs, userJobs),
+          status: getWorkerStatus(u),
           lastJob: getLatestJobNumber(userJobs),
         };
       });
@@ -457,7 +453,9 @@ export default function UserMonitoring(
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-bold text-sm text-gray-900 truncate">{w.name}</div>
-                      <div className="text-[10px] text-gray-500">Last job: {w.lastJob}</div>
+                      <div className="text-[10px] text-gray-500">
+                        {w.status === "active" ? "Online" : w.status === "idle" ? "Away" : "Offline"} · Last job: {w.lastJob}
+                      </div>
                     </div>
                     <div className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${w.efficiency >= 90 ? "bg-emerald-50 text-emerald-700" : w.efficiency >= 80 ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700"}`}>
                       {w.efficiency}%
