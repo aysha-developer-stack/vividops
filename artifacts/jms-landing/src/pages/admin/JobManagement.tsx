@@ -1143,8 +1143,8 @@ export default function JobManagement(
         {modalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeModal} className="absolute inset-0 bg-black/50" />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} transition={{ type: "spring", stiffness: 300, damping: 28 }} className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-primary/5 to-sky-50 shrink-0">
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} transition={{ type: "spring", stiffness: 300, damping: 28 }} className="relative w-full max-w-[96vw] xl:max-w-7xl max-h-[92vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-primary/5 to-sky-50 shrink-0">
                 <div>
                   <h3 className="font-bold text-gray-900 text-base">{editingId !== null ? "Edit Job" : "Create New Job"}</h3>
                   <p className="text-xs text-gray-500 mt-0.5">{editingId !== null ? "Update job details" : "Assign a new job"}</p>
@@ -1160,9 +1160,9 @@ export default function JobManagement(
                   <p className="text-sm">Loading job details…</p>
                 </div>
               ) : (
-              <div className="px-6 py-5 grid md:grid-cols-2 gap-x-6 gap-y-4 overflow-y-auto">
+              <div className="px-6 py-4 grid md:grid-cols-2 xl:grid-cols-[1.35fr_1fr_1fr] gap-x-6 gap-y-4 overflow-y-auto">
                 {/* LEFT COLUMN — Job details */}
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Job Details</div>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
@@ -1215,48 +1215,45 @@ export default function JobManagement(
                       )}
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assignees</label>
-                      <div ref={assigneeMenuRef} className="relative">
-                        <button
-                          type="button"
-                          onClick={() => setAssigneeMenuOpen((prev) => !prev)}
-                          className={`w-full min-h-[46px] px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm text-left focus:outline-none focus:border-primary focus:bg-white transition-colors ${selectedWorkerNames.length > 0 ? "!text-gray-900" : "text-gray-400"}`}
-                        >
-                          {selectedWorkerNames.length > 0 ? selectedWorkerNames.join(", ") : "Select Workers"}
-                        </button>
-                        {assigneeMenuOpen && (
-                          <div className="absolute z-20 mt-2 w-full rounded-xl border-2 border-gray-200 bg-white shadow-lg">
-                            <div className="max-h-52 overflow-y-auto p-2">
-                              {workers.length === 0 ? (
-                                <div className="px-2 py-4 text-xs text-gray-400 text-center">No workers available</div>
-                              ) : (
-                                <div className="space-y-1">
-                                  {workers.map((u) => {
-                                    const checked = selectedWorkerIds.includes(u.id);
-                                    return (
-                                      <label key={u.id} className="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
-                                        <span className="flex items-center gap-2 min-w-0">
-                                          <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={() => toggleWorkerSelection(u.id)}
-                                            className="h-4 w-4"
-                                          />
-                                          <span className="text-sm text-gray-800 truncate">{u.name}</span>
-                                        </span>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assignees</label>
+                    <div ref={assigneeMenuRef} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setAssigneeMenuOpen((prev) => !prev)}
+                        className={`w-full min-h-[46px] px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm text-left focus:outline-none focus:border-primary focus:bg-white transition-colors ${selectedWorkerNames.length > 0 ? "!text-gray-900" : "text-gray-400"}`}
+                      >
+                        {selectedWorkerNames.length > 0 ? selectedWorkerNames.join(", ") : "Select Workers"}
+                      </button>
+                      {assigneeMenuOpen && (
+                        <div className="absolute z-20 mt-2 w-full rounded-xl border-2 border-gray-200 bg-white shadow-lg">
+                          <div className="max-h-52 overflow-y-auto p-2">
+                            {workers.length === 0 ? (
+                              <div className="px-2 py-4 text-xs text-gray-400 text-center">No workers available</div>
+                            ) : (
+                              <div className="space-y-1">
+                                {workers.map((u) => {
+                                  const checked = selectedWorkerIds.includes(u.id);
+                                  return (
+                                    <label key={u.id} className="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                                      <span className="flex items-center gap-2 min-w-0">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => toggleWorkerSelection(u.id)}
+                                          className="h-4 w-4"
+                                        />
+                                        <span className="text-sm text-gray-800 truncate">{u.name}</span>
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
-                    <div />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Address</label>
@@ -1264,9 +1261,9 @@ export default function JobManagement(
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Description</label>
-                    <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief job scope..." rows={3} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
+                    <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief job scope..." rows={2} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Est. Time</label>
                       <input
@@ -1285,8 +1282,6 @@ export default function JobManagement(
                         title="Actual time comes from the job timer / time logs"
                       />
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Start Date</label>
                       <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
@@ -1296,7 +1291,7 @@ export default function JobManagement(
                       <input type="date" value={form.eta} onChange={(e) => setForm({ ...form, eta: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Wind</label>
                       <select
@@ -1314,18 +1309,20 @@ export default function JobManagement(
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Incoming Date</label>
                       <input type="date" value={form.incomingDate} onChange={(e) => setForm({ ...form, incomingDate: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                     </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Due On</label>
+                      <input type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Due On</label>
-                    <input type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Remarks</label>
-                    <textarea value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} placeholder="Short remarks…" rows={2} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Comments</label>
-                    <textarea value={form.comments} onChange={(e) => setForm({ ...form, comments: e.target.value })} placeholder="Additional comments…" rows={2} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Remarks</label>
+                      <textarea value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} placeholder="Short remarks…" rows={2} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Comments</label>
+                      <textarea value={form.comments} onChange={(e) => setForm({ ...form, comments: e.target.value })} placeholder="Additional comments…" rows={2} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Priority</label>
@@ -1344,8 +1341,8 @@ export default function JobManagement(
                   </div>
                 </div>
 
-                {/* RIGHT COLUMN — Checklist */}
-                <div className="space-y-4 md:border-l md:border-gray-100 md:pl-6">
+                {/* MIDDLE COLUMN — Checklist */}
+                <div className="space-y-3 md:border-l md:border-gray-100 md:pl-6">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Checklist</div>
 
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
@@ -1415,7 +1412,7 @@ export default function JobManagement(
                     {checklistTemplate.length === 0 ? (
                       <div className="px-4 py-8 text-center text-xs text-gray-400">No checklist files attached yet</div>
                     ) : (
-                      <div className="divide-y divide-gray-50">
+                      <div className="divide-y divide-gray-50 max-h-[280px] overflow-y-auto">
                         {checklistTemplate.map((it, idx) => (
                           <div key={`${idx}-${it.text}`} className="px-4 py-3 flex items-start gap-3">
                             <div className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-[11px] font-bold shrink-0">{idx + 1}</div>
@@ -1437,7 +1434,10 @@ export default function JobManagement(
                       </div>
                     )}
                   </div>
+                </div>
 
+                {/* RIGHT COLUMN — Job Files */}
+                <div className="space-y-3 md:col-span-2 xl:col-span-1 xl:border-l xl:border-gray-100 xl:pl-6">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Job Files</div>
                   <FileDropzone
                     multiple
