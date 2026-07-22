@@ -36,24 +36,36 @@ export function jobStatusPatchFields(opts: {
   nextStatus: ReviewableStatus;
   previousStatus?: string;
   currentProgress?: number;
+  checker?: { id: string; name: string; role: string } | null;
 }) {
-  const { nextStatus, previousStatus, currentProgress = 0 } = opts;
+  const { nextStatus, previousStatus, currentProgress = 0, checker } = opts;
   const now = new Date();
   const patch: {
     status: ReviewableStatus;
     updatedAt: Date;
     completedAt?: Date | null;
     reviewStartedAt?: Date | null;
+    checkedById?: string | null;
+    checkedByLabel?: string | null;
+    checkedAt?: Date | null;
     progress?: number;
   } = {
     status: nextStatus,
     updatedAt: now,
   };
 
+  const applyChecker = () => {
+    if (!checker) return;
+    patch.checkedById = checker.id;
+    patch.checkedByLabel = `${checker.name} · ${checker.role}`;
+    patch.checkedAt = now;
+  };
+
   if (nextStatus === "completed") {
     patch.completedAt = now;
     patch.reviewStartedAt = null;
     patch.progress = 100;
+    applyChecker();
     return patch;
   }
 
@@ -65,10 +77,20 @@ export function jobStatusPatchFields(opts: {
     return patch;
   }
 
-  if (nextStatus === "awaiting_admin" || nextStatus === "rework") {
+  if (nextStatus === "awaiting_admin") {
     patch.completedAt = null;
     patch.reviewStartedAt = null;
-    if (nextStatus === "rework") patch.progress = 0;
+    applyChecker();
+    return patch;
+  }
+
+  if (nextStatus === "rework") {
+    patch.completedAt = null;
+    patch.reviewStartedAt = null;
+    patch.checkedById = null;
+    patch.checkedByLabel = null;
+    patch.checkedAt = null;
+    patch.progress = 0;
     return patch;
   }
 
@@ -244,10 +266,13 @@ export async function notifyStatusTransition(opts: {
   }
 
   if (nextStatus === "awaiting_admin") {
+    const approvedBySupervisor = actor.role === "supervisor";
     await notifyJobAdmins({
       jobId: job.id,
       title: `Ready for Admin Review: ${job.title}`,
-      description: `${actor.name} approved ${job.title}. Please complete the job or send for rework.`,
+      description: approvedBySupervisor
+        ? `${actor.name} approved ${job.title}. Please complete the job or send for rework.`
+        : `${actor.name} forwarded ${job.title} for admin completion.`,
       type: "updated",
       excludeUserId: actor.id,
     });
@@ -255,20 +280,28 @@ export async function notifyStatusTransition(opts: {
       await createNotification({
         userId: job.assigneeId,
         jobId: job.id,
-        title: `Supervisor Approved: ${job.title}`,
-        description: `Your supervisor approved ${job.title}. It is now awaiting admin completion.`,
+        title: approvedBySupervisor ? `Supervisor Approved: ${job.title}` : `Approved for Admin: ${job.title}`,
+        description: approvedBySupervisor
+          ? `Your supervisor approved ${job.title}. It is now awaiting admin completion.`
+          : `${actor.name} approved ${job.title}. It is now awaiting admin completion.`,
         type: "updated",
       });
     }
   }
 
   if (nextStatus === "completed") {
+    const coveredSupervisor =
+      (actor.role === "admin" || actor.role === "super-admin") &&
+      (previousStatus === "awaiting_supervisor" || previousStatus === "in_progress");
+    const completeMsg = coveredSupervisor
+      ? `${job.title} was checked and completed by ${actor.name} (covering supervisor review).`
+      : `${job.title} has been marked completed by ${actor.name}.`;
     if (job.assigneeId) {
       await createNotification({
         userId: job.assigneeId,
         jobId: job.id,
-        title: `Job Completed: ${job.title}`,
-        description: `${job.title} has been marked completed by ${actor.name}.`,
+        title: coveredSupervisor ? `Checked & Completed: ${job.title}` : `Job Completed: ${job.title}`,
+        description: completeMsg,
         type: "completed",
       });
     }
@@ -276,8 +309,10 @@ export async function notifyStatusTransition(opts: {
       await createNotification({
         userId: job.supervisorId,
         jobId: job.id,
-        title: `Job Completed: ${job.title}`,
-        description: `${job.title} was completed by ${actor.name}.`,
+        title: coveredSupervisor ? `Cover Check Completed: ${job.title}` : `Job Completed: ${job.title}`,
+        description: coveredSupervisor
+          ? `${actor.name} checked and completed ${job.title} while covering supervisor review.`
+          : `${job.title} was completed by ${actor.name}.`,
         type: "completed",
       });
     }
@@ -336,8 +371,12 @@ export async function applyJobReview(opts: {
     await markOpenReworksAwaitingReview(job.id, workerId);
     nextStatus = "awaiting_supervisor";
   } else if (action === "supervisor_approve") {
-    if (actor.role !== "supervisor" || !canManage) {
-      return { ok: false, status: 403, error: "Only the job supervisor can approve for admin review" };
+    const canApprove =
+      (actor.role === "supervisor" && canManage) ||
+      actor.role === "admin" ||
+      actor.role === "super-admin";
+    if (!canApprove) {
+      return { ok: false, status: 403, error: "Only the job supervisor, admin, or super-admin can approve this review" };
     }
     if (job.status === "rework") {
       return { ok: false, status: 400, error: "The worker must complete and resubmit the rework before approval" };
@@ -345,17 +384,33 @@ export async function applyJobReview(opts: {
     if (job.status !== "awaiting_supervisor" && job.status !== "in_progress") {
       return { ok: false, status: 400, error: "Job is not awaiting supervisor approval" };
     }
-    await resolveJobReworks(job.id);
-    nextStatus = "awaiting_admin";
+    // Admin/super-admin covering supervisor: complete directly (no second approval hop).
+    if (actor.role === "admin" || actor.role === "super-admin") {
+      await resolveJobReworks(job.id);
+      nextStatus = "completed";
+    } else {
+      await resolveJobReworks(job.id);
+      nextStatus = "awaiting_admin";
+    }
   } else if (action === "admin_complete") {
     if (actor.role !== "admin" && actor.role !== "super-admin") {
       return { ok: false, status: 403, error: "Only admin or super-admin can complete the job" };
     }
+    if (job.status === "rework") {
+      return { ok: false, status: 400, error: "The worker must complete and resubmit the rework before completion" };
+    }
+    if (job.status === "cancelled") {
+      return { ok: false, status: 400, error: "Cancelled jobs cannot be completed" };
+    }
     await resolveJobReworks(job.id);
     nextStatus = "completed";
   } else if (action === "rework") {
-    if (!canManage) {
-      return { ok: false, status: 403, error: "You cannot mark this job for rework" };
+    const canRework =
+      actor.role === "admin" ||
+      actor.role === "super-admin" ||
+      (actor.role === "supervisor" && canManage);
+    if (!canRework) {
+      return { ok: false, status: 403, error: "Only supervisor, admin, or super-admin can mark this job for rework" };
     }
     if (!reason?.trim()) {
       return { ok: false, status: 400, error: "Rework reason is required" };
@@ -387,9 +442,20 @@ export async function applyJobReview(opts: {
   }
 
   const previousStatus = job.status;
+  const shouldRecordChecker =
+    nextStatus === "awaiting_admin" || nextStatus === "completed";
   await db
     .update(jobs)
-    .set(jobStatusPatchFields({ nextStatus, previousStatus, currentProgress: job.progress }))
+    .set(
+      jobStatusPatchFields({
+        nextStatus,
+        previousStatus,
+        currentProgress: job.progress,
+        checker: shouldRecordChecker
+          ? { id: actor.id, name: actor.name, role: actor.role }
+          : null,
+      }),
+    )
     .where(eq(jobs.id, job.id));
 
   await notifyStatusTransition({

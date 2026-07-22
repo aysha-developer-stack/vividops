@@ -45,6 +45,11 @@ export const jobs = pgTable(
     }),
     dueDate: timestamp("due_date", { withTimezone: true }),
     reviewStartedAt: timestamp("review_started_at", { withTimezone: true }),
+    checkedById: uuid("checked_by_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    checkedByLabel: text("checked_by_label"),
+    checkedAt: timestamp("checked_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     progress: integer("progress").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })

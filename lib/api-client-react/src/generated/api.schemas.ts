@@ -258,6 +258,12 @@ export interface Job {
   /** @nullable */
   reviewStartedAt?: string | null;
   /** @nullable */
+  checkedById?: string | null;
+  /** @nullable */
+  checkedByLabel?: string | null;
+  /** @nullable */
+  checkedAt?: string | null;
+  /** @nullable */
   completedAt?: string | null;
   createdAt: string;
   updatedAt: string;

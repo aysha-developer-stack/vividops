@@ -812,6 +812,15 @@ components:
           type: ["string", "null"]
           format: date-time
           description: When the job entered supervisor review (worker submitted for review)
+        checkedById:
+          type: ["string", "null"]
+          format: uuid
+        checkedByLabel:
+          type: ["string", "null"]
+          description: Display label for who last checked/approved the job
+        checkedAt:
+          type: ["string", "null"]
+          format: date-time
         completedAt:
           type: ["string", "null"]
           format: date-time

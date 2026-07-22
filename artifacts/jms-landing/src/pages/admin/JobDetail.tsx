@@ -1268,7 +1268,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 >
                   <RefreshCw size={12} /> Mark for Rework
                 </motion.button>
-                {role === "supervisor" && job?.status !== "awaiting_admin" && job?.status !== "rework" && (
+                {role === "supervisor" && (job?.status === "awaiting_supervisor" || job?.status === "in_progress") && (
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -1285,7 +1285,10 @@ export default function JobDetail({ role = "user", id }: Props) {
                     onClick={() => setApproveOpen(true)}
                     className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
                   >
-                    <CheckCircle2 size={12} /> Complete Job
+                    <CheckCircle2 size={12} />
+                    {job?.status === "awaiting_supervisor" || job?.status === "in_progress"
+                      ? "Check & Complete"
+                      : "Complete Job"}
                   </motion.button>
                 )}
               </>
@@ -1321,6 +1324,16 @@ export default function JobDetail({ role = "user", id }: Props) {
             <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Assigned User</div><div className="text-sm text-gray-900 font-medium">{job?.assignee?.name ?? "Unassigned"}</div></div>
           </div>
         </div>
+
+        {(job as ApiJob & { checkedByLabel?: string | null; checkedAt?: string | null })?.checkedByLabel && (
+          <div className="mt-4 flex items-center gap-2 rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+            <CheckCircle2 size={14} className="text-sky-600 shrink-0" />
+            <span>
+              Checked by <span className="font-semibold">{(job as any).checkedByLabel}</span>
+              {(job as any).checkedAt ? ` · ${new Date((job as any).checkedAt).toLocaleString()}` : ""}
+            </span>
+          </div>
+        )}
 
         {/* Progress */}
         <div className="mt-5 pt-4 border-t border-gray-100">
@@ -1386,17 +1399,21 @@ export default function JobDetail({ role = "user", id }: Props) {
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-2 h-2 rounded-full bg-amber-300 animate-pulse" />
-                <span className="text-xs font-bold text-white/80 uppercase tracking-wider">Awaiting supervisor review</span>
+                <span className="text-xs font-bold text-white/80 uppercase tracking-wider">
+                  {role === "supervisor" ? "Awaiting supervisor review" : "Awaiting review — you can check this job"}
+                </span>
               </div>
               <div className="font-mono text-4xl md:text-5xl font-bold text-white tabular-nums">{formatTime(reviewElapsedSeconds)}</div>
               <p className="text-xs text-white/70 mt-2">
-                Timer started when the worker submitted this job for review
+                {role === "supervisor"
+                  ? "Timer started when the worker submitted this job for review"
+                  : "Supervisor is pending. Admin or super-admin can check, rework, or complete this job now"}
                 {job?.reviewStartedAt ? ` · ${new Date(job.reviewStartedAt).toLocaleString()}` : ""}
               </p>
             </div>
             <div className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm font-semibold">
               <Clock size={16} />
-              Review in progress
+              {role === "supervisor" ? "Review in progress" : "Cover check available"}
             </div>
           </div>
         </motion.div>
@@ -2479,7 +2496,11 @@ export default function JobDetail({ role = "user", id }: Props) {
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center"><CheckCircle2 size={18} /></div>
                   <h3 className="text-lg font-bold text-gray-900">
-                    {role === "supervisor" ? "Approve for Admin Review" : "Complete Job"}
+                    {role === "supervisor"
+                      ? "Approve for Admin Review"
+                      : job?.status === "awaiting_supervisor" || job?.status === "in_progress"
+                        ? "Check & Complete Job"
+                        : "Complete Job"}
                   </h3>
                 </div>
                 <button onClick={() => setApproveOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
@@ -2488,10 +2509,10 @@ export default function JobDetail({ role = "user", id }: Props) {
                 <div className="py-6 text-center">
                   <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3"><CheckCircle2 size={28} /></div>
                   <div className="text-base font-bold text-gray-900">
-                    {role === "supervisor" ? "Sent to admin for completion" : "Job marked complete"}
+                    {role === "supervisor" ? "Sent to admin for completion" : "Job checked and completed"}
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
-                    {role === "supervisor" ? "Admins have been notified." : "The worker has been notified."}
+                    {role === "supervisor" ? "Admins have been notified." : "Worker and supervisor have been notified."}
                   </div>
                 </div>
               ) : (
@@ -2499,7 +2520,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                   <p className="text-sm text-gray-600 mb-4">
                     {role === "supervisor"
                       ? "Confirm the deliverables look good. The job will move to admin/super-admin for final completion."
-                      : "Confirm that the deliverables, checklist and time logs all look good. The job will be marked Completed and the worker notified."}
+                      : job?.status === "awaiting_supervisor" || job?.status === "in_progress"
+                        ? "Supervisor review is still pending. As admin/super-admin you can check this job now and mark it complete without waiting for supervisor approval. Use Mark for Rework if changes are needed."
+                        : "Confirm that the deliverables, checklist and time logs all look good. The job will be marked Completed and the worker notified."}
                   </p>
                   <div className="space-y-2 mb-5 text-xs">
                     <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> Checklist reviewed ({checklist.filter((c) => c.status === "completed").length}/{checklist.length} done)</div>
@@ -2536,7 +2559,12 @@ export default function JobDetail({ role = "user", id }: Props) {
                       }}
                       className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2"
                     >
-                      <CheckCircle2 size={14} /> {role === "supervisor" ? "Approve" : "Complete"}
+                      <CheckCircle2 size={14} />{" "}
+                      {role === "supervisor"
+                        ? "Approve"
+                        : job?.status === "awaiting_supervisor" || job?.status === "in_progress"
+                          ? "Check & Complete"
+                          : "Complete"}
                     </button>
                   </div>
                 </>

@@ -36,6 +36,12 @@ export interface Job {
   /** @nullable */
   reviewStartedAt?: Date | null;
   /** @nullable */
+  checkedById?: string | null;
+  /** @nullable */
+  checkedByLabel?: string | null;
+  /** @nullable */
+  checkedAt?: Date | null;
+  /** @nullable */
   completedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;

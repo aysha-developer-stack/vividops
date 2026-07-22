@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, MoreVertical, Edit2, Trash2, UserPlus, X,
-  Calendar, ExternalLink, CheckCircle2, Download, Loader2, FileText, Clock,
+  Calendar, ExternalLink, CheckCircle2, Download, Loader2, FileText, Clock, RefreshCw,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -1010,7 +1010,34 @@ export default function JobManagement(
                                     Approve for Admin
                                   </DropdownMenuItem>
                                 )}
-                                {(role === "admin" || role === "super-admin") && j.status !== "Completed" && (
+                                {(role === "admin" || role === "super-admin") &&
+                                  (j.status === "Awaiting Supervisor" || j.status === "In Progress") && (
+                                  <DropdownMenuItem onClick={() => markCompleted(j)}>
+                                    <CheckCircle2 size={14} className="mr-2 text-emerald-500" />
+                                    Check & Complete
+                                  </DropdownMenuItem>
+                                )}
+                                {(role === "admin" || role === "super-admin") &&
+                                  j.status === "Awaiting Admin" && (
+                                  <DropdownMenuItem onClick={() => markCompleted(j)}>
+                                    <CheckCircle2 size={14} className="mr-2 text-gray-400" />
+                                    Complete Job
+                                  </DropdownMenuItem>
+                                )}
+                                {(role === "supervisor" || role === "admin" || role === "super-admin") &&
+                                  j.status !== "Completed" && (
+                                  <DropdownMenuItem asChild>
+                                    <Link href={`${basePath}/${j.id}`} className="flex items-center">
+                                      <RefreshCw size={14} className="mr-2 text-amber-500" />
+                                      Review / Rework
+                                    </Link>
+                                  </DropdownMenuItem>
+                                )}
+                                {(role === "admin" || role === "super-admin") &&
+                                  j.status !== "Completed" &&
+                                  j.status !== "Awaiting Supervisor" &&
+                                  j.status !== "In Progress" &&
+                                  j.status !== "Awaiting Admin" && (
                                   <DropdownMenuItem onClick={() => markCompleted(j)}>
                                     <CheckCircle2 size={14} className="mr-2 text-gray-400" />
                                     Mark Completed

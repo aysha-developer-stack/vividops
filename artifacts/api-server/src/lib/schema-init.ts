@@ -56,6 +56,18 @@ export async function ensureJobWriteSchema() {
       ALTER TABLE jobs
       ADD COLUMN IF NOT EXISTS review_started_at timestamptz
     `);
+    await db.execute(sql`
+      ALTER TABLE jobs
+      ADD COLUMN IF NOT EXISTS checked_by_id uuid
+    `);
+    await db.execute(sql`
+      ALTER TABLE jobs
+      ADD COLUMN IF NOT EXISTS checked_by_label text
+    `);
+    await db.execute(sql`
+      ALTER TABLE jobs
+      ADD COLUMN IF NOT EXISTS checked_at timestamptz
+    `);
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS job_members (
