@@ -44,7 +44,7 @@ export async function ensureJobWriteSchema() {
     `);
 
     // Review pipeline statuses (safe if already present)
-    for (const value of ["awaiting_supervisor", "awaiting_admin", "rework"] as const) {
+    for (const value of ["awaiting_supervisor", "awaiting_admin", "rework", "on_hold"] as const) {
       try {
         await db.execute(sql.raw(`ALTER TYPE job_status ADD VALUE IF NOT EXISTS '${value}'`));
       } catch (err) {
@@ -67,6 +67,10 @@ export async function ensureJobWriteSchema() {
     await db.execute(sql`
       ALTER TABLE jobs
       ADD COLUMN IF NOT EXISTS checked_at timestamptz
+    `);
+    await db.execute(sql`
+      ALTER TABLE jobs
+      ADD COLUMN IF NOT EXISTS held_from_status text
     `);
 
     await db.execute(sql`

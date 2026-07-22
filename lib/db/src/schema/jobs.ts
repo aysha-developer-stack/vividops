@@ -20,6 +20,7 @@ export const jobStatusEnum = pgEnum("job_status", [
   "completed",
   "cancelled",
   "rework",
+  "on_hold",
 ]);
 
 export const jobs = pgTable(
@@ -34,6 +35,7 @@ export const jobs = pgTable(
     description: text("description"),
     priority: jobPriorityEnum("priority").notNull().default("medium"),
     status: jobStatusEnum("status").notNull().default("pending"),
+    heldFromStatus: text("held_from_status"),
     assigneeId: uuid("assignee_id").references(() => users.id, {
       onDelete: "set null",
     }),

@@ -16,4 +16,5 @@ export const JobStatus = {
   completed: "completed",
   cancelled: "cancelled",
   rework: "rework",
+  on_hold: "on_hold",
 } as const;

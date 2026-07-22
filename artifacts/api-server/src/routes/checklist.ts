@@ -17,7 +17,7 @@ import { logger } from "../lib/logger";
 import { createNotification } from "../lib/notifications";
 import { ensureJobWriteSchema } from "../lib/schema-init";
 import { createReworkWithErrorReport, markOpenReworksAwaitingReview } from "../lib/reworks";
-import { jobStatusPatchFields } from "../lib/job-review";
+import { jobStatusPatchFields, type ReviewableStatus } from "../lib/job-review";
 
 const router: IRouter = Router();
 
@@ -167,6 +167,9 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
 
     const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
     if (!job) return res.status(404).json({ error: "Job not found" });
+    if (job.status === "on_hold") {
+      return res.status(400).json({ error: "Job is on hold — resume work before updating the checklist" });
+    }
     if (!(await canViewJob(actor, job))) return res.status(403).json({ error: "Forbidden" });
 
     const targetUserId = actor.role === "user" ? actor.id : (userIdParam ?? job.assigneeId ?? actor.id);
@@ -331,7 +334,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         const nextProgress = Math.round((done / total) * 100);
         const hasRework = rows.some((r) => r.status === "rework");
 
-        let nextStatus: string =
+        let nextStatus: ReviewableStatus =
           hasRework ? "rework" : nextProgress > 0 ? "in_progress" : "pending";
 
         // Only move to supervisor review when every checklist item (+ required files) is done

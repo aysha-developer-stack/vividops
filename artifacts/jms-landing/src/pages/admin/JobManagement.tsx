@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, MoreVertical, Edit2, Trash2, UserPlus, X,
-  Calendar, ExternalLink, CheckCircle2, Download, Loader2, FileText, Clock, RefreshCw,
+  Calendar, ExternalLink, CheckCircle2, Download, Loader2, FileText, Clock, RefreshCw, Pause, Play,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -118,11 +118,12 @@ function mapJob(j: ApiJob): UiJob {
 }
 
 const STATUS_CONFIG: Record<UiStatus, { color: string; bg: string }> = {
-  "Pending": { color: "text-amber-700", bg: "bg-amber-50 border-amber-200" },
+  "Not Started": { color: "text-amber-700", bg: "bg-amber-50 border-amber-200" },
   "In Progress": { color: "text-primary", bg: "bg-primary/10 border-primary/20" },
   "Awaiting Supervisor": { color: "text-sky-700", bg: "bg-sky-50 border-sky-200" },
   "Awaiting Admin": { color: "text-indigo-700", bg: "bg-indigo-50 border-indigo-200" },
-  "Completed": { color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200" },
+  "Done": { color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200" },
+  "On Hold": { color: "text-orange-700", bg: "bg-orange-50 border-orange-200" },
   "Overdue": { color: "text-red-700", bg: "bg-red-50 border-red-200" },
   "Rework": { color: "text-purple-700", bg: "bg-purple-50 border-purple-200" },
 };
@@ -569,6 +570,38 @@ export default function JobManagement(
     }
   };
 
+  const putOnHold = async (j: UiJob) => {
+    setOpenId(null);
+    try {
+      await updateMutation.mutateAsync({
+        id: j.id,
+        data: { status: "on_hold" as ApiJob["status"] },
+      });
+      await invalidateJobs(j.id);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to put job on hold");
+    }
+  };
+
+  const resumeFromHold = async (j: UiJob) => {
+    setOpenId(null);
+    try {
+      const res = await fetch(`/api/jobs/${j.id}/review`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resume_from_hold" }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as any).error || "Failed to resume job");
+      }
+      await invalidateJobs(j.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to resume job");
+    }
+  };
+
   const submit = async () => {
     if (!form.title || !form.client) {
       setError("Title and client are required");
@@ -736,11 +769,12 @@ export default function JobManagement(
 
   const counts = {
     All: jobs.length,
-    "Pending": jobs.filter((j) => j.status === "Pending").length,
+    "Not Started": jobs.filter((j) => j.status === "Not Started").length,
     "In Progress": jobs.filter((j) => j.status === "In Progress").length,
     "Awaiting Supervisor": jobs.filter((j) => j.status === "Awaiting Supervisor").length,
     "Awaiting Admin": jobs.filter((j) => j.status === "Awaiting Admin").length,
-    "Completed": jobs.filter((j) => j.status === "Completed").length,
+    "Done": jobs.filter((j) => j.status === "Done").length,
+    "On Hold": jobs.filter((j) => j.status === "On Hold").length,
     "Overdue": jobs.filter((j) => j.status === "Overdue").length,
     "Rework": jobs.filter((j) => j.status === "Rework").length,
   };
@@ -768,8 +802,8 @@ export default function JobManagement(
       )}
 
       {/* Status pills */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-2 md:gap-3 mb-6">
-        {(["All", "Pending", "In Progress", "Awaiting Supervisor", "Awaiting Admin", "Completed", "Overdue", "Rework"] as const).map((s, i) => (
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-9 gap-2 md:gap-3 mb-6">
+        {(["All", "Not Started", "In Progress", "On Hold", "Awaiting Supervisor", "Awaiting Admin", "Done", "Overdue", "Rework"] as const).map((s, i) => (
           <motion.button
             key={s}
             initial={{ opacity: 0, y: 10 }}
@@ -911,14 +945,14 @@ export default function JobManagement(
                               initial={{ width: 0 }}
                               animate={{ width: `${j.progress}%` }}
                               transition={{ duration: 0.8, delay: i * 0.05, ease: "easeOut" }}
-                              className={`h-full rounded-full ${j.status === "Completed" ? "bg-emerald-500" : j.status === "Overdue" ? "bg-red-500" : "bg-primary"}`}
+                              className={`h-full rounded-full ${j.status === "Done" ? "bg-emerald-500" : j.status === "Overdue" ? "bg-red-500" : j.status === "On Hold" ? "bg-orange-400" : "bg-primary"}`}
                             />
                           </div>
                           <span className="text-xs font-semibold text-gray-600 w-8 text-right">{j.progress}%</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        {j.status === "Completed" && j.completed ? (
+                        {j.status === "Done" && j.completed ? (
                           <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
                             <CheckCircle2 size={12} className="text-emerald-500" />
                             Done {j.completed}
@@ -998,7 +1032,22 @@ export default function JobManagement(
                                   </DropdownMenuItem>
                                 )}
                                 {(role === "supervisor" || role === "admin" || role === "super-admin") &&
-                                  j.status !== "Completed" && (
+                                  j.status === "On Hold" && (
+                                  <DropdownMenuItem onClick={() => resumeFromHold(j)}>
+                                    <Play size={14} className="mr-2 text-emerald-500" />
+                                    Resume Job
+                                  </DropdownMenuItem>
+                                )}
+                                {(role === "supervisor" || role === "admin" || role === "super-admin") &&
+                                  j.status !== "Done" &&
+                                  j.status !== "On Hold" && (
+                                  <DropdownMenuItem onClick={() => putOnHold(j)}>
+                                    <Pause size={14} className="mr-2 text-orange-500" />
+                                    Put on Hold
+                                  </DropdownMenuItem>
+                                )}
+                                {(role === "supervisor" || role === "admin" || role === "super-admin") &&
+                                  j.status !== "Done" && (
                                   <DropdownMenuItem asChild>
                                     <Link href={`${basePath}/${j.id}`} className="flex items-center">
                                       <RefreshCw size={14} className="mr-2 text-amber-500" />
@@ -1007,10 +1056,11 @@ export default function JobManagement(
                                   </DropdownMenuItem>
                                 )}
                                 {(role === "admin" || role === "super-admin") &&
-                                  j.status !== "Completed" &&
+                                  j.status !== "Done" &&
                                   j.status !== "Awaiting Supervisor" &&
                                   j.status !== "In Progress" &&
-                                  j.status !== "Awaiting Admin" && (
+                                  j.status !== "Awaiting Admin" &&
+                                  j.status !== "On Hold" && (
                                   <DropdownMenuItem onClick={() => markCompleted(j)}>
                                     <CheckCircle2 size={14} className="mr-2 text-gray-400" />
                                     Mark Completed

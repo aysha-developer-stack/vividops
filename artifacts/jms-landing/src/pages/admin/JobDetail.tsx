@@ -1160,6 +1160,7 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   const persistProgress = async (nextChecklist: ChecklistItem[]) => {
     if (!job?.id) return;
+    if (job.status === "on_hold") return;
     const total = nextChecklist.length;
     const done = nextChecklist.filter((c) => c.status === "completed").length;
     const nextProgress = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -1280,6 +1281,59 @@ export default function JobDetail({ role = "user", id }: Props) {
             )}
             {(role === "supervisor" || role === "admin" || role === "super-admin") && job?.status !== "completed" && job?.status !== "cancelled" && (
               <>
+                {job?.status === "on_hold" ? (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={async () => {
+                      if (!job?.id) return;
+                      try {
+                        const res = await fetch(`/api/jobs/${job.id}/review`, {
+                          method: "POST",
+                          credentials: "include",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ action: "resume_from_hold" }),
+                        });
+                        if (!res.ok) {
+                          const data = await res.json().catch(() => ({}));
+                          throw new Error((data as any).error || "Failed to resume job");
+                        }
+                        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+                        await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                      } catch (err) {
+                        console.error(err instanceof Error ? err.message : "Failed to resume job");
+                      }
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
+                  >
+                    <Play size={12} /> Resume Job
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={async () => {
+                      if (!job?.id) return;
+                      try {
+                        await updateJobMutation.mutateAsync({
+                          id: job.id,
+                          data: { status: "on_hold" as any },
+                        });
+                        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+                        await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                      } catch (err) {
+                        console.error(err instanceof ApiError ? err.message : "Failed to put job on hold");
+                      }
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-xl text-xs font-semibold"
+                  >
+                    <Pause size={12} /> Put on Hold
+                  </motion.button>
+                )}
+              </>
+            )}
+            {(role === "supervisor" || role === "admin" || role === "super-admin") && job?.status !== "completed" && job?.status !== "cancelled" && job?.status !== "on_hold" && (
+              <>
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
@@ -1360,6 +1414,13 @@ export default function JobDetail({ role = "user", id }: Props) {
               Checked by <span className="font-semibold">{(job as any).checkedByLabel}</span>
               {(job as any).checkedAt ? ` · ${new Date((job as any).checkedAt).toLocaleString()}` : ""}
             </span>
+          </div>
+        )}
+
+        {job?.status === "on_hold" && (
+          <div className="mt-4 flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+            <Pause size={14} className="text-orange-600 shrink-0" />
+            <span>This job is <span className="font-semibold">on hold</span>. Work and checklist updates are paused until a supervisor or admin resumes it.</span>
           </div>
         )}
 

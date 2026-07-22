@@ -53,11 +53,12 @@ function mapJob(j: ApiJob): UiJob {
 }
 
 const STATUS_CFG: Record<UiStatus, { color: string; icon: any; bar: string }> = {
-  "Pending": { color: "bg-amber-50 text-amber-700 border-amber-200", icon: Clock, bar: "bg-amber-400" },
+  "Not Started": { color: "bg-amber-50 text-amber-700 border-amber-200", icon: Clock, bar: "bg-amber-400" },
   "In Progress": { color: "bg-primary/10 text-primary border-primary/30", icon: Briefcase, bar: "bg-primary" },
   "Awaiting Supervisor": { color: "bg-sky-50 text-sky-700 border-sky-200", icon: Clock, bar: "bg-sky-400" },
   "Awaiting Admin": { color: "bg-indigo-50 text-indigo-700 border-indigo-200", icon: Clock, bar: "bg-indigo-400" },
-  "Completed": { color: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: CheckCircle2, bar: "bg-emerald-400" },
+  "Done": { color: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: CheckCircle2, bar: "bg-emerald-400" },
+  "On Hold": { color: "bg-orange-50 text-orange-700 border-orange-200", icon: Clock, bar: "bg-orange-400" },
   "Overdue": { color: "bg-red-50 text-red-700 border-red-200", icon: Clock, bar: "bg-red-500" },
   "Rework": { color: "bg-purple-50 text-purple-700 border-purple-200", icon: AlertTriangle, bar: "bg-purple-500" },
 };

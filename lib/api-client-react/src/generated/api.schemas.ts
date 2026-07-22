@@ -215,6 +215,7 @@ export const JobStatus = {
   completed: "completed",
   cancelled: "cancelled",
   rework: "rework",
+  on_hold: "on_hold",
 } as const;
 
 export type JobPriority = (typeof JobPriority)[keyof typeof JobPriority];

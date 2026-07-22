@@ -1794,9 +1794,35 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "Job number already exists" });
   }
 
+  // Assignees cannot change status while job is on hold.
+  if (full.job.status === "on_hold" && !isManager && body.status !== undefined) {
+    return res.status(403).json({ error: "Job is on hold — contact your supervisor to resume" });
+  }
+
   const previousStatus = full.job.status;
   let nextStatus: ReviewableStatus | undefined =
     body.status !== undefined ? (body.status as ReviewableStatus) : undefined;
+  if (nextStatus === "on_hold") {
+    if (!isManager) {
+      return res.status(403).json({ error: "Only supervisor, admin, or super-admin can put a job on hold" });
+    }
+    if (previousStatus === "completed" || previousStatus === "cancelled" || previousStatus === "on_hold") {
+      return res.status(400).json({ error: "This job cannot be put on hold" });
+    }
+  }
+  if (previousStatus === "on_hold" && nextStatus !== undefined && nextStatus !== "on_hold") {
+    if (!isManager) {
+      return res.status(403).json({ error: "Only supervisor, admin, or super-admin can resume a job on hold" });
+    }
+    if (nextStatus === "in_progress" || nextStatus === "pending") {
+      const { resolveResumeStatus } = await import("../lib/job-review");
+      nextStatus = resolveResumeStatus(full.job);
+    }
+  }
+  if (!isManager && nextStatus === "on_hold") {
+    return res.status(403).json({ error: "Only supervisor, admin, or super-admin can put a job on hold" });
+  }
+
   if (nextStatus === "completed") {
     nextStatus = coerceCompletionStatus(actor, isManager);
   }
@@ -1924,6 +1950,7 @@ router.post("/jobs/:id/review", requireAuth, async (req, res) => {
       "supervisor_approve",
       "admin_complete",
       "rework",
+      "resume_from_hold",
     ];
     if (!action || !allowed.includes(action)) {
       return res.status(400).json({ error: "Invalid review action" });

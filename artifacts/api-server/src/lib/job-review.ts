@@ -22,7 +22,8 @@ export type JobReviewAction =
   | "submit_for_supervisor"
   | "supervisor_approve"
   | "admin_complete"
-  | "rework";
+  | "rework"
+  | "resume_from_hold";
 
 export type ReviewableStatus =
   | "pending"
@@ -31,7 +32,22 @@ export type ReviewableStatus =
   | "awaiting_admin"
   | "completed"
   | "cancelled"
-  | "rework";
+  | "rework"
+  | "on_hold";
+
+const RESUMABLE_STATUSES = new Set<ReviewableStatus>([
+  "pending",
+  "in_progress",
+  "awaiting_supervisor",
+  "awaiting_admin",
+  "rework",
+]);
+
+export function resolveResumeStatus(job: Pick<JobRow, "heldFromStatus" | "progress">): ReviewableStatus {
+  const held = job.heldFromStatus as ReviewableStatus | null | undefined;
+  if (held && RESUMABLE_STATUSES.has(held)) return held;
+  return (job.progress ?? 0) > 0 ? "in_progress" : "pending";
+}
 
 export function jobStatusPatchFields(opts: {
   nextStatus: ReviewableStatus;
@@ -50,6 +66,7 @@ export function jobStatusPatchFields(opts: {
     checkedByLabel?: string | null;
     checkedAt?: Date | null;
     progress?: number;
+    heldFromStatus?: string | null;
   } = {
     status: nextStatus,
     updatedAt: now,
@@ -93,6 +110,18 @@ export function jobStatusPatchFields(opts: {
     patch.checkedAt = null;
     patch.progress = 0;
     return patch;
+  }
+
+  if (nextStatus === "on_hold") {
+    patch.completedAt = null;
+    if (previousStatus && previousStatus !== "on_hold") {
+      patch.heldFromStatus = previousStatus;
+    }
+    return patch;
+  }
+
+  if (previousStatus === "on_hold") {
+    patch.heldFromStatus = null;
   }
 
   patch.completedAt = null;
@@ -355,6 +384,30 @@ export async function notifyStatusTransition(opts: {
       });
     }
   }
+
+  if (nextStatus === "on_hold") {
+    if (job.assigneeId) {
+      await createNotification({
+        userId: job.assigneeId,
+        jobId: job.id,
+        title: `Job On Hold: ${job.title}`,
+        description: `${actor.name} put ${job.title} on hold.`,
+        type: "updated",
+      });
+    }
+  }
+
+  if (previousStatus === "on_hold" && nextStatus !== "on_hold") {
+    if (job.assigneeId) {
+      await createNotification({
+        userId: job.assigneeId,
+        jobId: job.id,
+        title: `Job Resumed: ${job.title}`,
+        description: `${actor.name} resumed work on ${job.title}.`,
+        type: "updated",
+      });
+    }
+  }
 }
 
 export async function applyJobReview(opts: {
@@ -375,6 +428,9 @@ export async function applyJobReview(opts: {
   if (action === "submit_for_supervisor") {
     if (!isAssignee && !canManage) {
       return { ok: false, status: 403, error: "Only the assigned worker can submit for supervisor review" };
+    }
+    if (job.status === "on_hold") {
+      return { ok: false, status: 400, error: "Job is on hold — resume work before submitting for review" };
     }
     if (job.status === "completed" || job.status === "cancelled") {
       return { ok: false, status: 400, error: "This job cannot be submitted for review" };
@@ -453,6 +509,14 @@ export async function applyJobReview(opts: {
       };
     }
     nextStatus = "rework";
+  } else if (action === "resume_from_hold") {
+    if (!canManage && actor.role !== "admin" && actor.role !== "super-admin") {
+      return { ok: false, status: 403, error: "Only supervisor, admin, or super-admin can resume a job on hold" };
+    }
+    if (job.status !== "on_hold") {
+      return { ok: false, status: 400, error: "Job is not on hold" };
+    }
+    nextStatus = resolveResumeStatus(job);
   } else {
     return { ok: false, status: 400, error: "Invalid review action" };
   }

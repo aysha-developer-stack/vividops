@@ -752,6 +752,7 @@ components:
           completed,
           cancelled,
           rework,
+          on_hold,
         ]
 
     JobPriority:
