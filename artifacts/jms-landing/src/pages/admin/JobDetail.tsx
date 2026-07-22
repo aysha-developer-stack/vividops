@@ -1989,29 +1989,6 @@ export default function JobDetail({ role = "user", id }: Props) {
                 </div>
               </div>
 
-              {(canUploadInput || canUploadOutput) && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {canUploadInput && (
-                    <FileDropzone
-                      multiple
-                      allowFolders
-                      label="Drop job files or folders"
-                      hint="Instruction docs, drawings, client packs"
-                      onFiles={(files) => uploadPickedFiles(files, "input", null)}
-                    />
-                  )}
-                  {canUploadOutput && (
-                    <FileDropzone
-                      multiple
-                      allowFolders
-                      label="Drop completed files or folders"
-                      hint="Worker deliverables · multiple files and folders"
-                      onFiles={(files) => uploadPickedFiles(files, "output", null)}
-                    />
-                  )}
-                </div>
-              )}
-
               <div className="grid grid-cols-1 gap-6">
                 {/* Job Files Section (Input) */}
                 <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
