@@ -72,6 +72,34 @@ export async function ensureJobWriteSchema() {
       ALTER TABLE jobs
       ADD COLUMN IF NOT EXISTS held_from_status text
     `);
+    await db.execute(sql`
+      ALTER TABLE jobs
+      ADD COLUMN IF NOT EXISTS estimated_time text
+    `);
+    await db.execute(sql`
+      ALTER TABLE jobs
+      ADD COLUMN IF NOT EXISTS start_date timestamptz
+    `);
+    await db.execute(sql`
+      ALTER TABLE jobs
+      ADD COLUMN IF NOT EXISTS eta timestamptz
+    `);
+    await db.execute(sql`
+      ALTER TABLE jobs
+      ADD COLUMN IF NOT EXISTS wind text
+    `);
+    await db.execute(sql`
+      ALTER TABLE jobs
+      ADD COLUMN IF NOT EXISTS incoming_date timestamptz
+    `);
+    await db.execute(sql`
+      ALTER TABLE jobs
+      ADD COLUMN IF NOT EXISTS remarks text
+    `);
+    await db.execute(sql`
+      ALTER TABLE jobs
+      ADD COLUMN IF NOT EXISTS comments text
+    `);
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS job_members (
@@ -272,8 +300,17 @@ export async function ensureAllSchemas() {
       );
       CREATE INDEX IF NOT EXISTS time_logs_user_idx ON time_logs (user_id);
       CREATE INDEX IF NOT EXISTS time_logs_job_idx ON time_logs (job_id);
+    `);
+    await db.execute(sql`
+      ALTER TABLE time_logs
+      ADD COLUMN IF NOT EXISTS rework_cycle_number integer
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS time_logs_job_cycle_idx
+      ON time_logs (job_id, rework_cycle_number)
+    `);
 
-      -- Job Messages
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS job_messages (
         id uuid PRIMARY KEY,
         job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,

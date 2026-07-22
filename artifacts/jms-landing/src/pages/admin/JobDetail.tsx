@@ -30,6 +30,7 @@ import {
   ApiError,
 } from "@workspace/api-client-react";
 import { statusToUi, priorityToUi, formatShortDate } from "@/lib/jobMappers";
+import { buildTimeLogCycleBreakdown, reworkCycleKey, reworkCycleLabel } from "@/lib/timeLogBreakdown";
 import { parseJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
 import { postTimerNotification } from "@/lib/timerNotifications";
 import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } from "@/lib/downloadFile";
@@ -828,6 +829,20 @@ export default function JobDetail({ role = "user", id }: Props) {
     return jobTimeLogs.reduce((acc, l) => acc + (typeof l.duration === "number" ? l.duration : 0), 0);
   }, [jobTimeLogs]);
 
+  const timeBreakdown = useMemo(
+    () => buildTimeLogCycleBreakdown(jobTimeLogs),
+    [jobTimeLogs],
+  );
+
+  const activeReworkCycle = useMemo(() => {
+    const open = reworks
+      .filter((r) => r.status === "open" || r.status === "needs_correction" || r.status === "awaiting_review")
+      .map((r) => r.cycleNumber)
+      .filter((n): n is number => typeof n === "number");
+    if (open.length === 0) return null;
+    return Math.max(...open);
+  }, [reworks]);
+
   const displaySeconds = totalLoggedSeconds + seconds;
 
   const jobLogRows = useMemo(() => {
@@ -839,6 +854,7 @@ export default function JobDetail({ role = "user", id }: Props) {
         id: l.id,
         user: userName,
         duration: formatTime(l.duration ?? 0),
+        cycleLabel: reworkCycleLabel(reworkCycleKey(l.reworkCycleNumber)),
         task: l.task ?? "Work",
         date: l.createdAt ? new Date(l.createdAt as any).toLocaleString() : "—",
       };
@@ -1397,13 +1413,58 @@ export default function JobDetail({ role = "user", id }: Props) {
             <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Date Created</div><div className="text-sm text-gray-900 font-medium">{job?.createdAt ? formatShortDate(job.createdAt as any) : "—"}</div></div>
           </div>
           <div className="flex items-start gap-2.5"><Clock size={14} className="text-amber-500 mt-0.5" />
-            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Est. Completion</div><div className="text-sm text-gray-900 font-medium">{job?.dueDate ? new Date(job.dueDate as any).toLocaleString() : "TBD"}</div></div>
+            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Due On</div><div className="text-sm text-gray-900 font-medium">{job?.dueDate ? new Date(job.dueDate as any).toLocaleDateString() : "TBD"}</div></div>
           </div>
           <div className="flex items-start gap-2.5"><CheckCircle2 size={14} className={`mt-0.5 ${job?.completedAt ? "text-emerald-500" : "text-gray-300"}`} />
             <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Date Completed</div><div className={`text-sm font-medium ${job?.completedAt ? "text-gray-900" : "text-gray-400 italic"}`}>{job?.completedAt ? new Date(job.completedAt as any).toLocaleString() : "Not yet completed"}</div></div>
           </div>
           <div className="flex items-start gap-2.5"><User size={14} className="text-gray-400 mt-0.5" />
             <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Assigned User</div><div className="text-sm text-gray-900 font-medium">{job?.assignee?.name ?? "Unassigned"}</div></div>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+          <div>
+            <div className="text-[10px] text-gray-500 uppercase font-semibold">Est. Time</div>
+            <div className="text-sm text-gray-900 font-medium">{(job as any)?.estimatedTime || "—"}</div>
+          </div>
+          <div>
+            <div className="text-[10px] text-gray-500 uppercase font-semibold">Actual Time</div>
+            <div className="text-sm text-gray-900 font-medium">{totalLoggedSeconds > 0 ? formatTime(totalLoggedSeconds) : "—"}</div>
+            {timeBreakdown.length > 0 && (
+              <div className="mt-1.5 space-y-0.5">
+                {timeBreakdown.map((row) => (
+                  <div key={String(row.key)} className="text-[11px] text-gray-500 flex justify-between gap-3">
+                    <span>{row.label}</span>
+                    <span className="font-medium text-gray-700 tabular-nums">{formatTime(row.seconds)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="text-[10px] text-gray-500 uppercase font-semibold">Start Date</div>
+            <div className="text-sm text-gray-900 font-medium">{(job as any)?.startDate ? formatShortDate((job as any).startDate) : "—"}</div>
+          </div>
+          <div>
+            <div className="text-[10px] text-gray-500 uppercase font-semibold">ETA</div>
+            <div className="text-sm text-gray-900 font-medium">{(job as any)?.eta ? formatShortDate((job as any).eta) : "—"}</div>
+          </div>
+          <div>
+            <div className="text-[10px] text-gray-500 uppercase font-semibold">Wind</div>
+            <div className="text-sm text-gray-900 font-medium">{(job as any)?.wind || "—"}</div>
+          </div>
+          <div>
+            <div className="text-[10px] text-gray-500 uppercase font-semibold">Incoming Date</div>
+            <div className="text-sm text-gray-900 font-medium">{(job as any)?.incomingDate ? formatShortDate((job as any).incomingDate) : "—"}</div>
+          </div>
+          <div className="sm:col-span-2">
+            <div className="text-[10px] text-gray-500 uppercase font-semibold">Remarks</div>
+            <div className="text-sm text-gray-900 font-medium whitespace-pre-wrap">{(job as any)?.remarks || "—"}</div>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-4">
+            <div className="text-[10px] text-gray-500 uppercase font-semibold">Comments</div>
+            <div className="text-sm text-gray-900 font-medium whitespace-pre-wrap">{(job as any)?.comments || "—"}</div>
           </div>
         </div>
 
@@ -1525,7 +1586,10 @@ export default function JobDetail({ role = "user", id }: Props) {
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <div className={`w-2 h-2 rounded-full ${running ? "bg-emerald-300 animate-pulse" : "bg-white/40"}`} />
-                <span className="text-xs font-bold text-white/80 uppercase tracking-wider">{running ? "Tracking time" : "Ready to work"}</span>
+                <span className="text-xs font-bold text-white/80 uppercase tracking-wider">
+                  {running ? "Tracking time" : "Ready to work"}
+                  {activeReworkCycle != null ? ` · ${reworkCycleLabel(activeReworkCycle)}` : ""}
+                </span>
               </div>
               <div className="font-mono text-4xl md:text-5xl font-bold text-white tabular-nums">{formatTime(displaySeconds)}</div>
             </div>
@@ -2375,16 +2439,26 @@ export default function JobDetail({ role = "user", id }: Props) {
 
         {tab === "logs" && (
           <motion.div key="lg" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between gap-4 flex-wrap">
               <div>
                 <h3 className="font-bold text-gray-900">Timer Logs</h3>
-                <p className="text-xs text-gray-500 mt-0.5">All time tracked on this job</p>
+                <p className="text-xs text-gray-500 mt-0.5">All time tracked on this job, grouped by rework cycle</p>
               </div>
               <div className="text-right">
                 <div className="text-2xl font-bold text-gray-900 font-mono">{formatHoursMinutes(totalLoggedSeconds)}</div>
                 <div className="text-[10px] text-gray-500 uppercase tracking-wide">Total</div>
               </div>
             </div>
+            {timeBreakdown.length > 0 && (
+              <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/80 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {timeBreakdown.map((row) => (
+                  <div key={String(row.key)} className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">{row.label}</div>
+                    <div className="text-lg font-bold text-gray-900 font-mono tabular-nums mt-0.5">{formatHoursMinutes(row.seconds)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
             {jobLogsP.pageItems.map((l, i) => (
               <motion.div
                 key={l.id}
@@ -2398,7 +2472,12 @@ export default function JobDetail({ role = "user", id }: Props) {
                   {l.user.split(" ").map((s) => s[0]).join("")}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-gray-900">{l.user}</div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="text-sm font-semibold text-gray-900">{l.user}</div>
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-100">
+                      {l.cycleLabel}
+                    </span>
+                  </div>
                   <div className="text-xs text-gray-500">{l.task}</div>
                 </div>
                 <div className="text-xs text-gray-500 hidden sm:block">{l.date}</div>

@@ -257,6 +257,20 @@ export interface Job {
   /** @nullable */
   dueDate?: string | null;
   /** @nullable */
+  estimatedTime?: string | null;
+  /** @nullable */
+  startDate?: string | null;
+  /** @nullable */
+  eta?: string | null;
+  /** @nullable */
+  wind?: "N2" | "N3" | "N4" | "N5" | "C1" | "C2" | null;
+  /** @nullable */
+  incomingDate?: string | null;
+  /** @nullable */
+  remarks?: string | null;
+  /** @nullable */
+  comments?: string | null;
+  /** @nullable */
   reviewStartedAt?: string | null;
   /** @nullable */
   checkedById?: string | null;
@@ -285,6 +299,20 @@ export interface JobInput {
   supervisorId?: string | null;
   /** @nullable */
   dueDate?: string | null;
+  /** @nullable */
+  estimatedTime?: string | null;
+  /** @nullable */
+  startDate?: string | null;
+  /** @nullable */
+  eta?: string | null;
+  /** @nullable */
+  wind?: "N2" | "N3" | "N4" | "N5" | "C1" | "C2" | null;
+  /** @nullable */
+  incomingDate?: string | null;
+  /** @nullable */
+  remarks?: string | null;
+  /** @nullable */
+  comments?: string | null;
 }
 
 export interface JobUpdate {
@@ -305,6 +333,20 @@ export interface JobUpdate {
   supervisorId?: string | null;
   /** @nullable */
   dueDate?: string | null;
+  /** @nullable */
+  estimatedTime?: string | null;
+  /** @nullable */
+  startDate?: string | null;
+  /** @nullable */
+  eta?: string | null;
+  /** @nullable */
+  wind?: "N2" | "N3" | "N4" | "N5" | "C1" | "C2" | null;
+  /** @nullable */
+  incomingDate?: string | null;
+  /** @nullable */
+  remarks?: string | null;
+  /** @nullable */
+  comments?: string | null;
   /**
    * @minimum 0
    * @maximum 100
@@ -396,6 +438,8 @@ export interface TimeLog {
   task: string;
   /** duration in seconds */
   duration: number;
+  /** @nullable Rework cycle; null = original work */
+  reworkCycleNumber?: number | null;
   startTime?: string;
   createdAt: string;
 }
@@ -405,6 +449,8 @@ export interface TimeLogInput {
   duration: number;
   /** @nullable */
   jobId?: string | null;
+  /** @nullable */
+  reworkCycleNumber?: number | null;
 }
 
 export type MarkNotificationRead200 = {

@@ -45,7 +45,14 @@ export const jobs = pgTable(
     createdById: uuid("created_by_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    estimatedTime: text("estimated_time"),
+    startDate: timestamp("start_date", { withTimezone: true }),
+    eta: timestamp("eta", { withTimezone: true }),
+    wind: text("wind"),
+    incomingDate: timestamp("incoming_date", { withTimezone: true }),
     dueDate: timestamp("due_date", { withTimezone: true }),
+    remarks: text("remarks"),
+    comments: text("comments"),
     reviewStartedAt: timestamp("review_started_at", { withTimezone: true }),
     checkedById: uuid("checked_by_id").references(() => users.id, {
       onDelete: "set null",

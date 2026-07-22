@@ -1,14 +1,18 @@
 import { Router, type IRouter } from "express";
 import { eq, desc, inArray } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { db, jobs, timeLogs, type TimeLogRow } from "@workspace/db";
+import { db, jobs, timeLogs } from "@workspace/db";
 import { CreateTimeLogBody } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { ensureJobWriteSchema } from "../lib/schema-init";
+import { publicTimeLog, resolveReworkCycleForTimeLog } from "../lib/time-log-cycles";
 
 const router: IRouter = Router();
 
-const ensureSchema = async () => {};
+const ensureSchema = async () => {
+  await ensureJobWriteSchema();
+};
 
 router.get("/time-logs", requireAuth, async (req, res) => {
   try {
@@ -33,7 +37,7 @@ router.get("/time-logs", requireAuth, async (req, res) => {
     }
 
     const rows = await query.orderBy(desc(timeLogs.createdAt));
-    return res.json(rows);
+    return res.json(rows.map(publicTimeLog));
   } catch (err) {
     logger.error({ err }, "Failed to list time logs");
     return res.status(500).json({ error: "Internal server error" });
@@ -50,16 +54,24 @@ router.post("/time-logs", requireAuth, async (req, res) => {
     const actor = req.session!.user;
     const body = parsed.data;
 
+    const reworkCycleNumber =
+      body.reworkCycleNumber !== undefined
+        ? body.reworkCycleNumber
+        : await resolveReworkCycleForTimeLog(body.jobId ?? null, actor.id);
+
     const [newLog] = await db
       .insert(timeLogs)
       .values({
         id: randomUUID(),
-        ...body,
+        task: body.task,
+        duration: body.duration,
+        jobId: body.jobId ?? null,
         userId: actor.id,
+        reworkCycleNumber,
       })
       .returning();
 
-    return res.json(newLog);
+    return res.json(publicTimeLog(newLog));
   } catch (err) {
     logger.error({ err }, "Failed to create time log");
     return res.status(500).json({ error: "Internal server error" });

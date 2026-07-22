@@ -809,6 +809,27 @@ components:
         dueDate:
           type: ["string", "null"]
           format: date-time
+          description: Due on date
+        estimatedTime:
+          type: ["string", "null"]
+          description: Estimated time e.g. 8 Hours
+        startDate:
+          type: ["string", "null"]
+          format: date-time
+        eta:
+          type: ["string", "null"]
+          format: date-time
+        wind:
+          type: ["string", "null"]
+          enum: [N2, N3, N4, N5, C1, C2]
+          nullable: true
+        incomingDate:
+          type: ["string", "null"]
+          format: date-time
+        remarks:
+          type: ["string", "null"]
+        comments:
+          type: ["string", "null"]
         reviewStartedAt:
           type: ["string", "null"]
           format: date-time
@@ -840,6 +861,13 @@ components:
         assigneeId: { type: ["string", "null"], format: uuid }
         supervisorId: { type: ["string", "null"], format: uuid }
         dueDate: { type: ["string", "null"], format: date-time }
+        estimatedTime: { type: ["string", "null"] }
+        startDate: { type: ["string", "null"], format: date-time }
+        eta: { type: ["string", "null"], format: date-time }
+        wind: { type: ["string", "null"], enum: [N2, N3, N4, N5, C1, C2] }
+        incomingDate: { type: ["string", "null"], format: date-time }
+        remarks: { type: ["string", "null"] }
+        comments: { type: ["string", "null"] }
 
     JobUpdate:
       type: object
@@ -853,6 +881,13 @@ components:
         assigneeId: { type: ["string", "null"], format: uuid }
         supervisorId: { type: ["string", "null"], format: uuid }
         dueDate: { type: ["string", "null"], format: date-time }
+        estimatedTime: { type: ["string", "null"] }
+        startDate: { type: ["string", "null"], format: date-time }
+        eta: { type: ["string", "null"], format: date-time }
+        wind: { type: ["string", "null"], enum: [N2, N3, N4, N5, C1, C2] }
+        incomingDate: { type: ["string", "null"], format: date-time }
+        remarks: { type: ["string", "null"] }
+        comments: { type: ["string", "null"] }
         progress: { type: integer, minimum: 0, maximum: 100 }
 
     DashboardStats:
@@ -949,6 +984,9 @@ components:
         jobId: { type: ["string", "null"], format: uuid }
         task: { type: string }
         duration: { type: integer, description: "duration in seconds" }
+        reworkCycleNumber:
+          type: ["integer", "null"]
+          description: "Rework cycle this time belongs to; null means original work before/during first pass"
         startTime: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
 
@@ -959,3 +997,4 @@ components:
         task: { type: string }
         duration: { type: integer }
         jobId: { type: ["string", "null"], format: uuid }
+        reworkCycleNumber: { type: ["integer", "null"] }

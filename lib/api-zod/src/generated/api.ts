@@ -390,6 +390,13 @@ export const ListJobsResponseItem = zod.object({
     ])
     .optional(),
   dueDate: zod.coerce.date().nullish(),
+  estimatedTime: zod.string().nullish(),
+  startDate: zod.coerce.date().nullish(),
+  eta: zod.coerce.date().nullish(),
+  wind: zod.enum(["N2", "N3", "N4", "N5", "C1", "C2"]).nullish(),
+  incomingDate: zod.coerce.date().nullish(),
+  remarks: zod.string().nullish(),
+  comments: zod.string().nullish(),
   reviewStartedAt: zod.coerce.date().nullish(),
   checkedById: zod.string().uuid().nullish(),
   checkedByLabel: zod.string().nullish(),
@@ -414,6 +421,13 @@ export const CreateJobBody = zod.object({
   assigneeId: zod.string().uuid().nullish(),
   supervisorId: zod.string().uuid().nullish(),
   dueDate: zod.coerce.date().nullish(),
+  estimatedTime: zod.string().nullish(),
+  startDate: zod.coerce.date().nullish(),
+  eta: zod.coerce.date().nullish(),
+  wind: zod.enum(["N2", "N3", "N4", "N5", "C1", "C2"]).nullish(),
+  incomingDate: zod.coerce.date().nullish(),
+  remarks: zod.string().nullish(),
+  comments: zod.string().nullish(),
 });
 
 /**
@@ -470,6 +484,13 @@ export const GetJobResponse = zod.object({
     ])
     .optional(),
   dueDate: zod.coerce.date().nullish(),
+  estimatedTime: zod.string().nullish(),
+  startDate: zod.coerce.date().nullish(),
+  eta: zod.coerce.date().nullish(),
+  wind: zod.enum(["N2", "N3", "N4", "N5", "C1", "C2"]).nullish(),
+  incomingDate: zod.coerce.date().nullish(),
+  remarks: zod.string().nullish(),
+  comments: zod.string().nullish(),
   reviewStartedAt: zod.coerce.date().nullish(),
   checkedById: zod.string().uuid().nullish(),
   checkedByLabel: zod.string().nullish(),
@@ -502,6 +523,13 @@ export const UpdateJobBody = zod.object({
   assigneeId: zod.string().uuid().nullish(),
   supervisorId: zod.string().uuid().nullish(),
   dueDate: zod.coerce.date().nullish(),
+  estimatedTime: zod.string().nullish(),
+  startDate: zod.coerce.date().nullish(),
+  eta: zod.coerce.date().nullish(),
+  wind: zod.enum(["N2", "N3", "N4", "N5", "C1", "C2"]).nullish(),
+  incomingDate: zod.coerce.date().nullish(),
+  remarks: zod.string().nullish(),
+  comments: zod.string().nullish(),
   progress: zod
     .number()
     .min(updateJobBodyProgressMin)
@@ -556,6 +584,13 @@ export const UpdateJobResponse = zod.object({
     ])
     .optional(),
   dueDate: zod.coerce.date().nullish(),
+  estimatedTime: zod.string().nullish(),
+  startDate: zod.coerce.date().nullish(),
+  eta: zod.coerce.date().nullish(),
+  wind: zod.enum(["N2", "N3", "N4", "N5", "C1", "C2"]).nullish(),
+  incomingDate: zod.coerce.date().nullish(),
+  remarks: zod.string().nullish(),
+  comments: zod.string().nullish(),
   reviewStartedAt: zod.coerce.date().nullish(),
   checkedById: zod.string().uuid().nullish(),
   checkedByLabel: zod.string().nullish(),
@@ -654,6 +689,13 @@ export const GetDashboardStatsResponse = zod.object({
         ])
         .optional(),
       dueDate: zod.coerce.date().nullish(),
+      estimatedTime: zod.string().nullish(),
+      startDate: zod.coerce.date().nullish(),
+      eta: zod.coerce.date().nullish(),
+      wind: zod.enum(["N2", "N3", "N4", "N5", "C1", "C2"]).nullish(),
+      incomingDate: zod.coerce.date().nullish(),
+      remarks: zod.string().nullish(),
+      comments: zod.string().nullish(),
       reviewStartedAt: zod.coerce.date().nullish(),
       checkedById: zod.string().uuid().nullish(),
       checkedByLabel: zod.string().nullish(),
@@ -714,6 +756,13 @@ export const GetDashboardSupervisorResponse = zod.object({
         ])
         .optional(),
       dueDate: zod.coerce.date().nullish(),
+      estimatedTime: zod.string().nullish(),
+      startDate: zod.coerce.date().nullish(),
+      eta: zod.coerce.date().nullish(),
+      wind: zod.enum(["N2", "N3", "N4", "N5", "C1", "C2"]).nullish(),
+      incomingDate: zod.coerce.date().nullish(),
+      remarks: zod.string().nullish(),
+      comments: zod.string().nullish(),
       reviewStartedAt: zod.coerce.date().nullish(),
       checkedById: zod.string().uuid().nullish(),
       checkedByLabel: zod.string().nullish(),
@@ -799,6 +848,7 @@ export const GetTimeLogsResponseItem = zod.object({
   jobId: zod.string().uuid().nullish(),
   task: zod.string(),
   duration: zod.number().describe("duration in seconds"),
+  reworkCycleNumber: zod.number().nullish(),
   startTime: zod.coerce.date().optional(),
   createdAt: zod.coerce.date(),
 });
@@ -811,6 +861,7 @@ export const CreateTimeLogBody = zod.object({
   task: zod.string(),
   duration: zod.number(),
   jobId: zod.string().uuid().nullish(),
+  reworkCycleNumber: zod.number().nullish(),
 });
 
 /**

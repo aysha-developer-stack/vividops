@@ -8,11 +8,13 @@ export const timeLogs = pgTable("time_logs", {
   jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
   task: text("task").notNull(),
   duration: integer("duration").notNull(), // duration in seconds
+  reworkCycleNumber: integer("rework_cycle_number"),
   startTime: timestamp("start_time", { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("time_logs_user_idx").on(t.userId),
   index("time_logs_job_idx").on(t.jobId),
+  index("time_logs_job_cycle_idx").on(t.jobId, t.reworkCycleNumber),
 ]);
 
 export type TimeLogRow = typeof timeLogs.$inferSelect;

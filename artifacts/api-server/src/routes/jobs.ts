@@ -1644,6 +1644,13 @@ router.post("/jobs", creatorRole, async (req, res) => {
       supervisorId,
       createdById: actor.id,
       dueDate: body.dueDate ? new Date(body.dueDate) : null,
+      estimatedTime: body.estimatedTime?.trim() ? body.estimatedTime.trim() : null,
+      startDate: body.startDate ? new Date(body.startDate) : null,
+      eta: body.eta ? new Date(body.eta) : null,
+      wind: body.wind ?? null,
+      incomingDate: body.incomingDate ? new Date(body.incomingDate) : null,
+      remarks: body.remarks?.trim() ? body.remarks.trim() : null,
+      comments: body.comments?.trim() ? body.comments.trim() : null,
     };
 
     let created: JobRow | undefined;
@@ -1848,6 +1855,27 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   if (body.supervisorId !== undefined) patch.supervisorId = body.supervisorId;
   if (body.dueDate !== undefined) {
     patch.dueDate = body.dueDate ? new Date(body.dueDate) : null;
+  }
+  if (body.estimatedTime !== undefined) {
+    patch.estimatedTime = body.estimatedTime?.trim() ? body.estimatedTime.trim() : null;
+  }
+  if (body.startDate !== undefined) {
+    patch.startDate = body.startDate ? new Date(body.startDate) : null;
+  }
+  if (body.eta !== undefined) {
+    patch.eta = body.eta ? new Date(body.eta) : null;
+  }
+  if (body.wind !== undefined) {
+    patch.wind = body.wind ?? null;
+  }
+  if (body.incomingDate !== undefined) {
+    patch.incomingDate = body.incomingDate ? new Date(body.incomingDate) : null;
+  }
+  if (body.remarks !== undefined) {
+    patch.remarks = body.remarks?.trim() ? body.remarks.trim() : null;
+  }
+  if (body.comments !== undefined) {
+    patch.comments = body.comments?.trim() ? body.comments.trim() : null;
   }
   if (body.progress !== undefined) patch.progress = body.progress;
 
