@@ -193,7 +193,6 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const [filterOpen, setFilterOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [severityFilter, setSeverityFilter] = useState<("high" | "medium" | "low")[]>(["high", "medium", "low"]);
-  const [billableFilter, setBillableFilter] = useState<"all" | "billable" | "internal">("all");
   const [minScore, setMinScore] = useState(0);
 
   const parseMs = (iso: string | null | undefined) => {
@@ -352,7 +351,6 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
         user: userNameById[l.userId] ?? `${l.userId.slice(0, 8)}…`,
         project: l.jobId ? (jobLabelById[l.jobId] ?? "Job") : "General",
         hours: Number(((l.duration ?? 0) / 3600).toFixed(1)),
-        billable: true
       }));
   }, [apiTimeLogs, userNameById, jobLabelById, periodStartMs]);
 
@@ -431,7 +429,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     setSeverityFilter((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
   const resetFilters = () => {
     setSearch(""); setUserRoleFilter("All"); setSeverityFilter(["high", "medium", "low"]);
-    setBillableFilter("all"); setMinScore(0);
+    setMinScore(0);
   };
 
   const isFilterableTab =
@@ -453,10 +451,10 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
       return base + (severityFilter.length < 3 ? 1 : 0);
     }
     if (activeTab === "time") {
-      return base + (billableFilter !== "all" ? 1 : 0);
+      return base;
     }
     return base;
-  }, [activeTab, isFilterableTab, search, userRoleFilter, minScore, severityFilter, billableFilter]);
+  }, [activeTab, isFilterableTab, search, userRoleFilter, minScore, severityFilter]);
   const isSuperAdmin = role === "super-admin";
   const ROLE_FILTERS: ("All" | UserRoleLabel)[] = isSuperAdmin
     ? ["All", "Admin", "Supervisor", "User"]
@@ -492,8 +490,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     });
 
   const filteredTime = timeLogs.filter((t) =>
-    (billableFilter === "all" || (billableFilter === "billable" ? t.billable : !t.billable)) &&
-    (search === "" || t.user.toLowerCase().includes(search.toLowerCase()) || t.project.toLowerCase().includes(search.toLowerCase()))
+    search === "" || t.user.toLowerCase().includes(search.toLowerCase()) || t.project.toLowerCase().includes(search.toLowerCase())
   );
 
   const usersP = usePagination(filteredUsers, 6);
@@ -758,7 +755,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
     if (!w) return;
     const logoUrl = await resolveLogoDataUrl();
     const rows = filteredTime
-      .map((t) => `<tr><td>${t.user}</td><td>${t.project}</td><td style="text-align:right">${t.hours.toFixed(1)}h</td><td>${t.billable ? "Billable" : "Internal"}</td></tr>`)
+      .map((t) => `<tr><td>${t.user}</td><td>${t.project}</td><td style="text-align:right">${t.hours.toFixed(1)}h</td></tr>`)
       .join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Time Tracking</title>
 <style>
@@ -780,10 +777,10 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 <button class="btn no-print" onclick="window.print()">Save as PDF</button>
 <div class="brand"><img src="${logoUrl}" alt="Vivid OPS"><div class="meta"><strong>Time Tracking</strong>Generated ${new Date().toLocaleString()}<br>Period: ${periodLabel}</div></div>
 <h2>Entries: ${filteredTime.length}</h2>
-<p class="sub">Filters: type=${billableFilter}${search ? ` · search="${search.replaceAll('"', "&quot;")}"` : ""}</p>
+<p class="sub">${search ? `Search: "${search.replaceAll('"', "&quot;")}"` : "All entries"}</p>
 <table>
-<thead><tr><th>User</th><th>Project</th><th style="text-align:right">Hours</th><th>Type</th></tr></thead>
-<tbody>${rows || `<tr><td colspan="4" style="padding:14px;color:#64748b">No time logs found.</td></tr>`}</tbody>
+<thead><tr><th>User</th><th>Project</th><th style="text-align:right">Hours</th></tr></thead>
+<tbody>${rows || `<tr><td colspan="3" style="padding:14px;color:#64748b">No time logs found.</td></tr>`}</tbody>
 </table>
 <script>
   (async () => {
@@ -944,16 +941,6 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                       </div>
                     )}
 
-                    {activeTab === "time" && (
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Type</label>
-                        <div className="flex gap-1.5 mt-1.5">
-                          {(["all", "billable", "internal"] as const).map((b) => (
-                            <button key={b} onClick={() => setBillableFilter(b)} className={`px-2.5 py-1 text-[11px] font-semibold rounded-md border capitalize transition ${billableFilter === b ? "bg-primary text-white border-primary" : "bg-white text-gray-600 border-gray-200 hover:border-primary/50"}`}>{b}</button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                   <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50">
                     <button onClick={resetFilters} className="text-xs font-semibold text-gray-500 hover:text-gray-900">Reset all</button>
@@ -1239,27 +1226,22 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
               )}
 
               {activeTab === "time" && !isUser && (
-                <div>
+                <div className="rounded-xl border border-gray-100 overflow-hidden">
                 <table className="w-full">
-                  <thead><tr>{["User", "Project", "Hours", "Type"].map((h) => <th key={h} className="text-left pb-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>)}</tr></thead>
+                  <thead><tr>{["User", "Project", "Hours"].map((h) => <th key={h} className="text-left px-4 pt-3 pb-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider bg-gray-50/80">{h}</th>)}</tr></thead>
                   <tbody>
                     {!logsLoading && filteredTime.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="py-10 text-center text-sm text-gray-400">
+                        <td colSpan={3} className="py-10 text-center text-sm text-gray-400">
                           No time logs yet. Start a timer and press Stop to save a log.
                         </td>
                       </tr>
                     )}
                     {timeP.pageItems.map((t, i) => (
                       <motion.tr key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} className="border-t border-gray-50 hover:bg-gray-50">
-                        <td className="py-3.5 text-sm font-medium text-gray-900">{t.user}</td>
-                        <td className="py-3.5 text-sm text-gray-700">{t.project}</td>
-                        <td className="py-3.5 text-sm font-semibold text-gray-900">{t.hours}h</td>
-                        <td className="py-3.5">
-                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-lg ${t.billable ? "bg-emerald-50 text-emerald-700" : "bg-gray-50 text-gray-600"}`}>
-                            {t.billable ? "Billable" : "Internal"}
-                          </span>
-                        </td>
+                        <td className="px-4 py-3.5 text-sm font-medium text-gray-900">{t.user}</td>
+                        <td className="px-4 py-3.5 text-sm text-gray-700">{t.project}</td>
+                        <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">{t.hours}h</td>
                       </motion.tr>
                     ))}
                   </tbody>
