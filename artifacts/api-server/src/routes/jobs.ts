@@ -284,6 +284,16 @@ async function notifyJobContentUpdated(
     const nextDue = body.dueDate ? new Date(body.dueDate as string | Date) : null;
     if (!datesEqual(before.dueDate, nextDue)) changed.push("due date");
   }
+  if (body.remarks !== undefined) {
+    const nextRemarks =
+      typeof body.remarks === "string" && body.remarks.trim() ? body.remarks.trim() : null;
+    if (nextRemarks !== (before.remarks ?? null)) changed.push("remarks");
+  }
+  if (body.comments !== undefined) {
+    const nextComments =
+      typeof body.comments === "string" && body.comments.trim() ? body.comments.trim() : null;
+    if (nextComments !== (before.comments ?? null)) changed.push("comments");
+  }
   if (changed.length === 0) return;
 
   const recipientIds = new Set<string>();
