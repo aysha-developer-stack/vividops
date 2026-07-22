@@ -7,7 +7,7 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import type { Role } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
-import FileDropzone from "@/components/FileDropzone";
+import { collectFilesFromDataTransfer, collectFilesFromList } from "@/lib/collectDroppedFiles";
 
 type JobApi = {
   id: string;
@@ -157,8 +157,11 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
   const [cliqChannel, setCliqChannel] = useState<JobCliqChannelApi | null>(null);
   const pollRef = useRef<number | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [composerDragging, setComposerDragging] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -326,7 +329,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
 
   const pickAttachment = () => {
     if (!activeJobId || attachmentUploading) return;
-    attachmentInputRef.current?.click();
+    setAttachMenuOpen((prev) => !prev);
   };
 
   const uploadAttachment = async (file: File) => {
@@ -350,6 +353,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
 
   const uploadAttachments = async (files: File[]) => {
     if (!activeJobId || files.length === 0) return;
+    setAttachMenuOpen(false);
     setAttachmentUploading(true);
     try {
       for (const file of files) {
@@ -500,45 +504,115 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-100 space-y-3">
-              {activeJobId && (
-                <FileDropzone
-                  compact
-                  multiple
-                  allowFolders
-                  disabled={attachmentUploading}
-                  busy={attachmentUploading}
-                  label="Drop files or folders to share"
-                  hint="Multiple files and folders · also use the paperclip below"
-                  onFiles={(files) => uploadAttachments(files)}
-                />
-              )}
-              <div className="relative flex items-end gap-2 bg-gray-50 border-2 border-gray-200 rounded-2xl px-4 py-2.5 focus-within:border-primary focus-within:bg-white transition-colors">
-                <button
-                  type="button"
-                  onClick={pickAttachment}
-                  disabled={!activeJobId || attachmentUploading}
-                  className="p-1.5 text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Upload attachment"
-                >
-                  <Paperclip size={16} />
-                </button>
-                <input
-                  ref={attachmentInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files ?? []);
-                    e.target.value = "";
-                    if (files.length) void uploadAttachments(files);
-                  }}
-                />
+            <div className="p-4 border-t border-gray-100">
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const files = collectFilesFromList(e.target.files);
+                  e.target.value = "";
+                  if (files.length) void uploadAttachments(files);
+                }}
+              />
+              <input
+                ref={folderInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+                onChange={(e) => {
+                  const files = collectFilesFromList(e.target.files);
+                  e.target.value = "";
+                  if (files.length) void uploadAttachments(files);
+                }}
+              />
+              <div
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!activeJobId || attachmentUploading) return;
+                  if (Array.from(e.dataTransfer.types).includes("Files")) setComposerDragging(true);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!activeJobId || attachmentUploading) return;
+                  e.dataTransfer.dropEffect = "copy";
+                  if (!composerDragging) setComposerDragging(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const next = e.relatedTarget as Node | null;
+                  if (next && e.currentTarget.contains(next)) return;
+                  setComposerDragging(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setComposerDragging(false);
+                  if (!activeJobId || attachmentUploading) return;
+                  void (async () => {
+                    const files = await collectFilesFromDataTransfer(e.dataTransfer);
+                    if (files.length) await uploadAttachments(files);
+                  })();
+                }}
+                className={`relative flex items-end gap-2 rounded-2xl px-4 py-2.5 transition-colors ${
+                  composerDragging
+                    ? "bg-primary/10 border-2 border-dashed border-primary"
+                    : "bg-gray-50 border-2 border-gray-200 focus-within:border-primary focus-within:bg-white"
+                }`}
+              >
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={pickAttachment}
+                    disabled={!activeJobId || attachmentUploading}
+                    className="p-1.5 text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Attach files or folder"
+                  >
+                    <Paperclip size={16} />
+                  </button>
+                  {attachMenuOpen && activeJobId && (
+                    <div className="absolute bottom-11 left-0 z-10 w-40 rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAttachMenuOpen(false);
+                          attachmentInputRef.current?.click();
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                      >
+                        Upload files
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAttachMenuOpen(false);
+                          folderInputRef.current?.click();
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                      >
+                        Upload folder
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <input
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && void send()}
-                  placeholder={attachmentUploading ? "Uploading attachment..." : activeJob ? `Message ${activeJob.number}…` : "Select a job…"}
+                  placeholder={
+                    composerDragging
+                      ? "Drop files or folders to share…"
+                      : attachmentUploading
+                        ? "Uploading attachment..."
+                        : activeJob
+                          ? `Message ${activeJob.number}…`
+                          : "Select a job…"
+                  }
                   disabled={!activeJobId || attachmentUploading}
                   className="flex-1 bg-transparent text-sm text-gray-900 focus:outline-none py-1.5 placeholder-gray-400"
                 />
