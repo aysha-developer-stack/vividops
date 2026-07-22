@@ -13,7 +13,6 @@ import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 import { useGetPosts, useCreatePost, getGetPostsQueryKey, type Post } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import FileDropzone from "@/components/FileDropzone";
 
 const CATEGORIES = ["All", "Onboarding", "Safety", "Technical", "Leadership"];
 
@@ -676,79 +675,62 @@ function Composer({ onPost }: { onPost: (body: string, attachments: DraftAttachm
         </div>
       </div>
 
-      <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 space-y-3">
-        <FileDropzone
-          compact
-          multiple
-          allowFolders
-          label="Drop files or folders into this post"
-          hint="Pictures, videos, or documents · multiple and folders supported"
-          onFiles={(files) => {
-            const images = files.filter((f) => f.type.startsWith("image/"));
-            const videos = files.filter((f) => f.type.startsWith("video/"));
-            const docs = files.filter((f) => !f.type.startsWith("image/") && !f.type.startsWith("video/"));
-            if (images.length) addFiles("image", images);
-            if (videos.length) addFiles("video", videos);
-            if (docs.length) addFiles("file", docs);
-          }}
-        />
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-1">
-            <input
-              ref={fileRef}
-              type="file"
-              className="hidden"
-              multiple
-              onChange={(e) => {
-                addFiles(pendingKindRef.current, e.target.files);
-                e.currentTarget.value = "";
-              }}
-            />
-            <ToolButton
-              icon={ImageIcon}
-              label="Picture"
-              onClick={() => {
-                pendingKindRef.current = "image";
-                if (fileRef.current) fileRef.current.accept = "image/*";
-                fileRef.current?.click();
-              }}
-            />
-            <ToolButton
-              icon={Video}
-              label="Video"
-              onClick={() => {
-                pendingKindRef.current = "video";
-                if (fileRef.current) fileRef.current.accept = "video/*";
-                fileRef.current?.click();
-              }}
-            />
-            <ToolButton
-              icon={Paperclip}
-              label="File"
-              onClick={() => {
-                pendingKindRef.current = "file";
-                if (fileRef.current) fileRef.current.accept = "*/*";
-                fileRef.current?.click();
-              }}
-            />
-          </div>
+      <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-1">
+          <input
+            ref={fileRef}
+            type="file"
+            className="hidden"
+            multiple
+            onChange={(e) => {
+              addFiles(pendingKindRef.current, e.target.files);
+              e.currentTarget.value = "";
+            }}
+          />
+          <ToolButton
+            icon={ImageIcon}
+            label="Picture"
+            onClick={() => {
+              pendingKindRef.current = "image";
+              if (fileRef.current) fileRef.current.accept = "image/*";
+              fileRef.current?.click();
+            }}
+          />
+          <ToolButton
+            icon={Video}
+            label="Video"
+            onClick={() => {
+              pendingKindRef.current = "video";
+              if (fileRef.current) fileRef.current.accept = "video/*";
+              fileRef.current?.click();
+            }}
+          />
+          <ToolButton
+            icon={Paperclip}
+            label="File"
+            onClick={() => {
+              pendingKindRef.current = "file";
+              if (fileRef.current) fileRef.current.accept = "*/*";
+              fileRef.current?.click();
+            }}
+          />
+        </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-[11px] text-gray-500 bg-white border border-gray-200 rounded-full px-2.5 py-1">
-              <UsersIcon size={12} />
-              Sent to all users
-            </div>
-            <motion.button
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={submit}
-              disabled={!body.trim() && attachments.length === 0}
-              className="bg-primary text-white px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-primary/30"
-            >
-              <Send size={14} />
-              Post update
-            </motion.button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-[11px] text-gray-500 bg-white border border-gray-200 rounded-full px-2.5 py-1">
+            <UsersIcon size={12} />
+            Sent to all users
           </div>
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={submit}
+            disabled={!body.trim() && attachments.length === 0}
+            className="bg-primary text-white px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-primary/30"
+          >
+            <Send size={14} />
+            Post update
+          </motion.button>
         </div>
       </div>
     </motion.div>
@@ -1393,7 +1375,7 @@ function VideoPlayer({ video, onClose }: { video: VideoItem; onClose: () => void
 
 function GalleryToolbar({
   search, setSearch, filter, setFilter, options, layoutId, placeholder,
-  canPost, uploadLabel, accept, multiple, onUploadFiles,
+  canPost, uploadLabel, uploadIcon: UploadIcon, accept, multiple, onUploadFiles,
 }: {
   search: string;
   setSearch: (s: string) => void;
@@ -1404,11 +1386,12 @@ function GalleryToolbar({
   placeholder: string;
   canPost: boolean;
   uploadLabel: string;
-  uploadIcon?: any;
+  uploadIcon: any;
   accept: string;
   multiple?: boolean;
   onUploadFiles?: (files: FileList | null) => void;
 }) {
+  const fileRef = useRef<HTMLInputElement>(null);
   return (
     <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between mb-5">
       <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 max-w-md flex-1 focus-within:border-primary transition-colors">
@@ -1425,22 +1408,28 @@ function GalleryToolbar({
           ))}
         </div>
         {canPost && (
-          <div className="w-full sm:w-72">
-            <FileDropzone
-              compact
-              multiple={!!multiple}
-              allowFolders={!!multiple}
+          <>
+            <input
+              ref={fileRef}
+              type="file"
               accept={accept}
-              label={`Drop ${uploadLabel.toLowerCase()} here`}
-              hint={multiple ? "Multiple files and folders supported" : "Click or drop a file"}
-              onFiles={(files) => {
-                // Adapt File[] into a FileList-like for existing handlers
-                const dt = new DataTransfer();
-                for (const f of files) dt.items.add(f);
-                void onUploadFiles?.(dt.files);
+              multiple={multiple}
+              className="hidden"
+              onChange={(e) => {
+                void onUploadFiles?.(e.target.files);
+                e.currentTarget.value = "";
               }}
             />
-          </div>
+            <motion.button
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => fileRef.current?.click()}
+              className="bg-primary text-white px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-primary/30"
+            >
+              <UploadIcon size={14} />
+              {uploadLabel}
+            </motion.button>
+          </>
         )}
       </div>
     </div>

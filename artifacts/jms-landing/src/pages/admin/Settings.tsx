@@ -18,7 +18,6 @@ import {
   getGetSystemMetricsQueryKey
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import FileDropzone from "@/components/FileDropzone";
 
 const TABS = [
   { id: "profile", label: "Profile", icon: UserIcon },
@@ -365,21 +364,6 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                           {avatarRemoving ? "Removing..." : "Remove photo"}
                         </button>
                       )}
-                      <div className="mt-3 w-full max-w-xs">
-                        <FileDropzone
-                          compact
-                          multiple={false}
-                          allowFolders={false}
-                          accept="image/*"
-                          disabled={avatarUploading || avatarRemoving}
-                          busy={avatarUploading}
-                          label="Drop a profile photo here"
-                          hint="Or click to browse · images only"
-                          onFiles={(files) => {
-                            if (files[0]) void uploadAvatar(files[0]);
-                          }}
-                        />
-                      </div>
                       <input
                         ref={avatarInputRef}
                         type="file"
