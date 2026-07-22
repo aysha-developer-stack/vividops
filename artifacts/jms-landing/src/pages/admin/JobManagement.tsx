@@ -1161,28 +1161,28 @@ export default function JobManagement(
                   <p className="text-sm">Loading job details…</p>
                 </div>
               ) : (
-              <div className="px-6 py-4 grid md:grid-cols-2 xl:grid-cols-[1.35fr_1fr_1fr] gap-x-6 gap-y-4 overflow-y-auto">
+              <div className="px-6 py-4 grid md:grid-cols-2 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-6 gap-y-4 overflow-y-auto">
                 {/* LEFT COLUMN — Job details */}
-                <div className="space-y-3">
+                <div className="space-y-3 min-w-0">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Job Details</div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)] gap-3">
+                    <div className="min-w-0">
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Number</label>
                       <input
                         value={form.jobNumber}
                         onChange={(e) => setForm({ ...form, jobNumber: e.target.value })}
                         placeholder="e.g. 2"
-                        className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                        className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
                       />
                     </div>
-                    <div className="col-span-2">
+                    <div className="min-w-0">
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Title</label>
                       <input
                         list="job-title-options"
                         value={form.title}
                         onChange={(e) => setForm({ ...form, title: e.target.value })}
                         placeholder="Select or type a custom job title"
-                        className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                        className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
                       />
                       <datalist id="job-title-options">
                         {JOB_TITLE_OPTIONS.map((option) => (
@@ -1191,24 +1191,24 @@ export default function JobManagement(
                       </datalist>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="min-w-0">
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Client</label>
-                      <input value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} placeholder="e.g. Anderson Residence" className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                      <input value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} placeholder="e.g. Anderson Residence" className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Supervisor</label>
                       {role === "supervisor" ? (
                         <input
                           value={currentUser?.name ?? "Current Supervisor"}
                           readOnly
-                          className="w-full px-3 py-2.5 bg-gray-100 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 cursor-not-allowed"
+                          className="w-full min-w-0 px-3 py-2.5 bg-gray-100 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 cursor-not-allowed"
                         />
                       ) : (
                         <select
                           value={form.supervisorId}
                           onChange={(e) => setForm({ ...form, supervisorId: e.target.value })}
-                          className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                          className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors"
                         >
                           <option value="">Select supervisor</option>
                           {supervisors.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -1216,7 +1216,7 @@ export default function JobManagement(
                       )}
                     </div>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assignees</label>
                     <div ref={assigneeMenuRef} className="relative">
                       <button
@@ -1256,49 +1256,47 @@ export default function JobManagement(
                       )}
                     </div>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Address</label>
-                    <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="e.g. 120 Park Avenue, Sydney NSW 2000" className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                    <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="e.g. 120 Park Avenue, Sydney NSW 2000" className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Description</label>
-                    <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief job scope..." rows={2} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
+                    <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief job scope..." rows={2} className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
                   </div>
-                  <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-                    <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="min-w-0">
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Est. Time</label>
                       <input
                         value={form.estimatedTime}
                         onChange={(e) => setForm({ ...form, estimatedTime: e.target.value })}
                         placeholder="e.g. 8 Hours"
-                        className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                        className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
                       />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Actual Time</label>
                       <input
                         value={editingId ? "From job timer" : "Tracked on Job Detail"}
                         readOnly
-                        className="w-full px-3 py-2.5 bg-gray-100 border-2 border-gray-200 rounded-xl text-sm !text-gray-500 cursor-not-allowed"
+                        className="w-full min-w-0 px-3 py-2.5 bg-gray-100 border-2 border-gray-200 rounded-xl text-sm !text-gray-500 cursor-not-allowed"
                         title="Actual time comes from the job timer / time logs"
                       />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Start Date</label>
-                      <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                      <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">ETA</label>
-                      <input type="date" value={form.eta} onChange={(e) => setForm({ ...form, eta: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                      <input type="date" value={form.eta} onChange={(e) => setForm({ ...form, eta: e.target.value })} className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                     </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
+                    <div className="min-w-0">
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Wind</label>
                       <select
                         value={form.wind}
                         onChange={(e) => setForm({ ...form, wind: e.target.value as FormState["wind"] })}
-                        className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                        className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors"
                       >
                         <option value="">Select wind</option>
                         {WIND_OPTIONS.map((w) => (
@@ -1306,37 +1304,37 @@ export default function JobManagement(
                         ))}
                       </select>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Incoming Date</label>
-                      <input type="date" value={form.incomingDate} onChange={(e) => setForm({ ...form, incomingDate: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                      <input type="date" value={form.incomingDate} onChange={(e) => setForm({ ...form, incomingDate: e.target.value })} className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                     </div>
-                    <div>
+                    <div className="min-w-0 sm:col-span-2">
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Due On</label>
-                      <input type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
+                      <input type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} className="w-full min-w-0 max-w-xs px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                     </div>
                   </div>
                   {editingId !== null && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
+                    <div className="grid grid-cols-1 gap-3">
+                      <div className="min-w-0">
                         <label className="block text-xs font-semibold text-gray-700 mb-1.5">Remarks</label>
-                        <textarea value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} placeholder="Short remarks…" rows={2} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
+                        <textarea value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} placeholder="Short remarks…" rows={2} className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className="block text-xs font-semibold text-gray-700 mb-1.5">Comments</label>
-                        <textarea value={form.comments} onChange={(e) => setForm({ ...form, comments: e.target.value })} placeholder="Additional comments…" rows={2} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
+                        <textarea value={form.comments} onChange={(e) => setForm({ ...form, comments: e.target.value })} placeholder="Additional comments…" rows={2} className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
                       </div>
                     </div>
                   )}
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Priority</label>
                     <div className="grid grid-cols-3 gap-2">
                       {(["Low", "Medium", "High"] as UiPriority[]).map((p) => {
                         const cfg = PRIORITY_CONFIG[p];
                         const sel = form.priority === p;
                         return (
-                          <motion.button key={p} whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }} onClick={() => setForm({ ...form, priority: p })} className={`p-2.5 rounded-xl border-2 flex items-center justify-center gap-1.5 transition-colors ${sel ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300"}`}>
-                            <div className={`w-2 h-2 rounded-full ${cfg.dot}`} />
-                            <span className={`text-xs font-semibold ${sel ? "text-primary" : "text-gray-700"}`}>{p}</span>
+                          <motion.button key={p} whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }} onClick={() => setForm({ ...form, priority: p })} className={`min-w-0 p-2.5 rounded-xl border-2 flex items-center justify-center gap-1.5 transition-colors ${sel ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300"}`}>
+                            <div className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
+                            <span className={`text-xs font-semibold truncate ${sel ? "text-primary" : "text-gray-700"}`}>{p}</span>
                           </motion.button>
                         );
                       })}
@@ -1345,7 +1343,7 @@ export default function JobManagement(
                 </div>
 
                 {/* MIDDLE COLUMN — Checklist */}
-                <div className="space-y-3 md:border-l md:border-gray-100 md:pl-6">
+                <div className="space-y-3 min-w-0 md:border-l md:border-gray-100 md:pl-6">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Checklist</div>
 
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
@@ -1440,7 +1438,7 @@ export default function JobManagement(
                 </div>
 
                 {/* RIGHT COLUMN — Job Files */}
-                <div className="space-y-3 md:col-span-2 xl:col-span-1 xl:border-l xl:border-gray-100 xl:pl-6">
+                <div className="space-y-3 min-w-0 md:col-span-2 xl:col-span-1 xl:border-l xl:border-gray-100 xl:pl-6">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Job Files</div>
                   <FileDropzone
                     multiple
