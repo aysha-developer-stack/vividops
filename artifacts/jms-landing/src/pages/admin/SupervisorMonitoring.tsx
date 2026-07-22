@@ -53,7 +53,7 @@ function formatLastSeen(ms: number | null, status: Supervisor["status"]) {
 export default function SupervisorMonitoring({ role = "admin" as Role }: { role?: Role } = {}) {
   const { user: currentUser } = useAuth();
   const { data: apiUsers, isLoading: usersLoading } = useListUsers({
-    query: { refetchInterval: 30_000 },
+    query: { refetchInterval: 30_000 } as any,
   });
   const { data: apiJobs, isLoading: jobsLoading } = useListJobs();
   const { data: apiTimeLogs, isLoading: logsLoading } = useGetTimeLogs();

@@ -35,6 +35,7 @@ import { postTimerNotification } from "@/lib/timerNotifications";
 import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } from "@/lib/downloadFile";
 import { MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategories";
 import { useQueryClient } from "@tanstack/react-query";
+import FileDropzone from "@/components/FileDropzone";
 
 interface Props { role?: Role; id?: string }
 
@@ -1048,11 +1049,14 @@ export default function JobDetail({ role = "user", id }: Props) {
     } catch {
     }
   };
-  const onPickerChange = (tag: FileItem["tag"]) => async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const picked = Array.from(e.target.files ?? []);
-    e.target.value = "";
+  const uploadPickedFiles = async (
+    picked: File[],
+    tag: FileItem["tag"] = "output",
+    checklistItemIdOverride?: number | null,
+  ) => {
     if (picked.length === 0) return;
-    const checklistItemId = uploadChecklistIdRef.current;
+    const checklistItemId =
+      checklistItemIdOverride !== undefined ? checklistItemIdOverride : uploadChecklistIdRef.current;
     if (checklistItemId != null) {
       setChecklistUploads((prev) => {
         const next = { ...prev, [checklistItemId]: (prev[checklistItemId] ?? 0) + picked.length };
@@ -1097,11 +1101,34 @@ export default function JobDetail({ role = "user", id }: Props) {
       const id = Date.now() + Math.random();
       if (tag === "output") {
         const group = `deliverable_${Math.floor(id)}`;
-        return { id, name: f.name, size: formatSize(f.size), type: detectType(f.name), uploadedBy: me, uploadedAt: "Just now", tag, version: 1, group };
+        return {
+          id,
+          name: f.name,
+          size: `${Math.max(1, Math.round(f.size / 1024))} KB`,
+          type: (f.type.includes("pdf") ? "pdf" : f.type.startsWith("image/") ? "image" : "doc") as FileItem["type"],
+          uploadedBy: me,
+          uploadedAt: "Just now",
+          tag,
+          version: 1,
+          group,
+        };
       }
-      return { id, name: f.name, size: formatSize(f.size), type: detectType(f.name), uploadedBy: me, uploadedAt: "Just now", tag };
+      return {
+        id,
+        name: f.name,
+        size: `${Math.max(1, Math.round(f.size / 1024))} KB`,
+        type: (f.type.includes("pdf") ? "pdf" : f.type.startsWith("image/") ? "image" : "doc") as FileItem["type"],
+        uploadedBy: me,
+        uploadedAt: "Just now",
+        tag,
+      };
     });
-    setFiles(tag === "input" ? [...newItems, ...files] : [...files, ...newItems]);
+    setFiles((prev) => [...newItems, ...prev]);
+  };
+  const onPickerChange = (tag: FileItem["tag"]) => async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    await uploadPickedFiles(picked, tag);
   };
   const reuploadVersion = (group: string) => {
     reuploadGroupRef.current = group;
@@ -1657,10 +1684,21 @@ export default function JobDetail({ role = "user", id }: Props) {
                         )}
                         <button 
                           onClick={() => handleChecklistUpload(selectedChecklistItem.id)}
-                          className="w-full py-2 bg-purple-600 text-white text-[10px] font-bold rounded-lg shadow-md shadow-purple-600/20 flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors"
+                          className="w-full py-2 bg-purple-600 text-white text-[10px] font-bold rounded-lg shadow-md shadow-purple-600/20 flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors mb-2"
                         >
-                          <Upload size={12} /> Upload Rework File
+                          <Upload size={12} /> Or browse rework file
                         </button>
+                        <FileDropzone
+                          compact
+                          multiple
+                          allowFolders
+                          label="Drop rework files or folders"
+                          hint="Multiple files and folders supported"
+                          onFiles={async (files) => {
+                            uploadChecklistIdRef.current = selectedChecklistItem.id;
+                            await uploadPickedFiles(files, role === "user" ? "output" : "input", selectedChecklistItem.id);
+                          }}
+                        />
                       </div>
                     )}
 
@@ -1749,17 +1787,17 @@ export default function JobDetail({ role = "user", id }: Props) {
                         );
                       })()}
                       {(role === "user" || role === "super-admin" || role === "admin" || role === "supervisor") && (
-                        <button
-                          onClick={() => handleChecklistUpload(selectedChecklistItem.id)}
-                          className={`w-full py-2 text-white text-[11px] font-bold rounded-lg shadow-md flex items-center justify-center gap-2 ${
-                            role === "user"
-                              ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
-                              : "bg-primary shadow-primary/20"
-                          }`}
-                        >
-                          <Upload size={12} />
-                          {role === "user" ? "Upload Completed File" : "Upload Task File"}
-                        </button>
+                        <FileDropzone
+                          compact
+                          multiple
+                          allowFolders
+                          label={role === "user" ? "Drop completed files or folders" : "Drop task files or folders"}
+                          hint="Multiple files and folders supported"
+                          onFiles={async (files) => {
+                            uploadChecklistIdRef.current = selectedChecklistItem.id;
+                            await uploadPickedFiles(files, role === "user" ? "output" : "input", selectedChecklistItem.id);
+                          }}
+                        />
                       )}
                     </div>
 
@@ -1912,16 +1950,39 @@ export default function JobDetail({ role = "user", id }: Props) {
                 <div className="flex gap-2 w-full sm:w-auto">
                   {canUploadOutput && (
                     <button onClick={() => handleUpload("output")} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700">
-                      <Upload size={14} /> Upload Completed
+                      <Upload size={14} /> Browse Completed
                     </button>
                   )}
                   {canUploadInput && (
                     <button onClick={() => handleUpload("input")} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90">
-                      <Upload size={14} /> Upload Job File
+                      <Upload size={14} /> Browse Job File
                     </button>
                   )}
                 </div>
               </div>
+
+              {(canUploadInput || canUploadOutput) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {canUploadInput && (
+                    <FileDropzone
+                      multiple
+                      allowFolders
+                      label="Drop job files or folders"
+                      hint="Instruction docs, drawings, client packs"
+                      onFiles={(files) => uploadPickedFiles(files, "input", null)}
+                    />
+                  )}
+                  {canUploadOutput && (
+                    <FileDropzone
+                      multiple
+                      allowFolders
+                      label="Drop completed files or folders"
+                      hint="Worker deliverables · multiple files and folders"
+                      onFiles={(files) => uploadPickedFiles(files, "output", null)}
+                    />
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-1 gap-6">
                 {/* Job Files Section (Input) */}

@@ -7,6 +7,7 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import type { Role } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
+import FileDropzone from "@/components/FileDropzone";
 
 type JobApi = {
   id: string;
@@ -330,26 +331,33 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
 
   const uploadAttachment = async (file: File) => {
     if (!activeJobId) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`/api/jobs/${activeJobId}/attachments`, {
+      method: "POST",
+      body: fd,
+      credentials: "include",
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Upload failed (${res.status})`);
+    }
+    const created = await res.json() as JobAttachmentApi;
+    if (created?.fileName && created?.fileUrl) {
+      await send(`Shared attachment: ${created.fileName}\n${created.fileUrl}`, { preserveDraft: true });
+    }
+  };
+
+  const uploadAttachments = async (files: File[]) => {
+    if (!activeJobId || files.length === 0) return;
     setAttachmentUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch(`/api/jobs/${activeJobId}/attachments`, {
-        method: "POST",
-        body: fd,
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `Upload failed (${res.status})`);
-      }
-      const created = await res.json() as JobAttachmentApi;
-      if (created?.fileName && created?.fileUrl) {
-        await send(`Shared attachment: ${created.fileName}\n${created.fileUrl}`, { preserveDraft: true });
+      for (const file of files) {
+        await uploadAttachment(file);
       }
       toast({
-        title: "Attachment uploaded",
-        description: file.name,
+        title: files.length === 1 ? "Attachment uploaded" : `${files.length} attachments uploaded`,
+        description: files.length === 1 ? files[0].name : "Files shared in the chat",
       });
     } catch (err: any) {
       toast({
@@ -492,7 +500,19 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-100">
+            <div className="p-4 border-t border-gray-100 space-y-3">
+              {activeJobId && (
+                <FileDropzone
+                  compact
+                  multiple
+                  allowFolders
+                  disabled={attachmentUploading}
+                  busy={attachmentUploading}
+                  label="Drop files or folders to share"
+                  hint="Multiple files and folders · also use the paperclip below"
+                  onFiles={(files) => uploadAttachments(files)}
+                />
+              )}
               <div className="relative flex items-end gap-2 bg-gray-50 border-2 border-gray-200 rounded-2xl px-4 py-2.5 focus-within:border-primary focus-within:bg-white transition-colors">
                 <button
                   type="button"
@@ -506,11 +526,12 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                 <input
                   ref={attachmentInputRef}
                   type="file"
+                  multiple
                   className="hidden"
                   onChange={(e) => {
-                    const file = e.target.files?.[0];
+                    const files = Array.from(e.target.files ?? []);
                     e.target.value = "";
-                    if (file) void uploadAttachment(file);
+                    if (files.length) void uploadAttachments(files);
                   }}
                 />
                 <input

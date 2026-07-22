@@ -32,6 +32,7 @@ import {
   type ChecklistTemplateItem,
 } from "@/lib/jobMeta";
 import { downloadNamedFile, jobAttachmentDownloadUrl } from "@/lib/downloadFile";
+import FileDropzone from "@/components/FileDropzone";
 
 import {
   DropdownMenu,
@@ -273,15 +274,12 @@ export default function JobManagement(
   const [checklistTemplate, setChecklistTemplate] = useState<ChecklistTemplateItem[]>([]);
   const [checklistItemFiles, setChecklistItemFiles] = useState<Record<number, File[]>>({});
   const [checkPendingFile, setCheckPendingFile] = useState<File | null>(null);
-  const checklistItemFileRef = useRef<HTMLInputElement>(null);
   const [savedTemplates, setSavedTemplates] = useState<Array<{ id: string; name: string; items: ChecklistTemplateItem[] }>>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [templateName, setTemplateName] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
-  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const assigneeMenuRef = useRef<HTMLDivElement>(null);
 
   const selectedWorkerIds = useMemo(
@@ -447,40 +445,10 @@ export default function JobManagement(
     bytes < 1024 ? `${bytes} B`
     : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB`
     : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  const onFilesPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const picked = Array.from(e.target.files ?? []);
-    if (picked.length === 0) return;
-    setJobFiles((prev) => [...prev, ...picked]);
-    e.target.value = "";
-  };
   const addDroppedFiles = (fileList: FileList | File[]) => {
     const picked = Array.from(fileList).filter((f) => f && typeof f.name === "string");
     if (picked.length === 0) return;
     setJobFiles((prev) => [...prev, ...picked]);
-  };
-  const onFilesDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (Array.from(e.dataTransfer.types).includes("Files")) setIsDraggingFiles(true);
-  };
-  const onFilesDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = "copy";
-    if (!isDraggingFiles) setIsDraggingFiles(true);
-  };
-  const onFilesDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const next = e.relatedTarget as Node | null;
-    if (next && e.currentTarget.contains(next)) return;
-    setIsDraggingFiles(false);
-  };
-  const onFilesDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDraggingFiles(false);
-    if (e.dataTransfer.files?.length) addDroppedFiles(e.dataTransfer.files);
   };
   const removeJobFile = (idx: number) => {
     setJobFiles(jobFiles.filter((_, i) => i !== idx));
@@ -1265,23 +1233,16 @@ export default function JobManagement(
                   <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4 space-y-3">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Attach checklist file</label>
-                      <input
-                        ref={checklistItemFileRef}
-                        type="file"
-                        className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0] ?? null;
-                          e.target.value = "";
-                          if (f) addChecklistFromFile(f);
+                      <FileDropzone
+                        compact
+                        multiple
+                        allowFolders
+                        label="Drag & drop checklist files or folders"
+                        hint="Each file becomes a checklist item · worker upload required"
+                        onFiles={(files) => {
+                          for (const f of files) addChecklistFromFile(f);
                         }}
                       />
-                      <button
-                        type="button"
-                        onClick={() => checklistItemFileRef.current?.click()}
-                        className="w-full px-3 py-2.5 bg-white border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-700 hover:border-primary/40 hover:bg-primary/5 flex items-center justify-center gap-2"
-                      >
-                        <Plus size={14} /> Choose checklist file to add
-                      </button>
                     </div>
                   </div>
 
@@ -1319,37 +1280,14 @@ export default function JobManagement(
                   </div>
 
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Job Files</div>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
+                  <FileDropzone
                     multiple
-                    className="hidden"
-                    onChange={onFilesPicked}
+                    allowFolders
                     accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.svg,.zip,.dwg,.dxf"
+                    label="Drag & drop job files or folders here"
+                    hint="Drawings, instructions, site photos, or client docs · appear in Job Detail → Files"
+                    onFiles={(files) => addDroppedFiles(files)}
                   />
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => fileInputRef.current?.click()}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click(); }}
-                    onDragEnter={onFilesDragEnter}
-                    onDragOver={onFilesDragOver}
-                    onDragLeave={onFilesDragLeave}
-                    onDrop={onFilesDrop}
-                    className={`rounded-xl border-2 border-dashed px-4 py-6 text-center cursor-pointer transition-colors ${
-                      isDraggingFiles
-                        ? "border-primary bg-primary/10"
-                        : "border-gray-200 bg-gray-50 hover:bg-blue-50/40 hover:border-primary/40"
-                    }`}
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-2">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-                    </div>
-                    <div className="text-xs font-semibold text-gray-700">
-                      {isDraggingFiles ? "Drop files here" : "Drag & drop files here, or click to browse"}
-                    </div>
-                    <div className="text-[10px] text-gray-500 mt-1">Drawings, instructions, site photos, or client docs · appear in Job Detail → Files</div>
-                  </div>
                   {existingAttachments.length > 0 && (
                     <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-3">
                       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">

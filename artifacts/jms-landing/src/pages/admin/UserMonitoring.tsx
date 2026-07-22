@@ -141,7 +141,7 @@ export default function UserMonitoring(
 ) {
   const { user: currentUser } = useAuth();
   const { data: apiUsers, isLoading: usersLoading } = useListUsers({
-    query: { refetchInterval: 30_000 },
+    query: { refetchInterval: 30_000 } as any,
   });
   const { data: apiJobs, isLoading: jobsLoading } = useListJobs();
   const { data: apiTimeLogs, isLoading: logsLoading } = useGetTimeLogs();
