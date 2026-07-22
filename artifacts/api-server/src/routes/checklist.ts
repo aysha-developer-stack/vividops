@@ -200,20 +200,36 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       if (!template) {
         return res.status(400).json({ error: "Checklist item not found" });
       }
-      const [uploaded] = await db
-        .select({ id: jobChecklistAttachments.id })
+      const linked = await db
+        .select({
+          uploaderId: jobAttachments.uploadedById,
+          uploaderRole: users.role,
+        })
         .from(jobChecklistAttachments)
+        .innerJoin(jobAttachments, eq(jobAttachments.id, jobChecklistAttachments.attachmentId))
+        .leftJoin(users, eq(users.id, jobAttachments.uploadedById))
         .where(
           and(
             eq(jobChecklistAttachments.jobId, jobId),
-            eq(jobChecklistAttachments.userId, targetUserId),
             eq(jobChecklistAttachments.itemId, itemId),
           ),
-        )
-        .limit(1);
-      if (!uploaded) {
+        );
+
+      const hasChecklistFile = linked.some((r) => r.uploaderRole != null && r.uploaderRole !== "user");
+      const hasCompletedFile = linked.some(
+        (r) => r.uploaderId === targetUserId || r.uploaderRole === "user",
+      );
+
+      if (!hasChecklistFile) {
         return res.status(400).json({
-          error: "Upload a checklist file before marking this item complete.",
+          error:
+            "Checklist file not uploaded. A Word/PDF checklist file is required before marking this item complete.",
+        });
+      }
+      if (!hasCompletedFile) {
+        return res.status(400).json({
+          error:
+            "Completed files not uploaded. Please upload your completed work files before marking this item complete.",
         });
       }
     }

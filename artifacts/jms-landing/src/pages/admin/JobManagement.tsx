@@ -33,6 +33,7 @@ import {
 } from "@/lib/jobMeta";
 import { downloadNamedFile, jobAttachmentDownloadUrl } from "@/lib/downloadFile";
 import FileDropzone from "@/components/FileDropzone";
+import { CHECKLIST_FILE_ACCEPT, isChecklistDocFile } from "@/lib/collectDroppedFiles";
 
 import {
   DropdownMenu,
@@ -454,6 +455,10 @@ export default function JobManagement(
     setJobFiles(jobFiles.filter((_, i) => i !== idx));
   };
   const addChecklistFromFile = (file: File) => {
+    if (!isChecklistDocFile(file)) {
+      setError("Checklist files must be Word (.doc, .docx) or PDF only.");
+      return;
+    }
     const text = file.name.trim();
     if (!text) return;
     setChecklistTemplate((prev) => {
@@ -1237,8 +1242,9 @@ export default function JobManagement(
                         compact
                         multiple
                         allowFolders
-                        label="Drag & drop checklist files or folders"
-                        hint="Each file becomes a checklist item · worker upload required"
+                        accept={CHECKLIST_FILE_ACCEPT}
+                        label="Drag & drop checklist Word/PDF files"
+                        hint="Word (.doc, .docx) and PDF only · each file becomes a checklist item"
                         onFiles={(files) => {
                           for (const f of files) addChecklistFromFile(f);
                         }}

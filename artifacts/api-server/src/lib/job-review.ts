@@ -4,6 +4,7 @@ import {
   db,
   jobs,
   users,
+  jobAttachments,
   jobChecklistState,
   jobChecklistAttachments,
   type JobRow,
@@ -134,7 +135,6 @@ export async function assertWorkerChecklistReady(
 
   const byItem = new Map(rows.map((r) => [r.itemId, r.status]));
   const incomplete: number[] = [];
-  const missingFiles: number[] = [];
 
   for (let i = 0; i < list.length; i++) {
     const itemId = i + 1;
@@ -148,26 +148,42 @@ export async function assertWorkerChecklistReady(
   }
 
   const requiredIds = list.map((_item, idx) => idx + 1);
+  const missingChecklist: number[] = [];
+  const missingCompleted: number[] = [];
 
   if (requiredIds.length > 0) {
-    const uploaded = await db
-      .select({ itemId: jobChecklistAttachments.itemId })
+    const linked = await db
+      .select({
+        itemId: jobChecklistAttachments.itemId,
+        uploaderId: jobAttachments.uploadedById,
+        uploaderRole: users.role,
+      })
       .from(jobChecklistAttachments)
+      .innerJoin(jobAttachments, eq(jobAttachments.id, jobChecklistAttachments.attachmentId))
+      .leftJoin(users, eq(users.id, jobAttachments.uploadedById))
       .where(
         and(
           eq(jobChecklistAttachments.jobId, job.id),
-          eq(jobChecklistAttachments.userId, workerUserId),
           inArray(jobChecklistAttachments.itemId, requiredIds),
         ),
       );
-    const uploadedSet = new Set(uploaded.map((u) => u.itemId));
+
     for (const id of requiredIds) {
-      if (!uploadedSet.has(id)) missingFiles.push(id);
+      const rows = linked.filter((r) => r.itemId === id);
+      const hasChecklist = rows.some((r) => r.uploaderRole != null && r.uploaderRole !== "user");
+      const hasCompleted = rows.some(
+        (r) => r.uploaderId === workerUserId || r.uploaderRole === "user",
+      );
+      if (!hasChecklist) missingChecklist.push(id);
+      if (!hasCompleted) missingCompleted.push(id);
     }
   }
 
-  if (missingFiles.length > 0) {
-    return "Upload the required checklist file(s) before submitting this job.";
+  if (missingChecklist.length > 0) {
+    return `Checklist file not uploaded for ${missingChecklist.length} item(s). Word/PDF checklist files are required.`;
+  }
+  if (missingCompleted.length > 0) {
+    return `Completed files not uploaded for ${missingCompleted.length} item(s). Upload completed work before submitting.`;
   }
 
   return null;

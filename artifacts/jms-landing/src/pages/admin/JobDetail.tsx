@@ -36,6 +36,7 @@ import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } 
 import { MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategories";
 import { useQueryClient } from "@tanstack/react-query";
 import FileDropzone from "@/components/FileDropzone";
+import { CHECKLIST_FILE_ACCEPT } from "@/lib/collectDroppedFiles";
 
 interface Props { role?: Role; id?: string }
 
@@ -1770,9 +1771,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                         );
                         return (
                           <>
-                            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Task files</div>
+                            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Checklist files (Word / PDF)</div>
                             {instructionFiles.length === 0 ? (
-                              <p className="text-[11px] text-gray-400 mb-3">No instruction file for this task.</p>
+                              <p className="text-[11px] text-gray-400 mb-3">No checklist/instruction file for this task.</p>
                             ) : (
                               <div className="space-y-2 mb-4">{instructionFiles.map(renderFileRow)}</div>
                             )}
@@ -1783,22 +1784,38 @@ export default function JobDetail({ role = "user", id }: Props) {
                             ) : (
                               <div className="space-y-2 mb-3">{completedFiles.map(renderFileRow)}</div>
                             )}
+
+                            {(role === "user" || role === "super-admin" || role === "admin" || role === "supervisor") && (
+                              role === "user" ? (
+                                <FileDropzone
+                                  compact
+                                  multiple
+                                  allowFolders
+                                  label="Drop completed files or folders"
+                                  hint="Upload your completed work for this checklist item"
+                                  onFiles={async (files) => {
+                                    uploadChecklistIdRef.current = selectedChecklistItem.id;
+                                    await uploadPickedFiles(files, "output", selectedChecklistItem.id);
+                                  }}
+                                />
+                              ) : (
+                                <FileDropzone
+                                  compact
+                                  multiple
+                                  allowFolders
+                                  accept={CHECKLIST_FILE_ACCEPT}
+                                  label="Drop checklist Word/PDF files"
+                                  hint="Word (.doc, .docx) and PDF only"
+                                  onFiles={async (files) => {
+                                    uploadChecklistIdRef.current = selectedChecklistItem.id;
+                                    await uploadPickedFiles(files, "input", selectedChecklistItem.id);
+                                  }}
+                                />
+                              )
+                            )}
                           </>
                         );
                       })()}
-                      {(role === "user" || role === "super-admin" || role === "admin" || role === "supervisor") && (
-                        <FileDropzone
-                          compact
-                          multiple
-                          allowFolders
-                          label={role === "user" ? "Drop completed files or folders" : "Drop task files or folders"}
-                          hint="Multiple files and folders supported"
-                          onFiles={async (files) => {
-                            uploadChecklistIdRef.current = selectedChecklistItem.id;
-                            await uploadPickedFiles(files, role === "user" ? "output" : "input", selectedChecklistItem.id);
-                          }}
-                        />
-                      )}
                     </div>
 
                     <div>
@@ -1807,51 +1824,70 @@ export default function JobDetail({ role = "user", id }: Props) {
                     </div>
 
                     <div className="flex flex-wrap gap-2 pt-2">
-                      {selectedChecklistItem.status !== "completed" && role === "user" && (
-                        <button 
-                          onClick={async () => {
-                            const needsFile = !!selectedChecklistItem.attachmentRequired;
-                            const uploadedCount = checklistUploads[selectedChecklistItem.id] ?? 0;
-                            if (needsFile && uploadedCount === 0) {
-                              alert("Upload a checklist file before marking this item complete.");
-                              return;
-                            }
-                            if (!job?.id) return;
-                            try {
-                              const res = await fetch(`/api/jobs/${job.id}/checklist-state`, {
-                                method: "PATCH",
-                                credentials: "include",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ itemId: selectedChecklistItem.id, status: "completed" }),
-                              });
-                              if (!res.ok) {
-                                const data = await res.json().catch(() => ({}));
-                                throw new Error((data as any).error || "Failed to mark complete");
-                              }
-                              const next = checklist.map((i) =>
-                                i.id === selectedChecklistItem.id ? { ...i, status: "completed" as const, done: true } : i
-                              );
-                              setChecklist(next);
-                              persistLocalChecklist(next, checklistUploads);
-                              await persistProgress(next);
-                              await loadReworks();
-                              await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
-                              await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-                              setSelectedChecklistItem(null);
-                            } catch (err) {
-                              alert(err instanceof Error ? err.message : "Failed to mark complete");
-                            }
-                          }}
-                          disabled={!!selectedChecklistItem.attachmentRequired && (checklistUploads[selectedChecklistItem.id] ?? 0) === 0}
-                          className={`flex-1 py-2.5 text-white text-xs font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-colors ${
-                            !!selectedChecklistItem.attachmentRequired && (checklistUploads[selectedChecklistItem.id] ?? 0) === 0
-                              ? "bg-gray-300 shadow-gray-200 cursor-not-allowed"
-                              : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
-                          }`}
-                        >
-                          <CheckCircle2 size={14} /> Mark Complete
-                        </button>
-                      )}
+                      {selectedChecklistItem.status !== "completed" && role === "user" && (() => {
+                        const allFiles = selectedChecklistItem.files ?? [];
+                        const hasChecklistFile = allFiles.some((f) => (f.uploadedBy?.role ?? "supervisor") !== "user");
+                        const hasCompletedFile = allFiles.some((f) => (f.uploadedBy?.role ?? "supervisor") === "user");
+                        const canMarkComplete = hasChecklistFile && hasCompletedFile;
+                        return (
+                          <>
+                            <button 
+                              onClick={async () => {
+                                if (!hasChecklistFile) {
+                                  alert("Checklist file not uploaded. A Word/PDF checklist file is required before marking this item complete.");
+                                  return;
+                                }
+                                if (!hasCompletedFile) {
+                                  alert("Completed files not uploaded. Please upload your completed work files before marking this item complete.");
+                                  return;
+                                }
+                                if (!job?.id) return;
+                                try {
+                                  const res = await fetch(`/api/jobs/${job.id}/checklist-state`, {
+                                    method: "PATCH",
+                                    credentials: "include",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ itemId: selectedChecklistItem.id, status: "completed" }),
+                                  });
+                                  if (!res.ok) {
+                                    const data = await res.json().catch(() => ({}));
+                                    throw new Error((data as any).error || "Failed to mark complete");
+                                  }
+                                  const next = checklist.map((i) =>
+                                    i.id === selectedChecklistItem.id ? { ...i, status: "completed" as const, done: true } : i
+                                  );
+                                  setChecklist(next);
+                                  persistLocalChecklist(next, checklistUploads);
+                                  await persistProgress(next);
+                                  await loadReworks();
+                                  await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+                                  await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                                  setSelectedChecklistItem(null);
+                                } catch (err) {
+                                  alert(err instanceof Error ? err.message : "Failed to mark complete");
+                                }
+                              }}
+                              className={`flex-1 py-2.5 text-white text-xs font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-colors ${
+                                canMarkComplete
+                                  ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
+                                  : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
+                              }`}
+                            >
+                              <CheckCircle2 size={14} /> Mark Complete
+                            </button>
+                            {!hasChecklistFile && (
+                              <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                                Checklist file (Word/PDF) is missing for this task.
+                              </p>
+                            )}
+                            {hasChecklistFile && !hasCompletedFile && (
+                              <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                                Upload your completed files above, then mark this item complete.
+                              </p>
+                            )}
+                          </>
+                        );
+                      })()}
                       {selectedChecklistItem.status !== "completed" && role !== "user" && (
                         <button 
                           onClick={async () => {
@@ -1880,14 +1916,6 @@ export default function JobDetail({ role = "user", id }: Props) {
                         >
                           <CheckCircle2 size={14} /> Mark Complete
                         </button>
-                      )}
-                      {selectedChecklistItem.status !== "completed" &&
-                        role === "user" &&
-                        selectedChecklistItem.attachmentRequired &&
-                        (checklistUploads[selectedChecklistItem.id] ?? 0) === 0 && (
-                        <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                          Upload a checklist file above, then mark this item complete.
-                        </p>
                       )}
                       {selectedChecklistItem.status === "completed" && (role === "supervisor" || role === "admin" || role === "super-admin") && (
                         <button 

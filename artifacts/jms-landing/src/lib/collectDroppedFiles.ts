@@ -89,3 +89,30 @@ export function collectFilesFromList(list: FileList | File[] | null | undefined)
   if (!list) return [];
   return Array.from(list).filter((f) => f && typeof f.name === "string" && f.size >= 0);
 }
+
+/** Filter files by an HTML accept string like ".pdf,.doc,.docx,application/pdf". */
+export function filterFilesByAccept(files: File[], accept?: string): File[] {
+  if (!accept || !accept.trim()) return files;
+  const tokens = accept
+    .split(",")
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+  if (tokens.length === 0) return files;
+
+  return files.filter((file) => {
+    const name = file.name.toLowerCase();
+    const type = (file.type || "").toLowerCase();
+    return tokens.some((token) => {
+      if (token.startsWith(".")) return name.endsWith(token);
+      if (token.endsWith("/*")) return type.startsWith(token.slice(0, -1));
+      return type === token;
+    });
+  });
+}
+
+export const CHECKLIST_FILE_ACCEPT =
+  ".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+export function isChecklistDocFile(file: File): boolean {
+  return filterFilesByAccept([file], CHECKLIST_FILE_ACCEPT).length > 0;
+}

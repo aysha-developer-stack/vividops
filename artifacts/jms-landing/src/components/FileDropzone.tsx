@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { FolderOpen, Loader2, Upload } from "lucide-react";
-import { collectFilesFromDataTransfer, collectFilesFromList } from "@/lib/collectDroppedFiles";
+import { collectFilesFromDataTransfer, collectFilesFromList, filterFilesByAccept } from "@/lib/collectDroppedFiles";
 
 type FileDropzoneProps = {
   onFiles: (files: File[]) => void | Promise<void>;
@@ -40,7 +40,16 @@ export default function FileDropzone({
   const emitFiles = useCallback(
     async (files: File[]) => {
       if (isDisabled || files.length === 0) return;
-      const next = multiple ? files : files.slice(0, 1);
+      const accepted = filterFilesByAccept(files, accept);
+      if (accepted.length === 0) {
+        window.alert(
+          accept
+            ? `Only these file types are allowed: ${accept.split(",").map((t) => t.trim()).filter((t) => t.startsWith(".")).join(", ") || accept}`
+            : "No valid files selected.",
+        );
+        return;
+      }
+      const next = multiple ? accepted : accepted.slice(0, 1);
       setLocalBusy(true);
       try {
         await onFiles(next);
@@ -48,7 +57,7 @@ export default function FileDropzone({
         setLocalBusy(false);
       }
     },
-    [isDisabled, multiple, onFiles],
+    [accept, isDisabled, multiple, onFiles],
   );
 
   const onDragEnter = (e: DragEvent) => {
