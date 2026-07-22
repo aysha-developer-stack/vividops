@@ -353,6 +353,10 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [reworkComments, setReworkComments] = useState("");
   const [reworkDueAt, setReworkDueAt] = useState("");
   const [reworks, setReworks] = useState<JobReworkApi[]>([]);
+  const [remarksDraft, setRemarksDraft] = useState("");
+  const [commentsDraft, setCommentsDraft] = useState("");
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [notesSaveError, setNotesSaveError] = useState<string | null>(null);
   const [approveOpen, setApproveOpen] = useState(false);
   const [jobApproved, setJobApproved] = useState(false);
   const [showActivityPing, setShowActivityPing] = useState(false);
@@ -396,6 +400,39 @@ export default function JobDetail({ role = "user", id }: Props) {
   useEffect(() => {
     void loadReworks();
   }, [job?.id]);
+
+  useEffect(() => {
+    setRemarksDraft(((job as any)?.remarks as string | null | undefined) ?? "");
+    setCommentsDraft(((job as any)?.comments as string | null | undefined) ?? "");
+    setNotesSaveError(null);
+  }, [job?.id, (job as any)?.remarks, (job as any)?.comments]);
+
+  const canEditJobNotes = role === "supervisor" || role === "admin" || role === "super-admin";
+  const jobNotesDirty =
+    remarksDraft !== (((job as any)?.remarks as string | null | undefined) ?? "") ||
+    commentsDraft !== (((job as any)?.comments as string | null | undefined) ?? "");
+
+  const saveJobNotes = async () => {
+    if (!job?.id || !canEditJobNotes) return;
+    setSavingNotes(true);
+    setNotesSaveError(null);
+    try {
+      await updateJobMutation.mutateAsync({
+        id: job.id,
+        data: {
+          remarks: remarksDraft.trim() || null,
+          comments: commentsDraft.trim() || null,
+        },
+      });
+      await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+      await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Failed to save notes";
+      setNotesSaveError(msg);
+    } finally {
+      setSavingNotes(false);
+    }
+  };
 
   const showReviewTimer =
     (role === "supervisor" || role === "admin" || role === "super-admin") &&
@@ -1458,13 +1495,50 @@ export default function JobDetail({ role = "user", id }: Props) {
             <div className="text-[10px] text-gray-500 uppercase font-semibold">Incoming Date</div>
             <div className="text-sm text-gray-900 font-medium">{(job as any)?.incomingDate ? formatShortDate((job as any).incomingDate) : "—"}</div>
           </div>
-          <div className="sm:col-span-2">
-            <div className="text-[10px] text-gray-500 uppercase font-semibold">Remarks</div>
-            <div className="text-sm text-gray-900 font-medium whitespace-pre-wrap">{(job as any)?.remarks || "—"}</div>
-          </div>
-          <div className="sm:col-span-2 lg:col-span-4">
-            <div className="text-[10px] text-gray-500 uppercase font-semibold">Comments</div>
-            <div className="text-sm text-gray-900 font-medium whitespace-pre-wrap">{(job as any)?.comments || "—"}</div>
+          <div className="sm:col-span-2 lg:col-span-4 space-y-3">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <div className="text-[10px] text-gray-500 uppercase font-semibold mb-1.5">Remarks</div>
+                {canEditJobNotes ? (
+                  <textarea
+                    value={remarksDraft}
+                    onChange={(e) => setRemarksDraft(e.target.value)}
+                    placeholder="Short remarks…"
+                    rows={3}
+                    className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none"
+                  />
+                ) : (
+                  <div className="text-sm text-gray-900 font-medium whitespace-pre-wrap">{(job as any)?.remarks || "—"}</div>
+                )}
+              </div>
+              <div>
+                <div className="text-[10px] text-gray-500 uppercase font-semibold mb-1.5">Comments</div>
+                {canEditJobNotes ? (
+                  <textarea
+                    value={commentsDraft}
+                    onChange={(e) => setCommentsDraft(e.target.value)}
+                    placeholder="Additional comments…"
+                    rows={3}
+                    className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none"
+                  />
+                ) : (
+                  <div className="text-sm text-gray-900 font-medium whitespace-pre-wrap">{(job as any)?.comments || "—"}</div>
+                )}
+              </div>
+            </div>
+            {canEditJobNotes && (
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={!jobNotesDirty || savingNotes}
+                  onClick={() => void saveJobNotes()}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-primary text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingNotes ? "Saving…" : "Save notes"}
+                </button>
+                {notesSaveError && <span className="text-xs text-red-600">{notesSaveError}</span>}
+              </div>
+            )}
           </div>
         </div>
 

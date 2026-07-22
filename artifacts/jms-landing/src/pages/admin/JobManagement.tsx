@@ -694,8 +694,9 @@ export default function JobManagement(
       eta: form.eta ? new Date(form.eta).toISOString() : null,
       wind: form.wind || null,
       incomingDate: form.incomingDate ? new Date(form.incomingDate).toISOString() : null,
-      remarks: form.remarks.trim() || null,
-      comments: form.comments.trim() || null,
+      // Remarks/comments are for after the job exists (edit / Job Detail), not create.
+      remarks: editingId !== null ? (form.remarks.trim() || null) : null,
+      comments: editingId !== null ? (form.comments.trim() || null) : null,
     };
 
     const syncMembers = async (jobId: string) => {
@@ -1314,16 +1315,18 @@ export default function JobManagement(
                       <input type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Remarks</label>
-                      <textarea value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} placeholder="Short remarks…" rows={2} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
+                  {editingId !== null && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">Remarks</label>
+                        <textarea value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} placeholder="Short remarks…" rows={2} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">Comments</label>
+                        <textarea value={form.comments} onChange={(e) => setForm({ ...form, comments: e.target.value })} placeholder="Additional comments…" rows={2} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Comments</label>
-                      <textarea value={form.comments} onChange={(e) => setForm({ ...form, comments: e.target.value })} placeholder="Additional comments…" rows={2} className="w-full px-4 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
-                    </div>
-                  </div>
+                  )}
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Priority</label>
                     <div className="grid grid-cols-3 gap-2">
