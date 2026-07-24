@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageCircle, Hash, Search, Send, Paperclip, Smile,
-  Phone, Video, MoreHorizontal, ExternalLink, Settings, Check,
+  Phone, Video, MoreHorizontal, ExternalLink, Check,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import type { Role } from "@/lib/roles";
@@ -391,24 +391,16 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
             <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shadow-md shadow-primary/30">
               <MessageCircle size={18} />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-gray-900">Zoho Cliq Integration</span>
-                {cliqChannel?.status === "active" && (
-                  <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                    <Check size={10} /> Active
-                  </span>
-                )}
-              </div>
-              <div className="text-xs text-gray-500 mt-0.5">
-                Zoho Cliq is the live job chat, and OPS keeps a mirrored job history.
-              </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-gray-900">Zoho Cliq Integration</span>
+              {cliqChannel?.status === "active" && (
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                  <Check size={10} /> Active
+                </span>
+              )}
             </div>
           </div>
           <div className="flex gap-2">
-            <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-gray-300">
-              <Settings size={12} /> Settings
-            </motion.button>
             <motion.button onClick={openCliq} disabled={!cliqChannel?.chatId && !cliqChannel?.channelUrl} whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.97 }} className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed">
               <ExternalLink size={12} /> Open in Cliq
             </motion.button>
