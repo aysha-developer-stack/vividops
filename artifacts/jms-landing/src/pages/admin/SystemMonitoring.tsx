@@ -238,7 +238,15 @@ export default function SystemMonitoring({ role = "super-admin" as Role }: { rol
       name: u.name,
       role: u.role.charAt(0).toUpperCase() + u.role.slice(1),
       status: presence === "online" ? "Active" : presence === "away" ? "Idle" : "Idle" as "Active" | "On Job" | "Idle",
-      lastSeen: seenAt ? new Date(seenAt).toLocaleTimeString() : "Never",
+      lastSeen: seenAt
+        ? new Date(seenAt).toLocaleString(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          })
+        : "Never",
       action: formatPresenceLabel(presence),
       avatar: u.name.split(" ").map(s => s[0]).join("").toUpperCase(),
       presence,
