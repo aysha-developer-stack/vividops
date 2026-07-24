@@ -1,14 +1,45 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Activity, Users, Briefcase, AlertTriangle, CheckCircle2, Clock,
-  FileText, Image, Wifi, UserCheck, TrendingUp, TrendingDown, Eye, Search,
+  Wifi, Server, Database, HardDrive, TrendingUp, TrendingDown, Eye, Search,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import { useGetDashboardStats, useListUsers, useListJobs, type User } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
 import { formatPresenceLabel, getPresenceStatus } from "@/lib/presence";
+
+type HealthStatus = "healthy" | "degraded" | "down";
+
+type ServiceHealth = {
+  id: string;
+  name: string;
+  status: HealthStatus;
+  detail: string;
+  latencyMs: number | null;
+  checkedAt: string;
+};
+
+type SystemHealthResponse = {
+  overall: HealthStatus;
+  summary: string;
+  checkedAt: string;
+  services: ServiceHealth[];
+};
+
+const SERVICE_ICONS: Record<string, typeof Server> = {
+  api_server: Server,
+  database: Database,
+  file_storage: HardDrive,
+  cliq_sync: Wifi,
+};
+
+const STATUS_COLOR: Record<string, { dot: string; text: string; bg: string }> = {
+  Active: { dot: "bg-emerald-500", text: "text-emerald-700", bg: "bg-emerald-50" },
+  "On Job": { dot: "bg-primary", text: "text-primary", bg: "bg-primary/10" },
+  Idle: { dot: "bg-gray-400", text: "text-gray-600", bg: "bg-gray-100" },
+};
 
 function parseMs(iso: string | null | undefined) {
   if (!iso) return null;
@@ -43,19 +74,6 @@ function formatAvgHours(hours: number) {
   return `${hours.toFixed(1)}h`;
 }
 
-const SYSTEM_HEALTH = [
-  { name: "Inspection Report Vault", status: "healthy", uptime: "99.98%", latency: "42ms", icon: FileText },
-  { name: "Site Photo Storage", status: "healthy", uptime: "99.99%", latency: "12ms", icon: Image },
-  { name: "Zoho Cliq Sync", status: "healthy", uptime: "99.85%", latency: "180ms", icon: Wifi },
-  { name: "Client Portal", status: "degraded", uptime: "98.42%", latency: "320ms", icon: UserCheck },
-];
-
-const STATUS_COLOR: Record<string, { dot: string; text: string; bg: string }> = {
-  Active: { dot: "bg-emerald-500", text: "text-emerald-700", bg: "bg-emerald-50" },
-  "On Job": { dot: "bg-primary", text: "text-primary", bg: "bg-primary/10" },
-  Idle: { dot: "bg-gray-400", text: "text-gray-600", bg: "bg-gray-100" },
-};
-
 const HEALTH_COLOR: Record<string, { dot: string; text: string; bg: string; ring: string }> = {
   healthy: { dot: "bg-emerald-500", text: "text-emerald-700", bg: "bg-emerald-50", ring: "ring-emerald-200" },
   degraded: { dot: "bg-amber-500", text: "text-amber-700", bg: "bg-amber-50", ring: "ring-amber-200" },
@@ -69,6 +87,39 @@ export default function SystemMonitoring({ role = "super-admin" as Role }: { rol
 
   const [filter, setFilter] = useState<"All" | "Active" | "On Job" | "Idle">("All");
   const [search, setSearch] = useState("");
+  const [systemHealth, setSystemHealth] = useState<SystemHealthResponse | null>(null);
+  const [healthLoading, setHealthLoading] = useState(true);
+  const [healthError, setHealthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSystemHealth = async () => {
+      setHealthError(null);
+      try {
+        const res = await fetch("/api/system/health", { credentials: "include" });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error((data as any).error || "Failed to load system health");
+        }
+        const data = (await res.json()) as SystemHealthResponse;
+        if (!cancelled) setSystemHealth(data);
+      } catch (err) {
+        if (!cancelled) {
+          setHealthError(err instanceof Error ? err.message : "Failed to load system health");
+        }
+      } finally {
+        if (!cancelled) setHealthLoading(false);
+      }
+    };
+
+    void loadSystemHealth();
+    const id = window.setInterval(() => void loadSystemHealth(), 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   const kpis = useMemo(() => {
     const users = apiUsers ?? [];
@@ -266,28 +317,46 @@ export default function SystemMonitoring({ role = "super-admin" as Role }: { rol
       <div className="grid lg:grid-cols-3 gap-6 mb-6">
         {/* System health */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-          <div className="p-5 border-b border-gray-100">
-            <h3 className="font-bold text-gray-900 flex items-center gap-2"><Activity size={16} className="text-primary" /> System Health</h3>
-            <p className="text-[11px] text-gray-500 mt-0.5">All services operational</p>
+          <div className="p-5 border-b border-gray-100 flex items-start justify-between gap-3">
+            <div>
+              <h3 className="font-bold text-gray-900 flex items-center gap-2"><Activity size={16} className="text-primary" /> System Health</h3>
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                {healthLoading && !systemHealth
+                  ? "Checking services…"
+                  : healthError
+                    ? healthError
+                    : systemHealth?.summary ?? "Live service status"}
+              </p>
+            </div>
+            <span className="text-[10px] font-medium text-gray-500 flex items-center gap-1.5 shrink-0 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Auto · 15s
+            </span>
           </div>
           <div className="divide-y divide-gray-50">
-            {SYSTEM_HEALTH.map((s) => {
-              const Icon = s.icon;
-              const c = HEALTH_COLOR[s.status];
-              return (
-                <div key={s.name} className="p-4 flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-lg ${c.bg} ${c.text} flex items-center justify-center`}><Icon size={16} /></div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-gray-900">{s.name}</div>
-                    <div className="text-[11px] text-gray-500">Uptime {s.uptime} · Latency {s.latency}</div>
+            {healthLoading && !systemHealth ? (
+              <div className="p-6 text-sm text-gray-400 text-center">Running live checks…</div>
+            ) : healthError && !systemHealth ? (
+              <div className="p-6 text-sm text-red-600 text-center">{healthError}</div>
+            ) : (
+              (systemHealth?.services ?? []).map((s) => {
+                const Icon = SERVICE_ICONS[s.id] ?? Activity;
+                const c = HEALTH_COLOR[s.status] ?? HEALTH_COLOR.healthy;
+                return (
+                  <div key={s.id} className="p-4 flex items-center gap-3 hover:bg-sky-50/60 transition-colors duration-150">
+                    <div className={`w-9 h-9 rounded-lg ${c.bg} ${c.text} flex items-center justify-center`}><Icon size={16} /></div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-gray-900">{s.name}</div>
+                      <div className="text-[11px] text-gray-500 truncate">{s.detail}</div>
+                    </div>
+                    <span className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${c.bg} ${c.text}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${c.dot} ${s.status === "healthy" ? "animate-pulse" : ""}`} />
+                      {s.status}
+                    </span>
                   </div>
-                  <span className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${c.bg} ${c.text}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${c.dot} animate-pulse`} />
-                    {s.status}
-                  </span>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </motion.div>
 

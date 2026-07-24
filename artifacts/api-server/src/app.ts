@@ -75,6 +75,7 @@ app.use("/api", (req, res, next) => {
   const pathOnly = req.path || "";
   const shouldSkip =
     pathOnly === "/health" ||
+    pathOnly === "/system/health" ||
     pathOnly === "/settings/system/metrics";
 
   if (!shouldSkip) {
