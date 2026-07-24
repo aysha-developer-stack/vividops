@@ -221,25 +221,25 @@ export default function AdminDashboard() {
             <Link href="/admin/jobs" className="text-xs text-primary font-semibold hover:underline">View all</Link>
           </div>
           {recentP.pageItems.map((j, i) => (
-            <motion.div
-              key={j.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.15 + i * 0.03 }}
-              whileHover={{ backgroundColor: "rgb(249, 250, 251)", x: 4 }}
-              className="flex items-center gap-4 px-5 py-4 border-b border-gray-50 last:border-0 cursor-pointer"
-            >
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary/10 to-sky-100 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                {(j.jobNumber.replace(/^JOB-/, "").slice(-2) || "??").toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-sm text-gray-900 truncate">{j.title}</div>
-                <div className="text-xs text-gray-500 mt-0.5 truncate">
-                  {j.jobNumber} · Supervised by {j.supervisor}
+            <Link key={j.id} href={`/admin/jobs/${j.id}`}>
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.15 + i * 0.03 }}
+                className="group flex items-center gap-4 px-5 py-4 border-b border-gray-50 last:border-0 cursor-pointer transition-colors duration-150 hover:bg-sky-50/80"
+              >
+                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary/10 to-sky-100 text-primary flex items-center justify-center font-bold text-xs shrink-0 transition-transform duration-150 group-hover:scale-105">
+                  {(j.jobNumber.replace(/^JOB-/, "").slice(-2) || "??").toUpperCase()}
                 </div>
-              </div>
-              <span className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-full shrink-0 ${j.color}`}>{j.status}</span>
-            </motion.div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm text-gray-900 truncate group-hover:text-primary transition-colors duration-150">{j.title}</div>
+                  <div className="text-xs text-gray-500 mt-0.5 truncate">
+                    {j.jobNumber} · Supervised by {j.supervisor}
+                  </div>
+                </div>
+                <span className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-full shrink-0 ${j.color}`}>{j.status}</span>
+              </motion.div>
+            </Link>
           ))}
           <Pagination page={recentP.page} totalPages={recentP.totalPages} total={recentP.total} pageSize={recentP.pageSize} onChange={recentP.setPage} label="jobs" />
         </motion.div>
