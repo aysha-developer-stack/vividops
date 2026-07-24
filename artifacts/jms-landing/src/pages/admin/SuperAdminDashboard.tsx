@@ -12,7 +12,7 @@ import { useAuth } from "@/lib/auth";
 const QUICK_ACTIONS = [
   { label: "Add User", icon: UserPlus, href: "/super-admin/users", color: "bg-emerald-600" },
   { label: "Job Overview", icon: Plus, href: "/super-admin/jobs", color: "bg-primary" },
-  { label: "System Monitoring", icon: Activity, href: "/super-admin/monitoring", color: "bg-purple-600" },
+  { label: "Supervisor Oversight", icon: Activity, href: "/super-admin/supervisors", color: "bg-violet-600" },
   { label: "Generate Report", icon: FileText, href: "/super-admin/reports", color: "bg-amber-600" },
 ];
 

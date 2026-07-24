@@ -261,6 +261,7 @@ export default function AdminDashboard() {
         {[
           { label: "Create Job", icon: Plus, color: "from-primary to-sky-700", href: "/admin/jobs" },
           { label: "Add User", icon: UserPlus, color: "from-emerald-500 to-emerald-700", href: "/admin/users" },
+          { label: "Supervisors", icon: Users, color: "from-violet-500 to-violet-700", href: "/admin/supervisors" },
           { label: "Generate Report", icon: FileText, color: "from-amber-500 to-orange-600", href: "/admin/reports" },
         ].map((q) => {
           const Icon = q.icon;

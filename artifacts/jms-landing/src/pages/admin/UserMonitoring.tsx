@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, AlertCircle, Plus, X, Activity, FileWarning,
@@ -406,18 +407,28 @@ export default function UserMonitoring(
             );
           })}
         </div>
-        {tab === "errors" && (
-          <motion.button
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.96 }}
-            onClick={() => setErrorModal(true)}
-            className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-md shadow-primary/30"
-          >
-            <Plus size={14} /> New Error Report
-          </motion.button>
-        )}
+        <div className="flex items-center gap-2">
+          {(role === "admin" || role === "super-admin") && (
+            <Link
+              href={role === "super-admin" ? "/super-admin/supervisors" : "/admin/supervisors"}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border border-gray-200 bg-white text-gray-700 hover:border-primary hover:text-primary transition-colors"
+            >
+              Supervisor oversight
+            </Link>
+          )}
+          {tab === "errors" && (
+            <motion.button
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              onClick={() => setErrorModal(true)}
+              className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-md shadow-primary/30"
+            >
+              <Plus size={14} /> New Error Report
+            </motion.button>
+          )}
+        </div>
       </div>
 
       <AnimatePresence mode="wait">
