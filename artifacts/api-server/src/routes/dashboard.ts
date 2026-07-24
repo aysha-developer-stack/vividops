@@ -4,6 +4,7 @@ import { logger } from "../lib/logger";
 import { requireAuth } from "../middlewares/requireAuth";
 import { ensureLegacySupervisorAssignments } from "../lib/schema-init";
 import { getPresenceStatus } from "../lib/presence";
+import { publicJob } from "../lib/serialize";
 
 const router = Router();
 
@@ -91,6 +92,30 @@ router.get("/dashboard/stats", requireAuth, async (req, res) => {
       })(),
     ]);
 
+    const recentJobRows = recentJobs;
+    const peopleIds = [
+      ...new Set(
+        recentJobRows
+          .flatMap((job) => [job.assigneeId, job.supervisorId])
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      ),
+    ];
+    const people =
+      peopleIds.length > 0
+        ? await db
+            .select({ id: users.id, name: users.name, role: users.role })
+            .from(users)
+            .where(inArray(users.id, peopleIds))
+        : [];
+    const peopleById = new Map(people.map((u) => [u.id, u]));
+    const recentJobsPublic = recentJobRows.map((job) =>
+      publicJob(
+        job,
+        job.assigneeId ? peopleById.get(job.assigneeId) ?? null : null,
+        job.supervisorId ? peopleById.get(job.supervisorId) ?? null : null,
+      ),
+    );
+
     return res.json({
       stats: {
         totalUsers: Number(totalUsers[0].count),
@@ -103,7 +128,7 @@ router.get("/dashboard/stats", requireAuth, async (req, res) => {
         reworkRequired: Number(jobCounts[0].reworkRequired),
         ...userMetrics,
       },
-      recentJobs,
+      recentJobs: recentJobsPublic,
     });
   } catch (err) {
     logger.error({ err }, "Failed to fetch dashboard stats");

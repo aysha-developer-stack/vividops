@@ -7,8 +7,20 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
-import { useGetDashboardStats, useListUsers, useListJobs, type User } from "@workspace/api-client-react";
+import { useGetDashboardStats, useListUsers, useListJobs, type User, type Job } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
+import { statusToUi, type UiStatus } from "@/lib/jobMappers";
+
+const STATUS_BADGE: Record<UiStatus, string> = {
+  "Not Started": "bg-gray-100 text-gray-700",
+  "In Progress": "bg-sky-50 text-sky-700",
+  "Awaiting Supervisor": "bg-amber-50 text-amber-700",
+  "Awaiting Admin": "bg-violet-50 text-violet-700",
+  Done: "bg-emerald-50 text-emerald-700",
+  "On Hold": "bg-orange-50 text-orange-700",
+  Overdue: "bg-red-50 text-red-700",
+  Rework: "bg-rose-50 text-rose-700",
+};
 
 export default function AdminDashboard() {
   const { user: currentUser } = useAuth();
@@ -81,13 +93,39 @@ export default function AdminDashboard() {
     ];
   }, [dashboardData, apiUsers, apiJobs]);
 
-  const recentJobs = useMemo(() => (dashboardData?.recentJobs ?? []).map(j => ({
-    id: j.number,
-    client: j.client,
-    supervisor: j.supervisor?.name ?? "Unassigned",
-    status: j.status,
-    color: "bg-primary/10 text-primary"
-  })), [dashboardData]);
+  const recentJobs = useMemo(() => {
+    const fromList = (apiJobs ?? [])
+      .slice()
+      .sort((a, b) => {
+        const aMs = new Date(a.updatedAt).getTime();
+        const bMs = new Date(b.updatedAt).getTime();
+        return (Number.isFinite(bMs) ? bMs : 0) - (Number.isFinite(aMs) ? aMs : 0);
+      })
+      .slice(0, 8);
+
+    const source: Job[] =
+      fromList.length > 0
+        ? fromList
+        : ((dashboardData?.recentJobs ?? []) as Job[]);
+
+    return source.map((j) => {
+      const uiStatus = statusToUi(j);
+      const jobNumber =
+        (j as any).number ||
+        ((j as any).jobNumber ? `JOB-${(j as any).jobNumber}` : null) ||
+        ((j as any).serial != null ? `JOB-${(j as any).serial}` : null) ||
+        "No Number";
+      return {
+        id: j.id,
+        jobNumber,
+        title: j.title || j.client || "Untitled job",
+        client: j.client || "—",
+        supervisor: j.supervisor?.name ?? "Unassigned",
+        status: uiStatus,
+        color: STATUS_BADGE[uiStatus],
+      };
+    });
+  }, [apiJobs, dashboardData]);
 
   const team = useMemo(() => (apiUsers ?? []).map((u: User) => {
     const userJobs = (apiJobs ?? []).filter(j => j.assignee?.id === u.id);
@@ -192,13 +230,15 @@ export default function AdminDashboard() {
               className="flex items-center gap-4 px-5 py-4 border-b border-gray-50 last:border-0 cursor-pointer"
             >
               <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary/10 to-sky-100 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                {j.id?.includes("-") ? j.id.split("-")[1]?.slice(-2) : (j.id?.slice(-2) ?? "??")}
+                {(j.jobNumber.replace(/^JOB-/, "").slice(-2) || "??").toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-semibold text-sm text-gray-900">{j.client}</div>
-                <div className="text-xs text-gray-500 mt-0.5">{j.id ?? "No Number"} · Supervised by {j.supervisor}</div>
+                <div className="font-semibold text-sm text-gray-900 truncate">{j.title}</div>
+                <div className="text-xs text-gray-500 mt-0.5 truncate">
+                  {j.jobNumber} · Supervised by {j.supervisor}
+                </div>
               </div>
-              <span className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-full ${j.color}`}>{j.status}</span>
+              <span className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-full shrink-0 ${j.color}`}>{j.status}</span>
             </motion.div>
           ))}
           <Pagination page={recentP.page} totalPages={recentP.totalPages} total={recentP.total} pageSize={recentP.pageSize} onChange={recentP.setPage} label="jobs" />

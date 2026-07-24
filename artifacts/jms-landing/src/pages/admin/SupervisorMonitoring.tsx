@@ -273,10 +273,10 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
           {
-            label: role === "supervisor" ? "My status" : "Active supervisors",
+            label: role === "supervisor" ? "My status" : "Supervisors",
             value: role === "supervisor"
               ? (supervisors[0]?.status === "online" ? "Online" : supervisors[0]?.status ?? "—")
-              : supervisors.filter((s) => s.status === "online").length,
+              : supervisors.length,
             icon: Activity,
             color: "from-emerald-500 to-emerald-700",
             bg: "bg-emerald-50",
