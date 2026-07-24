@@ -300,7 +300,7 @@ export default function Login() {
                 >
                   <h1 className="text-3xl font-bold text-gray-900 mb-2">Sign in</h1>
                   <p className="text-gray-500 text-sm">
-                    Use your Vivid Engineering credentials to access the operations console.
+                    Use your credentials to access the operations console.
                   </p>
                 </motion.div>
 
@@ -543,7 +543,7 @@ export default function Login() {
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.5 }}
                 >
-                  Need access? Contact your administrator at Vivid Engineering.
+                  Need access? Contact your administrator.
                 </motion.p>
               </motion.div>
             )}
