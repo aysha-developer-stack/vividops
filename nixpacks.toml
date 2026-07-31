@@ -12,3 +12,6 @@ cmds = [
 [start]
 cmd = "pnpm --filter @workspace/db push && pnpm start"
 
+[variables]
+NODE_ENV = "production"
+

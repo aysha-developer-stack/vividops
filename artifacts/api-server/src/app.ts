@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express, { type Express } from "express";
@@ -10,6 +11,18 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { attachSession } from "./middlewares/session";
 import { db, sql } from "@workspace/db";
+
+function resolveFrontendPath(): string | null {
+  const candidates = [
+    path.resolve(__dirname, "../../jms-landing/dist/public"),
+    path.resolve(process.cwd(), "artifacts/jms-landing/dist/public"),
+    path.resolve(process.cwd(), "jms-landing/dist/public"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, "index.html"))) return candidate;
+  }
+  return null;
+}
 
 const app: Express = express();
 
@@ -103,33 +116,42 @@ app.use("/api", (req, res, next) => {
 
 app.use("/api", router);
 
-// SEO routes - must be BEFORE express.static and SPA catch-all
-if (process.env.NODE_ENV === "production") {
-  const frontendPath = path.resolve(__dirname, "../../jms-landing/dist/public");
-  
-  app.get("/robots.txt", (req, res) => {
+// Serve the Vite SPA whenever the build output exists (do not rely on NODE_ENV —
+// Railway/runtime may leave NODE_ENV unset, which previously made /login 404).
+const frontendPath = resolveFrontendPath();
+if (frontendPath) {
+  logger.info({ frontendPath }, "Serving frontend SPA from disk");
+
+  app.get("/robots.txt", (_req, res) => {
     res.sendFile(path.join(frontendPath, "robots.txt"));
   });
-  
-  app.get("/sitemap.xml", (req, res) => {
+
+  app.get("/sitemap.xml", (_req, res) => {
     res.sendFile(path.join(frontendPath, "sitemap.xml"));
   });
 
-  console.log(`Checking frontend path: ${frontendPath}`);
-  app.use(express.static(frontendPath));
-  
-  // Handle SPA routing
-  app.get(/^(?!\/api).*/, (req, res) => {
+  app.use(express.static(frontendPath, { index: false }));
+
+  // Express 5–safe SPA fallback (client routes like /login, /user/jobs, …)
+  app.use((req, res, next) => {
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+    if (req.path.startsWith("/api")) return next();
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
-    res.sendFile(path.join(frontendPath, "index.html"));
+    res.sendFile(path.join(frontendPath, "index.html"), (err) => {
+      if (err) next(err);
+    });
+  });
+} else {
+  logger.warn(
+    { nodeEnv: process.env.NODE_ENV ?? null },
+    "Frontend dist not found; API-only mode (/login will 404 until jms-landing is built)",
+  );
+  app.get("/", (_req, res) => {
+    res.json({ status: "ok", message: "Job Flow Manager API" });
   });
 }
-
-app.get("/", (req, res) => {
-  res.json({ status: "ok", message: "Job Flow Manager API" });
-});
 
 // Error handling
 app.use((err: any, req: any, res: any, next: any) => {
