@@ -148,12 +148,18 @@ export function useLogin() {
   const qc = useQueryClient();
   return useLoginMutation({
     mutation: {
-      onSuccess: (data) => {
-        // Wipe previous account's cached API data before seeding this user.
-        qc.clear();
+      onSuccess: async (data) => {
         sessionStorage.setItem("vops_tab_active", "true");
-        qc.setQueryData(getGetMeQueryKey(), data.user);
         setCachedUser(data.user);
+
+        const meKey = getGetMeQueryKey();
+        // Do NOT qc.clear() here — that forces an immediate /auth/me refetch which
+        // can briefly return null and bounce the user straight back to /login.
+        await qc.cancelQueries({ queryKey: meKey });
+        qc.setQueryData(meKey, data.user);
+        qc.removeQueries({
+          predicate: (query) => query.queryKey[0] !== meKey[0],
+        });
       },
     },
   });
@@ -178,11 +184,15 @@ export function useResetPassword() {
   const qc = useQueryClient();
   return useResetPasswordMutation({
     mutation: {
-      onSuccess: (data) => {
-        qc.clear();
+      onSuccess: async (data) => {
         sessionStorage.setItem("vops_tab_active", "true");
-        qc.setQueryData(getGetMeQueryKey(), data);
         setCachedUser(data);
+        const meKey = getGetMeQueryKey();
+        await qc.cancelQueries({ queryKey: meKey });
+        qc.setQueryData(meKey, data);
+        qc.removeQueries({
+          predicate: (query) => query.queryKey[0] !== meKey[0],
+        });
       },
     },
   });

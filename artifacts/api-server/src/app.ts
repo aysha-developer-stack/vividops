@@ -26,6 +26,9 @@ function resolveFrontendPath(): string | null {
 
 const app: Express = express();
 
+// Railway (and most proxies) terminate TLS upstream — needed for secure cookies.
+app.set("trust proxy", 1);
+
 app.use(
   pinoHttp({
     logger,

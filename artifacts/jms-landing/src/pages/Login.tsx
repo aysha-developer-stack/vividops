@@ -69,7 +69,7 @@ export default function Login() {
       const targetRole = (result.user.role as Role) ?? role;
       const target = ROLES[targetRole]?.base ?? "/";
       
-      // Force immediate cache update to prevent redirect race
+      // Keep me-cache in sync; do not clear the whole client (that refetches /me and can bounce).
       qc.setQueryData(getGetMeQueryKey(), result.user);
       
       setTimeout(() => setLocation(target), 1200);

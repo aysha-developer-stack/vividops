@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { db, sessions, users, sql } from "@workspace/db";
@@ -32,12 +32,23 @@ async function ensureUserColumns() {
   `);
 }
 
-const cookieOpts = {
-  httpOnly: true,
-  sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production",
-  path: "/",
-};
+function cookieOpts(req?: Request) {
+  const forwarded = req?.headers?.["x-forwarded-proto"];
+  const proto = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim();
+  const secure =
+    process.env.COOKIE_SECURE === "true" ||
+    proto === "https" ||
+    req?.secure === true ||
+    process.env.NODE_ENV === "production";
+
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure,
+    path: "/",
+    maxAge: SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
+  };
+}
 
 router.post("/auth/login", async (req, res) => {
   await ensureUserColumns();
@@ -100,7 +111,7 @@ router.post("/auth/login", async (req, res) => {
     return res.status(503).json({ error: "Database connection failed" });
   }
 
-  res.cookie(SESSION_COOKIE, session.id, cookieOpts);
+  res.cookie(SESSION_COOKIE, session.id, cookieOpts(req));
   return res.json({ user: publicUser({ ...user, lastSignInAt: new Date(), lastSeenAt: new Date() }) });
 });
 
@@ -126,11 +137,7 @@ router.post("/auth/logout", async (req, res) => {
     await db.delete(sessions).where(eq(sessions.id, sid));
     clearSessionCache(sid);
   }
-  res.clearCookie(SESSION_COOKIE, {
-    path: "/",
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-  });
+  res.clearCookie(SESSION_COOKIE, cookieOpts(req));
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
@@ -232,7 +239,7 @@ router.post("/auth/reset-password", requireAuth, async (req, res) => {
     .insert(sessions)
     .values({ userId: user.id, expiresAt: sessionExpiresAt() })
     .returning();
-  res.cookie(SESSION_COOKIE, fresh.id, cookieOpts);
+  res.cookie(SESSION_COOKIE, fresh.id, cookieOpts(req));
   void currentSid;
 
   return res.json(publicUser(updated));
@@ -326,7 +333,7 @@ router.post("/auth/reset-password-with-token", async (req, res) => {
     .values({ userId: user.id, expiresAt: sessionExpiresAt() })
     .returning();
 
-  res.cookie(SESSION_COOKIE, session.id, cookieOpts);
+  res.cookie(SESSION_COOKIE, session.id, cookieOpts(req));
   
   return res.json({ 
     message: "Password has been reset successfully.",
