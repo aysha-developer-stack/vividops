@@ -17,6 +17,7 @@ import {
   getGetPostsQueryOptions,
   getGetNotificationsQueryOptions,
   getGetNotificationsQueryKey,
+  getGetMeQueryKey,
   useGetNotifications,
   useMarkNotificationRead,
   getListJobsQueryOptions,
@@ -63,14 +64,17 @@ export default function DashboardLayout({
 
   const handleLogout = async () => {
     setProfileOpen(false);
-    purgeAuthState(qc);
 
+    // Clear the server session cookie first. Purging local cache before that
+    // lets /auth/me restore the user and Login bounces them back to the dashboard.
     try {
       await logoutMutation.mutateAsync(undefined as any);
     } catch {
-      // Still send the user to login if the network call fails.
+      // Still clear local state if the network call fails.
     }
 
+    purgeAuthState(qc);
+    qc.setQueryData(getGetMeQueryKey(), null);
     setLocation("/login");
   };
 

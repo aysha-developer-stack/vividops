@@ -55,9 +55,14 @@ export function purgeAuthState(qc?: QueryClient) {
   cachedUser = null;
   const client = qc ?? boundQueryClient;
   if (client) {
-    // Drop cached jobs/users/etc. so the next login cannot see another
-    // account's list (query key `/api/jobs` is shared across roles).
-    client.clear();
+    const meKey = getGetMeQueryKey();
+    // Cancel in-flight /me so a still-valid cookie cannot resurrect the session
+    // after we navigate to /login (Login redirects authenticated users to dashboard).
+    void client.cancelQueries({ queryKey: meKey });
+    client.setQueryData(meKey, null);
+    client.removeQueries({
+      predicate: (query) => query.queryKey[0] !== meKey[0],
+    });
   }
 }
 
@@ -85,7 +90,6 @@ const AuthContext = createContext<AuthContextValue>({
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
-  const logoutMutation = useLogout();
 
   useEffect(() => {
     boundQueryClient = qc;
