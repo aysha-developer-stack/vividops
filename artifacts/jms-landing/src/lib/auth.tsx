@@ -18,6 +18,8 @@ const AUTH_USER_KEY = "vops_auth_user";
 // working without rewiring every page.
 // ---------------------------------------------------------------------------
 let cachedUser: User | null = null;
+/** Bound in AuthProvider so clearSession() can wipe React Query too. */
+let boundQueryClient: QueryClient | null = null;
 
 function readStoredAuthUser(): User | null {
   if (typeof window === "undefined") return null;
@@ -51,8 +53,11 @@ export function purgeAuthState(qc?: QueryClient) {
   sessionStorage.removeItem("vops_tab_active");
   writeStoredAuthUser(null);
   cachedUser = null;
-  if (qc) {
-    qc.setQueryData(getGetMeQueryKey(), null);
+  const client = qc ?? boundQueryClient;
+  if (client) {
+    // Drop cached jobs/users/etc. so the next login cannot see another
+    // account's list (query key `/api/jobs` is shared across roles).
+    client.clear();
   }
 }
 
@@ -81,6 +86,13 @@ const AuthContext = createContext<AuthContextValue>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const logoutMutation = useLogout();
+
+  useEffect(() => {
+    boundQueryClient = qc;
+    return () => {
+      if (boundQueryClient === qc) boundQueryClient = null;
+    };
+  }, [qc]);
   
   const meQuery = useQuery({
     queryKey: getGetMeQueryKey(),
@@ -137,7 +149,8 @@ export function useLogin() {
   return useLoginMutation({
     mutation: {
       onSuccess: (data) => {
-        // Mark this tab as having an active session
+        // Wipe previous account's cached API data before seeding this user.
+        qc.clear();
         sessionStorage.setItem("vops_tab_active", "true");
         qc.setQueryData(getGetMeQueryKey(), data.user);
         setCachedUser(data.user);
@@ -153,6 +166,10 @@ export function useLogout() {
       onSuccess: () => {
         purgeAuthState(qc);
       },
+      onError: () => {
+        // Still drop local caches if the cookie clear fails.
+        purgeAuthState(qc);
+      },
     },
   });
 }
@@ -162,6 +179,7 @@ export function useResetPassword() {
   return useResetPasswordMutation({
     mutation: {
       onSuccess: (data) => {
+        qc.clear();
         sessionStorage.setItem("vops_tab_active", "true");
         qc.setQueryData(getGetMeQueryKey(), data);
         setCachedUser(data);
@@ -188,7 +206,7 @@ export function clearSession() {
   fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(
     () => undefined,
   );
-  purgeAuthState();
+  purgeAuthState(boundQueryClient ?? undefined);
 }
 // Kept only so legacy imports don't break — real flow goes through useLogin.
 export function setSession(_email: string, _name?: string, _role?: Role) {

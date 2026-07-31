@@ -8,10 +8,17 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import { useListJobs, type Job as ApiJob } from "@workspace/api-client-react";
+import { useAuth } from "@/lib/auth";
 import {
   statusToUi, priorityToUi, formatShortDate, daysUntil,
   type UiStatus,
 } from "@/lib/jobMappers";
+
+function isJobForUser(j: ApiJob, userId: string): boolean {
+  if (j.assignee?.id === userId) return true;
+  if (Array.isArray(j.assignees) && j.assignees.some((a) => a?.id === userId)) return true;
+  return false;
+}
 
 interface UiJob {
   id: string;          // server uuid (used for routing)
@@ -73,12 +80,19 @@ const FILTERS: ("All" | UiStatus)[] = [
 export default function MyJobs() {
   const [filter, setFilter] = useState<"All" | UiStatus>("All");
   const [search, setSearch] = useState("");
-  const jobsQuery = useListJobs();
+  const { user } = useAuth();
+  const jobsQuery = useListJobs({
+    query: {
+      // Always refetch for the signed-in user; never reuse another role's list.
+      staleTime: 0,
+    },
+  });
 
-  const jobs: UiJob[] = useMemo(
-    () => (jobsQuery.data ?? []).map(mapJob),
-    [jobsQuery.data],
-  );
+  const jobs: UiJob[] = useMemo(() => {
+    const rows = jobsQuery.data ?? [];
+    const mine = user?.id ? rows.filter((j) => isJobForUser(j, user.id)) : rows;
+    return mine.map(mapJob);
+  }, [jobsQuery.data, user?.id]);
 
   const filtered = jobs.filter(
     (j) =>
