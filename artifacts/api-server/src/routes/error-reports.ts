@@ -297,7 +297,9 @@ router.get("/error-reports", requireAuth, async (req, res) => {
   const actor = req.session!.user;
   const query = req.query as Record<string, unknown>;
   const userIdFilter = typeof query.userId === "string" ? query.userId : null;
+  const jobIdFilter = typeof query.jobId === "string" ? query.jobId : null;
   const categoryFilter = typeof query.category === "string" ? query.category : null;
+  const sourceFilter = typeof query.source === "string" ? query.source : null;
   const { from, to } = resolveDateRange(query, { defaultPeriod: "all" });
 
   const q = db
@@ -315,7 +317,9 @@ router.get("/error-reports", requireAuth, async (req, res) => {
 
   const filters: any[] = [];
   if (userIdFilter) filters.push(eq(errorReports.userId, userIdFilter));
+  if (jobIdFilter) filters.push(eq(errorReports.jobId, jobIdFilter));
   if (categoryFilter && isMistakeCategory(categoryFilter)) filters.push(eq(errorReports.category, categoryFilter));
+  if (sourceFilter) filters.push(eq(errorReports.source, sourceFilter));
   pushDateConditions(filters, from, to);
 
   if (actor.role === "super-admin" || actor.role === "admin") {
@@ -345,7 +349,7 @@ router.get("/error-reports", requireAuth, async (req, res) => {
   res.json(rows.map(toPublic));
 });
 
-const creatorOnly = requireRole("super-admin", "admin", "supervisor");
+const creatorOnly = requireRole("super-admin", "admin");
 
 router.post("/error-reports", creatorOnly, async (req, res) => {
   await ensureSchema();
@@ -361,8 +365,8 @@ router.post("/error-reports", creatorOnly, async (req, res) => {
     source: string;
   }>;
 
-  if (!body.userId || !body.title || !body.description) {
-    res.status(400).json({ error: "userId, title and description are required" });
+  if (!body.jobId || !body.userId || !body.title || !body.description) {
+    res.status(400).json({ error: "jobId, userId, title and description are required" });
     return;
   }
   const severity = body.severity ?? "medium";
@@ -376,43 +380,32 @@ router.post("/error-reports", creatorOnly, async (req, res) => {
     typeof body.checklistItemId === "number" && Number.isFinite(body.checklistItemId)
       ? body.checklistItemId
       : null;
-  const source = typeof body.source === "string" && body.source.trim() ? body.source.trim() : "manual";
+  // Manual mistake records are separate from rework auto-logs.
+  const source = "manual";
 
-  let jobRow: JobRow | null = null;
-  const jobId = body.jobId ?? null;
-  if (jobId) {
-    const [j] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
-    if (!j) {
-      res.status(404).json({ error: "Job not found" });
-      return;
-    }
-    if (!canViewJob(actor, j)) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
-    if (actor.role === "supervisor") {
-      const assignedIds = new Set<string>();
-      if (j.assigneeId) assignedIds.add(j.assigneeId);
-      const members = await db
-        .select({ userId: jobMembers.userId })
-        .from(jobMembers)
-        .where(eq(jobMembers.jobId, j.id));
-      for (const member of members) assignedIds.add(member.userId);
-      if (!assignedIds.has(body.userId)) {
-        res.status(400).json({ error: "userId must belong to the selected job" });
-        return;
-      }
-    }
-    jobRow = j;
-  } else if (actor.role === "supervisor") {
-    res.status(400).json({ error: "jobId is required for supervisors" });
+  const [j] = await db.select().from(jobs).where(eq(jobs.id, body.jobId)).limit(1);
+  if (!j) {
+    res.status(404).json({ error: "Job not found" });
     return;
   }
+
+  const assignedIds = new Set<string>();
+  if (j.assigneeId) assignedIds.add(j.assigneeId);
+  const members = await db
+    .select({ userId: jobMembers.userId })
+    .from(jobMembers)
+    .where(eq(jobMembers.jobId, j.id));
+  for (const member of members) assignedIds.add(member.userId);
+  if (!assignedIds.has(body.userId)) {
+    res.status(400).json({ error: "userId must belong to the selected job" });
+    return;
+  }
+  const jobRow = j;
 
   const [created] = await db
     .insert(errorReports)
     .values({
-      jobId,
+      jobId: body.jobId,
       userId: body.userId,
       createdById: actor.id,
       title: body.title,
@@ -462,21 +455,10 @@ router.patch("/error-reports/:id", requireAuth, async (req, res) => {
     return;
   }
 
-  if (actor.role === "user") {
-    res.status(403).json({ error: "Forbidden" });
+  // Supervisors and field users are view-only for mistake records.
+  if (actor.role !== "super-admin" && actor.role !== "admin") {
+    res.status(403).json({ error: "Only admin or super-admin can update mistake records" });
     return;
-  }
-
-  if (actor.role === "supervisor") {
-    if (!existing.jobId) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
-    const [j] = await db.select().from(jobs).where(eq(jobs.id, existing.jobId)).limit(1);
-    if (!j || !canManageJob(actor, j)) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
   }
 
   const patch: Record<string, unknown> = { updatedAt: new Date() };

@@ -197,9 +197,12 @@ export default function UserMonitoring(
     category: "other",
   });
   const [analytics, setAnalytics] = useState<MistakeAnalytics | null>(null);
+  const canWriteMistakes = role === "super-admin" || role === "admin";
   const [period, setPeriod] = useState<AnalyticsPeriod>("30d");
   const [focusUserId, setFocusUserId] = useState<string | null>(null);
+  const [focusJobId, setFocusJobId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>("");
+  const [recordsView, setRecordsView] = useState<"list" | "byJob" | "byUser">("list");
 
   useEffect(() => {
     setTab(initialTab);
@@ -212,6 +215,7 @@ export default function UserMonitoring(
       try {
         const params = new URLSearchParams({ period });
         if (focusUserId) params.set("userId", focusUserId);
+        if (focusJobId) params.set("jobId", focusJobId);
         if (categoryFilter) params.set("category", categoryFilter);
         const res = await fetch(`/api/error-reports?${params}`, { credentials: "include" });
         if (!res.ok) return;
@@ -222,7 +226,7 @@ export default function UserMonitoring(
       }
     })();
     return () => { cancelled = true; };
-  }, [tab, period, focusUserId, categoryFilter]);
+  }, [tab, period, focusUserId, focusJobId, categoryFilter]);
 
   useEffect(() => {
     if (tab !== "errors") return;
@@ -376,6 +380,41 @@ export default function UserMonitoring(
   }, [errors, search]);
   const errorsP = usePagination(filteredErrors, 6);
 
+  const mistakesByJob = useMemo(() => {
+    const map = new Map<string, { jobId: string; jobNumber: string; jobTitle: string; count: number; open: number }>();
+    for (const e of filteredErrors) {
+      const key = e.jobId ?? "none";
+      const cur = map.get(key) ?? {
+        jobId: e.jobId ?? "",
+        jobNumber: e.jobNumber ?? "No job",
+        jobTitle: e.jobTitle ?? "—",
+        count: 0,
+        open: 0,
+      };
+      cur.count += 1;
+      if (e.status === "open") cur.open += 1;
+      map.set(key, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
+  }, [filteredErrors]);
+
+  const mistakesByUser = useMemo(() => {
+    const map = new Map<string, { userId: string; name: string; count: number; open: number }>();
+    for (const e of filteredErrors) {
+      const key = e.userId;
+      const cur = map.get(key) ?? {
+        userId: e.userId,
+        name: e.user?.name ?? "Unknown",
+        count: 0,
+        open: 0,
+      };
+      cur.count += 1;
+      if (e.status === "open") cur.open += 1;
+      map.set(key, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
+  }, [filteredErrors]);
+
   const submitError = async () => {
     if (!draft.jobId || !draft.userId || !draft.title.trim() || !draft.desc.trim()) return;
     setSaving(true);
@@ -451,7 +490,7 @@ export default function UserMonitoring(
               Supervisor oversight
             </Link>
           )}
-          {tab === "errors" && (
+          {tab === "errors" && canWriteMistakes && (
             <motion.button
               initial={{ opacity: 0, x: 10 }}
               animate={{ opacity: 1, x: 0 }}
@@ -576,11 +615,12 @@ export default function UserMonitoring(
                     </button>
                   ))}
                 </div>
-                {(focusUserId || categoryFilter) && (
+                {(focusUserId || focusJobId || categoryFilter) && (
                   <button
                     type="button"
                     onClick={() => {
                       setFocusUserId(null);
+                      setFocusJobId(null);
                       setCategoryFilter("");
                     }}
                     className="text-xs font-semibold text-primary hover:underline"
@@ -589,6 +629,25 @@ export default function UserMonitoring(
                   </button>
                 )}
               </div>
+            </div>
+
+            <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+              {([
+                ["list", "All records"],
+                ["byJob", "By job"],
+                ["byUser", "By user"],
+              ] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setRecordsView(id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    recordsView === id ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
 
             {analytics && (
@@ -821,15 +880,81 @@ export default function UserMonitoring(
 
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100">
-                <h3 className="font-bold text-gray-900">Mistake Records</h3>
+                <h3 className="font-bold text-gray-900">
+                  {recordsView === "byJob" ? "Mistakes by job" : recordsView === "byUser" ? "Mistakes by user" : "Mistake Records"}
+                </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {focusUserId
-                    ? `Filtered to selected user${categoryFilter ? ` · ${formatMistakeCategory(categoryFilter)}` : ""}`
-                    : categoryFilter
-                      ? `Filtered to ${formatMistakeCategory(categoryFilter)}`
-                      : `${errors.length} records in this period`}
+                  {recordsView === "byJob"
+                    ? "Click a job to see its mistake records"
+                    : recordsView === "byUser"
+                      ? "Click a user to see their mistake records"
+                      : focusUserId
+                        ? `Filtered to selected user${categoryFilter ? ` · ${formatMistakeCategory(categoryFilter)}` : ""}`
+                        : focusJobId
+                          ? "Filtered to selected job"
+                          : categoryFilter
+                            ? `Filtered to ${formatMistakeCategory(categoryFilter)}`
+                            : `${errors.length} records in this period`}
+                  {!canWriteMistakes ? " · view only" : ""}
                 </p>
               </div>
+
+              {recordsView === "byJob" && (
+                <div className="divide-y divide-gray-50">
+                  {mistakesByJob.length === 0 && (
+                    <div className="text-center py-12 text-sm text-gray-400">No jobs with mistakes in this period.</div>
+                  )}
+                  {mistakesByJob.map((j) => (
+                    <button
+                      key={j.jobId || "none"}
+                      type="button"
+                      onClick={() => {
+                        if (j.jobId) {
+                          setFocusJobId(j.jobId);
+                          setFocusUserId(null);
+                          setRecordsView("list");
+                        }
+                      }}
+                      className="w-full text-left px-5 py-4 hover:bg-gray-50 flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-gray-900 truncate">{j.jobNumber} · {j.jobTitle}</div>
+                        <div className="text-xs text-gray-500">{j.open} open</div>
+                      </div>
+                      <div className="text-lg font-bold text-red-600 tabular-nums">{j.count}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {recordsView === "byUser" && (
+                <div className="divide-y divide-gray-50">
+                  {mistakesByUser.length === 0 && (
+                    <div className="text-center py-12 text-sm text-gray-400">No users with mistakes in this period.</div>
+                  )}
+                  {mistakesByUser.map((u) => (
+                    <button
+                      key={u.userId}
+                      type="button"
+                      onClick={() => {
+                        setFocusUserId(u.userId);
+                        setFocusJobId(null);
+                        setRecordsView("list");
+                      }}
+                      className="w-full text-left px-5 py-4 hover:bg-gray-50 flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-gray-900 truncate">{u.name}</div>
+                        <div className="text-xs text-gray-500">{u.open} open</div>
+                      </div>
+                      <div className="text-lg font-bold text-red-600 tabular-nums">{u.count}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {recordsView === "list" && (
+                <>
               <div className="px-5 py-4 border-b border-gray-100">
                 <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 max-w-md focus-within:border-primary transition-colors">
                   <Search size={16} className="text-gray-400" />
@@ -858,12 +983,25 @@ export default function UserMonitoring(
                           onClick={(ev) => {
                             ev.stopPropagation();
                             setFocusUserId(e.userId);
+                            setFocusJobId(null);
                           }}
                         >
                           {e.user?.name ?? "—"}
                         </button>
                         <span className="text-xs text-gray-400">·</span>
-                        <span className="text-xs text-primary font-medium">{e.jobNumber ?? "—"}</span>
+                        <button
+                          type="button"
+                          className="text-xs text-primary font-medium hover:underline"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            if (e.jobId) {
+                              setFocusJobId(e.jobId);
+                              setFocusUserId(null);
+                            }
+                          }}
+                        >
+                          {e.jobNumber ?? "—"}
+                        </button>
                         <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${SEVERITY[e.severity]}`}>{e.severity}</span>
                         <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border bg-violet-50 text-violet-700 border-violet-200">{formatMistakeCategory(e.category)}</span>
                         <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${e.status === "resolved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-700 border-gray-200"}`}>{e.status}</span>
@@ -879,6 +1017,8 @@ export default function UserMonitoring(
                 <div className="text-center py-12 text-sm text-gray-400">No mistake records match this filter.</div>
               )}
               <Pagination page={errorsP.page} totalPages={errorsP.totalPages} total={errorsP.total} pageSize={errorsP.pageSize} onChange={errorsP.setPage} label="reports" />
+                </>
+              )}
             </div>
           </motion.div>
         )}
@@ -953,7 +1093,7 @@ export default function UserMonitoring(
                     </button>
                   </div>
 
-                  {role !== "user" && (
+                  {canWriteMistakes && (
                     <button
                       onClick={() => updateErrorStatus(selectedError.id, selectedError.status === "resolved" ? "open" : "resolved")}
                       disabled={updatingError}
@@ -988,7 +1128,7 @@ export default function UserMonitoring(
               className="bg-white rounded-2xl p-6 max-w-md w-full"
             >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-gray-900">New Error Report</h3>
+                <h3 className="text-lg font-bold text-gray-900">Log Mistake</h3>
                 <button onClick={() => setErrorModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
               </div>
               <div className="space-y-3">

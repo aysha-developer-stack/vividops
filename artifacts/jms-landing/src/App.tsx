@@ -175,6 +175,7 @@ function AppRouter() {
         <Route path="/admin/jobs"><RequireSignedIn><JobManagement role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/supervisors"><RequireSignedIn><SupervisorMonitoring role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/monitoring"><RequireSignedIn><UserMonitoring role="admin" /></RequireSignedIn></Route>
+        <Route path="/admin/error-reports"><RequireSignedIn><UserMonitoring role="admin" initialTab="errors" /></RequireSignedIn></Route>
         <Route path="/admin/reports"><RequireSignedIn><Reports role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/communication"><RequireSignedIn><Communication role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/files"><RequireSignedIn><SuperAdminFiles role="admin" /></RequireSignedIn></Route>
@@ -206,6 +207,7 @@ function AppRouter() {
         <Route path="/user/notifications"><RequireSignedIn><Notifications role="user" /></RequireSignedIn></Route>
         <Route path="/user/communication"><RequireSignedIn><Communication role="user" /></RequireSignedIn></Route>
         <Route path="/user/reports"><RequireSignedIn><Reports role="user" /></RequireSignedIn></Route>
+        <Route path="/user/mistakes"><RequireSignedIn><UserMonitoring role="user" initialTab="errors" /></RequireSignedIn></Route>
         <Route path="/user/settings"><RequireSignedIn><Settings role="user" /></RequireSignedIn></Route>
         <Route path="/user/files"><RequireSignedIn><FilesChecklists /></RequireSignedIn></Route>
         <Route path="/user"><RequireSignedIn><UserDashboard /></RequireSignedIn></Route>
