@@ -105,8 +105,8 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     (async () => {
       try {
         const [reportsRes, analyticsRes] = await Promise.all([
-          fetch("/api/error-reports", { credentials: "include" }),
-          fetch("/api/error-reports/analytics", { credentials: "include" }),
+          fetch("/api/error-reports?period=30d", { credentials: "include" }),
+          fetch("/api/error-reports/analytics?period=30d", { credentials: "include" }),
         ]);
         if (reportsRes.ok) {
           const data = (await reportsRes.json()) as unknown;

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
   db,
@@ -25,6 +25,39 @@ const ensureSchema = async () => {};
 
 function isMistakeCategory(value: unknown): value is MistakeCategory {
   return typeof value === "string" && (MISTAKE_CATEGORIES as readonly string[]).includes(value);
+}
+
+function parseDateBound(value: unknown): Date | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const d = new Date(value);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+/** Resolve analytics/list window from ?period=7d|30d|90d|all or ?from=&to= */
+function resolveDateRange(
+  query: Record<string, unknown>,
+  opts?: { defaultPeriod?: string },
+): { from: Date | null; to: Date | null; period: string } {
+  const fromQ = parseDateBound(query.from);
+  const toQ = parseDateBound(query.to);
+  if (fromQ || toQ) {
+    return { from: fromQ, to: toQ, period: "custom" };
+  }
+  const period =
+    typeof query.period === "string" && query.period
+      ? query.period
+      : (opts?.defaultPeriod ?? "30d");
+  if (period === "all") return { from: null, to: null, period: "all" };
+  const days = period === "7d" ? 7 : period === "90d" ? 90 : 30;
+  const from = new Date();
+  from.setHours(0, 0, 0, 0);
+  from.setDate(from.getDate() - (days - 1));
+  return { from, to: null, period: period === "7d" || period === "90d" ? period : "30d" };
+}
+
+function pushDateConditions(conditions: unknown[], from: Date | null, to: Date | null) {
+  if (from) conditions.push(gte(errorReports.createdAt, from));
+  if (to) conditions.push(lte(errorReports.createdAt, to));
 }
 
 function canViewJob(actor: UserRow, job: JobRow): boolean {
@@ -73,6 +106,9 @@ router.get("/error-reports/categories", requireAuth, (_req, res) => {
 router.get("/error-reports/analytics", requireAuth, async (req, res) => {
   await ensureSchema();
   const actor = req.session!.user;
+  const query = req.query as Record<string, unknown>;
+  const { from, to, period } = resolveDateRange(query);
+  const focusUserId = typeof query.userId === "string" && query.userId ? query.userId : null;
 
   let scopedUserFilter: { userId?: string; jobIds?: string[] } = {};
   if (actor.role === "user") {
@@ -81,13 +117,26 @@ router.get("/error-reports/analytics", requireAuth, async (req, res) => {
     const managedJobs = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.supervisorId, actor.id));
     scopedUserFilter = { jobIds: managedJobs.map((j) => j.id) };
     if (scopedUserFilter.jobIds!.length === 0) {
-      return res.json({ byUser: [], byCategory: [], total: 0, open: 0 });
+      return res.json({
+        period,
+        from: from?.toISOString() ?? null,
+        to: to?.toISOString() ?? null,
+        byUser: [],
+        byCategory: [],
+        byMonth: [],
+        total: 0,
+        open: 0,
+        reworkCount: 0,
+        highSeverity: 0,
+        userProfile: null,
+      });
     }
   }
 
-  const conditions = [];
+  const conditions: any[] = [];
   if (scopedUserFilter.userId) conditions.push(eq(errorReports.userId, scopedUserFilter.userId));
   if (scopedUserFilter.jobIds) conditions.push(inArray(errorReports.jobId, scopedUserFilter.jobIds));
+  pushDateConditions(conditions, from, to);
 
   const baseWhere = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -98,6 +147,7 @@ router.get("/error-reports/analytics", requireAuth, async (req, res) => {
       count: sql<number>`count(*)::int`,
       openCount: sql<number>`count(*) filter (where ${errorReports.status} = 'open')::int`,
       reworkCount: sql<number>`count(*) filter (where ${errorReports.reworkId} is not null or ${errorReports.category} = 'rework')::int`,
+      highSeverity: sql<number>`count(*) filter (where ${errorReports.severity} = 'high')::int`,
     })
     .from(errorReports)
     .innerJoin(users, eq(users.id, errorReports.userId))
@@ -114,6 +164,16 @@ router.get("/error-reports/analytics", requireAuth, async (req, res) => {
     .groupBy(errorReports.category)
     .orderBy(desc(sql`count(*)`));
 
+  const byMonthQuery = db
+    .select({
+      month: sql<string>`to_char(date_trunc('month', ${errorReports.createdAt}), 'YYYY-MM')`,
+      count: sql<number>`count(*)::int`,
+      openCount: sql<number>`count(*) filter (where ${errorReports.status} = 'open')::int`,
+    })
+    .from(errorReports)
+    .groupBy(sql`date_trunc('month', ${errorReports.createdAt})`)
+    .orderBy(sql`date_trunc('month', ${errorReports.createdAt})`);
+
   const totalsQuery = db
     .select({
       total: sql<number>`count(*)::int`,
@@ -123,19 +183,111 @@ router.get("/error-reports/analytics", requireAuth, async (req, res) => {
     })
     .from(errorReports);
 
-  const [byUser, byCategory, totals] = await Promise.all([
+  const [byUser, byCategory, byMonth, totals] = await Promise.all([
     baseWhere ? byUserQuery.where(baseWhere) : byUserQuery,
     baseWhere ? byCategoryQuery.where(baseWhere) : byCategoryQuery,
+    baseWhere ? byMonthQuery.where(baseWhere) : byMonthQuery,
     baseWhere ? totalsQuery.where(baseWhere) : totalsQuery,
   ]);
 
+  let userProfile: {
+    userId: string;
+    name: string;
+    total: number;
+    open: number;
+    highSeverity: number;
+    reworkCount: number;
+    byCategory: Array<{ category: string; count: number }>;
+    bySeverity: Array<{ severity: string; count: number }>;
+  } | null = null;
+
+  if (focusUserId && actor.role !== "user") {
+    const profileConditions: any[] = [...conditions, eq(errorReports.userId, focusUserId)];
+    const profileWhere = and(...profileConditions);
+
+    const [profileUser] = await db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(eq(users.id, focusUserId))
+      .limit(1);
+
+    if (profileUser) {
+      const [pTotals, pCategories, pSeverity] = await Promise.all([
+        db
+          .select({
+            total: sql<number>`count(*)::int`,
+            open: sql<number>`count(*) filter (where ${errorReports.status} = 'open')::int`,
+            reworkCount: sql<number>`count(*) filter (where ${errorReports.reworkId} is not null or ${errorReports.category} = 'rework')::int`,
+            highSeverity: sql<number>`count(*) filter (where ${errorReports.severity} = 'high')::int`,
+          })
+          .from(errorReports)
+          .where(profileWhere),
+        db
+          .select({
+            category: errorReports.category,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(errorReports)
+          .where(profileWhere)
+          .groupBy(errorReports.category)
+          .orderBy(desc(sql`count(*)`)),
+        db
+          .select({
+            severity: errorReports.severity,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(errorReports)
+          .where(profileWhere)
+          .groupBy(errorReports.severity)
+          .orderBy(desc(sql`count(*)`)),
+      ]);
+
+      userProfile = {
+        userId: profileUser.id,
+        name: profileUser.name,
+        total: pTotals[0]?.total ?? 0,
+        open: pTotals[0]?.open ?? 0,
+        highSeverity: pTotals[0]?.highSeverity ?? 0,
+        reworkCount: pTotals[0]?.reworkCount ?? 0,
+        byCategory: pCategories,
+        bySeverity: pSeverity.map((r) => ({ severity: String(r.severity), count: r.count })),
+      };
+    }
+  } else if (actor.role === "user") {
+    // Self profile for field users
+    const selfId = actor.id;
+    const [profileUser] = await db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(eq(users.id, selfId))
+      .limit(1);
+    if (profileUser) {
+      const selfRow = byUser.find((u) => u.userId === selfId);
+      userProfile = {
+        userId: profileUser.id,
+        name: profileUser.name,
+        total: selfRow?.count ?? totals[0]?.total ?? 0,
+        open: selfRow?.openCount ?? totals[0]?.open ?? 0,
+        highSeverity: selfRow?.highSeverity ?? totals[0]?.highSeverity ?? 0,
+        reworkCount: selfRow?.reworkCount ?? totals[0]?.reworkCount ?? 0,
+        byCategory,
+        bySeverity: [],
+      };
+    }
+  }
+
   res.json({
+    period,
+    from: from?.toISOString() ?? null,
+    to: to?.toISOString() ?? null,
     byUser,
     byCategory,
+    byMonth,
     total: totals[0]?.total ?? 0,
     open: totals[0]?.open ?? 0,
     reworkCount: totals[0]?.reworkCount ?? 0,
     highSeverity: totals[0]?.highSeverity ?? 0,
+    userProfile,
   });
   return;
 });
@@ -143,8 +295,10 @@ router.get("/error-reports/analytics", requireAuth, async (req, res) => {
 router.get("/error-reports", requireAuth, async (req, res) => {
   await ensureSchema();
   const actor = req.session!.user;
-  const userIdFilter = typeof req.query.userId === "string" ? req.query.userId : null;
-  const categoryFilter = typeof req.query.category === "string" ? req.query.category : null;
+  const query = req.query as Record<string, unknown>;
+  const userIdFilter = typeof query.userId === "string" ? query.userId : null;
+  const categoryFilter = typeof query.category === "string" ? query.category : null;
+  const { from, to } = resolveDateRange(query, { defaultPeriod: "all" });
 
   const q = db
     .select({
@@ -159,9 +313,10 @@ router.get("/error-reports", requireAuth, async (req, res) => {
     .leftJoin(creatorAlias, eq(creatorAlias.id, errorReports.createdById))
     .orderBy(desc(errorReports.createdAt));
 
-  const filters = [];
+  const filters: any[] = [];
   if (userIdFilter) filters.push(eq(errorReports.userId, userIdFilter));
   if (categoryFilter && isMistakeCategory(categoryFilter)) filters.push(eq(errorReports.category, categoryFilter));
+  pushDateConditions(filters, from, to);
 
   if (actor.role === "super-admin" || actor.role === "admin") {
     const rows = filters.length ? await q.where(and(...filters)) : await q;

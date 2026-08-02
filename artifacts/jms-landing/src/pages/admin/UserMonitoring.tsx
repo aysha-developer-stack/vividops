@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Search, AlertCircle, Plus, X, Activity, FileWarning,
+  Search, AlertCircle, Plus, X, Activity, FileWarning, CalendarDays, UserRound,
 } from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
+} from "recharts";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import { useAuth } from "@/lib/auth";
@@ -23,6 +26,36 @@ import {
   type MistakeCategory,
 } from "@/lib/mistakeCategories";
 import { getPresenceStatus } from "@/lib/presence";
+
+type AnalyticsPeriod = "7d" | "30d" | "90d" | "all";
+
+type MistakeAnalytics = {
+  period?: string;
+  byUser: Array<{
+    userId: string;
+    name: string;
+    count: number;
+    openCount: number;
+    reworkCount?: number;
+    highSeverity?: number;
+  }>;
+  byCategory: Array<{ category: string; count: number }>;
+  byMonth?: Array<{ month: string; count: number; openCount: number }>;
+  total: number;
+  open: number;
+  reworkCount?: number;
+  highSeverity?: number;
+  userProfile?: {
+    userId: string;
+    name: string;
+    total: number;
+    open: number;
+    highSeverity: number;
+    reworkCount: number;
+    byCategory: Array<{ category: string; count: number }>;
+    bySeverity: Array<{ severity: string; count: number }>;
+  } | null;
+};
 
 interface Worker {
   id: string;
@@ -56,13 +89,6 @@ type ApiErrorReport = {
   jobTitle: string | null;
   user: { id: string; name: string; role: string } | null;
   createdBy: { id: string; name: string; role: string } | null;
-};
-
-type MistakeAnalytics = {
-  byUser: Array<{ userId: string; name: string; count: number; openCount: number }>;
-  byCategory: Array<{ category: string; count: number }>;
-  total: number;
-  open: number;
 };
 
 const SEVERITY: Record<"high" | "medium" | "low", string> = {
@@ -171,16 +197,23 @@ export default function UserMonitoring(
     category: "other",
   });
   const [analytics, setAnalytics] = useState<MistakeAnalytics | null>(null);
+  const [period, setPeriod] = useState<AnalyticsPeriod>("30d");
+  const [focusUserId, setFocusUserId] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string>("");
 
   useEffect(() => {
     setTab(initialTab);
   }, [initialTab]);
 
   useEffect(() => {
+    if (tab !== "errors") return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/error-reports", { credentials: "include" });
+        const params = new URLSearchParams({ period });
+        if (focusUserId) params.set("userId", focusUserId);
+        if (categoryFilter) params.set("category", categoryFilter);
+        const res = await fetch(`/api/error-reports?${params}`, { credentials: "include" });
         if (!res.ok) return;
         const data = (await res.json()) as unknown;
         if (!Array.isArray(data)) return;
@@ -189,14 +222,16 @@ export default function UserMonitoring(
       }
     })();
     return () => { cancelled = true; };
-  }, [tab]);
+  }, [tab, period, focusUserId, categoryFilter]);
 
   useEffect(() => {
     if (tab !== "errors") return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/error-reports/analytics", { credentials: "include" });
+        const params = new URLSearchParams({ period });
+        if (focusUserId) params.set("userId", focusUserId);
+        const res = await fetch(`/api/error-reports/analytics?${params}`, { credentials: "include" });
         if (!res.ok) return;
         const data = (await res.json()) as MistakeAnalytics;
         if (!cancelled) setAnalytics(data);
@@ -204,7 +239,7 @@ export default function UserMonitoring(
       }
     })();
     return () => { cancelled = true; };
-  }, [tab, errors]);
+  }, [tab, period, focusUserId, errors.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -375,7 +410,7 @@ export default function UserMonitoring(
 
   if (isLoading && !anyData) {
     return (
-      <DashboardLayout title={initialTab === "errors" ? "Error Reports" : "User Monitoring"} role={role}>
+      <DashboardLayout title={initialTab === "errors" ? "Mistakes" : "User Monitoring"} role={role}>
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
@@ -384,13 +419,13 @@ export default function UserMonitoring(
   }
 
   return (
-    <DashboardLayout title={tab === "errors" ? "Error Reports" : "User Monitoring"} role={role}>
+    <DashboardLayout title={tab === "errors" ? "Mistakes" : "User Monitoring"} role={role}>
       {/* Tab pills */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
           {[
             { id: "performance" as const, label: "Performance", icon: Activity },
-            { id: "errors" as const, label: "Error Reports", icon: FileWarning },
+            { id: "errors" as const, label: "Mistakes", icon: FileWarning },
           ].map((t) => {
             const Icon = t.icon;
             const active = tab === t.id;
@@ -425,7 +460,7 @@ export default function UserMonitoring(
               onClick={() => setErrorModal(true)}
               className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-md shadow-primary/30"
             >
-              <Plus size={14} /> New Error Report
+              <Plus size={14} /> Log Mistake
             </motion.button>
           )}
         </div>
@@ -511,84 +546,340 @@ export default function UserMonitoring(
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -12 }}
-            className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
+            className="space-y-4"
           >
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="font-bold text-gray-900">Mistake Records</h3>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {errors.filter((e) => e.createdBy?.id === currentUser?.id && Date.now() - new Date(e.createdAt).getTime() < 30 * 24 * 60 * 60 * 1000).length} reports filed by you in the last 30 days
-              </p>
-              {analytics && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                    <p className="text-[10px] uppercase font-bold text-gray-500">Total mistakes</p>
-                    <p className="text-xl font-bold text-gray-900">{analytics.total}</p>
-                    <p className="text-xs text-amber-700">{analytics.open} open</p>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                    <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Top users</p>
-                    <div className="space-y-1">
-                      {(analytics.byUser ?? []).slice(0, 3).map((u) => (
-                        <div key={u.userId} className="flex justify-between text-xs gap-2">
-                          <span className="text-gray-700 truncate">{u.name}</span>
-                          <span className="font-semibold text-red-600">{u.count}</span>
-                        </div>
-                      ))}
-                      {(analytics.byUser?.length ?? 0) === 0 && <p className="text-xs text-gray-400">No records yet</p>}
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                    <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Top mistake types</p>
-                    <div className="space-y-1">
-                      {(analytics.byCategory ?? []).slice(0, 3).map((c) => (
-                        <div key={c.category} className="flex justify-between text-xs gap-2">
-                          <span className="text-gray-700 truncate">{formatMistakeCategory(c.category)}</span>
-                          <span className="font-semibold text-gray-900">{c.count}</span>
-                        </div>
-                      ))}
-                      {(analytics.byCategory?.length ?? 0) === 0 && <p className="text-xs text-gray-400">No records yet</p>}
-                    </div>
-                  </div>
+            {/* Period + filters */}
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
+              <div>
+                <h3 className="font-bold text-gray-900">Mistake Analytics</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  See who makes the most mistakes and which types happen most often
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
+                  {([
+                    ["7d", "7 days"],
+                    ["30d", "30 days"],
+                    ["90d", "90 days"],
+                    ["all", "All time"],
+                  ] as const).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setPeriod(id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                        period === id ? "bg-primary text-white" : "text-gray-600 hover:text-gray-900"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
-              )}
-            </div>
-            <div className="px-5 py-4 border-b border-gray-100">
-              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 max-w-md focus-within:border-primary transition-colors">
-                <Search size={16} className="text-gray-400" />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search errors…" className="bg-transparent text-gray-900 placeholder:text-gray-400 text-sm flex-1 focus:outline-none" />
+                {(focusUserId || categoryFilter) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFocusUserId(null);
+                      setCategoryFilter("");
+                    }}
+                    className="text-xs font-semibold text-primary hover:underline"
+                  >
+                    Clear filters
+                  </button>
+                )}
               </div>
             </div>
-            {errorsP.pageItems.map((e, i) => (
-              <motion.div
-                key={e.id}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.05 }}
-                whileHover={{ backgroundColor: "rgb(249,250,251)" }}
-                onClick={() => setSelectedError(e)}
-                className="px-5 py-4 border-b border-gray-50 last:border-0 cursor-pointer"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
-                    <AlertCircle size={16} />
+
+            {analytics && (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {[
+                  { label: "Total mistakes", value: analytics.total, hint: `${analytics.open} open` },
+                  { label: "Open", value: analytics.open, hint: "Needs attention" },
+                  { label: "High severity", value: analytics.highSeverity ?? 0, hint: "Priority review" },
+                  { label: "From rework", value: analytics.reworkCount ?? 0, hint: "Auto-logged" },
+                ].map((card) => (
+                  <div key={card.label} className="bg-white rounded-2xl border border-gray-100 p-4">
+                    <p className="text-[10px] uppercase font-bold text-gray-500 tracking-wide">{card.label}</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">{card.value}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{card.hint}</p>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <span className="font-semibold text-sm text-gray-900">{e.user?.name ?? "—"}</span>
-                      <span className="text-xs text-gray-400">·</span>
-                      <span className="text-xs text-primary font-medium">{e.jobNumber ?? "—"}</span>
-                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${SEVERITY[e.severity]}`}>{e.severity}</span>
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border bg-violet-50 text-violet-700 border-violet-200">{formatMistakeCategory(e.category)}</span>
-                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${e.status === "resolved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-700 border-gray-200"}`}>{e.status}</span>
+                ))}
+              </div>
+            )}
+
+            {analytics && (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <div className="bg-white rounded-2xl border border-gray-100 p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h4 className="font-bold text-gray-900 text-sm">Mistakes by user</h4>
+                      <p className="text-[11px] text-gray-500">Click a bar to open that user’s profile</p>
                     </div>
-                    <p className="text-sm font-semibold text-gray-900">{e.title}</p>
-                    <p className="text-sm text-gray-600 mt-0.5">{e.description}</p>
-                    <div className="text-[10px] text-gray-400 mt-1">{new Date(e.createdAt).toLocaleString()}</div>
+                    <UserRound size={16} className="text-gray-400" />
+                  </div>
+                  {(analytics.byUser ?? []).length === 0 ? (
+                    <p className="text-sm text-gray-400 py-10 text-center">No mistakes in this period</p>
+                  ) : (
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={(analytics.byUser ?? []).slice(0, 8).map((u) => ({
+                            ...u,
+                            shortName: u.name.split(" ")[0],
+                          }))}
+                          margin={{ top: 8, right: 8, left: -12, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="shortName" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                          <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                          <Tooltip
+                            formatter={(value: number) => [value, "Mistakes"]}
+                            labelFormatter={(_, payload) => payload?.[0]?.payload?.name ?? ""}
+                            contentStyle={{ borderRadius: 12, border: "1px solid #e5e7eb", fontSize: 12 }}
+                          />
+                          <Bar
+                            dataKey="count"
+                            radius={[8, 8, 0, 0]}
+                            cursor="pointer"
+                            onClick={(data: any) => {
+                              const id = data?.userId ?? data?.payload?.userId;
+                              if (id) setFocusUserId(id);
+                            }}
+                          >
+                            {(analytics.byUser ?? []).slice(0, 8).map((u) => (
+                              <Cell
+                                key={u.userId}
+                                fill={focusUserId === u.userId ? "#0B7EB9" : "#38bdf8"}
+                              />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                  <div className="mt-3 space-y-1.5">
+                    {(analytics.byUser ?? []).slice(0, 5).map((u) => (
+                      <button
+                        key={u.userId}
+                        type="button"
+                        onClick={() => setFocusUserId(u.userId)}
+                        className={`w-full flex items-center justify-between text-xs px-2.5 py-2 rounded-lg border transition-colors ${
+                          focusUserId === u.userId
+                            ? "border-primary bg-primary/5 text-primary"
+                            : "border-transparent hover:bg-gray-50 text-gray-700"
+                        }`}
+                      >
+                        <span className="font-semibold truncate">{u.name}</span>
+                        <span className="tabular-nums">
+                          {u.count} · {u.openCount} open
+                          {(u.highSeverity ?? 0) > 0 ? ` · ${u.highSeverity} high` : ""}
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 </div>
-              </motion.div>
-            ))}
-            <Pagination page={errorsP.page} totalPages={errorsP.totalPages} total={errorsP.total} pageSize={errorsP.pageSize} onChange={errorsP.setPage} label="reports" />
+
+                <div className="bg-white rounded-2xl border border-gray-100 p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h4 className="font-bold text-gray-900 text-sm">Mistakes by type</h4>
+                      <p className="text-[11px] text-gray-500">Click a type to filter the list below</p>
+                    </div>
+                    <CalendarDays size={16} className="text-gray-400" />
+                  </div>
+                  {(analytics.byCategory ?? []).length === 0 ? (
+                    <p className="text-sm text-gray-400 py-10 text-center">No categories in this period</p>
+                  ) : (
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          layout="vertical"
+                          data={(analytics.byCategory ?? []).slice(0, 8).map((c) => ({
+                            ...c,
+                            label: formatMistakeCategory(c.category),
+                          }))}
+                          margin={{ top: 8, right: 16, left: 8, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                          <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                          <YAxis
+                            type="category"
+                            dataKey="label"
+                            width={120}
+                            tick={{ fontSize: 10, fill: "#64748b" }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <Tooltip
+                            formatter={(value: number) => [value, "Count"]}
+                            contentStyle={{ borderRadius: 12, border: "1px solid #e5e7eb", fontSize: 12 }}
+                          />
+                          <Bar
+                            dataKey="count"
+                            radius={[0, 8, 8, 0]}
+                            cursor="pointer"
+                            onClick={(data: any) => {
+                              const cat = data?.category ?? data?.payload?.category;
+                              if (cat) setCategoryFilter(cat);
+                            }}
+                          >
+                            {(analytics.byCategory ?? []).slice(0, 8).map((c) => (
+                              <Cell
+                                key={c.category}
+                                fill={categoryFilter === c.category ? "#0B7EB9" : "#94a3b8"}
+                              />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* User profile drill-down */}
+            <AnimatePresence>
+              {analytics?.userProfile && focusUserId && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  className="bg-white rounded-2xl border border-primary/30 p-5 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div>
+                      <p className="text-[10px] uppercase font-bold text-primary tracking-wide">User mistake profile</p>
+                      <h4 className="text-lg font-bold text-gray-900">{analytics.userProfile.name}</h4>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {analytics.userProfile.total} mistakes in selected period · {analytics.userProfile.open} open ·{" "}
+                        {analytics.userProfile.highSeverity} high severity
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFocusUserId(null)}
+                      className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[10px] uppercase font-bold text-gray-500 mb-2">Top categories for this user</p>
+                      <div className="space-y-2">
+                        {analytics.userProfile.byCategory.length === 0 && (
+                          <p className="text-xs text-gray-400">No category data</p>
+                        )}
+                        {analytics.userProfile.byCategory.slice(0, 6).map((c) => {
+                          const max = analytics.userProfile!.byCategory[0]?.count || 1;
+                          return (
+                            <button
+                              key={c.category}
+                              type="button"
+                              onClick={() => setCategoryFilter(c.category)}
+                              className="w-full text-left"
+                            >
+                              <div className="flex justify-between text-xs mb-1">
+                                <span className="text-gray-700 font-medium">{formatMistakeCategory(c.category)}</span>
+                                <span className="font-bold text-gray-900">{c.count}</span>
+                              </div>
+                              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-primary rounded-full"
+                                  style={{ width: `${Math.max(8, (c.count / max) * 100)}%` }}
+                                />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase font-bold text-gray-500 mb-2">By severity</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(["high", "medium", "low"] as const).map((sev) => {
+                          const count =
+                            analytics.userProfile!.bySeverity.find((s) => s.severity === sev)?.count ?? 0;
+                          return (
+                            <div key={sev} className={`rounded-xl border p-3 ${SEVERITY[sev]}`}>
+                              <p className="text-[10px] uppercase font-bold">{sev}</p>
+                              <p className="text-xl font-bold mt-1">{count}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-3">
+                        Coaching tip: focus training on the top category above. Escalate if high-severity mistakes repeat.
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100">
+                <h3 className="font-bold text-gray-900">Mistake Records</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {focusUserId
+                    ? `Filtered to selected user${categoryFilter ? ` · ${formatMistakeCategory(categoryFilter)}` : ""}`
+                    : categoryFilter
+                      ? `Filtered to ${formatMistakeCategory(categoryFilter)}`
+                      : `${errors.length} records in this period`}
+                </p>
+              </div>
+              <div className="px-5 py-4 border-b border-gray-100">
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 max-w-md focus-within:border-primary transition-colors">
+                  <Search size={16} className="text-gray-400" />
+                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search errors…" className="bg-transparent text-gray-900 placeholder:text-gray-400 text-sm flex-1 focus:outline-none" />
+                </div>
+              </div>
+              {errorsP.pageItems.map((e, i) => (
+                <motion.div
+                  key={e.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  whileHover={{ backgroundColor: "rgb(249,250,251)" }}
+                  onClick={() => setSelectedError(e)}
+                  className="px-5 py-4 border-b border-gray-50 last:border-0 cursor-pointer"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                      <AlertCircle size={16} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <button
+                          type="button"
+                          className="font-semibold text-sm text-gray-900 hover:text-primary"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            setFocusUserId(e.userId);
+                          }}
+                        >
+                          {e.user?.name ?? "—"}
+                        </button>
+                        <span className="text-xs text-gray-400">·</span>
+                        <span className="text-xs text-primary font-medium">{e.jobNumber ?? "—"}</span>
+                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${SEVERITY[e.severity]}`}>{e.severity}</span>
+                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border bg-violet-50 text-violet-700 border-violet-200">{formatMistakeCategory(e.category)}</span>
+                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${e.status === "resolved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-700 border-gray-200"}`}>{e.status}</span>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-900">{e.title}</p>
+                      <p className="text-sm text-gray-600 mt-0.5">{e.description}</p>
+                      <div className="text-[10px] text-gray-400 mt-1">{new Date(e.createdAt).toLocaleString()}</div>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+              {errorsP.pageItems.length === 0 && (
+                <div className="text-center py-12 text-sm text-gray-400">No mistake records match this filter.</div>
+              )}
+              <Pagination page={errorsP.page} totalPages={errorsP.totalPages} total={errorsP.total} pageSize={errorsP.pageSize} onChange={errorsP.setPage} label="reports" />
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
