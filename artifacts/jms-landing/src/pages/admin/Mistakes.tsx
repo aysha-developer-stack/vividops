@@ -39,6 +39,11 @@ type MistakeAnalytics = {
   byCategory: Array<{ category: string; count: number }>;
 };
 
+const FORM_SELECT =
+  "w-full mt-1 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm !text-gray-900 bg-white focus:outline-none focus:border-primary";
+const FORM_INPUT =
+  "w-full mt-1 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm !text-gray-900 !placeholder:text-gray-400 bg-white focus:outline-none focus:border-primary";
+
 const SEV_STYLE: Record<string, string> = {
   high: "bg-red-50 text-red-700 border-red-200",
   medium: "bg-amber-50 text-amber-700 border-amber-200",
@@ -261,7 +266,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-            className="text-xs border border-gray-200 rounded-lg px-3 py-2 text-gray-700"
+            className={`text-xs rounded-lg px-3 py-2 ${FORM_SELECT} !mt-0 w-auto min-w-[120px]`}
           >
             <option value="all">All status</option>
             <option value="open">Open</option>
@@ -430,9 +435,9 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                   <select
                     value={draft.userId}
                     onChange={(e) => setDraft((d) => ({ ...d, userId: e.target.value }))}
-                    className="w-full mt-1 border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                    className={FORM_SELECT}
                   >
-                    <option value="">Select user…</option>
+                    <option value="" className="text-gray-500">Select user…</option>
                     {workerOptions.map((u) => (
                       <option key={u.id} value={u.id}>{u.name}</option>
                     ))}
@@ -443,9 +448,9 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                   <select
                     value={draft.jobId}
                     onChange={(e) => setDraft((d) => ({ ...d, jobId: e.target.value }))}
-                    className="w-full mt-1 border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                    className={FORM_SELECT}
                   >
-                    <option value="">No job link</option>
+                    <option value="" className="text-gray-500">No job link</option>
                     {jobOptions.map((j) => (
                       <option key={j.id} value={j.id}>{j.number} — {j.title}</option>
                     ))}
@@ -456,7 +461,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                   <select
                     value={draft.category}
                     onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value as MistakeCategory }))}
-                    className="w-full mt-1 border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                    className={FORM_SELECT}
                   >
                     {LOG_MISTAKE_CATEGORIES.map((c) => (
                       <option key={c} value={c}>{formatMistakeCategory(c)}</option>
@@ -468,7 +473,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                   <select
                     value={draft.severity}
                     onChange={(e) => setDraft((d) => ({ ...d, severity: e.target.value as typeof draft.severity }))}
-                    className="w-full mt-1 border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                    className={FORM_SELECT}
                   >
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -480,7 +485,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                   <input
                     value={draft.title}
                     onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
-                    className="w-full mt-1 border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                    className={FORM_INPUT}
                     placeholder="Brief summary"
                   />
                 </div>
@@ -490,7 +495,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                     value={draft.description}
                     onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
                     rows={3}
-                    className="w-full mt-1 border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none"
+                    className={`${FORM_INPUT} resize-none`}
                     placeholder="What happened and why it matters"
                   />
                 </div>
