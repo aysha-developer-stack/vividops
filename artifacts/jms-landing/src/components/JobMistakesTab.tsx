@@ -52,7 +52,7 @@ export default function JobMistakesTab({
   defaultUserId,
   logRequestToken = 0,
 }: Props) {
-  const canLog = role === "super-admin" || role === "admin" || role === "supervisor";
+  const canLog = role === "super-admin" || role === "admin";
   const canResolve = role === "super-admin" || role === "admin";
   const isWorker = role === "user";
 

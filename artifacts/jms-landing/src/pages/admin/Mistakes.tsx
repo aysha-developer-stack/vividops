@@ -61,7 +61,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
   const { data: apiJobs } = useListJobs();
   const { data: apiUsers } = useListUsers();
   const isWorker = role === "user";
-  const canLog = role === "super-admin" || role === "admin" || role === "supervisor";
+  const canLog = role === "super-admin" || role === "admin";
   const canResolve = role === "super-admin" || role === "admin";
 
   const [period, setPeriod] = useState("30d");
@@ -199,7 +199,9 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
           <p className="text-sm text-gray-500">
             {isWorker
               ? "Mistake records logged by your supervisor or admin. Separate from job rework."
-              : "Track user mistakes for training and accountability. Not linked to rework workflow."}
+              : canLog
+                ? "Track user mistakes for training and accountability. Not linked to rework workflow."
+                : "View mistake records for your team. Only admin can log new mistakes."}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">

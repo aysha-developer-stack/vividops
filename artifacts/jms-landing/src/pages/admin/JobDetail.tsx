@@ -1511,6 +1511,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 >
                   <RefreshCw size={12} /> Mark for Rework
                 </motion.button>
+                {(role === "admin" || role === "super-admin") && (
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
@@ -1522,6 +1523,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 >
                   <AlertTriangle size={12} /> Log Mistake
                 </motion.button>
+                )}
                 {role === "supervisor" && (job?.status === "awaiting_supervisor" || job?.status === "in_progress") && (
                   <motion.button
                     whileHover={{ scale: 1.05 }}

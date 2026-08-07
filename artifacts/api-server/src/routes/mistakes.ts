@@ -63,13 +63,16 @@ function pushDateConditions(conditions: unknown[], from: Date | null, to: Date |
   if (to) conditions.push(lte(errorReports.createdAt, to));
 }
 
-function isManager(actor: UserRow): boolean {
-  return actor.role === "super-admin" || actor.role === "admin" || actor.role === "supervisor";
+function isAdmin(actor: UserRow): boolean {
+  return actor.role === "super-admin" || actor.role === "admin";
+}
+
+function canLogMistakes(actor: UserRow): boolean {
+  return isAdmin(actor);
 }
 
 function canManageJob(actor: UserRow, job: JobRow): boolean {
-  if (actor.role === "super-admin" || actor.role === "admin") return true;
-  return actor.role === "supervisor" && job.supervisorId === actor.id;
+  return isAdmin(actor);
 }
 
 export type PublicMistake = {
@@ -361,8 +364,8 @@ router.get("/mistakes", requireAuth, async (req, res) => {
 
 router.post("/mistakes", requireAuth, async (req, res) => {
   const actor = req.session!.user;
-  if (!isManager(actor)) {
-    res.status(403).json({ error: "Only supervisors and admins can log mistakes" });
+  if (!canLogMistakes(actor)) {
+    res.status(403).json({ error: "Only admin or super-admin can log mistakes" });
     return;
   }
 
@@ -412,12 +415,6 @@ router.post("/mistakes", requireAuth, async (req, res) => {
     for (const member of members) assignedIds.add(member.userId);
     if (!assignedIds.has(body.userId)) {
       res.status(400).json({ error: "userId must belong to the selected job" });
-      return;
-    }
-  } else if (actor.role === "supervisor") {
-    const { teamUserIds } = await supervisorScope(actor.id);
-    if (!teamUserIds.includes(body.userId)) {
-      res.status(403).json({ error: "User is not on your supervised jobs" });
       return;
     }
   }
