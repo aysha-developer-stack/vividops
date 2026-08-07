@@ -5,7 +5,17 @@ import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 import { postTimerNotification } from "@/lib/timerNotifications";
-import { useGetTimeLogs, useCreateTimeLog, useDeleteTimeLog, useListJobs, type Job } from "@workspace/api-client-react";
+import {
+  useGetTimeLogs,
+  useCreateTimeLog,
+  useDeleteTimeLog,
+  useListJobs,
+  getGetJobQueryKey,
+  getListJobsQueryKey,
+  type Job,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { startJobWork } from "@/lib/startJobWork";
 
 interface Entry {
   id: string;
@@ -123,6 +133,8 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     }
   };
 
+  const qc = useQueryClient();
+
   const startTimer = async () => {
     const t = task.trim();
     if (!t) {
@@ -141,6 +153,13 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     });
     setRunning(true);
     setSeconds(elapsed);
+    if (jobId) {
+      const ok = await startJobWork(jobId);
+      if (ok) {
+        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(jobId) });
+        await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      }
+    }
   };
 
   const pauseTimer = () => {

@@ -1747,6 +1747,43 @@ router.get("/jobs/:id", requireAuth, async (req, res) => {
   return res.json(await toPublicWithAssignees(full));
 });
 
+router.post("/jobs/:id/start-work", requireAuth, async (req, res) => {
+  const id = req.params.id as string;
+  const actor = req.session!.user;
+  const full = await loadJob(id);
+  if (!full) return res.status(404).json({ error: "Job not found" });
+  if (!(await canViewJob(actor, full.job))) {
+    return res.status(403).json({ error: "You cannot work on this job" });
+  }
+
+  const previousStatus = full.job.status;
+  if (previousStatus === "completed" || previousStatus === "cancelled") {
+    return res.status(400).json({ error: "This job is already finished" });
+  }
+  if (previousStatus === "on_hold") {
+    return res.status(400).json({ error: "Job is on hold — contact your supervisor to resume" });
+  }
+  if (previousStatus !== "pending") {
+    return res.json(await toPublicWithAssignees(full));
+  }
+
+  const nextStatus: ReviewableStatus = "in_progress";
+  const patch = {
+    ...jobStatusPatchFields({
+      nextStatus,
+      previousStatus,
+      currentProgress: full.job.progress,
+    }),
+    updatedAt: new Date(),
+  };
+  await db.update(jobs).set(patch).where(eq(jobs.id, id));
+  await notifyStatusTransition({ actor, job: full.job, previousStatus, nextStatus });
+
+  const after = await loadJob(id);
+  if (!after) return res.status(404).json({ error: "Job not found" });
+  return res.json(await toPublicWithAssignees(after));
+});
+
 router.patch("/jobs/:id", requireAuth, async (req, res) => {
   const id = req.params.id as string;
   const parsed = UpdateJobBody.safeParse(req.body);

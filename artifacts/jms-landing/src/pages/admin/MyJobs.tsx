@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
-import { useListJobs, type Job as ApiJob } from "@workspace/api-client-react";
+import { useListJobs, getListJobsQueryKey, type Job as ApiJob } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import {
   statusToUi, priorityToUi, formatShortDate, daysUntil,
@@ -83,6 +83,7 @@ export default function MyJobs() {
   const { user } = useAuth();
   const jobsQuery = useListJobs({
     query: {
+      queryKey: getListJobsQueryKey(),
       // Always refetch for the signed-in user; never reuse another role's list.
       staleTime: 0,
     },

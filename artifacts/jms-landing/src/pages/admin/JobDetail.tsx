@@ -33,6 +33,7 @@ import { statusToUi, priorityToUi, formatShortDate } from "@/lib/jobMappers";
 import { buildTimeLogCycleBreakdown, reworkCycleKey, reworkCycleLabel } from "@/lib/timeLogBreakdown";
 import { parseJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
 import { postTimerNotification } from "@/lib/timerNotifications";
+import { startJobWork } from "@/lib/startJobWork";
 import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } from "@/lib/downloadFile";
 import { MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategories";
 import { useQueryClient } from "@tanstack/react-query";
@@ -690,6 +691,13 @@ export default function JobDetail({ role = "user", id }: Props) {
     writeTimerState(job.id, { running: true, startedAt: Date.now(), accumulated: elapsed, task: nextTask });
     setRunning(true);
     setSeconds(elapsed);
+    if (job.status === "pending") {
+      const ok = await startJobWork(job.id);
+      if (ok) {
+        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+        await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      }
+    }
   };
 
   useEffect(() => {
@@ -710,6 +718,23 @@ export default function JobDetail({ role = "user", id }: Props) {
     setSeconds(elapsed);
     setRunning(!!state?.running);
   }, [role, job?.id]);
+
+  useEffect(() => {
+    if (!job?.id || job.status !== "pending") return;
+    const state = readTimerState(job.id);
+    if (!state?.running) return;
+    let cancelled = false;
+    void (async () => {
+      const ok = await startJobWork(job.id);
+      if (!cancelled && ok) {
+        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+        await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [job?.id, job?.status, qc]);
 
   useEffect(() => {
     if (!job?.id) return;
