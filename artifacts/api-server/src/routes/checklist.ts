@@ -15,7 +15,7 @@ import {
 import { requireAuth } from "../middlewares/requireAuth";
 import { jobHasCompletedDeliverables } from "../lib/job-review";
 import { logger } from "../lib/logger";
-import { createNotification } from "../lib/notifications";
+import { createNotification, notifyJobManagers, previewText } from "../lib/notifications";
 import { ensureJobWriteSchema } from "../lib/schema-init";
 import { createRework, markOpenReworksAwaitingReview } from "../lib/reworks";
 import { jobStatusPatchFields, type ReviewableStatus } from "../lib/job-review";
@@ -310,15 +310,21 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         type: "rework"
       });
 
-      if (job.supervisorId && job.supervisorId !== actor.id) {
-        await createNotification({
-          userId: job.supervisorId,
-          jobId,
-          title: `Rework Flagged: ${job.title}`,
-          description: `${actor.name} requested rework on checklist item #${itemId} for ${job.title}.`,
-          type: "rework",
-        });
-      }
+      const reworkDetail = [
+        reworkReason?.trim() || `Checklist item "${checklistItemLabel}" sent for rework.`,
+        comments?.trim() ? `Comments: ${comments.trim()}` : null,
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      await notifyJobManagers({
+        jobId,
+        supervisorId: job.supervisorId,
+        actorId: actor.id,
+        title: `Rework on ${job.title}`,
+        description: `${actor.name} requested rework on ${job.title}. ${previewText(reworkDetail, 200)}`,
+        type: "rework",
+      });
     }
 
     if (actor.role === "user" && status === "completed") {
@@ -361,20 +367,19 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
           .where(eq(jobs.id, jobId));
 
         if (nextStatus === "awaiting_supervisor" && previousStatus !== "awaiting_supervisor") {
-          if (job.supervisorId) {
-            await createNotification({
-              userId: job.supervisorId,
-              jobId: jobId,
-              title: `Ready for Supervisor Review: ${job.title}`,
-              description: `Checklist for job ${job.title} has been completed by ${actor.name}. Please review.`,
-              type: "checklist",
-            });
-          }
           await createNotification({
             userId: targetUserId,
             jobId,
             title: `Submitted for Review: ${job.title}`,
             description: `Your checklist for ${job.title} is complete and awaiting supervisor review.`,
+            type: "checklist",
+          });
+          await notifyJobManagers({
+            jobId,
+            supervisorId: job.supervisorId,
+            actorId: actor.id,
+            title: `Ready for Supervisor Review: ${job.title}`,
+            description: `Checklist for job ${job.title} has been completed by ${actor.name}. Please review.`,
             type: "checklist",
           });
         }

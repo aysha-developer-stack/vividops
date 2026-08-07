@@ -12,7 +12,7 @@ import {
   type UserRow,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
-import { createNotification } from "../lib/notifications";
+import { createNotification, notifyJobManagers, previewText } from "../lib/notifications";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -173,12 +173,21 @@ router.post("/jobs/:jobId/notes", requireAuth, async (req, res) => {
 
     const author = { id: actor.id, name: actor.name, role: actor.role };
 
-    if (actor.role === "user" && jobRow.supervisorId && jobRow.supervisorId !== actor.id) {
+    await notifyJobManagers({
+      jobId,
+      supervisorId: jobRow.supervisorId,
+      actorId: actor.id,
+      title: `New note on ${jobRow.title}`,
+      description: `${actor.name} added a ${noteType} note: ${previewText(text)}`,
+      type: "updated",
+    });
+
+    if (jobRow.assigneeId && jobRow.assigneeId !== actor.id && noteType !== "internal") {
       await createNotification({
-        userId: jobRow.supervisorId,
+        userId: jobRow.assigneeId,
         jobId,
         title: `New note on ${jobRow.title}`,
-        description: `${actor.name} added a note: ${text.slice(0, 120)}${text.length > 120 ? "…" : ""}`,
+        description: `${actor.name} added a note: ${previewText(text)}`,
         type: "updated",
       });
     }
@@ -263,6 +272,17 @@ router.patch("/jobs/:jobId/notes/:noteId", requireAuth, async (req, res) => {
       .where(eq(users.id, updated.userId))
       .limit(1);
 
+    if (updates.text) {
+      await notifyJobManagers({
+        jobId,
+        supervisorId: jobRow.supervisorId,
+        actorId: actor.id,
+        title: `Note updated on ${jobRow.title}`,
+        description: `${actor.name} edited a note: ${previewText(updates.text)}`,
+        type: "updated",
+      });
+    }
+
     res.json({ ...updated, author: author ?? null });
     return;
   } catch (err) {
@@ -303,6 +323,16 @@ router.delete("/jobs/:jobId/notes/:noteId", requireAuth, async (req, res) => {
     }
 
     await db.delete(jobNotes).where(eq(jobNotes.id, noteId));
+
+    await notifyJobManagers({
+      jobId,
+      supervisorId: jobRow.supervisorId,
+      actorId: actor.id,
+      title: `Note removed on ${jobRow.title}`,
+      description: `${actor.name} deleted a note: ${previewText(existing.text)}`,
+      type: "updated",
+    });
+
     res.json({ ok: true });
     return;
   } catch (err) {

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
   db,
@@ -14,7 +14,7 @@ import {
   type UserRow,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
-import { createNotification } from "../lib/notifications";
+import { createNotification, notifyJobManagers, previewText } from "../lib/notifications";
 
 const router: IRouter = Router();
 
@@ -58,7 +58,7 @@ function resolveDateRange(
   return { from, to: null, period: period === "7d" || period === "90d" ? period : "30d" };
 }
 
-function pushDateConditions(conditions: unknown[], from: Date | null, to: Date | null) {
+function pushDateConditions(conditions: SQL[], from: Date | null, to: Date | null) {
   if (from) conditions.push(gte(errorReports.createdAt, from));
   if (to) conditions.push(lte(errorReports.createdAt, to));
 }
@@ -145,14 +145,15 @@ async function supervisorScope(supervisorId: string): Promise<{ jobIds: string[]
   return { jobIds, teamUserIds: [...teamUserIds] };
 }
 
-function supervisorVisibility(jobIds: string[], teamUserIds: string[]) {
+function supervisorVisibility(jobIds: string[], teamUserIds: string[]): SQL {
   if (jobIds.length === 0 && teamUserIds.length === 0) return sql`false`;
-  const parts = [];
+  const parts: SQL[] = [];
   if (jobIds.length > 0) parts.push(inArray(errorReports.jobId, jobIds));
   if (teamUserIds.length > 0) {
-    parts.push(and(isNull(errorReports.jobId), inArray(errorReports.userId, teamUserIds)));
+    parts.push(and(isNull(errorReports.jobId), inArray(errorReports.userId, teamUserIds))!);
   }
-  return parts.length === 1 ? parts[0]! : or(...parts);
+  if (parts.length === 1) return parts[0]!;
+  return or(...parts)!;
 }
 
 router.get("/mistakes/categories", requireAuth, (_req, res) => {
@@ -166,7 +167,7 @@ router.get("/mistakes/analytics", requireAuth, async (req, res) => {
   const { from, to, period } = resolveDateRange(query);
   const focusUserId = typeof query.userId === "string" && query.userId ? query.userId : null;
 
-  const conditions: unknown[] = [manualMistakeOnly];
+  const conditions: SQL[] = [manualMistakeOnly!];
   pushDateConditions(conditions, from, to);
 
   if (actor.role === "user") {
@@ -333,7 +334,7 @@ router.get("/mistakes", requireAuth, async (req, res) => {
     .leftJoin(creatorAlias, eq(creatorAlias.id, errorReports.createdById))
     .orderBy(desc(errorReports.createdAt));
 
-  const filters: unknown[] = [manualMistakeOnly];
+  const filters: SQL[] = [manualMistakeOnly!];
   if (userIdFilter) filters.push(eq(errorReports.userId, userIdFilter));
   if (jobIdFilter) filters.push(eq(errorReports.jobId, jobIdFilter));
   if (categoryFilter && isMistakeCategory(categoryFilter) && categoryFilter !== "rework") {
@@ -435,6 +436,12 @@ router.post("/mistakes", requireAuth, async (req, res) => {
     })
     .returning();
 
+  const userRow = await db
+    .select({ id: users.id, name: users.name, role: users.role })
+    .from(users)
+    .where(eq(users.id, created.userId))
+    .then((r) => r[0] ?? null);
+
   await createNotification({
     userId: created.userId,
     jobId: created.jobId ?? undefined,
@@ -443,11 +450,16 @@ router.post("/mistakes", requireAuth, async (req, res) => {
     type: "error",
   });
 
-  const userRow = await db
-    .select({ id: users.id, name: users.name, role: users.role })
-    .from(users)
-    .where(eq(users.id, created.userId))
-    .then((r) => r[0] ?? null);
+  if (created.jobId && jobRow) {
+    await notifyJobManagers({
+      jobId: created.jobId,
+      supervisorId: jobRow.supervisorId,
+      actorId: actor.id,
+      title: `Mistake logged: ${created.title}`,
+      description: `${actor.name} logged a mistake for ${userRow?.name ?? "a user"} on ${jobRow.title}: ${previewText(created.description)}`,
+      type: "error",
+    });
+  }
 
   res.status(201).json(
     toPublic({

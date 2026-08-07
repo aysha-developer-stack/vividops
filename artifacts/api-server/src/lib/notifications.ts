@@ -1,7 +1,45 @@
-import { db, userSettings, eq, and, gte, notifications, users } from "@workspace/db";
+import { db, userSettings, eq, and, gte, notifications, users, inArray } from "@workspace/db";
 import { logger } from "./logger";
+import { pushNotificationRealtime } from "./socket";
 
 export type NotificationType = "assigned" | "updated" | "overdue" | "timer" | "rework" | "job_message" | "checklist" | "file" | "training" | "progress" | "error" | "completed";
+
+export function previewText(text: string | null | undefined, max = 120): string {
+  const value = (text ?? "").trim();
+  if (!value) return "(cleared)";
+  return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+/** Notify all admins, super-admins, and the job supervisor (not the actor). */
+export async function notifyJobManagers(opts: {
+  jobId: string;
+  supervisorId?: string | null;
+  actorId: string;
+  title: string;
+  description: string;
+  type: NotificationType;
+}) {
+  const recipientIds = new Set<string>();
+  const admins = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(inArray(users.role, ["admin", "super-admin"]));
+  for (const admin of admins) recipientIds.add(admin.id);
+  if (opts.supervisorId && opts.supervisorId !== opts.actorId) {
+    recipientIds.add(opts.supervisorId);
+  }
+  recipientIds.delete(opts.actorId);
+
+  for (const userId of recipientIds) {
+    await createNotification({
+      userId,
+      jobId: opts.jobId,
+      title: opts.title,
+      description: opts.description,
+      type: opts.type,
+    });
+  }
+}
 
 export interface CreateNotificationOptions {
   userId: string;
@@ -62,6 +100,17 @@ export async function createNotification(options: CreateNotificationOptions) {
     if (channel === "email" || channel === "cliq") {
       await handleExternalNotification(options);
     }
+
+    pushNotificationRealtime({
+      id: result.id,
+      userId: result.userId,
+      jobId: result.jobId,
+      title: result.title,
+      description: result.description,
+      type: result.type,
+      isRead: result.isRead,
+      createdAt: result.createdAt.toISOString(),
+    });
 
     return result;
   } catch (err) {

@@ -10,8 +10,7 @@ import {
   type JobRow,
   type UserRow,
 } from "@workspace/db";
-import { createNotification } from "./notifications";
-import type { NotificationType } from "./notifications";
+import { createNotification, notifyJobManagers, type NotificationType } from "./notifications";
 import {
   createRework,
   markOpenReworksAwaitingReview,
@@ -306,20 +305,12 @@ export async function notifyStatusTransition(opts: {
   previousStatus: string;
   nextStatus: ReviewableStatus;
   reason?: string | null;
+  comments?: string | null;
 }) {
-  const { actor, job, previousStatus, nextStatus, reason } = opts;
+  const { actor, job, previousStatus, nextStatus, reason, comments } = opts;
   if (previousStatus === nextStatus) return;
 
   if (nextStatus === "awaiting_supervisor") {
-    if (job.supervisorId) {
-      await createNotification({
-        userId: job.supervisorId,
-        jobId: job.id,
-        title: `Ready for Supervisor Review: ${job.title}`,
-        description: `${actor.name} finished work on ${job.title}. Please review and approve or send for rework.`,
-        type: "checklist",
-      });
-    }
     if (job.assigneeId && job.assigneeId !== actor.id) {
       await createNotification({
         userId: job.assigneeId,
@@ -329,18 +320,27 @@ export async function notifyStatusTransition(opts: {
         type: "checklist",
       });
     }
+    await notifyJobManagers({
+      jobId: job.id,
+      supervisorId: job.supervisorId,
+      actorId: actor.id,
+      title: `Ready for Supervisor Review: ${job.title}`,
+      description: `${actor.name} finished work on ${job.title}. Please review and approve or send for rework.`,
+      type: "checklist",
+    });
   }
 
   if (nextStatus === "awaiting_admin") {
     const approvedBySupervisor = actor.role === "supervisor";
-    await notifyJobAdmins({
+    await notifyJobManagers({
       jobId: job.id,
+      supervisorId: job.supervisorId,
+      actorId: actor.id,
       title: `Ready for Admin Review: ${job.title}`,
       description: approvedBySupervisor
         ? `${actor.name} approved ${job.title}. Please complete the job or send for rework.`
         : `${actor.name} forwarded ${job.title} for admin completion.`,
       type: "updated",
-      excludeUserId: actor.id,
     });
     if (job.assigneeId) {
       await createNotification({
@@ -371,39 +371,36 @@ export async function notifyStatusTransition(opts: {
         type: "completed",
       });
     }
-    if (job.supervisorId && job.supervisorId !== actor.id) {
-      await createNotification({
-        userId: job.supervisorId,
-        jobId: job.id,
-        title: coveredSupervisor ? `Cover Check Completed: ${job.title}` : `Job Completed: ${job.title}`,
-        description: coveredSupervisor
-          ? `${actor.name} checked and completed ${job.title} while covering supervisor review.`
-          : `${job.title} was completed by ${actor.name}.`,
-        type: "completed",
-      });
-    }
+    await notifyJobManagers({
+      jobId: job.id,
+      supervisorId: job.supervisorId,
+      actorId: actor.id,
+      title: coveredSupervisor ? `Cover Check Completed: ${job.title}` : `Job Completed: ${job.title}`,
+      description: completeMsg,
+      type: "completed",
+    });
   }
 
   if (nextStatus === "rework") {
     const reasonText = reason?.trim() ? ` Reason: ${reason.trim()}` : "";
+    const commentText = comments?.trim() ? ` Comments: ${comments.trim()}` : "";
     if (job.assigneeId) {
       await createNotification({
         userId: job.assigneeId,
         jobId: job.id,
         title: `Rework Required: ${job.title}`,
-        description: `${actor.name} sent ${job.title} back for rework.${reasonText}`,
+        description: `${actor.name} sent ${job.title} back for rework.${reasonText}${commentText}`,
         type: "rework",
       });
     }
-    if (job.supervisorId && job.supervisorId !== actor.id && actor.role !== "supervisor") {
-      await createNotification({
-        userId: job.supervisorId,
-        jobId: job.id,
-        title: `Rework Flagged: ${job.title}`,
-        description: `${actor.name} sent ${job.title} back for rework.${reasonText}`,
-        type: "rework",
-      });
-    }
+    await notifyJobManagers({
+      jobId: job.id,
+      supervisorId: job.supervisorId,
+      actorId: actor.id,
+      title: `Rework on ${job.title}`,
+      description: `${actor.name} marked ${job.title} for rework.${reasonText}${commentText}`,
+      type: "rework",
+    });
   }
 
   if (nextStatus === "on_hold") {
@@ -416,6 +413,14 @@ export async function notifyStatusTransition(opts: {
         type: "updated",
       });
     }
+    await notifyJobManagers({
+      jobId: job.id,
+      supervisorId: job.supervisorId,
+      actorId: actor.id,
+      title: `Job On Hold: ${job.title}`,
+      description: `${actor.name} put ${job.title} on hold.`,
+      type: "updated",
+    });
   }
 
   if (previousStatus === "on_hold" && nextStatus !== "on_hold") {
@@ -428,6 +433,14 @@ export async function notifyStatusTransition(opts: {
         type: "updated",
       });
     }
+    await notifyJobManagers({
+      jobId: job.id,
+      supervisorId: job.supervisorId,
+      actorId: actor.id,
+      title: `Job Resumed: ${job.title}`,
+      description: `${actor.name} resumed work on ${job.title}.`,
+      type: "updated",
+    });
   }
 }
 
@@ -565,6 +578,7 @@ export async function applyJobReview(opts: {
     previousStatus,
     nextStatus,
     reason,
+    comments,
   });
 
   return { ok: true, nextStatus };

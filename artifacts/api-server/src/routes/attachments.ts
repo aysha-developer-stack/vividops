@@ -8,7 +8,7 @@ import { requireAuth } from "../middlewares/requireAuth";
 import { io } from "../lib/socket";
 import { addToQueue } from "../lib/queue";
 import { logger } from "../lib/logger";
-import { createNotification } from "../lib/notifications";
+import { createNotification, notifyJobManagers, previewText } from "../lib/notifications";
 
 const router: IRouter = Router();
 
@@ -253,55 +253,39 @@ router.post(
       });
 
       // Persistent Notification
-      if (fileCategory === "completed") {
-        // Completion file upload notification
-        if (jobRow.supervisorId && jobRow.supervisorId !== actor.id) {
-          await createNotification({
-            userId: jobRow.supervisorId,
-            jobId: jobId,
-            title: `Completion File Uploaded: ${jobRow.title}`,
-            description: `${actor.name} has uploaded a completion file for ${jobRow.title}: ${file.originalname}`,
-            type: "file"
-          });
-        }
-        // Notify Admins
-        const admins = await db.select({ id: users.id }).from(users).where(inArray(users.role, ["admin", "super-admin"]));
-        for (const admin of admins) {
-          await createNotification({
-            userId: admin.id,
-            jobId: jobId,
-            title: `Completion File Uploaded: ${jobRow.title}`,
-            description: `${actor.name} uploaded a file for ${jobRow.title}.`,
-            type: "file"
-          });
-        }
-      } else {
-        // Job file upload notification
+      const fileTitle =
+        fileCategory === "completed"
+          ? `Completion File Uploaded: ${jobRow.title}`
+          : `New Job File: ${jobRow.title}`;
+      const fileDesc = `${actor.name} uploaded a file for ${jobRow.title}: ${file.originalname}`;
+
+      await notifyJobManagers({
+        jobId,
+        supervisorId: jobRow.supervisorId,
+        actorId: actor.id,
+        title: fileTitle,
+        description: fileDesc,
+        type: "file",
+      });
+
+      if (fileCategory !== "completed") {
         const recipients = new Set<string>();
         if (jobRow.assigneeId) recipients.add(jobRow.assigneeId);
-        
-        // Add additional members
-        const members = await db.select({ userId: jobMembers.userId }).from(jobMembers).where(eq(jobMembers.jobId, jobRow.id));
+        const members = await db
+          .select({ userId: jobMembers.userId })
+          .from(jobMembers)
+          .where(eq(jobMembers.jobId, jobRow.id));
         for (const m of members) recipients.add(m.userId);
+        recipients.delete(actor.id);
+        if (jobRow.supervisorId) recipients.delete(jobRow.supervisorId);
 
         for (const rid of recipients) {
-          if (rid === actor.id) continue;
           await createNotification({
             userId: rid,
-            jobId: jobId,
-            title: `New Job File: ${jobRow.title}`,
-            description: `${actor.name} uploaded a file for ${jobRow.title}: ${file.originalname}`,
-            type: "file"
-          });
-        }
-
-        if (jobRow.supervisorId && actor.id !== jobRow.supervisorId) {
-          await createNotification({
-            userId: jobRow.supervisorId,
-            jobId: jobId,
-            title: `Job File Uploaded: ${jobRow.title}`,
-            description: `${actor.name} uploaded a file for ${jobRow.title}: ${file.originalname}`,
-            type: "file"
+            jobId,
+            title: fileTitle,
+            description: fileDesc,
+            type: "file",
           });
         }
       }
@@ -370,6 +354,15 @@ router.delete("/jobs/:jobId/attachments/:attachmentId", requireAuth, async (req,
     }
 
     await db.delete(jobAttachments).where(eq(jobAttachments.id, attachmentId));
+
+    await notifyJobManagers({
+      jobId,
+      supervisorId: jobRow.supervisorId,
+      actorId: actor.id,
+      title: `File Removed: ${jobRow.title}`,
+      description: `${actor.name} deleted a file from ${jobRow.title}: ${attachment.fileName}`,
+      type: "file",
+    });
 
     io.to(`job:${jobId}`).emit("attachment:removed", { jobId, attachmentId });
 

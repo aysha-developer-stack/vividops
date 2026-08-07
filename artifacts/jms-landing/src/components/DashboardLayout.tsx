@@ -7,6 +7,7 @@ import {
 import logoImg from "@assets/vv_1778503190047.png";
 import { useAuth, useLogout, purgeAuthState } from "@/lib/auth";
 import { getNotifStyle, playNotificationTone, sortNotificationsByPriority } from "@/lib/notifications";
+import { connectNotificationSocket, disconnectNotificationSocket } from "@/lib/notificationSocket";
 import { ROLES, Role } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -21,6 +22,7 @@ import {
   useGetNotifications,
   useMarkNotificationRead,
   getListJobsQueryOptions,
+  type Notification,
 } from "@workspace/api-client-react";
 
 export default function DashboardLayout({
@@ -62,8 +64,25 @@ export default function DashboardLayout({
 
   const notificationsQueryKey = [...getGetNotificationsQueryKey(), user?.id ?? "anonymous"];
 
+  useEffect(() => {
+    if (!user?.id) return;
+
+    connectNotificationSocket(user.id, (incoming) => {
+      qc.setQueryData(notificationsQueryKey, (prev: Notification[] | undefined) => {
+        if (!prev) return [incoming];
+        if (prev.some((n) => n.id === incoming.id)) return prev;
+        return [incoming, ...prev];
+      });
+    });
+
+    return () => {
+      disconnectNotificationSocket();
+    };
+  }, [user?.id, qc, notificationsQueryKey]);
+
   const handleLogout = async () => {
     setProfileOpen(false);
+    disconnectNotificationSocket();
 
     // Clear the server session cookie first. Purging local cache before that
     // lets /auth/me restore the user and Login bounces them back to the dashboard.
@@ -94,7 +113,7 @@ export default function DashboardLayout({
       staleTime: 0,
       refetchOnMount: true,
       refetchOnWindowFocus: true,
-      refetchInterval: 15000,
+      refetchInterval: 60000,
       refetchIntervalInBackground: true,
     },
   });

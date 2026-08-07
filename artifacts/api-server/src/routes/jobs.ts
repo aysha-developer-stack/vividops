@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { and, eq, or, desc, inArray, ne, sql as dsql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, jobs, users, jobMembers, jobAttachments, jobChecklistAttachments, jobReworks, type JobRow, type UserRow, sql } from "@workspace/db";
-import { createNotification, createNotificationOnce } from "../lib/notifications";
+import { createNotification, createNotificationOnce, notifyJobManagers, previewText } from "../lib/notifications";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { CreateJobBody, UpdateJobBody } from "@workspace/api-zod";
@@ -25,8 +25,6 @@ import {
   type JobReviewAction,
   type ReviewableStatus,
 } from "../lib/job-review";
-
-import { shouldSendNotification } from "../lib/notifications";
 
 const router: IRouter = Router();
 
@@ -272,6 +270,54 @@ async function notifyJobContentUpdated(
   after: JobRow,
   body: Record<string, unknown>,
 ) {
+  if (body.remarks !== undefined) {
+    const nextRemarks =
+      typeof body.remarks === "string" && body.remarks.trim() ? body.remarks.trim() : null;
+    if (nextRemarks !== (before.remarks ?? null)) {
+      await notifyJobManagers({
+        jobId: after.id,
+        supervisorId: after.supervisorId,
+        actorId: actor.id,
+        title: `Remarks updated: ${after.title}`,
+        description: `${actor.name} updated remarks on ${after.title}: ${previewText(nextRemarks)}`,
+        type: "updated",
+      });
+      if (after.assigneeId && after.assigneeId !== actor.id) {
+        await createNotification({
+          userId: after.assigneeId,
+          jobId: after.id,
+          title: `Remarks updated: ${after.title}`,
+          description: `${actor.name} updated remarks on ${after.title}.`,
+          type: "updated",
+        });
+      }
+    }
+  }
+
+  if (body.comments !== undefined) {
+    const nextComments =
+      typeof body.comments === "string" && body.comments.trim() ? body.comments.trim() : null;
+    if (nextComments !== (before.comments ?? null)) {
+      await notifyJobManagers({
+        jobId: after.id,
+        supervisorId: after.supervisorId,
+        actorId: actor.id,
+        title: `Comments updated: ${after.title}`,
+        description: `${actor.name} updated comments on ${after.title}: ${previewText(nextComments)}`,
+        type: "updated",
+      });
+      if (after.assigneeId && after.assigneeId !== actor.id) {
+        await createNotification({
+          userId: after.assigneeId,
+          jobId: after.id,
+          title: `Comments updated: ${after.title}`,
+          description: `${actor.name} updated comments on ${after.title}.`,
+          type: "updated",
+        });
+      }
+    }
+  }
+
   const changed: string[] = [];
   if (body.title !== undefined && body.title !== before.title) changed.push("title");
   if (body.client !== undefined && body.client !== before.client) changed.push("client");
@@ -284,17 +330,21 @@ async function notifyJobContentUpdated(
     const nextDue = body.dueDate ? new Date(body.dueDate as string | Date) : null;
     if (!datesEqual(before.dueDate, nextDue)) changed.push("due date");
   }
-  if (body.remarks !== undefined) {
-    const nextRemarks =
-      typeof body.remarks === "string" && body.remarks.trim() ? body.remarks.trim() : null;
-    if (nextRemarks !== (before.remarks ?? null)) changed.push("remarks");
-  }
-  if (body.comments !== undefined) {
-    const nextComments =
-      typeof body.comments === "string" && body.comments.trim() ? body.comments.trim() : null;
-    if (nextComments !== (before.comments ?? null)) changed.push("comments");
-  }
   if (changed.length === 0) return;
+
+  const detail =
+    changed.includes("description")
+      ? "Details, checklist, or scope were updated."
+      : `Updated: ${changed.join(", ")}.`;
+
+  await notifyJobManagers({
+    jobId: after.id,
+    supervisorId: after.supervisorId,
+    actorId: actor.id,
+    title: `Job Updated: ${after.title}`,
+    description: `${actor.name} updated ${after.title}. ${detail}`,
+    type: "updated",
+  });
 
   const recipientIds = new Set<string>();
   if (after.assigneeId) recipientIds.add(after.assigneeId);
@@ -308,11 +358,6 @@ async function notifyJobContentUpdated(
     logger.warn({ err, jobId: after.id }, "Failed to load members for job update notification");
   }
   recipientIds.delete(actor.id);
-
-  const detail =
-    changed.includes("description")
-      ? "Details, checklist, or scope were updated."
-      : `Updated: ${changed.join(", ")}.`;
 
   for (const userId of recipientIds) {
     await createNotificationOnce(
@@ -1186,26 +1231,37 @@ async function createStoredJobMessage({
   });
 
   try {
-    await ensureNotificationsSchema();
-    const recipients = await listJobParticipantIds(job);
     const title = `New message on JOB-${job.serial}`;
-    const description = `${job.title}\n${actor.name}: ${cleanText}`;
-    const values = recipients
-      .filter((uid) => uid !== actor.id)
-      .map((uid) => ({
-        id: randomUUID(),
-        userId: uid,
+    const description = `${job.title} — ${actor.name}: ${previewText(cleanText)}`;
+
+    await notifyJobManagers({
+      jobId: job.id,
+      supervisorId: job.supervisorId,
+      actorId: actor.id,
+      title,
+      description,
+      type: "job_message",
+    });
+
+    const workerIds = new Set<string>();
+    if (job.assigneeId) workerIds.add(job.assigneeId);
+    await ensureJobMembersSchema();
+    const memberRows = await db
+      .select({ userId: jobMembers.userId })
+      .from(jobMembers)
+      .where(eq(jobMembers.jobId, job.id));
+    for (const m of memberRows) workerIds.add(m.userId);
+    workerIds.delete(actor.id);
+    if (job.supervisorId) workerIds.delete(job.supervisorId);
+
+    for (const userId of workerIds) {
+      await createNotification({
+        userId,
+        jobId: job.id,
         title,
         description,
         type: "job_message",
-      }));
-    for (const v of values) {
-      if (await shouldSendNotification(v.userId, 'push')) {
-        await db.execute(sql`
-          INSERT INTO notifications (id, user_id, title, description, type, is_read)
-          VALUES (${v.id}, ${v.userId}, ${v.title}, ${v.description}, ${v.type}, false)
-        `);
-      }
+      });
     }
   } catch (err) {
     logger.warn({ err, jobId: job.id }, "Failed to create in-app message notifications");

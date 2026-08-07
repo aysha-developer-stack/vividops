@@ -47,7 +47,7 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
       staleTime: 0,
       refetchOnMount: true,
       refetchOnWindowFocus: true,
-      refetchInterval: 15000,
+      refetchInterval: 60000,
       refetchIntervalInBackground: true,
     },
   });

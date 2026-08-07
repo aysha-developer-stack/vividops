@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { db, jobs, jobMembers, users, type UserRow } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
-import { createNotification } from "../lib/notifications";
+import { createNotification, notifyJobManagers } from "../lib/notifications";
 
 const router: IRouter = Router();
 
@@ -111,6 +111,17 @@ router.post("/jobs/:jobId/members", requireAuth, async (req, res) => {
       });
     }
 
+    if (inserted.length > 0) {
+      await notifyJobManagers({
+        jobId,
+        supervisorId: job.supervisorId,
+        actorId: actor.id,
+        title: `Team Member Added: ${job.title}`,
+        description: `${actor.name} added ${u.name} to ${job.title}.`,
+        type: "assigned",
+      });
+    }
+
     return res.status(204).end();
   } catch (err) {
     logger.error({ err }, "Failed to add job member");
@@ -129,7 +140,31 @@ router.delete("/jobs/:jobId/members/:userId", requireAuth, async (req, res) => {
     if (!job) return res.status(404).json({ error: "Job not found" });
     if (!canManageJob(actor, job)) return res.status(403).json({ error: "Forbidden" });
 
+    const [removedUser] = await db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
     await db.delete(jobMembers).where(and(eq(jobMembers.jobId, jobId), eq(jobMembers.userId, userId)));
+
+    if (removedUser) {
+      await createNotification({
+        userId,
+        jobId,
+        title: `Removed from Job: ${job.title}`,
+        description: `You have been removed from job ${job.title}.`,
+        type: "updated",
+      });
+      await notifyJobManagers({
+        jobId,
+        supervisorId: job.supervisorId,
+        actorId: actor.id,
+        title: `Team Member Removed: ${job.title}`,
+        description: `${actor.name} removed ${removedUser.name} from ${job.title}.`,
+        type: "updated",
+      });
+    }
     return res.status(204).end();
   } catch (err) {
     logger.error({ err }, "Failed to remove job member");
