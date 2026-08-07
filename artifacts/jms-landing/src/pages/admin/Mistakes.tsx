@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  AlertTriangle, Plus, Search, X, CheckCircle2, Filter, ChevronRight,
+  AlertTriangle, Plus, Search, X, CheckCircle2, Filter, ChevronRight, Users,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -35,8 +35,17 @@ type MistakeAnalytics = {
   total: number;
   open: number;
   highSeverity: number;
-  byUser: Array<{ userId: string; name: string; count: number; openCount: number }>;
+  byUser: Array<{ userId: string; name: string; count: number; openCount: number; highSeverity?: number }>;
   byCategory: Array<{ category: string; count: number }>;
+  userProfile?: {
+    userId: string;
+    name: string;
+    total: number;
+    open: number;
+    highSeverity: number;
+    byCategory: Array<{ category: string; count: number }>;
+    bySeverity: Array<{ severity: string; count: number }>;
+  } | null;
 };
 
 const FORM_SELECT =
@@ -68,6 +77,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
   const [search, setSearch] = useState("");
   const [severityFilter, setSeverityFilter] = useState<("high" | "medium" | "low")[]>(["high", "medium", "low"]);
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "resolved">("all");
+  const [userFilter, setUserFilter] = useState("");
   const [records, setRecords] = useState<MistakeRecord[]>([]);
   const [analytics, setAnalytics] = useState<MistakeAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,9 +100,10 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
     setLoading(true);
     (async () => {
       try {
+        const userQuery = userFilter ? `&userId=${encodeURIComponent(userFilter)}` : "";
         const [listRes, analyticsRes] = await Promise.all([
-          fetch(`/api/mistakes?period=${period}`, { credentials: "include" }),
-          fetch(`/api/mistakes/analytics?period=${period}`, { credentials: "include" }),
+          fetch(`/api/mistakes?period=${period}${userQuery}`, { credentials: "include" }),
+          fetch(`/api/mistakes/analytics?period=${period}${userQuery}`, { credentials: "include" }),
         ]);
         if (!cancelled) {
           if (listRes.ok) setRecords((await listRes.json()) as MistakeRecord[]);
@@ -104,11 +115,21 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
       }
     })();
     return () => { cancelled = true; };
-  }, [period]);
+  }, [period, userFilter]);
 
   const workerOptions = useMemo(() => {
     return (apiUsers ?? []).filter((u) => u.role === "user");
   }, [apiUsers]);
+
+  const selectedUserName = useMemo(() => {
+    if (!userFilter) return null;
+    return (
+      analytics?.userProfile?.name ??
+      analytics?.byUser.find((u) => u.userId === userFilter)?.name ??
+      workerOptions.find((u) => u.id === userFilter)?.name ??
+      "Selected user"
+    );
+  }, [userFilter, analytics, workerOptions]);
 
   const jobOptions = useMemo(() => apiJobs ?? [], [apiJobs]);
 
@@ -228,6 +249,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
               value: analytics.byUser[0]?.name ?? "—",
               sub: analytics.byUser[0] ? `${analytics.byUser[0].count} mistakes` : "no data",
               color: "text-amber-700",
+              userId: analytics.byUser[0]?.userId,
             },
             {
               label: "Top type",
@@ -235,13 +257,109 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
               sub: analytics.byCategory[0] ? `${analytics.byCategory[0].count} times` : "no data",
               color: "text-purple-700",
             },
-          ].map((card) => (
-            <div key={card.label} className="bg-white rounded-2xl border border-gray-100 p-4">
-              <p className="text-[10px] uppercase font-bold text-gray-500">{card.label}</p>
-              <p className={`text-lg font-bold truncate ${card.color}`}>{card.value}</p>
-              <p className="text-xs text-gray-500">{card.sub}</p>
+          ].map((card) => {
+            const clickableUserId = "userId" in card ? (card as { userId?: string }).userId : undefined;
+            const inner = (
+              <>
+                <p className="text-[10px] uppercase font-bold text-gray-500">{card.label}</p>
+                <p className={`text-lg font-bold truncate ${card.color}`}>{card.value}</p>
+                <p className="text-xs text-gray-500">{card.sub}</p>
+              </>
+            );
+            if (clickableUserId) {
+              return (
+                <button
+                  key={card.label}
+                  type="button"
+                  onClick={() => setUserFilter(clickableUserId)}
+                  className="bg-white rounded-2xl border border-gray-100 p-4 text-left hover:border-primary/40 hover:shadow-sm transition-all"
+                >
+                  {inner}
+                </button>
+              );
+            }
+            return (
+              <div key={card.label} className="bg-white rounded-2xl border border-gray-100 p-4">
+                {inner}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {!isWorker && analytics && analytics.byUser.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
+          <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+            <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+              <Users size={16} className="text-primary" /> Mistakes by user
+            </h4>
+            {userFilter && (
+              <button
+                type="button"
+                onClick={() => setUserFilter("")}
+                className="text-xs font-semibold text-primary hover:underline"
+              >
+                Show all users
+              </button>
+            )}
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+            {analytics.byUser.map((u) => (
+              <button
+                key={u.userId}
+                type="button"
+                onClick={() => setUserFilter(u.userId === userFilter ? "" : u.userId)}
+                className={`text-left rounded-xl border px-3 py-2.5 transition-colors ${
+                  userFilter === u.userId
+                    ? "border-primary bg-primary/5 ring-1 ring-primary/20"
+                    : "border-gray-100 hover:border-primary/30 hover:bg-gray-50"
+                }`}
+              >
+                <div className="font-semibold text-sm text-gray-900 truncate">{u.name}</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {u.count} mistake{u.count === 1 ? "" : "s"}
+                  {u.openCount > 0 && <span className="text-amber-600"> · {u.openCount} open</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {userFilter && analytics?.userProfile && (
+        <div className="bg-amber-50/60 border border-amber-100 rounded-2xl p-4 mb-4">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-[10px] uppercase font-bold text-amber-800 tracking-wide">User record</p>
+              <p className="text-lg font-bold text-gray-900">{selectedUserName}</p>
             </div>
-          ))}
+            <div className="flex gap-4 text-center">
+              <div>
+                <div className="text-xl font-bold text-gray-900">{analytics.userProfile.total}</div>
+                <div className="text-[10px] text-gray-500 uppercase">Total</div>
+              </div>
+              <div>
+                <div className="text-xl font-bold text-amber-700">{analytics.userProfile.open}</div>
+                <div className="text-[10px] text-gray-500 uppercase">Open</div>
+              </div>
+              <div>
+                <div className="text-xl font-bold text-red-600">{analytics.userProfile.highSeverity}</div>
+                <div className="text-[10px] text-gray-500 uppercase">High</div>
+              </div>
+            </div>
+          </div>
+          {analytics.userProfile.byCategory.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {analytics.userProfile.byCategory.map((c) => (
+                <span
+                  key={c.category}
+                  className="text-[11px] font-medium px-2 py-1 rounded-lg bg-white border border-amber-100 text-gray-700"
+                >
+                  {formatMistakeCategory(c.category)} · {c.count}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -256,6 +374,18 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
               className="bg-transparent text-sm flex-1 focus:outline-none text-gray-900 placeholder:text-gray-400"
             />
           </div>
+          {!isWorker && (
+            <select
+              value={userFilter}
+              onChange={(e) => setUserFilter(e.target.value)}
+              className={`text-xs rounded-lg px-3 py-2 ${FORM_SELECT} !mt-0 w-auto min-w-[160px]`}
+            >
+              <option value="">All users</option>
+              {(analytics?.byUser ?? []).map((u) => (
+                <option key={u.userId} value={u.userId}>{u.name}</option>
+              ))}
+            </select>
+          )}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
