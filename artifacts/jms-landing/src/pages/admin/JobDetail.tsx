@@ -33,7 +33,13 @@ import { statusToUi, priorityToUi, formatShortDate } from "@/lib/jobMappers";
 import { buildTimeLogCycleBreakdown, reworkCycleKey, reworkCycleLabel } from "@/lib/timeLogBreakdown";
 import { parseJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
 import { postTimerNotification } from "@/lib/timerNotifications";
-import { startJobWork } from "@/lib/startJobWork";
+import {
+  startTimerSession,
+  pauseTimerSession,
+  stopTimerSession,
+  heartbeatTimerSession,
+  TIMER_HEARTBEAT_INTERVAL_MS,
+} from "@/lib/timerSessionApi";
 import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } from "@/lib/downloadFile";
 import { MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategories";
 import { useQueryClient } from "@tanstack/react-query";
@@ -678,6 +684,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     writeTimerState(job.id, { running: false, startedAt: null, accumulated: elapsed, task: state?.task ?? "" });
     setRunning(false);
     setSeconds(elapsed);
+    void pauseTimerSession().catch(() => {});
   };
 
   const startTimer = async () => {
@@ -691,12 +698,14 @@ export default function JobDetail({ role = "user", id }: Props) {
     writeTimerState(job.id, { running: true, startedAt: Date.now(), accumulated: elapsed, task: nextTask });
     setRunning(true);
     setSeconds(elapsed);
-    if (job.status === "pending") {
-      const ok = await startJobWork(job.id);
-      if (ok) {
-        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
-        await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-      }
+    const session = await startTimerSession({
+      jobId: job.id,
+      task: nextTask,
+      accumulatedSeconds: elapsed,
+    });
+    if (session) {
+      await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+      await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
     }
   };
 
@@ -720,21 +729,13 @@ export default function JobDetail({ role = "user", id }: Props) {
   }, [role, job?.id]);
 
   useEffect(() => {
-    if (!job?.id || job.status !== "pending") return;
-    const state = readTimerState(job.id);
-    if (!state?.running) return;
-    let cancelled = false;
-    void (async () => {
-      const ok = await startJobWork(job.id);
-      if (!cancelled && ok) {
-        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
-        await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [job?.id, job?.status, qc]);
+    if (!running || role !== "user") return;
+    const id = window.setInterval(() => {
+      void heartbeatTimerSession().catch(() => {});
+    }, TIMER_HEARTBEAT_INTERVAL_MS);
+    void heartbeatTimerSession().catch(() => {});
+    return () => window.clearInterval(id);
+  }, [running, role]);
 
   useEffect(() => {
     if (!job?.id) return;
@@ -885,30 +886,15 @@ export default function JobDetail({ role = "user", id }: Props) {
     autoStopRef.current = window.setInterval(() => {
       setAutoStopCountdown((c) => {
         if (c <= 1) {
-          const duration = job?.id ? computeElapsed(readTimerState(job.id)) : seconds;
-          setRunning(false);
-          setSeconds(0);
-          setShowActivityPing(false);
-          if (job?.id) {
-            writeTimerState(job.id, { running: false, startedAt: null, accumulated: 0, task: "" });
-          }
-          if (duration > 0 && job?.id) {
-            const state = readTimerState(job.id);
-            const t = state?.task?.trim() ? `Auto-stopped: ${state.task.trim()}` : "Auto-stopped (no response)";
-            createTimeLogMutation.mutate(
-              { data: { task: t, duration, jobId: job.id } },
-              {
-                onSettled: () => {
-                  qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
-                  void postTimerNotification(
-                    "Timer auto-stopped",
-                    `Your timer was stopped automatically for ${job.number} (no response)`,
-                    job.id,
-                  );
-                },
-              },
-            );
-          }
+          void stopAndSaveTimeLog("Auto-stopped (no response)").then(() => {
+            if (job?.id) {
+              void postTimerNotification(
+                "Timer auto-stopped",
+                `Your timer was stopped automatically for ${job.number} (no response)`,
+                job.id,
+              );
+            }
+          });
           return 0;
         }
         return c - 1;
@@ -1383,11 +1369,22 @@ export default function JobDetail({ role = "user", id }: Props) {
     setSeconds(0);
     setShowActivityPing(false);
     writeTimerState(job.id, { running: false, startedAt: null, accumulated: 0, task: "" });
-    if (duration <= 0) return;
     try {
-      await createTimeLogMutation.mutateAsync({ data: { task: t, duration, jobId: job.id } });
+      const result = await stopTimerSession();
+      if (!result || result.duration <= 0) {
+        if (duration > 0) {
+          await createTimeLogMutation.mutateAsync({ data: { task: t, duration, jobId: job.id } });
+        }
+      }
       await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
     } catch {
+      if (duration > 0) {
+        try {
+          await createTimeLogMutation.mutateAsync({ data: { task: t, duration, jobId: job.id } });
+          await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+        } catch {
+        }
+      }
     }
   };
 
@@ -1579,7 +1576,10 @@ export default function JobDetail({ role = "user", id }: Props) {
           </div>
           <div>
             <div className="text-[10px] text-gray-500 uppercase font-semibold">Actual Time</div>
-            <div className="text-sm text-gray-900 font-medium">{totalLoggedSeconds > 0 ? formatTime(totalLoggedSeconds) : "—"}</div>
+            <div className="text-sm text-gray-900 font-medium">{displaySeconds > 0 ? formatTime(displaySeconds) : "—"}</div>
+            {running && displaySeconds > totalLoggedSeconds && (
+              <div className="text-[10px] text-sky-600 font-medium mt-0.5">Includes active timer</div>
+            )}
             {timeBreakdown.length > 0 && (
               <div className="mt-1.5 space-y-0.5">
                 {timeBreakdown.map((row) => (

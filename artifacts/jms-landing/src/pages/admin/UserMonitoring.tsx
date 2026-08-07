@@ -26,6 +26,11 @@ import {
   type MistakeCategory,
 } from "@/lib/mistakeCategories";
 import { getPresenceStatus } from "@/lib/presence";
+import {
+  fetchActiveTimerSessions,
+  liveSessionElapsedSeconds,
+  type ActiveTimerSession,
+} from "@/lib/timerSessionApi";
 
 type AnalyticsPeriod = "7d" | "30d" | "90d" | "all";
 
@@ -66,8 +71,9 @@ interface Worker {
   jobsCompleted: number;
   errors: number;
   efficiency: number;
-  status: "active" | "idle" | "offline";
+  status: "active" | "idle" | "offline" | "on_job";
   lastJob: string;
+  activeJobNumber?: string;
 }
 
 type ApiErrorReport = {
@@ -125,7 +131,11 @@ function getLatestJobNumber(jobs: Job[]) {
   return latest?.number ?? "None";
 }
 
-function getWorkerStatus(user: User): Worker["status"] {
+function getWorkerStatus(
+  user: User,
+  activeSession?: ActiveTimerSession | null,
+): Worker["status"] {
+  if (activeSession?.isLive) return "on_job";
   const presence = getPresenceStatus({
     accountStatus: user.status,
     lastSeenAt: user.lastSeenAt,
@@ -203,6 +213,27 @@ export default function UserMonitoring(
   const [focusJobId, setFocusJobId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [recordsView, setRecordsView] = useState<"list" | "byJob" | "byUser">("list");
+  const [activeSessions, setActiveSessions] = useState<ActiveTimerSession[]>([]);
+  const [liveTick, setLiveTick] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const rows = await fetchActiveTimerSessions();
+      if (!cancelled) setActiveSessions(rows);
+    };
+    void load();
+    const id = window.setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setLiveTick((t) => t + 1), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     setTab(initialTab);
@@ -310,6 +341,7 @@ export default function UserMonitoring(
     const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOffset);
     const startOfWeekMs = startOfWeek.getTime();
     const scoreWindowMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const sessionByUser = new Map(activeSessions.map((s) => [s.userId, s]));
 
     return (apiUsers ?? [])
       .filter((u: User) => u.role === "user")
@@ -319,20 +351,24 @@ export default function UserMonitoring(
         );
         const userLogs = (apiTimeLogs ?? []).filter((log) => log.userId === u.id);
         const userErrors = errors.filter((error) => error.userId === u.id && error.status !== "resolved");
+        const activeSession = sessionByUser.get(u.id) ?? null;
+        const activeHours = activeSession
+          ? liveSessionElapsedSeconds(activeSession) / 3600
+          : 0;
 
         const hoursToday = userLogs
           .filter((log) => {
             const createdMs = parseMs(log.createdAt);
             return createdMs != null && createdMs >= startOfTodayMs;
           })
-          .reduce((sum, log) => sum + (log.duration / 3600), 0);
+          .reduce((sum, log) => sum + (log.duration / 3600), 0) + activeHours;
 
         const hoursWeek = userLogs
           .filter((log) => {
             const createdMs = parseMs(log.createdAt);
             return createdMs != null && createdMs >= startOfWeekMs;
           })
-          .reduce((sum, log) => sum + (log.duration / 3600), 0);
+          .reduce((sum, log) => sum + (log.duration / 3600), 0) + activeHours;
 
         const scoreJobs = userJobs.filter((job) => {
           const createdMs = parseMs(job.createdAt);
@@ -347,6 +383,10 @@ export default function UserMonitoring(
           );
         });
 
+        const lastJob =
+          activeSession?.jobNumber ??
+          getLatestJobNumber(userJobs);
+
         return {
           id: u.id,
           name: u.name,
@@ -356,11 +396,12 @@ export default function UserMonitoring(
           jobsCompleted: userJobs.filter((job) => job.status === "completed").length,
           errors: userErrors.length,
           efficiency: getPerformanceScore(scoreJobs),
-          status: getWorkerStatus(u),
-          lastJob: getLatestJobNumber(userJobs),
+          status: getWorkerStatus(u, activeSession),
+          lastJob,
+          activeJobNumber: activeSession?.jobNumber ?? undefined,
         };
       });
-  }, [apiJobs, apiTimeLogs, apiUsers, errors, jobMemberships]);
+  }, [apiJobs, apiTimeLogs, apiUsers, errors, jobMemberships, activeSessions, liveTick]);
 
   const filtered = workers.filter((w: Worker) => w.name.toLowerCase().includes(search.toLowerCase()));
   const workersP = usePagination(filtered, 6);
@@ -534,12 +575,19 @@ export default function UserMonitoring(
                   <div className="flex items-center gap-3 mb-4">
                     <div className="relative">
                       <div className="w-11 h-11 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-sm font-bold flex items-center justify-center">{w.avatar}</div>
-                      <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full ring-2 ring-white ${w.status === "active" ? "bg-emerald-400" : w.status === "idle" ? "bg-amber-400" : "bg-gray-400"}`} />
+                      <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full ring-2 ring-white ${w.status === "on_job" ? "bg-sky-400 animate-pulse" : w.status === "active" ? "bg-emerald-400" : w.status === "idle" ? "bg-amber-400" : "bg-gray-400"}`} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-bold text-sm text-gray-900 truncate">{w.name}</div>
                       <div className="text-[10px] text-gray-500">
-                        {w.status === "active" ? "Online" : w.status === "idle" ? "Away" : "Offline"} · Last job: {w.lastJob}
+                        {w.status === "on_job"
+                          ? `On job · ${w.activeJobNumber ?? w.lastJob}`
+                          : w.status === "active"
+                            ? "Online"
+                            : w.status === "idle"
+                              ? "Away"
+                              : "Offline"}
+                        {w.status !== "on_job" ? ` · Last job: ${w.lastJob}` : ""}
                       </div>
                     </div>
                     <div className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${w.efficiency >= 90 ? "bg-emerald-50 text-emerald-700" : w.efficiency >= 80 ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700"}`}>

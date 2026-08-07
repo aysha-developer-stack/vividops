@@ -12,10 +12,17 @@ import {
   useListJobs,
   getGetJobQueryKey,
   getListJobsQueryKey,
+  getGetTimeLogsQueryKey,
   type Job,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { startJobWork } from "@/lib/startJobWork";
+import {
+  startTimerSession,
+  pauseTimerSession,
+  stopTimerSession,
+  heartbeatTimerSession,
+  TIMER_HEARTBEAT_INTERVAL_MS,
+} from "@/lib/timerSessionApi";
 
 interface Entry {
   id: string;
@@ -154,15 +161,20 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     setRunning(true);
     setSeconds(elapsed);
     if (jobId) {
-      const ok = await startJobWork(jobId);
-      if (ok) {
+      const session = await startTimerSession({
+        jobId,
+        task: t,
+        accumulatedSeconds: elapsed,
+      });
+      if (session) {
         await qc.invalidateQueries({ queryKey: getGetJobQueryKey(jobId) });
         await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+        await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
       }
     }
   };
 
-  const pauseTimer = () => {
+  const pauseTimer = async () => {
     const prev = readTimerState() ?? { running: false, startedAt: null, accumulated: 0, task: "", jobId: "" };
     const elapsed = computeElapsed(prev);
     writeTimerState({
@@ -174,6 +186,7 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     });
     setRunning(false);
     setSeconds(elapsed);
+    await pauseTimerSession().catch(() => {});
   };
 
   const projects = useMemo(() => {
@@ -230,6 +243,15 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
   }, [task, jobId]);
 
   useEffect(() => {
+    if (!running) return;
+    const id = window.setInterval(() => {
+      void heartbeatTimerSession().catch(() => {});
+    }, TIMER_HEARTBEAT_INTERVAL_MS);
+    void heartbeatTimerSession().catch(() => {});
+    return () => window.clearInterval(id);
+  }, [running]);
+
+  useEffect(() => {
     if (!running) {
       if (pingTimerRef.current) clearTimeout(pingTimerRef.current);
       return;
@@ -255,28 +277,16 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     autoStopRef.current = window.setInterval(() => {
       setAutoStopCountdown((c) => {
         if (c <= 1) {
-          const state = readTimerState();
-          const duration = computeElapsed(state);
-          const t = (state?.task ?? task).trim() ? (state?.task ?? task).trim() : "Auto-stopped (no response)";
-          const jid = (state?.jobId ?? jobId) || null;
-          setRunning(false);
-          setSeconds(0);
-          setTask("");
-          setShowActivityPing(false);
-          writeTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
-          if (duration > 0) {
-            createLogMutation
-              .mutateAsync({ data: { task: t, duration, jobId: jid } })
-              .then(() => {
-                const label = projects.find((p) => p.id === jid)?.label ?? "your task";
-                void postTimerNotification(
-                  "Timer auto-stopped",
-                  `Your timer was stopped automatically for ${label} (no response)`,
-                  jid ?? undefined,
-                );
-              })
-              .catch(() => {});
-          }
+          void stop().then(() => {
+            setShowActivityPing(false);
+            const jid = jobId || undefined;
+            const label = projects.find((p) => p.id === jid)?.label ?? "your task";
+            void postTimerNotification(
+              "Timer auto-stopped",
+              `Your timer was stopped automatically for ${label} (no response)`,
+              jid,
+            );
+          });
           return 0;
         }
         return c - 1;
@@ -290,23 +300,35 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     const duration = computeElapsed(state);
     const t = (state?.task ?? task).trim();
     const jid = (state?.jobId ?? jobId) || null;
-    if (duration > 0 && t) {
-      try {
-        await createLogMutation.mutateAsync({
-          data: {
-            task: t,
-            duration,
-            jobId: jid,
-          }
-        });
-      } catch (err) {
-        console.error("Failed to save time log:", err);
-      }
-    }
     setRunning(false);
     setSeconds(0);
     setTask("");
     writeTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
+    try {
+      const result = await stopTimerSession();
+      if (!result || result.duration <= 0) {
+        if (duration > 0 && t) {
+          await createLogMutation.mutateAsync({
+            data: { task: t, duration, jobId: jid },
+          });
+        }
+      }
+      await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+      if (jid) {
+        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(jid) });
+        await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      }
+    } catch (err) {
+      console.error("Failed to save time log:", err);
+      if (duration > 0 && t) {
+        try {
+          await createLogMutation.mutateAsync({
+            data: { task: t, duration, jobId: jid },
+          });
+        } catch {
+        }
+      }
+    }
   };
 
   const remove = async (id: string) => {
