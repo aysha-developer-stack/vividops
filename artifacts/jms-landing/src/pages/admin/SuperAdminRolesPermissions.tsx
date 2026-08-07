@@ -13,7 +13,6 @@ type PermissionKey =
   | "jobs.monitor"
   | "timers.monitor"
   | "reports.all"
-  | "reports.errors"
   | "training.manage"
   | "communication.monitor"
   | "files.manage"
@@ -35,7 +34,6 @@ const PERMISSIONS: { key: PermissionKey; label: string; desc: string }[] = [
   { key: "jobs.monitor", label: "Job Monitoring", desc: "View all job progress, due dates, and job activity" },
   { key: "timers.monitor", label: "Timer Monitoring", desc: "Monitor timers and activity across users" },
   { key: "reports.all", label: "Reports & Analytics", desc: "Progress, time, productivity across all users" },
-  { key: "reports.errors", label: "Error Reports", desc: "View rework count, supervisor comments, mistakes/errors" },
   { key: "training.manage", label: "Training Management", desc: "Create training updates and track completion" },
   { key: "communication.monitor", label: "Communication Monitoring", desc: "Monitor job discussions and integration status" },
   { key: "files.manage", label: "Files Management", desc: "View/download/delete job and completed files" },
@@ -53,7 +51,6 @@ const DEFAULT_MATRIX: Record<RoleKey, Record<PermissionKey, boolean>> = {
     "jobs.monitor": true,
     "timers.monitor": true,
     "reports.all": true,
-    "reports.errors": true,
     "training.manage": true,
     "communication.monitor": true,
     "files.manage": true,
@@ -68,7 +65,6 @@ const DEFAULT_MATRIX: Record<RoleKey, Record<PermissionKey, boolean>> = {
     "jobs.monitor": true,
     "timers.monitor": true,
     "reports.all": true,
-    "reports.errors": true,
     "training.manage": true,
     "communication.monitor": true,
     "files.manage": true,
@@ -83,7 +79,6 @@ const DEFAULT_MATRIX: Record<RoleKey, Record<PermissionKey, boolean>> = {
     "jobs.monitor": false,
     "timers.monitor": false,
     "reports.all": false,
-    "reports.errors": false,
     "training.manage": true,
     "communication.monitor": false,
     "files.manage": true,

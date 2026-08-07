@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq, or, desc, inArray, ne, sql as dsql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { db, jobs, users, jobMembers, jobAttachments, jobChecklistAttachments, jobReworks, errorReports, type JobRow, type UserRow, sql } from "@workspace/db";
+import { db, jobs, users, jobMembers, jobAttachments, jobChecklistAttachments, jobReworks, type JobRow, type UserRow, sql } from "@workspace/db";
 import { createNotification, createNotificationOnce } from "../lib/notifications";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -2076,12 +2076,10 @@ router.get("/jobs/:id/reworks", requireAuth, async (req, res) => {
         rework: jobReworks,
         user: { id: reworkUserAlias.id, name: reworkUserAlias.name, role: reworkUserAlias.role },
         createdBy: { id: reworkCreatorAlias.id, name: reworkCreatorAlias.name, role: reworkCreatorAlias.role },
-        errorReportId: errorReports.id,
       })
       .from(jobReworks)
       .leftJoin(reworkUserAlias, eq(reworkUserAlias.id, jobReworks.userId))
       .leftJoin(reworkCreatorAlias, eq(reworkCreatorAlias.id, jobReworks.createdById))
-      .leftJoin(errorReports, eq(errorReports.reworkId, jobReworks.id))
       .where(eq(jobReworks.jobId, id))
       .orderBy(desc(jobReworks.assignedAt));
 
@@ -2102,7 +2100,6 @@ router.get("/jobs/:id/reworks", requireAuth, async (req, res) => {
         assignedAt: row.rework.assignedAt,
         completedAt: row.rework.completedAt,
         approvedAt: row.rework.approvedAt,
-        errorReportId: row.errorReportId ?? null,
         user: row.user?.id ? row.user : null,
         createdBy: row.createdBy?.id ? row.createdBy : null,
       })),

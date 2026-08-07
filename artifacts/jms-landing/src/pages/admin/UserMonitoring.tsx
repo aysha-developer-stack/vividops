@@ -1,66 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  Search, AlertCircle, Plus, X, Activity, FileWarning, CalendarDays, UserRound,
-} from "lucide-react";
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
-} from "recharts";
+import { motion } from "framer-motion";
+import { Search, Activity } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
-import { useAuth } from "@/lib/auth";
 import {
   useListUsers,
   useListJobs,
   useGetTimeLogs,
   type User,
   type Job,
-  type TimeLog,
 } from "@workspace/api-client-react";
-
 import type { Role } from "@/lib/roles";
-import {
-  MISTAKE_CATEGORIES,
-  formatMistakeCategory,
-  type MistakeCategory,
-} from "@/lib/mistakeCategories";
 import { getPresenceStatus } from "@/lib/presence";
 import {
   fetchActiveTimerSessions,
   liveSessionElapsedSeconds,
   type ActiveTimerSession,
 } from "@/lib/timerSessionApi";
-
-type AnalyticsPeriod = "7d" | "30d" | "90d" | "all";
-
-type MistakeAnalytics = {
-  period?: string;
-  byUser: Array<{
-    userId: string;
-    name: string;
-    count: number;
-    openCount: number;
-    reworkCount?: number;
-    highSeverity?: number;
-  }>;
-  byCategory: Array<{ category: string; count: number }>;
-  byMonth?: Array<{ month: string; count: number; openCount: number }>;
-  total: number;
-  open: number;
-  reworkCount?: number;
-  highSeverity?: number;
-  userProfile?: {
-    userId: string;
-    name: string;
-    total: number;
-    open: number;
-    highSeverity: number;
-    reworkCount: number;
-    byCategory: Array<{ category: string; count: number }>;
-    bySeverity: Array<{ severity: string; count: number }>;
-  } | null;
-};
 
 interface Worker {
   id: string;
@@ -69,39 +26,13 @@ interface Worker {
   hoursToday: number;
   hoursWeek: number;
   jobsCompleted: number;
-  errors: number;
+  reworks: number;
+  mistakes: number;
   efficiency: number;
   status: "active" | "idle" | "offline" | "on_job";
   lastJob: string;
   activeJobNumber?: string;
 }
-
-type ApiErrorReport = {
-  id: string;
-  jobId: string | null;
-  userId: string;
-  createdById: string;
-  title: string;
-  description: string;
-  category?: string;
-  checklistItemId?: number | null;
-  source?: string;
-  severity: "low" | "medium" | "high";
-  status: "open" | "resolved";
-  createdAt: string;
-  updatedAt: string;
-  resolvedAt: string | null;
-  jobNumber: string | null;
-  jobTitle: string | null;
-  user: { id: string; name: string; role: string } | null;
-  createdBy: { id: string; name: string; role: string } | null;
-};
-
-const SEVERITY: Record<"high" | "medium" | "low", string> = {
-  high: "bg-red-50 text-red-700 border-red-200",
-  medium: "bg-amber-50 text-amber-700 border-amber-200",
-  low: "bg-blue-50 text-blue-700 border-blue-200",
-};
 
 function parseMs(iso: string | null | undefined) {
   if (!iso) return null;
@@ -115,26 +46,14 @@ function clamp(n: number, min: number, max: number) {
 
 function getLatestJobNumber(jobs: Job[]) {
   const latest = [...jobs].sort((a, b) => {
-    const aMs =
-      parseMs(a.completedAt) ??
-      parseMs(a.updatedAt) ??
-      parseMs(a.createdAt) ??
-      0;
-    const bMs =
-      parseMs(b.completedAt) ??
-      parseMs(b.updatedAt) ??
-      parseMs(b.createdAt) ??
-      0;
+    const aMs = parseMs(a.completedAt) ?? parseMs(a.updatedAt) ?? parseMs(a.createdAt) ?? 0;
+    const bMs = parseMs(b.completedAt) ?? parseMs(b.updatedAt) ?? parseMs(b.createdAt) ?? 0;
     return bMs - aMs;
   })[0];
-
   return latest?.number ?? "None";
 }
 
-function getWorkerStatus(
-  user: User,
-  activeSession?: ActiveTimerSession | null,
-): Worker["status"] {
+function getWorkerStatus(user: User, activeSession?: ActiveTimerSession | null): Worker["status"] {
   if (activeSession?.isLive) return "on_job";
   const presence = getPresenceStatus({
     accountStatus: user.status,
@@ -148,35 +67,23 @@ function getWorkerStatus(
 
 function getPerformanceScore(jobs: Job[]) {
   if (!jobs.length) return 0;
-
   const completedJobs = jobs.filter((job) => job.status === "completed");
   const completedCount = completedJobs.length;
   const onTimeCount = completedJobs.reduce((acc, job) => {
     const completedMs = parseMs(job.completedAt);
     const dueMs = parseMs(job.dueDate);
-    if (completedMs != null && dueMs != null && completedMs <= dueMs) {
-      return acc + 1;
-    }
+    if (completedMs != null && dueMs != null && completedMs <= dueMs) return acc + 1;
     return acc;
   }, 0);
   const reworkCount = jobs.filter((job) => job.status === "rework").length;
-
   const completionRate = completedCount / jobs.length;
   const onTimeRate = completedCount > 0 ? onTimeCount / completedCount : 0;
   const reworkRate = reworkCount / jobs.length;
-
-  const score =
-    completionRate * 60 +
-    onTimeRate * 25 +
-    (1 - clamp(reworkRate, 0, 1)) * 15;
-
+  const score = completionRate * 60 + onTimeRate * 25 + (1 - clamp(reworkRate, 0, 1)) * 15;
   return Math.round(clamp(score, 0, 100));
 }
 
-export default function UserMonitoring(
-  { initialTab = "performance", role = "super-admin" }: { initialTab?: "performance" | "errors", role?: Role } = {}
-) {
-  const { user: currentUser } = useAuth();
+export default function UserMonitoring({ role = "super-admin" }: { role?: Role } = {}) {
   const { data: apiUsers, isLoading: usersLoading } = useListUsers({
     query: { refetchInterval: 30_000 } as any,
   });
@@ -184,37 +91,26 @@ export default function UserMonitoring(
   const { data: apiTimeLogs, isLoading: logsLoading } = useGetTimeLogs();
 
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<"performance" | "errors">(initialTab);
-  const [errorModal, setErrorModal] = useState(false);
-  const [errors, setErrors] = useState<ApiErrorReport[]>([]);
   const [jobMemberships, setJobMemberships] = useState<Record<string, string[]>>({});
-  const [selectedError, setSelectedError] = useState<ApiErrorReport | null>(null);
-  const [updatingError, setUpdatingError] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [draft, setDraft] = useState<{
-    jobId: string;
-    userId: string;
-    title: string;
-    severity: "low" | "medium" | "high";
-    desc: string;
-    category: MistakeCategory;
-  }>({
-    jobId: "",
-    userId: "",
-    title: "",
-    severity: "medium",
-    desc: "",
-    category: "other",
-  });
-  const [analytics, setAnalytics] = useState<MistakeAnalytics | null>(null);
-  const canWriteMistakes = role === "super-admin" || role === "admin";
-  const [period, setPeriod] = useState<AnalyticsPeriod>("30d");
-  const [focusUserId, setFocusUserId] = useState<string | null>(null);
-  const [focusJobId, setFocusJobId] = useState<string | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<string>("");
-  const [recordsView, setRecordsView] = useState<"list" | "byJob" | "byUser">("list");
   const [activeSessions, setActiveSessions] = useState<ActiveTimerSession[]>([]);
   const [liveTick, setLiveTick] = useState(0);
+  const [mistakeCounts, setMistakeCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/mistakes/analytics?period=30d", { credentials: "include" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { byUser?: Array<{ userId: string; count: number }> };
+        if (!cancelled && data.byUser) {
+          setMistakeCounts(Object.fromEntries(data.byUser.map((u) => [u.userId, u.count])));
+        }
+      } catch {
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -236,47 +132,6 @@ export default function UserMonitoring(
   }, []);
 
   useEffect(() => {
-    setTab(initialTab);
-  }, [initialTab]);
-
-  useEffect(() => {
-    if (tab !== "errors") return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const params = new URLSearchParams({ period });
-        if (focusUserId) params.set("userId", focusUserId);
-        if (focusJobId) params.set("jobId", focusJobId);
-        if (categoryFilter) params.set("category", categoryFilter);
-        const res = await fetch(`/api/error-reports?${params}`, { credentials: "include" });
-        if (!res.ok) return;
-        const data = (await res.json()) as unknown;
-        if (!Array.isArray(data)) return;
-        if (!cancelled) setErrors(data as ApiErrorReport[]);
-      } catch {
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [tab, period, focusUserId, focusJobId, categoryFilter]);
-
-  useEffect(() => {
-    if (tab !== "errors") return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const params = new URLSearchParams({ period });
-        if (focusUserId) params.set("userId", focusUserId);
-        const res = await fetch(`/api/error-reports/analytics?${params}`, { credentials: "include" });
-        if (!res.ok) return;
-        const data = (await res.json()) as MistakeAnalytics;
-        if (!cancelled) setAnalytics(data);
-      } catch {
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [tab, period, focusUserId, errors.length]);
-
-  useEffect(() => {
     let cancelled = false;
     const jobs = apiJobs ?? [];
     if (jobs.length === 0) {
@@ -288,20 +143,27 @@ export default function UserMonitoring(
       try {
         const entries = await Promise.all(
           jobs.map(async (job) => {
+            const fromApi = (job.assignees ?? [])
+              .filter((member) => member?.role === "user" && typeof member.id === "string")
+              .map((member) => member.id);
+            if (fromApi.length > 0) return [job.id, fromApi] as const;
+
             const res = await fetch(`/api/jobs/${job.id}/members`, { credentials: "include" });
-            if (!res.ok) return [job.id, []] as const;
+            if (!res.ok) {
+              const fallback = job.assignee?.role === "user" && job.assignee.id ? [job.assignee.id] : [];
+              return [job.id, fallback] as const;
+            }
             const data = (await res.json()) as Array<{ id: string; role: string }>;
             const userIds = Array.isArray(data)
-              ? data
-                  .filter((member) => member?.role === "user" && typeof member.id === "string")
-                  .map((member) => member.id)
+              ? data.filter((m) => m?.role === "user").map((m) => m.id)
               : [];
+            if (userIds.length === 0 && job.assignee?.role === "user" && job.assignee.id) {
+              return [job.id, [job.assignee.id]] as const;
+            }
             return [job.id, userIds] as const;
           }),
         );
-        if (!cancelled) {
-          setJobMemberships(Object.fromEntries(entries));
-        }
+        if (!cancelled) setJobMemberships(Object.fromEntries(entries));
       } catch {
         if (!cancelled) setJobMemberships({});
       }
@@ -310,65 +172,39 @@ export default function UserMonitoring(
     return () => { cancelled = true; };
   }, [apiJobs]);
 
-  const jobBase =
-    role === "super-admin" ? "/super-admin/jobs"
-    : role === "admin" ? "/admin/jobs"
-    : role === "supervisor" ? "/supervisor/jobs"
-    : "/user/jobs";
-
-  const updateErrorStatus = async (id: string, status: "open" | "resolved") => {
-    try {
-      setUpdatingError(true);
-      const res = await fetch(`/api/error-reports/${id}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) return;
-      const updated = (await res.json()) as ApiErrorReport;
-      setErrors((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
-      setSelectedError((prev) => (prev?.id === updated.id ? updated : prev));
-    } finally {
-      setUpdatingError(false);
-    }
-  };
-
   const workers: Worker[] = useMemo(() => {
     const now = new Date();
     const startOfTodayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const dayOffset = (now.getDay() + 6) % 7;
-    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOffset);
-    const startOfWeekMs = startOfWeek.getTime();
+    const startOfWeekMs = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOffset).getTime();
     const scoreWindowMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
     const sessionByUser = new Map(activeSessions.map((s) => [s.userId, s]));
 
     return (apiUsers ?? [])
       .filter((u: User) => u.role === "user")
       .map((u: User) => {
-        const userJobs = (apiJobs ?? []).filter((job) =>
-          job.assignee?.id === u.id || (jobMemberships[job.id] ?? []).includes(u.id),
+        const userJobs = (apiJobs ?? []).filter(
+          (job) => job.assignee?.id === u.id || (jobMemberships[job.id] ?? []).includes(u.id),
         );
         const userLogs = (apiTimeLogs ?? []).filter((log) => log.userId === u.id);
-        const userErrors = errors.filter((error) => error.userId === u.id && error.status !== "resolved");
         const activeSession = sessionByUser.get(u.id) ?? null;
-        const activeHours = activeSession
-          ? liveSessionElapsedSeconds(activeSession) / 3600
-          : 0;
+        const activeHours = activeSession ? liveSessionElapsedSeconds(activeSession) / 3600 : 0;
 
-        const hoursToday = userLogs
-          .filter((log) => {
-            const createdMs = parseMs(log.createdAt);
-            return createdMs != null && createdMs >= startOfTodayMs;
-          })
-          .reduce((sum, log) => sum + (log.duration / 3600), 0) + activeHours;
+        const hoursToday =
+          userLogs
+            .filter((log) => {
+              const createdMs = parseMs(log.createdAt);
+              return createdMs != null && createdMs >= startOfTodayMs;
+            })
+            .reduce((sum, log) => sum + log.duration / 3600, 0) + activeHours;
 
-        const hoursWeek = userLogs
-          .filter((log) => {
-            const createdMs = parseMs(log.createdAt);
-            return createdMs != null && createdMs >= startOfWeekMs;
-          })
-          .reduce((sum, log) => sum + (log.duration / 3600), 0) + activeHours;
+        const hoursWeek =
+          userLogs
+            .filter((log) => {
+              const createdMs = parseMs(log.createdAt);
+              return createdMs != null && createdMs >= startOfWeekMs;
+            })
+            .reduce((sum, log) => sum + log.duration / 3600, 0) + activeHours;
 
         const scoreJobs = userJobs.filter((job) => {
           const createdMs = parseMs(job.createdAt);
@@ -383,9 +219,7 @@ export default function UserMonitoring(
           );
         });
 
-        const lastJob =
-          activeSession?.jobNumber ??
-          getLatestJobNumber(userJobs);
+        const lastJob = activeSession?.jobNumber ?? getLatestJobNumber(userJobs);
 
         return {
           id: u.id,
@@ -394,861 +228,164 @@ export default function UserMonitoring(
           hoursToday: Number(hoursToday.toFixed(1)),
           hoursWeek: Number(hoursWeek.toFixed(1)),
           jobsCompleted: userJobs.filter((job) => job.status === "completed").length,
-          errors: userErrors.length,
+          reworks: userJobs.filter((job) => job.status === "rework").length,
+          mistakes: mistakeCounts[u.id] ?? 0,
           efficiency: getPerformanceScore(scoreJobs),
           status: getWorkerStatus(u, activeSession),
           lastJob,
           activeJobNumber: activeSession?.jobNumber ?? undefined,
         };
       });
-  }, [apiJobs, apiTimeLogs, apiUsers, errors, jobMemberships, activeSessions, liveTick]);
+  }, [apiJobs, apiTimeLogs, apiUsers, jobMemberships, activeSessions, liveTick, mistakeCounts]);
 
-  const filtered = workers.filter((w: Worker) => w.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = workers.filter((w) => w.name.toLowerCase().includes(search.toLowerCase()));
   const workersP = usePagination(filtered, 6);
-  const filteredErrors = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return errors;
-    return errors.filter((e) => {
-      const userName = e.user?.name ?? "";
-      const job = `${e.jobNumber ?? ""} ${e.jobTitle ?? ""}`.trim();
-      return (
-        e.title.toLowerCase().includes(q) ||
-        e.description.toLowerCase().includes(q) ||
-        userName.toLowerCase().includes(q) ||
-        job.toLowerCase().includes(q)
-      );
-    });
-  }, [errors, search]);
-  const errorsP = usePagination(filteredErrors, 6);
-
-  const mistakesByJob = useMemo(() => {
-    const map = new Map<string, { jobId: string; jobNumber: string; jobTitle: string; count: number; open: number }>();
-    for (const e of filteredErrors) {
-      const key = e.jobId ?? "none";
-      const cur = map.get(key) ?? {
-        jobId: e.jobId ?? "",
-        jobNumber: e.jobNumber ?? "No job",
-        jobTitle: e.jobTitle ?? "—",
-        count: 0,
-        open: 0,
-      };
-      cur.count += 1;
-      if (e.status === "open") cur.open += 1;
-      map.set(key, cur);
-    }
-    return Array.from(map.values()).sort((a, b) => b.count - a.count);
-  }, [filteredErrors]);
-
-  const mistakesByUser = useMemo(() => {
-    const map = new Map<string, { userId: string; name: string; count: number; open: number }>();
-    for (const e of filteredErrors) {
-      const key = e.userId;
-      const cur = map.get(key) ?? {
-        userId: e.userId,
-        name: e.user?.name ?? "Unknown",
-        count: 0,
-        open: 0,
-      };
-      cur.count += 1;
-      if (e.status === "open") cur.open += 1;
-      map.set(key, cur);
-    }
-    return Array.from(map.values()).sort((a, b) => b.count - a.count);
-  }, [filteredErrors]);
-
-  const submitError = async () => {
-    if (!draft.jobId || !draft.userId || !draft.title.trim() || !draft.desc.trim()) return;
-    setSaving(true);
-    try {
-      const res = await fetch("/api/error-reports", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jobId: draft.jobId,
-          userId: draft.userId,
-          title: draft.title.trim(),
-          description: draft.desc.trim(),
-          severity: draft.severity,
-          category: draft.category,
-          source: "manual",
-        }),
-      });
-      if (!res.ok) return;
-      const created = (await res.json()) as ApiErrorReport;
-      setErrors((prev) => [created, ...prev]);
-      setErrorModal(false);
-      setTab("errors");
-      setDraft({ jobId: "", userId: "", title: "", severity: "medium", desc: "", category: "other" });
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const isLoading = usersLoading || jobsLoading || logsLoading;
   const anyData = apiUsers || apiJobs || apiTimeLogs;
 
   if (isLoading && !anyData) {
     return (
-      <DashboardLayout title={initialTab === "errors" ? "Mistakes" : "User Monitoring"} role={role}>
+      <DashboardLayout title="User Monitoring" role={role}>
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       </DashboardLayout>
     );
   }
 
   return (
-    <DashboardLayout title={tab === "errors" ? "Mistakes" : "User Monitoring"} role={role}>
-      {/* Tab pills */}
+    <DashboardLayout title="User Monitoring" role={role}>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
-          {[
-            { id: "performance" as const, label: "Performance", icon: Activity },
-            { id: "errors" as const, label: "Mistakes", icon: FileWarning },
-          ].map((t) => {
-            const Icon = t.icon;
-            const active = tab === t.id;
-            return (
-              <motion.button
-                key={t.id}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => setTab(t.id)}
-                className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${active ? "text-white" : "text-gray-600 hover:text-gray-900"}`}
-              >
-                {active && <motion.div layoutId="userMonTab" className="absolute inset-0 bg-primary rounded-lg pointer-events-none" transition={{ type: "spring", stiffness: 300, damping: 25 }} />}
-                <span className="relative flex items-center gap-2"><Icon size={14} /> {t.label}</span>
-              </motion.button>
-            );
-          })}
+        <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+          <Activity size={16} className="text-primary" />
+          Team performance
         </div>
-        <div className="flex items-center gap-2">
-          {(role === "admin" || role === "super-admin") && (
-            <Link
-              href={role === "super-admin" ? "/super-admin/supervisors" : "/admin/supervisors"}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border border-gray-200 bg-white text-gray-700 hover:border-primary hover:text-primary transition-colors"
-            >
-              Supervisor oversight
-            </Link>
-          )}
-          {tab === "errors" && canWriteMistakes && (
-            <motion.button
-              initial={{ opacity: 0, x: 10 }}
-              animate={{ opacity: 1, x: 0 }}
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
-              onClick={() => setErrorModal(true)}
-              className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-md shadow-primary/30"
-            >
-              <Plus size={14} /> Log Mistake
-            </motion.button>
-          )}
-        </div>
+        {(role === "admin" || role === "super-admin") && (
+          <Link
+            href={role === "super-admin" ? "/super-admin/supervisors" : "/admin/supervisors"}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border border-gray-200 bg-white text-gray-700 hover:border-primary hover:text-primary transition-colors"
+          >
+            Supervisor oversight
+          </Link>
+        )}
       </div>
 
-      <AnimatePresence mode="wait">
-        {tab === "performance" ? (
+      <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 max-w-md mb-5 focus-within:border-primary transition-colors">
+        <Search size={16} className="text-gray-400" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search team members…"
+          className="bg-transparent text-gray-900 placeholder:text-gray-400 text-sm flex-1 focus:outline-none"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {workersP.pageItems.map((w, i) => (
           <motion.div
-            key="perf"
-            initial={{ opacity: 0, y: 12 }}
+            key={w.id}
+            layout
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
+            transition={{ delay: i * 0.05 }}
+            whileHover={{ y: -4, boxShadow: "0 14px 28px rgba(0,0,0,0.07)" }}
+            className="bg-white rounded-2xl border border-gray-100 p-5"
           >
-            {/* Search */}
-            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 max-w-md mb-5 focus-within:border-primary transition-colors">
-              <Search size={16} className="text-gray-400" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search team members…" className="bg-transparent text-gray-900 placeholder:text-gray-400 text-sm flex-1 focus:outline-none" />
-            </div>
-
-            {/* Workers grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {workersP.pageItems.map((w, i) => (
-                <motion.div
-                  key={w.id}
-                  layout
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  whileHover={{ y: -4, boxShadow: "0 14px 28px rgba(0,0,0,0.07)" }}
-                  className="bg-white rounded-2xl border border-gray-100 p-5"
-                >
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="relative">
-                      <div className="w-11 h-11 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-sm font-bold flex items-center justify-center">{w.avatar}</div>
-                      <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full ring-2 ring-white ${w.status === "on_job" ? "bg-sky-400 animate-pulse" : w.status === "active" ? "bg-emerald-400" : w.status === "idle" ? "bg-amber-400" : "bg-gray-400"}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-sm text-gray-900 truncate">{w.name}</div>
-                      <div className="text-[10px] text-gray-500">
-                        {w.status === "on_job"
-                          ? `On job · ${w.activeJobNumber ?? w.lastJob}`
-                          : w.status === "active"
-                            ? "Online"
-                            : w.status === "idle"
-                              ? "Away"
-                              : "Offline"}
-                        {w.status !== "on_job" ? ` · Last job: ${w.lastJob}` : ""}
-                      </div>
-                    </div>
-                    <div className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${w.efficiency >= 90 ? "bg-emerald-50 text-emerald-700" : w.efficiency >= 80 ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700"}`}>
-                      {w.efficiency}%
-                    </div>
-                  </div>
-
-                  {/* Time tracking bar */}
-                  <div className="mb-3">
-                    <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-                      <span>Today</span>
-                      <span className="font-bold">{w.hoursToday}h / 8h</span>
-                    </div>
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min((w.hoursToday / 8) * 100, 100)}%` }} transition={{ duration: 0.6 + i * 0.04 }} className="h-full bg-primary rounded-full" />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 pt-3 border-t border-gray-100">
-                    <div className="text-center">
-                      <div className="text-base font-bold text-gray-900">{w.hoursWeek}h</div>
-                      <div className="text-[9px] text-gray-500 uppercase tracking-wide">This week</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-base font-bold text-emerald-600">{w.jobsCompleted}</div>
-                      <div className="text-[9px] text-gray-500 uppercase tracking-wide">Done</div>
-                    </div>
-                    <div className="text-center">
-                      <div className={`text-base font-bold ${w.errors > 0 ? "text-red-600" : "text-gray-300"}`}>{w.errors}</div>
-                      <div className="text-[9px] text-gray-500 uppercase tracking-wide">Errors</div>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-            <div className="mt-4 bg-white rounded-2xl border border-gray-100 overflow-hidden">
-              <Pagination page={workersP.page} totalPages={workersP.totalPages} total={workersP.total} pageSize={workersP.pageSize} onChange={workersP.setPage} label="team members" />
-            </div>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="err"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            className="space-y-4"
-          >
-            {/* Period + filters */}
-            <div className="bg-white rounded-2xl border border-gray-100 p-4 flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
-              <div>
-                <h3 className="font-bold text-gray-900">Mistake Analytics</h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  See who makes the most mistakes and which types happen most often
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
-                  {([
-                    ["7d", "7 days"],
-                    ["30d", "30 days"],
-                    ["90d", "90 days"],
-                    ["all", "All time"],
-                  ] as const).map(([id, label]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setPeriod(id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                        period === id ? "bg-primary text-white" : "text-gray-600 hover:text-gray-900"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="relative">
+                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-sm font-bold flex items-center justify-center">
+                  {w.avatar}
                 </div>
-                {(focusUserId || focusJobId || categoryFilter) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFocusUserId(null);
-                      setFocusJobId(null);
-                      setCategoryFilter("");
-                    }}
-                    className="text-xs font-semibold text-primary hover:underline"
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
-              {([
-                ["list", "All records"],
-                ["byJob", "By job"],
-                ["byUser", "By user"],
-              ] as const).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setRecordsView(id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                    recordsView === id ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
+                <span
+                  className={`absolute bottom-0 right-0 w-3 h-3 rounded-full ring-2 ring-white ${
+                    w.status === "on_job"
+                      ? "bg-sky-400 animate-pulse"
+                      : w.status === "active"
+                        ? "bg-emerald-400"
+                        : w.status === "idle"
+                          ? "bg-amber-400"
+                          : "bg-gray-400"
                   }`}
-                >
-                  {label}
-                </button>
-              ))}
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-sm text-gray-900 truncate">{w.name}</div>
+                <div className="text-[10px] text-gray-500">
+                  {w.status === "on_job"
+                    ? `On job · ${w.activeJobNumber ?? w.lastJob}`
+                    : w.status === "active"
+                      ? "Online"
+                      : w.status === "idle"
+                        ? "Away"
+                        : "Offline"}
+                  {w.status !== "on_job" ? ` · Last job: ${w.lastJob}` : ""}
+                </div>
+              </div>
+              <div
+                className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                  w.efficiency >= 90
+                    ? "bg-emerald-50 text-emerald-700"
+                    : w.efficiency >= 80
+                      ? "bg-amber-50 text-amber-700"
+                      : "bg-red-50 text-red-700"
+                }`}
+              >
+                {w.efficiency}%
+              </div>
             </div>
 
-            {analytics && (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                {[
-                  { label: "Total mistakes", value: analytics.total, hint: `${analytics.open} open` },
-                  { label: "Open", value: analytics.open, hint: "Needs attention" },
-                  { label: "High severity", value: analytics.highSeverity ?? 0, hint: "Priority review" },
-                  { label: "From rework", value: analytics.reworkCount ?? 0, hint: "Auto-logged" },
-                ].map((card) => (
-                  <div key={card.label} className="bg-white rounded-2xl border border-gray-100 p-4">
-                    <p className="text-[10px] uppercase font-bold text-gray-500 tracking-wide">{card.label}</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">{card.value}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{card.hint}</p>
-                  </div>
-                ))}
+            <div className="mb-3">
+              <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                <span>Today</span>
+                <span className="font-bold">{w.hoursToday}h / 8h</span>
               </div>
-            )}
-
-            {analytics && (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                <div className="bg-white rounded-2xl border border-gray-100 p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h4 className="font-bold text-gray-900 text-sm">Mistakes by user</h4>
-                      <p className="text-[11px] text-gray-500">Click a bar to open that user’s profile</p>
-                    </div>
-                    <UserRound size={16} className="text-gray-400" />
-                  </div>
-                  {(analytics.byUser ?? []).length === 0 ? (
-                    <p className="text-sm text-gray-400 py-10 text-center">No mistakes in this period</p>
-                  ) : (
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={(analytics.byUser ?? []).slice(0, 8).map((u) => ({
-                            ...u,
-                            shortName: u.name.split(" ")[0],
-                          }))}
-                          margin={{ top: 8, right: 8, left: -12, bottom: 0 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                          <XAxis dataKey="shortName" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                          <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                          <Tooltip
-                            formatter={(value: number) => [value, "Mistakes"]}
-                            labelFormatter={(_, payload) => payload?.[0]?.payload?.name ?? ""}
-                            contentStyle={{ borderRadius: 12, border: "1px solid #e5e7eb", fontSize: 12 }}
-                          />
-                          <Bar
-                            dataKey="count"
-                            radius={[8, 8, 0, 0]}
-                            cursor="pointer"
-                            onClick={(data: any) => {
-                              const id = data?.userId ?? data?.payload?.userId;
-                              if (id) setFocusUserId(id);
-                            }}
-                          >
-                            {(analytics.byUser ?? []).slice(0, 8).map((u) => (
-                              <Cell
-                                key={u.userId}
-                                fill={focusUserId === u.userId ? "#0B7EB9" : "#38bdf8"}
-                              />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                  <div className="mt-3 space-y-1.5">
-                    {(analytics.byUser ?? []).slice(0, 5).map((u) => (
-                      <button
-                        key={u.userId}
-                        type="button"
-                        onClick={() => setFocusUserId(u.userId)}
-                        className={`w-full flex items-center justify-between text-xs px-2.5 py-2 rounded-lg border transition-colors ${
-                          focusUserId === u.userId
-                            ? "border-primary bg-primary/5 text-primary"
-                            : "border-transparent hover:bg-gray-50 text-gray-700"
-                        }`}
-                      >
-                        <span className="font-semibold truncate">{u.name}</span>
-                        <span className="tabular-nums">
-                          {u.count} · {u.openCount} open
-                          {(u.highSeverity ?? 0) > 0 ? ` · ${u.highSeverity} high` : ""}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-2xl border border-gray-100 p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h4 className="font-bold text-gray-900 text-sm">Mistakes by type</h4>
-                      <p className="text-[11px] text-gray-500">Click a type to filter the list below</p>
-                    </div>
-                    <CalendarDays size={16} className="text-gray-400" />
-                  </div>
-                  {(analytics.byCategory ?? []).length === 0 ? (
-                    <p className="text-sm text-gray-400 py-10 text-center">No categories in this period</p>
-                  ) : (
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          layout="vertical"
-                          data={(analytics.byCategory ?? []).slice(0, 8).map((c) => ({
-                            ...c,
-                            label: formatMistakeCategory(c.category),
-                          }))}
-                          margin={{ top: 8, right: 16, left: 8, bottom: 0 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                          <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                          <YAxis
-                            type="category"
-                            dataKey="label"
-                            width={120}
-                            tick={{ fontSize: 10, fill: "#64748b" }}
-                            axisLine={false}
-                            tickLine={false}
-                          />
-                          <Tooltip
-                            formatter={(value: number) => [value, "Count"]}
-                            contentStyle={{ borderRadius: 12, border: "1px solid #e5e7eb", fontSize: 12 }}
-                          />
-                          <Bar
-                            dataKey="count"
-                            radius={[0, 8, 8, 0]}
-                            cursor="pointer"
-                            onClick={(data: any) => {
-                              const cat = data?.category ?? data?.payload?.category;
-                              if (cat) setCategoryFilter(cat);
-                            }}
-                          >
-                            {(analytics.byCategory ?? []).slice(0, 8).map((c) => (
-                              <Cell
-                                key={c.category}
-                                fill={categoryFilter === c.category ? "#0B7EB9" : "#94a3b8"}
-                              />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* User profile drill-down */}
-            <AnimatePresence>
-              {analytics?.userProfile && focusUserId && (
+              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                 <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 8 }}
-                  className="bg-white rounded-2xl border border-primary/30 p-5 shadow-sm"
-                >
-                  <div className="flex items-start justify-between gap-3 mb-4">
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-primary tracking-wide">User mistake profile</p>
-                      <h4 className="text-lg font-bold text-gray-900">{analytics.userProfile.name}</h4>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {analytics.userProfile.total} mistakes in selected period · {analytics.userProfile.open} open ·{" "}
-                        {analytics.userProfile.highSeverity} high severity
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setFocusUserId(null)}
-                      className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-gray-500 mb-2">Top categories for this user</p>
-                      <div className="space-y-2">
-                        {analytics.userProfile.byCategory.length === 0 && (
-                          <p className="text-xs text-gray-400">No category data</p>
-                        )}
-                        {analytics.userProfile.byCategory.slice(0, 6).map((c) => {
-                          const max = analytics.userProfile!.byCategory[0]?.count || 1;
-                          return (
-                            <button
-                              key={c.category}
-                              type="button"
-                              onClick={() => setCategoryFilter(c.category)}
-                              className="w-full text-left"
-                            >
-                              <div className="flex justify-between text-xs mb-1">
-                                <span className="text-gray-700 font-medium">{formatMistakeCategory(c.category)}</span>
-                                <span className="font-bold text-gray-900">{c.count}</span>
-                              </div>
-                              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-primary rounded-full"
-                                  style={{ width: `${Math.max(8, (c.count / max) * 100)}%` }}
-                                />
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-gray-500 mb-2">By severity</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {(["high", "medium", "low"] as const).map((sev) => {
-                          const count =
-                            analytics.userProfile!.bySeverity.find((s) => s.severity === sev)?.count ?? 0;
-                          return (
-                            <div key={sev} className={`rounded-xl border p-3 ${SEVERITY[sev]}`}>
-                              <p className="text-[10px] uppercase font-bold">{sev}</p>
-                              <p className="text-xl font-bold mt-1">{count}</p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <p className="text-xs text-gray-500 mt-3">
-                        Coaching tip: focus training on the top category above. Escalate if high-severity mistakes repeat.
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100">
-                <h3 className="font-bold text-gray-900">
-                  {recordsView === "byJob" ? "Mistakes by job" : recordsView === "byUser" ? "Mistakes by user" : "Mistake Records"}
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {recordsView === "byJob"
-                    ? "Click a job to see its mistake records"
-                    : recordsView === "byUser"
-                      ? "Click a user to see their mistake records"
-                      : focusUserId
-                        ? `Filtered to selected user${categoryFilter ? ` · ${formatMistakeCategory(categoryFilter)}` : ""}`
-                        : focusJobId
-                          ? "Filtered to selected job"
-                          : categoryFilter
-                            ? `Filtered to ${formatMistakeCategory(categoryFilter)}`
-                            : `${errors.length} records in this period`}
-                  {!canWriteMistakes ? " · view only" : ""}
-                </p>
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.min((w.hoursToday / 8) * 100, 100)}%` }}
+                  transition={{ duration: 0.6 + i * 0.04 }}
+                  className="h-full bg-primary rounded-full"
+                />
               </div>
+            </div>
 
-              {recordsView === "byJob" && (
-                <div className="divide-y divide-gray-50">
-                  {mistakesByJob.length === 0 && (
-                    <div className="text-center py-12 text-sm text-gray-400">No jobs with mistakes in this period.</div>
-                  )}
-                  {mistakesByJob.map((j) => (
-                    <button
-                      key={j.jobId || "none"}
-                      type="button"
-                      onClick={() => {
-                        if (j.jobId) {
-                          setFocusJobId(j.jobId);
-                          setFocusUserId(null);
-                          setRecordsView("list");
-                        }
-                      }}
-                      className="w-full text-left px-5 py-4 hover:bg-gray-50 flex items-center justify-between gap-3"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-sm font-bold text-gray-900 truncate">{j.jobNumber} · {j.jobTitle}</div>
-                        <div className="text-xs text-gray-500">{j.open} open</div>
-                      </div>
-                      <div className="text-lg font-bold text-red-600 tabular-nums">{j.count}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {recordsView === "byUser" && (
-                <div className="divide-y divide-gray-50">
-                  {mistakesByUser.length === 0 && (
-                    <div className="text-center py-12 text-sm text-gray-400">No users with mistakes in this period.</div>
-                  )}
-                  {mistakesByUser.map((u) => (
-                    <button
-                      key={u.userId}
-                      type="button"
-                      onClick={() => {
-                        setFocusUserId(u.userId);
-                        setFocusJobId(null);
-                        setRecordsView("list");
-                      }}
-                      className="w-full text-left px-5 py-4 hover:bg-gray-50 flex items-center justify-between gap-3"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-sm font-bold text-gray-900 truncate">{u.name}</div>
-                        <div className="text-xs text-gray-500">{u.open} open</div>
-                      </div>
-                      <div className="text-lg font-bold text-red-600 tabular-nums">{u.count}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {recordsView === "list" && (
-                <>
-              <div className="px-5 py-4 border-b border-gray-100">
-                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 max-w-md focus-within:border-primary transition-colors">
-                  <Search size={16} className="text-gray-400" />
-                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search errors…" className="bg-transparent text-gray-900 placeholder:text-gray-400 text-sm flex-1 focus:outline-none" />
-                </div>
+            <div className="grid grid-cols-4 gap-2 pt-3 border-t border-gray-100">
+              <div className="text-center">
+                <div className="text-base font-bold text-gray-900">{w.hoursWeek}h</div>
+                <div className="text-[9px] text-gray-500 uppercase tracking-wide">Week</div>
               </div>
-              {errorsP.pageItems.map((e, i) => (
-                <motion.div
-                  key={e.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  whileHover={{ backgroundColor: "rgb(249,250,251)" }}
-                  onClick={() => setSelectedError(e)}
-                  className="px-5 py-4 border-b border-gray-50 last:border-0 cursor-pointer"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
-                      <AlertCircle size={16} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <button
-                          type="button"
-                          className="font-semibold text-sm text-gray-900 hover:text-primary"
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            setFocusUserId(e.userId);
-                            setFocusJobId(null);
-                          }}
-                        >
-                          {e.user?.name ?? "—"}
-                        </button>
-                        <span className="text-xs text-gray-400">·</span>
-                        <button
-                          type="button"
-                          className="text-xs text-primary font-medium hover:underline"
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            if (e.jobId) {
-                              setFocusJobId(e.jobId);
-                              setFocusUserId(null);
-                            }
-                          }}
-                        >
-                          {e.jobNumber ?? "—"}
-                        </button>
-                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${SEVERITY[e.severity]}`}>{e.severity}</span>
-                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border bg-violet-50 text-violet-700 border-violet-200">{formatMistakeCategory(e.category)}</span>
-                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${e.status === "resolved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-700 border-gray-200"}`}>{e.status}</span>
-                      </div>
-                      <p className="text-sm font-semibold text-gray-900">{e.title}</p>
-                      <p className="text-sm text-gray-600 mt-0.5">{e.description}</p>
-                      <div className="text-[10px] text-gray-400 mt-1">{new Date(e.createdAt).toLocaleString()}</div>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-              {errorsP.pageItems.length === 0 && (
-                <div className="text-center py-12 text-sm text-gray-400">No mistake records match this filter.</div>
-              )}
-              <Pagination page={errorsP.page} totalPages={errorsP.totalPages} total={errorsP.total} pageSize={errorsP.pageSize} onChange={errorsP.setPage} label="reports" />
-                </>
-              )}
+              <div className="text-center">
+                <div className="text-base font-bold text-emerald-600">{w.jobsCompleted}</div>
+                <div className="text-[9px] text-gray-500 uppercase tracking-wide">Done</div>
+              </div>
+              <div className="text-center">
+                <div className={`text-base font-bold ${w.reworks > 0 ? "text-amber-600" : "text-gray-300"}`}>
+                  {w.reworks}
+                </div>
+                <div className="text-[9px] text-gray-500 uppercase tracking-wide">Rework</div>
+              </div>
+              <div className="text-center">
+                <div className={`text-base font-bold ${w.mistakes > 0 ? "text-red-600" : "text-gray-300"}`}>
+                  {w.mistakes}
+                </div>
+                <div className="text-[9px] text-gray-500 uppercase tracking-wide">Mistakes</div>
+              </div>
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
+        ))}
+      </div>
 
-      <AnimatePresence>
-        {selectedError && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setSelectedError(null)}
-            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 10 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              onClick={(ev) => ev.stopPropagation()}
-              className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden border border-gray-100 shadow-2xl"
-            >
-              <div className="px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-lg font-bold text-gray-900 truncate">{selectedError.title}</h3>
-                    <span className={`px-2 py-1 rounded-lg border text-[10px] font-semibold uppercase ${selectedError.status === "resolved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-700 border-gray-200"}`}>{selectedError.status}</span>
-                    <span className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold uppercase ${SEVERITY[selectedError.severity]}`}>{selectedError.severity}</span>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {selectedError.jobNumber ?? "—"} · {selectedError.jobTitle ?? "—"}
-                  </div>
-                </div>
-                <button onClick={() => setSelectedError(null)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="px-6 py-5 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-gray-100 p-4">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Worker</div>
-                    <div className="text-sm font-semibold text-gray-900 mt-1">{selectedError.user?.name ?? "—"}</div>
-                  </div>
-                  <div className="rounded-xl border border-gray-100 p-4">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Created By</div>
-                    <div className="text-sm font-semibold text-gray-900 mt-1">{selectedError.createdBy?.name ?? "—"}</div>
-                  </div>
-                  <div className="rounded-xl border border-gray-100 p-4">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Created At</div>
-                    <div className="text-sm font-semibold text-gray-900 mt-1">{new Date(selectedError.createdAt).toLocaleString()}</div>
-                  </div>
-                  <div className="rounded-xl border border-gray-100 p-4">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Report ID</div>
-                    <div className="text-sm font-mono text-gray-700 mt-1 truncate">{selectedError.id}</div>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-gray-100 p-4">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Description</div>
-                  <div className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">{selectedError.description}</div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => { if (selectedError.jobId) window.location.assign(`${jobBase}/${selectedError.jobId}`); }}
-                      disabled={!selectedError.jobId}
-                      className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Open Job
-                    </button>
-                  </div>
-
-                  {canWriteMistakes && (
-                    <button
-                      onClick={() => updateErrorStatus(selectedError.id, selectedError.status === "resolved" ? "open" : "resolved")}
-                      disabled={updatingError}
-                      className={`px-4 py-2 rounded-xl text-sm font-semibold text-white ${selectedError.status === "resolved" ? "bg-gray-700 hover:bg-gray-800" : "bg-emerald-600 hover:bg-emerald-700"} disabled:opacity-50 disabled:cursor-not-allowed`}
-                    >
-                      {selectedError.status === "resolved" ? "Reopen" : "Mark Resolved"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* New error modal */}
-      <AnimatePresence>
-        {errorModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setErrorModal(false)}
-            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl p-6 max-w-md w-full"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-gray-900">Log Mistake</h3>
-                <button onClick={() => setErrorModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-              </div>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Job</label>
-                  <select
-                    value={draft.jobId}
-                    onChange={(e) => {
-                      const jobId = e.target.value;
-                      const job = (apiJobs ?? []).find((j) => j.id === jobId);
-                      const userId = job?.assignee?.id ?? "";
-                      setDraft({ ...draft, jobId, userId });
-                    }}
-                    className="w-full bg-white !text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-                  >
-                    <option value="">Select a job</option>
-                    {(apiJobs ?? []).map((j) => (
-                      <option key={j.id} value={j.id}>{j.number} · {j.title}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Worker</label>
-                  <select
-                    value={draft.userId}
-                    onChange={(e) => setDraft({ ...draft, userId: e.target.value })}
-                    className="w-full bg-white !text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-                  >
-                    <option value="">Select a worker</option>
-                    {workers.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Title</label>
-                  <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="w-full bg-white !text-gray-900 !placeholder:text-gray-400 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary" placeholder="Missing dimensions" />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Mistake type</label>
-                  <select
-                    value={draft.category}
-                    onChange={(e) => setDraft({ ...draft, category: e.target.value as MistakeCategory })}
-                    className="w-full bg-white !text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-                  >
-                    {MISTAKE_CATEGORIES.map((c) => (
-                      <option key={c} value={c}>{formatMistakeCategory(c)}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Severity</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(["low", "medium", "high"] as const).map((s) => (
-                      <button key={s} onClick={() => setDraft({ ...draft, severity: s })} className={`py-2 rounded-lg text-xs font-bold border-2 ${SEVERITY[s]} ${draft.severity === s ? "ring-2 ring-primary ring-offset-1" : "opacity-60"}`}>{s}</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Description</label>
-                  <textarea value={draft.desc} onChange={(e) => setDraft({ ...draft, desc: e.target.value })} rows={3} className="w-full bg-white !text-gray-900 !placeholder:text-gray-400 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary resize-none" placeholder="Describe the error…" />
-                </div>
-                <button
-                  onClick={submitError}
-                  disabled={!draft.jobId || !draft.userId || !draft.title.trim() || !draft.desc.trim() || saving}
-                  className="w-full mt-2 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Submit Report
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div className="mt-4 bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <Pagination
+          page={workersP.page}
+          totalPages={workersP.totalPages}
+          total={workersP.total}
+          pageSize={workersP.pageSize}
+          onChange={workersP.setPage}
+          label="team members"
+        />
+      </div>
     </DashboardLayout>
   );
 }

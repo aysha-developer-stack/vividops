@@ -8,7 +8,6 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
-import { formatMistakeCategory } from "@/lib/mistakeCategories";
 import logoImg from "@assets/vv_1778503190047.png";
 import { useAuth } from "@/lib/auth";
 import {
@@ -36,45 +35,12 @@ const USER_ROLE_LABEL: Record<string, string> = {
 
 interface UserPerf { id: string; name: string; role: UserRoleLabel; jobs: number; completed: number; score: number; scoreTip: string; avg: string; hours: number; rework: number; overdue: number; }
 
-const SEV_COLOR: Record<string, string> = {
-  high: "bg-red-50 text-red-700 border-red-200",
-  medium: "bg-amber-50 text-amber-700 border-amber-200",
-  low: "bg-gray-50 text-gray-700 border-gray-200",
-};
-
 export default function Reports({ role = "super-admin" as Role }: { role?: Role } = {}) {
   const { user: currentUser } = useAuth();
   const { data: dashboardData, isLoading: statsLoading } = useGetDashboardStats();
   const { data: apiUsers, isLoading: usersLoading } = useListUsers();
   const { data: apiTimeLogs, isLoading: logsLoading } = useGetTimeLogs();
   const { data: apiJobs, isLoading: jobsLoading } = useListJobs();
-  const [errorReports, setErrorReports] = useState<Array<{
-    id: string;
-    jobId: string | null;
-    userId: string;
-    createdById: string;
-    title: string;
-    description: string;
-    category?: string;
-    severity: "low" | "medium" | "high";
-    status: "open" | "resolved";
-    createdAt: string;
-    jobNumber: string | null;
-    jobTitle: string | null;
-    user: { id: string; name: string } | null;
-    createdBy: { id: string; name: string } | null;
-  }>>([]);
-  const [errorsLoading, setErrorsLoading] = useState(false);
-  const [mistakeAnalytics, setMistakeAnalytics] = useState<{
-    byUser: Array<{ userId: string; name: string; count: number; openCount: number; reworkCount?: number }>;
-    byCategory: Array<{ category: string; count: number }>;
-    total: number;
-    open: number;
-    reworkCount?: number;
-    highSeverity?: number;
-  } | null>(null);
-  const [selectedError, setSelectedError] = useState<(typeof errorReports)[number] | null>(null);
-  const [updatingError, setUpdatingError] = useState(false);
   const [jobMemberships, setJobMemberships] = useState<Record<string, string[]>>({});
 
   const isUser = role === "user";
@@ -86,43 +52,16 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
 
   const USER_TABS = [
     { id: "progress", label: "Progress Report", icon: TrendingUp },
-    { id: "errors", label: "Error Reports", icon: AlertTriangle },
     { id: "summary", label: "Work Summary", icon: FileText },
   ];
 
   const ADMIN_TABS = [
     { id: "system", label: "System-wide", icon: TrendingUp },
     { id: "users", label: "User Performance", icon: Users },
-    { id: "errors", label: "Error Reports", icon: AlertTriangle },
     { id: "time", label: "Time Tracking", icon: Clock },
   ];
 
   const ACTIVE_TABS = isUser ? USER_TABS : ADMIN_TABS;
-
-  useEffect(() => {
-    let cancelled = false;
-    setErrorsLoading(true);
-    (async () => {
-      try {
-        const [reportsRes, analyticsRes] = await Promise.all([
-          fetch("/api/error-reports?period=30d", { credentials: "include" }),
-          fetch("/api/error-reports/analytics?period=30d", { credentials: "include" }),
-        ]);
-        if (reportsRes.ok) {
-          const data = (await reportsRes.json()) as unknown;
-          if (Array.isArray(data) && !cancelled) setErrorReports(data as any[]);
-        }
-        if (analyticsRes.ok) {
-          const analytics = await analyticsRes.json();
-          if (!cancelled) setMistakeAnalytics(analytics);
-        }
-      } catch {
-      } finally {
-        if (!cancelled) setErrorsLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [role]);
 
   useEffect(() => {
     let cancelled = false;
@@ -169,30 +108,11 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     return () => { cancelled = true; };
   }, [apiJobs]);
 
-  const updateErrorStatus = async (id: string, status: "open" | "resolved") => {
-    setUpdatingError(true);
-    try {
-      const res = await fetch(`/api/error-reports/${id}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) return;
-      const updated = (await res.json()) as (typeof errorReports)[number];
-      setErrorReports((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
-      setSelectedError(updated);
-    } finally {
-      setUpdatingError(false);
-    }
-  };
-
   const [activeTab, setActiveTab] = useState(isUser ? "progress" : "system");
   const [period, setPeriod] = useState("30d");
   const [userRoleFilter, setUserRoleFilter] = useState<"All" | UserRoleLabel>("All");
   const [filterOpen, setFilterOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [severityFilter, setSeverityFilter] = useState<("high" | "medium" | "low")[]>(["high", "medium", "low"]);
   const [minScore, setMinScore] = useState(0);
 
   const parseMs = (iso: string | null | undefined) => {
@@ -425,16 +345,13 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     ];
   }, [dashboardData, apiUsers, apiJobs, period]);
 
-  const toggleSeverity = (s: "high" | "medium" | "low") =>
-    setSeverityFilter((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
   const resetFilters = () => {
-    setSearch(""); setUserRoleFilter("All"); setSeverityFilter(["high", "medium", "low"]);
+    setSearch(""); setUserRoleFilter("All");
     setMinScore(0);
   };
 
   const isFilterableTab =
     activeTab === "users" ||
-    activeTab === "errors" ||
     activeTab === "time";
 
   useEffect(() => {
@@ -447,14 +364,11 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     if (activeTab === "users") {
       return base + (userRoleFilter !== "All" ? 1 : 0) + (minScore > 0 ? 1 : 0);
     }
-    if (activeTab === "errors") {
-      return base + (severityFilter.length < 3 ? 1 : 0);
-    }
     if (activeTab === "time") {
       return base;
     }
     return base;
-  }, [activeTab, isFilterableTab, search, userRoleFilter, minScore, severityFilter]);
+  }, [activeTab, isFilterableTab, search, userRoleFilter, minScore]);
   const isSuperAdmin = role === "super-admin";
   const ROLE_FILTERS: ("All" | UserRoleLabel)[] = isSuperAdmin
     ? ["All", "Admin", "Supervisor", "User"]
@@ -466,35 +380,11 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     u.score >= minScore
   );
   
-  const filteredErrors = errorReports
-    .filter((e) => {
-      if (!periodStartMs) return true;
-      const createdMs = parseMs(e.createdAt);
-      return createdMs != null && createdMs >= periodStartMs;
-    })
-    .filter((e) => severityFilter.includes(e.severity))
-    .filter((e) => {
-      const q = search.trim().toLowerCase();
-      if (!q) return true;
-      const job = `${e.jobNumber ?? ""} ${e.jobTitle ?? ""}`.trim();
-      const userName = e.user?.name ?? "";
-      const createdBy = e.createdBy?.name ?? "";
-      return (
-        e.title.toLowerCase().includes(q) ||
-        e.description.toLowerCase().includes(q) ||
-        job.toLowerCase().includes(q) ||
-        userName.toLowerCase().includes(q) ||
-        createdBy.toLowerCase().includes(q) ||
-        e.id.toLowerCase().includes(q)
-      );
-    });
-
   const filteredTime = timeLogs.filter((t) =>
     search === "" || t.user.toLowerCase().includes(search.toLowerCase()) || t.project.toLowerCase().includes(search.toLowerCase())
   );
 
   const usersP = usePagination(filteredUsers, 6);
-  const errorsP = usePagination(filteredErrors, 6);
   const timeP = usePagination(filteredTime, 8);
 
   const platformJobStats = useMemo(() => {
@@ -526,7 +416,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const totalHours = platformJobStats.hours;
   const totalRework = platformJobStats.rework;
 
-  const anyLoading = statsLoading || usersLoading || logsLoading || jobsLoading || errorsLoading;
+  const anyLoading = statsLoading || usersLoading || logsLoading || jobsLoading;
   const anyData = dashboardData || apiUsers || apiTimeLogs || apiJobs;
 
   if (anyLoading && !anyData) {
@@ -697,58 +587,6 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
     w.document.close();
   };
 
-  const exportErrorsPDF = async () => {
-    const periodLabel = period === "All" ? "All time" : `Last ${period}`;
-    const w = openPrintWindow();
-    if (!w) return;
-    const logoUrl = await resolveLogoDataUrl();
-    const rows = filteredErrors
-      .map((e) => {
-        const job = `${e.jobNumber ?? ""} ${e.jobTitle ?? ""}`.trim() || "—";
-        const user = e.user?.name ?? "—";
-        const created = new Date(e.createdAt).toLocaleString();
-        return `<tr><td>${e.title}</td><td>${e.severity.toUpperCase()}</td><td>${e.status}</td><td>${job}</td><td>${user}</td><td>${created}</td></tr>`;
-      })
-      .join("");
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Error Reports</title>
-<style>
-@page{size:A4;margin:14mm 16mm}
-*{box-sizing:border-box}html,body{margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a}
-.brand{display:flex;justify-content:space-between;align-items:center;background:#000;border-bottom:3px solid #0B7EB9;padding:20px 22px;margin:0 0 22px;gap:16px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.brand img{height:76px;width:auto;object-fit:contain;display:block}
-.brand .meta{font-size:11px;color:#cbd5e1;text-align:right;line-height:1.6}
-.brand .meta strong{display:block;color:#fff;font-size:14px;margin-bottom:2px;letter-spacing:.2px}
-h2{margin:0 0 8px;font-size:16px}
-.sub{margin:0 0 18px;color:#64748b;font-size:12px}
-table{width:100%;border-collapse:collapse;font-size:11px}
-th{text-align:left;padding:10px;background:#f1f5f9;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#475569;border-bottom:1px solid #e2e8f0}
-td{padding:10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
-@media print{.no-print{display:none}}
-.btn{position:fixed;top:20px;right:20px;background:#0B7EB9;color:#fff;border:0;padding:10px 18px;border-radius:8px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(11,126,185,.4)}
-</style></head><body>
-<button class="btn no-print" onclick="window.print()">Save as PDF</button>
-<div class="brand"><img src="${logoUrl}" alt="Vivid OPS"><div class="meta"><strong>Error Reports</strong>Generated ${new Date().toLocaleString()}<br>Period: ${periodLabel}</div></div>
-<h2>Errors: ${filteredErrors.length}</h2>
-<p class="sub">Filters: severity=${severityFilter.join(", ")}${search ? ` · search="${search.replaceAll('"', "&quot;")}"` : ""}</p>
-<table>
-<thead><tr><th>Title</th><th>Severity</th><th>Status</th><th>Job</th><th>User</th><th>Created</th></tr></thead>
-<tbody>${rows || `<tr><td colspan="6" style="padding:14px;color:#64748b">No error reports found.</td></tr>`}</tbody>
-</table>
-<script>
-  (async () => {
-    const imgs = Array.from(document.images || []);
-    await Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise((r) => { img.onload = img.onerror = () => r(); })));
-    if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch {} }
-    setTimeout(() => window.print(), 50);
-  })();
-</script>
-</body></html>`;
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-  };
-
   const exportTimePDF = async () => {
     const periodLabel = period === "All" ? "All time" : `Last ${period}`;
     const w = openPrintWindow();
@@ -860,7 +698,6 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 
   const exportActivePDF = async () => {
     if (activeTab === "users") return exportUsersPDF();
-    if (activeTab === "errors") return exportErrorsPDF();
     if (activeTab === "time") return exportTimePDF();
     if (activeTab === "system") return exportSystemPDF();
     alert("Nothing to export on this tab.");
@@ -903,7 +740,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                       <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Search</label>
                       <div className="relative mt-1">
                         <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={activeTab === "errors" ? "Error type or ID…" : activeTab === "time" ? "User or project…" : "User name…"} className="w-full pl-8 pr-3 py-2 text-xs border border-gray-200 rounded-lg !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary" />
+                        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={activeTab === "time" ? "User or project…" : "User name…"} className="w-full pl-8 pr-3 py-2 text-xs border border-gray-200 rounded-lg !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary" />
                       </div>
                     </div>
 
@@ -922,22 +759,6 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                       <div>
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider flex justify-between"><span>Min performance score</span><span className="text-primary font-bold">{minScore}</span></label>
                         <input type="range" min={0} max={100} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} className="w-full mt-2 accent-primary" />
-                      </div>
-                    )}
-
-                    {activeTab === "errors" && (
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Severity</label>
-                        <div className="flex flex-wrap gap-1.5 mt-1.5">
-                          {(["high", "medium", "low"] as const).map((s) => {
-                            const on = severityFilter.includes(s);
-                            return (
-                              <button key={s} onClick={() => toggleSeverity(s)} className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md border transition ${on ? `${SEV_COLOR[s]}` : "bg-white text-gray-400 border-gray-200"}`}>
-                                {on && <Check size={10} />} {s.toUpperCase()}
-                              </button>
-                            );
-                          })}
-                        </div>
                       </div>
                     )}
 
@@ -1159,72 +980,6 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                 </div>
               )}
 
-              {activeTab === "errors" && (
-                <div className="space-y-2">
-                  {mistakeAnalytics && (
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-                      <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                        <p className="text-[10px] uppercase font-bold text-gray-500">Total mistakes</p>
-                        <p className="text-xl font-bold text-gray-900">{mistakeAnalytics.total}</p>
-                        <p className="text-xs text-amber-700">{mistakeAnalytics.open} open</p>
-                      </div>
-                      <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
-                        <p className="text-[10px] uppercase font-bold text-amber-700">Rework cycles</p>
-                        <p className="text-xl font-bold text-amber-900">{mistakeAnalytics.reworkCount ?? 0}</p>
-                        <p className="text-xs text-amber-700">{mistakeAnalytics.highSeverity ?? 0} high severity</p>
-                      </div>
-                      <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                        <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Who errs most</p>
-                        {(mistakeAnalytics.byUser ?? []).slice(0, 3).map((u) => (
-                          <div key={u.userId} className="flex justify-between text-xs gap-2">
-                            <span className="truncate text-gray-700">{u.name}</span>
-                            <span className="font-semibold text-red-600">{u.count} / {u.reworkCount ?? 0} rw</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
-                        <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Mistake types</p>
-                        {(mistakeAnalytics.byCategory ?? []).slice(0, 3).map((c) => (
-                          <div key={c.category} className="flex justify-between text-xs gap-2">
-                            <span className="truncate text-gray-700">{formatMistakeCategory(c.category)}</span>
-                            <span className="font-semibold text-gray-900">{c.count}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {filteredErrors.length === 0 && <div className="text-center py-8 text-sm text-gray-400">No errors match current filters.</div>}
-                  {errorsP.pageItems.map((e, i) => (
-                    <motion.div
-                      key={e.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.06 }}
-                      whileHover={{ x: 4 }}
-                      onClick={() => setSelectedError(e)}
-                      className="flex items-center gap-4 p-4 border border-gray-100 rounded-xl hover:border-gray-300 hover:shadow-md transition-all cursor-pointer"
-                    >
-                      <div className="w-10 h-10 rounded-lg bg-red-50 text-red-500 flex items-center justify-center shrink-0">
-                        <AlertTriangle size={18} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-gray-900">{e.title}</span>
-                          <span className="text-xs text-gray-400 font-mono">{e.jobNumber ?? e.id}</span>
-                        </div>
-                        <div className="text-xs text-gray-500 mt-0.5">
-                          {e.user?.name ?? "—"} · {formatMistakeCategory(e.category)} · {e.jobTitle ?? "—"} · {new Date(e.createdAt).toLocaleString()}
-                        </div>
-                      </div>
-                      <span className={`px-2 py-1 rounded-lg border text-[10px] font-semibold uppercase ${e.status === "resolved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-700 border-gray-200"}`}>{e.status}</span>
-                      <span className={`px-2.5 py-1 rounded-lg border text-xs font-semibold uppercase ${SEV_COLOR[e.severity]}`}>{e.severity}</span>
-                      <ChevronRight size={16} className="text-gray-300" />
-                    </motion.div>
-                  ))}
-                  <Pagination page={errorsP.page} totalPages={errorsP.totalPages} total={errorsP.total} pageSize={errorsP.pageSize} onChange={errorsP.setPage} label="errors" />
-                </div>
-              )}
-
               {activeTab === "time" && !isUser && (
                 <div className="rounded-xl border border-gray-100 overflow-hidden">
                 <table className="w-full">
@@ -1254,97 +1009,6 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
         </div>
       </div>
 
-      <AnimatePresence>
-        {selectedError && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setSelectedError(null)}
-            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 10 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden border border-gray-100 shadow-2xl"
-            >
-              <div className="px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-lg font-bold text-gray-900 truncate">{selectedError.title}</h3>
-                    <span className={`px-2 py-1 rounded-lg border text-[10px] font-semibold uppercase ${selectedError.status === "resolved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-700 border-gray-200"}`}>{selectedError.status}</span>
-                    <span className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold uppercase ${SEV_COLOR[selectedError.severity]}`}>{selectedError.severity}</span>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {selectedError.jobNumber ?? "—"} · {selectedError.jobTitle ?? "—"}
-                  </div>
-                </div>
-                <button onClick={() => setSelectedError(null)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700">
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="px-6 py-5 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-gray-100 p-4">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Worker</div>
-                    <div className="text-sm font-semibold text-gray-900 mt-1">{selectedError.user?.name ?? "—"}</div>
-                  </div>
-                  <div className="rounded-xl border border-gray-100 p-4">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Created By</div>
-                    <div className="text-sm font-semibold text-gray-900 mt-1">{selectedError.createdBy?.name ?? "—"}</div>
-                  </div>
-                  <div className="rounded-xl border border-gray-100 p-4">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Created At</div>
-                    <div className="text-sm font-semibold text-gray-900 mt-1">{new Date(selectedError.createdAt).toLocaleString()}</div>
-                  </div>
-                  <div className="rounded-xl border border-gray-100 p-4">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Report ID</div>
-                    <div className="text-sm font-mono text-gray-700 mt-1 truncate">{selectedError.id}</div>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-gray-100 p-4">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Description</div>
-                  <div className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">{selectedError.description}</div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => { if (selectedError.jobId) window.location.assign(`${jobBase}/${selectedError.jobId}`); }}
-                      disabled={!selectedError.jobId}
-                      className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Open Job
-                    </button>
-                    <button
-                      onClick={() => window.location.assign(role === "super-admin" ? "/super-admin/error-reports" : role === "admin" ? "/admin/monitoring" : "/supervisor/error-reports")}
-                      disabled={role === "user"}
-                      className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Open Monitoring
-                    </button>
-                  </div>
-
-                  {role !== "user" && (
-                    <button
-                      onClick={() => updateErrorStatus(selectedError.id, selectedError.status === "resolved" ? "open" : "resolved")}
-                      disabled={updatingError}
-                      className={`px-4 py-2 rounded-xl text-sm font-semibold text-white ${selectedError.status === "resolved" ? "bg-gray-700 hover:bg-gray-800" : "bg-emerald-600 hover:bg-emerald-700"} disabled:opacity-50 disabled:cursor-not-allowed`}
-                    >
-                      {selectedError.status === "resolved" ? "Reopen" : "Mark Resolved"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </DashboardLayout>
   );
 }

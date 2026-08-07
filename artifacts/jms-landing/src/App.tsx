@@ -31,6 +31,7 @@ import JobDetail from "@/pages/admin/JobDetail";
 import Notifications from "@/pages/admin/Notifications";
 import NotificationTemplates from "@/pages/admin/NotificationTemplates";
 import SystemMonitoring from "@/pages/admin/SystemMonitoring";
+import Mistakes from "@/pages/admin/Mistakes";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -153,7 +154,6 @@ function AppRouter() {
         <Route path="/super-admin/users"><RequireSignedIn><UserManagement role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/users-monitoring"><RequireSignedIn><UserMonitoring role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/supervisors"><RequireSignedIn><SupervisorMonitoring role="super-admin" /></RequireSignedIn></Route>
-        <Route path="/super-admin/error-reports"><RequireSignedIn><UserMonitoring role="super-admin" initialTab="errors" /></RequireSignedIn></Route>
         <Route path="/super-admin/assignments"><RequireSignedIn><JobManagement role="super-admin" initialTab="assignments" /></RequireSignedIn></Route>
         <Route path="/super-admin/rework-requests"><RequireSignedIn><JobManagement role="super-admin" initialTab="rework" /></RequireSignedIn></Route>
         <Route path="/super-admin/files"><RequireSignedIn><SuperAdminFiles /></RequireSignedIn></Route>
@@ -161,6 +161,7 @@ function AppRouter() {
         <Route path="/super-admin/jobs"><RequireSignedIn><JobManagement role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/monitoring"><RequireSignedIn><SystemMonitoring role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/reports"><RequireSignedIn><Reports role="super-admin" /></RequireSignedIn></Route>
+        <Route path="/super-admin/mistakes"><RequireSignedIn><Mistakes role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/settings"><RequireSignedIn><Settings role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/notification-templates"><RequireSignedIn><NotificationTemplates /></RequireSignedIn></Route>
         <Route path="/super-admin/roles-permissions"><RequireSignedIn><SuperAdminRolesPermissions /></RequireSignedIn></Route>
@@ -175,8 +176,8 @@ function AppRouter() {
         <Route path="/admin/jobs"><RequireSignedIn><JobManagement role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/supervisors"><RequireSignedIn><SupervisorMonitoring role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/monitoring"><RequireSignedIn><UserMonitoring role="admin" /></RequireSignedIn></Route>
-        <Route path="/admin/error-reports"><RequireSignedIn><UserMonitoring role="admin" initialTab="errors" /></RequireSignedIn></Route>
         <Route path="/admin/reports"><RequireSignedIn><Reports role="admin" /></RequireSignedIn></Route>
+        <Route path="/admin/mistakes"><RequireSignedIn><Mistakes role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/communication"><RequireSignedIn><Communication role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/files"><RequireSignedIn><SuperAdminFiles role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/settings"><RequireSignedIn><Settings role="admin" /></RequireSignedIn></Route>
@@ -185,12 +186,12 @@ function AppRouter() {
         <Route path="/admin"><RequireSignedIn><AdminDashboard /></RequireSignedIn></Route>
         
         {/* Supervisor */}
-        <Route path="/supervisor/error-reports"><RequireSignedIn><UserMonitoring role="supervisor" initialTab="errors" /></RequireSignedIn></Route>
         <Route path="/supervisor/users"><RequireSignedIn><UserMonitoring role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/jobs/:id">{(params) => <RequireSignedIn><JobDetail id={params.id} role="supervisor" /></RequireSignedIn>}</Route>
         <Route path="/supervisor/jobs"><RequireSignedIn><JobManagement role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/monitoring"><RequireSignedIn><SupervisorMonitoring role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/reports"><RequireSignedIn><Reports role="supervisor" /></RequireSignedIn></Route>
+        <Route path="/supervisor/mistakes"><RequireSignedIn><Mistakes role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/communication"><RequireSignedIn><Communication role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/settings"><RequireSignedIn><Settings role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/training"><RequireSignedIn><Training role="supervisor" /></RequireSignedIn></Route>
@@ -207,7 +208,7 @@ function AppRouter() {
         <Route path="/user/notifications"><RequireSignedIn><Notifications role="user" /></RequireSignedIn></Route>
         <Route path="/user/communication"><RequireSignedIn><Communication role="user" /></RequireSignedIn></Route>
         <Route path="/user/reports"><RequireSignedIn><Reports role="user" /></RequireSignedIn></Route>
-        <Route path="/user/mistakes"><RequireSignedIn><UserMonitoring role="user" initialTab="errors" /></RequireSignedIn></Route>
+        <Route path="/user/mistakes"><RequireSignedIn><Mistakes role="user" /></RequireSignedIn></Route>
         <Route path="/user/settings"><RequireSignedIn><Settings role="user" /></RequireSignedIn></Route>
         <Route path="/user/files"><RequireSignedIn><FilesChecklists /></RequireSignedIn></Route>
         <Route path="/user"><RequireSignedIn><UserDashboard /></RequireSignedIn></Route>

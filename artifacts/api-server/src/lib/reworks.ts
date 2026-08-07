@@ -1,7 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
-  errorReports,
   jobReworks,
   MISTAKE_CATEGORIES,
   type JobRow,
@@ -36,7 +35,7 @@ async function nextCycleNumber(jobId: string, userId: string): Promise<number> {
   return Number.isFinite(max) ? max + 1 : 1;
 }
 
-export async function createReworkWithErrorReport(opts: {
+export async function createRework(opts: {
   actor: UserRow;
   job: JobRow;
   userId?: string | null;
@@ -83,26 +82,7 @@ export async function createReworkWithErrorReport(opts: {
     })
     .returning();
 
-  const description = comments ? `${reason}\n\nInstructions: ${comments}` : reason;
-  const [report] = await db
-    .insert(errorReports)
-    .values({
-      jobId: opts.job.id,
-      userId,
-      createdById: opts.actor.id,
-      reworkId: rework.id,
-      title: opts.title?.trim() || `Rework #${cycleNumber}: ${opts.job.title}`,
-      description,
-      category,
-      checklistItemId: opts.checklistItemId ?? null,
-      source: opts.source,
-      severity,
-      status: "open",
-      updatedAt: new Date(),
-    })
-    .returning();
-
-  return { rework, report };
+  return { rework };
 }
 
 export async function markOpenReworksAwaitingReview(jobId: string, userId?: string | null) {
@@ -123,21 +103,12 @@ export async function markOpenReworksAwaitingReview(jobId: string, userId?: stri
 }
 
 export async function resolveJobReworks(jobId: string) {
-  const rows = await db
+  await db
     .update(jobReworks)
     .set({
       status: "approved",
       approvedAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(and(eq(jobReworks.jobId, jobId), inArray(jobReworks.status, ["open", "awaiting_review", "needs_correction"])))
-    .returning({ id: jobReworks.id });
-
-  const ids = rows.map((r) => r.id);
-  if (ids.length > 0) {
-    await db
-      .update(errorReports)
-      .set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() })
-      .where(inArray(errorReports.reworkId, ids));
-  }
+    .where(and(eq(jobReworks.jobId, jobId), inArray(jobReworks.status, ["open", "awaiting_review", "needs_correction"])));
 }

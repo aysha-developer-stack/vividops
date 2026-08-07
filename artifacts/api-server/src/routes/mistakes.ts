@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
   db,
@@ -13,7 +13,7 @@ import {
   type MistakeCategory,
   type UserRow,
 } from "@workspace/db";
-import { requireAuth, requireRole } from "../middlewares/requireAuth";
+import { requireAuth } from "../middlewares/requireAuth";
 import { createNotification } from "../lib/notifications";
 
 const router: IRouter = Router();
@@ -21,7 +21,11 @@ const router: IRouter = Router();
 const targetUserAlias = alias(users, "target_user");
 const creatorAlias = alias(users, "creator_user");
 
-const ensureSchema = async () => {};
+/** Only manually logged mistakes — never rework-linked or auto-generated records. */
+const manualMistakeOnly = and(
+  eq(errorReports.source, "manual"),
+  isNull(errorReports.reworkId),
+);
 
 function isMistakeCategory(value: unknown): value is MistakeCategory {
   return typeof value === "string" && (MISTAKE_CATEGORIES as readonly string[]).includes(value);
@@ -33,7 +37,6 @@ function parseDateBound(value: unknown): Date | null {
   return Number.isFinite(d.getTime()) ? d : null;
 }
 
-/** Resolve analytics/list window from ?period=7d|30d|90d|all or ?from=&to= */
 function resolveDateRange(
   query: Record<string, unknown>,
   opts?: { defaultPeriod?: string },
@@ -60,23 +63,28 @@ function pushDateConditions(conditions: unknown[], from: Date | null, to: Date |
   if (to) conditions.push(lte(errorReports.createdAt, to));
 }
 
-function canViewJob(actor: UserRow, job: JobRow): boolean {
-  if (actor.role === "super-admin" || actor.role === "admin") return true;
-  if (actor.role === "supervisor") {
-    return job.supervisorId === actor.id;
-  }
-  return job.assigneeId === actor.id;
+function isManager(actor: UserRow): boolean {
+  return actor.role === "super-admin" || actor.role === "admin" || actor.role === "supervisor";
 }
 
 function canManageJob(actor: UserRow, job: JobRow): boolean {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
-  if (actor.role === "supervisor") {
-    return job.supervisorId === actor.id;
-  }
-  return false;
+  return actor.role === "supervisor" && job.supervisorId === actor.id;
 }
 
-type PublicErrorReport = ErrorReportRow & {
+export type PublicMistake = {
+  id: string;
+  jobId: string | null;
+  userId: string;
+  createdById: string;
+  title: string;
+  description: string;
+  category: string;
+  severity: "low" | "medium" | "high";
+  status: "open" | "resolved";
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
   jobNumber: string | null;
   jobTitle: string | null;
   user: { id: string; name: string; role: UserRow["role"] } | null;
@@ -88,9 +96,20 @@ function toPublic(row: {
   job: Pick<JobRow, "id" | "serial" | "title"> | null;
   user: Pick<UserRow, "id" | "name" | "role"> | null;
   createdBy: Pick<UserRow, "id" | "name" | "role"> | null;
-}): PublicErrorReport {
+}): PublicMistake {
   return {
-    ...row.report,
+    id: row.report.id,
+    jobId: row.report.jobId,
+    userId: row.report.userId,
+    createdById: row.report.createdById,
+    title: row.report.title,
+    description: row.report.description,
+    category: row.report.category,
+    severity: row.report.severity,
+    status: row.report.status,
+    resolvedAt: row.report.resolvedAt?.toISOString() ?? null,
+    createdAt: row.report.createdAt.toISOString(),
+    updatedAt: row.report.updatedAt.toISOString(),
     jobNumber: row.job ? `JOB-${row.job.serial}` : null,
     jobTitle: row.job?.title ?? null,
     user: row.user?.id ? row.user : null,
@@ -98,25 +117,60 @@ function toPublic(row: {
   };
 }
 
-router.get("/error-reports/categories", requireAuth, (_req, res) => {
-  res.json(MISTAKE_CATEGORIES);
+async function supervisorJobIds(supervisorId: string): Promise<string[]> {
+  const rows = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.supervisorId, supervisorId));
+  return rows.map((r) => r.id);
+}
+
+async function supervisorScope(supervisorId: string): Promise<{ jobIds: string[]; teamUserIds: string[] }> {
+  const jobIds = await supervisorJobIds(supervisorId);
+  const teamUserIds = new Set<string>();
+  if (jobIds.length > 0) {
+    const supervised = await db
+      .select({ assigneeId: jobs.assigneeId })
+      .from(jobs)
+      .where(inArray(jobs.id, jobIds));
+    for (const row of supervised) {
+      if (row.assigneeId) teamUserIds.add(row.assigneeId);
+    }
+    const members = await db
+      .select({ userId: jobMembers.userId })
+      .from(jobMembers)
+      .where(inArray(jobMembers.jobId, jobIds));
+    for (const member of members) teamUserIds.add(member.userId);
+  }
+  return { jobIds, teamUserIds: [...teamUserIds] };
+}
+
+function supervisorVisibility(jobIds: string[], teamUserIds: string[]) {
+  if (jobIds.length === 0 && teamUserIds.length === 0) return sql`false`;
+  const parts = [];
+  if (jobIds.length > 0) parts.push(inArray(errorReports.jobId, jobIds));
+  if (teamUserIds.length > 0) {
+    parts.push(and(isNull(errorReports.jobId), inArray(errorReports.userId, teamUserIds)));
+  }
+  return parts.length === 1 ? parts[0]! : or(...parts);
+}
+
+router.get("/mistakes/categories", requireAuth, (_req, res) => {
+  res.json(MISTAKE_CATEGORIES.filter((c) => c !== "rework"));
   return;
 });
 
-router.get("/error-reports/analytics", requireAuth, async (req, res) => {
-  await ensureSchema();
+router.get("/mistakes/analytics", requireAuth, async (req, res) => {
   const actor = req.session!.user;
   const query = req.query as Record<string, unknown>;
   const { from, to, period } = resolveDateRange(query);
   const focusUserId = typeof query.userId === "string" && query.userId ? query.userId : null;
 
-  let scopedUserFilter: { userId?: string; jobIds?: string[] } = {};
+  const conditions: unknown[] = [manualMistakeOnly];
+  pushDateConditions(conditions, from, to);
+
   if (actor.role === "user") {
-    scopedUserFilter = { userId: actor.id };
+    conditions.push(eq(errorReports.userId, actor.id));
   } else if (actor.role === "supervisor") {
-    const managedJobs = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.supervisorId, actor.id));
-    scopedUserFilter = { jobIds: managedJobs.map((j) => j.id) };
-    if (scopedUserFilter.jobIds!.length === 0) {
+    const { jobIds, teamUserIds } = await supervisorScope(actor.id);
+    if (jobIds.length === 0 && teamUserIds.length === 0) {
       return res.json({
         period,
         from: from?.toISOString() ?? null,
@@ -126,68 +180,57 @@ router.get("/error-reports/analytics", requireAuth, async (req, res) => {
         byMonth: [],
         total: 0,
         open: 0,
-        reworkCount: 0,
         highSeverity: 0,
         userProfile: null,
       });
     }
+    conditions.push(supervisorVisibility(jobIds, teamUserIds));
   }
 
-  const conditions: any[] = [];
-  if (scopedUserFilter.userId) conditions.push(eq(errorReports.userId, scopedUserFilter.userId));
-  if (scopedUserFilter.jobIds) conditions.push(inArray(errorReports.jobId, scopedUserFilter.jobIds));
-  pushDateConditions(conditions, from, to);
-
-  const baseWhere = conditions.length > 0 ? and(...conditions) : undefined;
-
-  const byUserQuery = db
-    .select({
-      userId: errorReports.userId,
-      name: users.name,
-      count: sql<number>`count(*)::int`,
-      openCount: sql<number>`count(*) filter (where ${errorReports.status} = 'open')::int`,
-      reworkCount: sql<number>`count(*) filter (where ${errorReports.reworkId} is not null or ${errorReports.category} = 'rework')::int`,
-      highSeverity: sql<number>`count(*) filter (where ${errorReports.severity} = 'high')::int`,
-    })
-    .from(errorReports)
-    .innerJoin(users, eq(users.id, errorReports.userId))
-    .groupBy(errorReports.userId, users.name)
-    .orderBy(desc(sql`count(*)`))
-    .limit(20);
-
-  const byCategoryQuery = db
-    .select({
-      category: errorReports.category,
-      count: sql<number>`count(*)::int`,
-    })
-    .from(errorReports)
-    .groupBy(errorReports.category)
-    .orderBy(desc(sql`count(*)`));
-
-  const byMonthQuery = db
-    .select({
-      month: sql<string>`to_char(date_trunc('month', ${errorReports.createdAt}), 'YYYY-MM')`,
-      count: sql<number>`count(*)::int`,
-      openCount: sql<number>`count(*) filter (where ${errorReports.status} = 'open')::int`,
-    })
-    .from(errorReports)
-    .groupBy(sql`date_trunc('month', ${errorReports.createdAt})`)
-    .orderBy(sql`date_trunc('month', ${errorReports.createdAt})`);
-
-  const totalsQuery = db
-    .select({
-      total: sql<number>`count(*)::int`,
-      open: sql<number>`count(*) filter (where ${errorReports.status} = 'open')::int`,
-      reworkCount: sql<number>`count(*) filter (where ${errorReports.reworkId} is not null or ${errorReports.category} = 'rework')::int`,
-      highSeverity: sql<number>`count(*) filter (where ${errorReports.severity} = 'high')::int`,
-    })
-    .from(errorReports);
+  const baseWhere = and(...conditions);
 
   const [byUser, byCategory, byMonth, totals] = await Promise.all([
-    baseWhere ? byUserQuery.where(baseWhere) : byUserQuery,
-    baseWhere ? byCategoryQuery.where(baseWhere) : byCategoryQuery,
-    baseWhere ? byMonthQuery.where(baseWhere) : byMonthQuery,
-    baseWhere ? totalsQuery.where(baseWhere) : totalsQuery,
+    db
+      .select({
+        userId: errorReports.userId,
+        name: users.name,
+        count: sql<number>`count(*)::int`,
+        openCount: sql<number>`count(*) filter (where ${errorReports.status} = 'open')::int`,
+        highSeverity: sql<number>`count(*) filter (where ${errorReports.severity} = 'high')::int`,
+      })
+      .from(errorReports)
+      .innerJoin(users, eq(users.id, errorReports.userId))
+      .where(baseWhere)
+      .groupBy(errorReports.userId, users.name)
+      .orderBy(desc(sql`count(*)`))
+      .limit(20),
+    db
+      .select({
+        category: errorReports.category,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(errorReports)
+      .where(baseWhere)
+      .groupBy(errorReports.category)
+      .orderBy(desc(sql`count(*)`)),
+    db
+      .select({
+        month: sql<string>`to_char(date_trunc('month', ${errorReports.createdAt}), 'YYYY-MM')`,
+        count: sql<number>`count(*)::int`,
+        openCount: sql<number>`count(*) filter (where ${errorReports.status} = 'open')::int`,
+      })
+      .from(errorReports)
+      .where(baseWhere)
+      .groupBy(sql`date_trunc('month', ${errorReports.createdAt})`)
+      .orderBy(sql`date_trunc('month', ${errorReports.createdAt})`),
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        open: sql<number>`count(*) filter (where ${errorReports.status} = 'open')::int`,
+        highSeverity: sql<number>`count(*) filter (where ${errorReports.severity} = 'high')::int`,
+      })
+      .from(errorReports)
+      .where(baseWhere),
   ]);
 
   let userProfile: {
@@ -196,19 +239,17 @@ router.get("/error-reports/analytics", requireAuth, async (req, res) => {
     total: number;
     open: number;
     highSeverity: number;
-    reworkCount: number;
     byCategory: Array<{ category: string; count: number }>;
     bySeverity: Array<{ severity: string; count: number }>;
   } | null = null;
 
-  if (focusUserId && actor.role !== "user") {
-    const profileConditions: any[] = [...conditions, eq(errorReports.userId, focusUserId)];
-    const profileWhere = and(...profileConditions);
-
+  const profileUserId = focusUserId ?? (actor.role === "user" ? actor.id : null);
+  if (profileUserId) {
+    const profileWhere = and(...conditions, eq(errorReports.userId, profileUserId));
     const [profileUser] = await db
       .select({ id: users.id, name: users.name })
       .from(users)
-      .where(eq(users.id, focusUserId))
+      .where(eq(users.id, profileUserId))
       .limit(1);
 
     if (profileUser) {
@@ -217,7 +258,6 @@ router.get("/error-reports/analytics", requireAuth, async (req, res) => {
           .select({
             total: sql<number>`count(*)::int`,
             open: sql<number>`count(*) filter (where ${errorReports.status} = 'open')::int`,
-            reworkCount: sql<number>`count(*) filter (where ${errorReports.reworkId} is not null or ${errorReports.category} = 'rework')::int`,
             highSeverity: sql<number>`count(*) filter (where ${errorReports.severity} = 'high')::int`,
           })
           .from(errorReports)
@@ -248,30 +288,8 @@ router.get("/error-reports/analytics", requireAuth, async (req, res) => {
         total: pTotals[0]?.total ?? 0,
         open: pTotals[0]?.open ?? 0,
         highSeverity: pTotals[0]?.highSeverity ?? 0,
-        reworkCount: pTotals[0]?.reworkCount ?? 0,
         byCategory: pCategories,
         bySeverity: pSeverity.map((r) => ({ severity: String(r.severity), count: r.count })),
-      };
-    }
-  } else if (actor.role === "user") {
-    // Self profile for field users
-    const selfId = actor.id;
-    const [profileUser] = await db
-      .select({ id: users.id, name: users.name })
-      .from(users)
-      .where(eq(users.id, selfId))
-      .limit(1);
-    if (profileUser) {
-      const selfRow = byUser.find((u) => u.userId === selfId);
-      userProfile = {
-        userId: profileUser.id,
-        name: profileUser.name,
-        total: selfRow?.count ?? totals[0]?.total ?? 0,
-        open: selfRow?.openCount ?? totals[0]?.open ?? 0,
-        highSeverity: selfRow?.highSeverity ?? totals[0]?.highSeverity ?? 0,
-        reworkCount: selfRow?.reworkCount ?? totals[0]?.reworkCount ?? 0,
-        byCategory,
-        bySeverity: [],
       };
     }
   }
@@ -285,21 +303,18 @@ router.get("/error-reports/analytics", requireAuth, async (req, res) => {
     byMonth,
     total: totals[0]?.total ?? 0,
     open: totals[0]?.open ?? 0,
-    reworkCount: totals[0]?.reworkCount ?? 0,
     highSeverity: totals[0]?.highSeverity ?? 0,
     userProfile,
   });
   return;
 });
 
-router.get("/error-reports", requireAuth, async (req, res) => {
-  await ensureSchema();
+router.get("/mistakes", requireAuth, async (req, res) => {
   const actor = req.session!.user;
   const query = req.query as Record<string, unknown>;
   const userIdFilter = typeof query.userId === "string" ? query.userId : null;
   const jobIdFilter = typeof query.jobId === "string" ? query.jobId : null;
   const categoryFilter = typeof query.category === "string" ? query.category : null;
-  const sourceFilter = typeof query.source === "string" ? query.source : null;
   const { from, to } = resolveDateRange(query, { defaultPeriod: "all" });
 
   const q = db
@@ -315,32 +330,27 @@ router.get("/error-reports", requireAuth, async (req, res) => {
     .leftJoin(creatorAlias, eq(creatorAlias.id, errorReports.createdById))
     .orderBy(desc(errorReports.createdAt));
 
-  const filters: any[] = [];
+  const filters: unknown[] = [manualMistakeOnly];
   if (userIdFilter) filters.push(eq(errorReports.userId, userIdFilter));
   if (jobIdFilter) filters.push(eq(errorReports.jobId, jobIdFilter));
-  if (categoryFilter && isMistakeCategory(categoryFilter)) filters.push(eq(errorReports.category, categoryFilter));
-  if (sourceFilter) filters.push(eq(errorReports.source, sourceFilter));
+  if (categoryFilter && isMistakeCategory(categoryFilter) && categoryFilter !== "rework") {
+    filters.push(eq(errorReports.category, categoryFilter));
+  }
   pushDateConditions(filters, from, to);
 
   if (actor.role === "super-admin" || actor.role === "admin") {
-    const rows = filters.length ? await q.where(and(...filters)) : await q;
+    const rows = await q.where(and(...filters));
     res.json(rows.map(toPublic));
     return;
   }
 
   if (actor.role === "supervisor") {
-    const managedJobs = await db
-      .select({ id: jobs.id })
-      .from(jobs)
-      .where(eq(jobs.supervisorId, actor.id));
-    const jobIds = managedJobs.map((j) => j.id);
-
-    if (jobIds.length === 0) {
+    const { jobIds, teamUserIds } = await supervisorScope(actor.id);
+    if (jobIds.length === 0 && teamUserIds.length === 0) {
       res.json([]);
       return;
     }
-
-    const rows = await q.where(and(inArray(errorReports.jobId, jobIds), ...filters));
+    const rows = await q.where(and(supervisorVisibility(jobIds, teamUserIds), ...filters));
     res.json(rows.map(toPublic));
     return;
   }
@@ -349,11 +359,13 @@ router.get("/error-reports", requireAuth, async (req, res) => {
   res.json(rows.map(toPublic));
 });
 
-const creatorOnly = requireRole("super-admin", "admin");
-
-router.post("/error-reports", creatorOnly, async (req, res) => {
-  await ensureSchema();
+router.post("/mistakes", requireAuth, async (req, res) => {
   const actor = req.session!.user;
+  if (!isManager(actor)) {
+    res.status(403).json({ error: "Only supervisors and admins can log mistakes" });
+    return;
+  }
+
   const body = req.body as Partial<{
     jobId: string | null;
     userId: string;
@@ -361,58 +373,65 @@ router.post("/error-reports", creatorOnly, async (req, res) => {
     description: string;
     severity: "low" | "medium" | "high";
     category: string;
-    checklistItemId: number | null;
-    source: string;
   }>;
 
-  if (!body.jobId || !body.userId || !body.title || !body.description) {
-    res.status(400).json({ error: "jobId, userId, title and description are required" });
+  if (!body.userId || !body.title?.trim() || !body.description?.trim()) {
+    res.status(400).json({ error: "userId, title and description are required" });
     return;
   }
+
   const severity = body.severity ?? "medium";
   if (severity !== "low" && severity !== "medium" && severity !== "high") {
     res.status(400).json({ error: "Invalid severity" });
     return;
   }
 
-  const category: MistakeCategory = isMistakeCategory(body.category) ? body.category : "other";
-  const checklistItemId =
-    typeof body.checklistItemId === "number" && Number.isFinite(body.checklistItemId)
-      ? body.checklistItemId
-      : null;
-  // Manual mistake records are separate from rework auto-logs.
-  const source = "manual";
+  let category: MistakeCategory = isMistakeCategory(body.category) && body.category !== "rework"
+    ? body.category
+    : "other";
 
-  const [j] = await db.select().from(jobs).where(eq(jobs.id, body.jobId)).limit(1);
-  if (!j) {
-    res.status(404).json({ error: "Job not found" });
-    return;
-  }
+  let jobRow: JobRow | null = null;
+  if (body.jobId) {
+    const [j] = await db.select().from(jobs).where(eq(jobs.id, body.jobId)).limit(1);
+    if (!j) {
+      res.status(404).json({ error: "Job not found" });
+      return;
+    }
+    if (!canManageJob(actor, j)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    jobRow = j;
 
-  const assignedIds = new Set<string>();
-  if (j.assigneeId) assignedIds.add(j.assigneeId);
-  const members = await db
-    .select({ userId: jobMembers.userId })
-    .from(jobMembers)
-    .where(eq(jobMembers.jobId, j.id));
-  for (const member of members) assignedIds.add(member.userId);
-  if (!assignedIds.has(body.userId)) {
-    res.status(400).json({ error: "userId must belong to the selected job" });
-    return;
+    const assignedIds = new Set<string>();
+    if (j.assigneeId) assignedIds.add(j.assigneeId);
+    const members = await db
+      .select({ userId: jobMembers.userId })
+      .from(jobMembers)
+      .where(eq(jobMembers.jobId, j.id));
+    for (const member of members) assignedIds.add(member.userId);
+    if (!assignedIds.has(body.userId)) {
+      res.status(400).json({ error: "userId must belong to the selected job" });
+      return;
+    }
+  } else if (actor.role === "supervisor") {
+    const { teamUserIds } = await supervisorScope(actor.id);
+    if (!teamUserIds.includes(body.userId)) {
+      res.status(403).json({ error: "User is not on your supervised jobs" });
+      return;
+    }
   }
-  const jobRow = j;
 
   const [created] = await db
     .insert(errorReports)
     .values({
-      jobId: body.jobId,
+      jobId: body.jobId ?? null,
       userId: body.userId,
       createdById: actor.id,
-      title: body.title,
-      description: body.description,
+      title: body.title.trim(),
+      description: body.description.trim(),
       category,
-      checklistItemId,
-      source,
+      source: "manual",
       severity,
       status: "open",
       updatedAt: new Date(),
@@ -422,8 +441,8 @@ router.post("/error-reports", creatorOnly, async (req, res) => {
   await createNotification({
     userId: created.userId,
     jobId: created.jobId ?? undefined,
-    title: `New Mistake Record: ${created.title}`,
-    description: `A mistake record (${category.replaceAll("_", " ")}) has been added for you: ${created.title}. ${created.description}`,
+    title: `Mistake logged: ${created.title}`,
+    description: `A mistake (${category.replaceAll("_", " ")}) has been recorded: ${created.title}. ${created.description}`,
     type: "error",
   });
 
@@ -433,31 +452,33 @@ router.post("/error-reports", creatorOnly, async (req, res) => {
     .where(eq(users.id, created.userId))
     .then((r) => r[0] ?? null);
 
-  const pub = toPublic({
-    report: created,
-    job: jobRow ? { id: jobRow.id, serial: jobRow.serial, title: jobRow.title } : null,
-    user: userRow,
-    createdBy: { id: actor.id, name: actor.name, role: actor.role },
-  });
-
-  res.status(201).json(pub);
+  res.status(201).json(
+    toPublic({
+      report: created,
+      job: jobRow ? { id: jobRow.id, serial: jobRow.serial, title: jobRow.title } : null,
+      user: userRow,
+      createdBy: { id: actor.id, name: actor.name, role: actor.role },
+    }),
+  );
 });
 
-router.patch("/error-reports/:id", requireAuth, async (req, res) => {
-  await ensureSchema();
+router.patch("/mistakes/:id", requireAuth, async (req, res) => {
   const actor = req.session!.user;
-  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const body = req.body as Partial<{ status: "open" | "resolved"; category: string }>;
-
-  const [existing] = await db.select().from(errorReports).where(eq(errorReports.id, id)).limit(1);
-  if (!existing) {
-    res.status(404).json({ error: "Not found" });
+  if (actor.role !== "super-admin" && actor.role !== "admin") {
+    res.status(403).json({ error: "Only admin or super-admin can update mistake records" });
     return;
   }
 
-  // Supervisors and field users are view-only for mistake records.
-  if (actor.role !== "super-admin" && actor.role !== "admin") {
-    res.status(403).json({ error: "Only admin or super-admin can update mistake records" });
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const body = req.body as Partial<{ status: "open" | "resolved"; category: string }>;
+
+  const [existing] = await db
+    .select()
+    .from(errorReports)
+    .where(and(eq(errorReports.id, id), manualMistakeOnly))
+    .limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "Not found" });
     return;
   }
 
@@ -466,7 +487,7 @@ router.patch("/error-reports/:id", requireAuth, async (req, res) => {
     patch.status = body.status;
     patch.resolvedAt = body.status === "resolved" ? new Date() : null;
   }
-  if (isMistakeCategory(body.category)) {
+  if (isMistakeCategory(body.category) && body.category !== "rework") {
     patch.category = body.category;
   }
 
@@ -481,7 +502,7 @@ router.patch("/error-reports/:id", requireAuth, async (req, res) => {
     await createNotification({
       userId: updated.userId,
       jobId: updated.jobId ?? undefined,
-      title: `Mistake Record Resolved: ${updated.title}`,
+      title: `Mistake resolved: ${updated.title}`,
       description: `Your mistake record "${updated.title}" has been marked resolved.`,
       type: "error",
     });
@@ -508,12 +529,15 @@ router.patch("/error-reports/:id", requireAuth, async (req, res) => {
   res.json(toPublic({ report: updated, job: job?.id ? job : null, user: userRow, createdBy: creatorRow }));
 });
 
-router.post("/error-reports/:id/acknowledge", requireAuth, async (req, res) => {
-  await ensureSchema();
+router.post("/mistakes/:id/acknowledge", requireAuth, async (req, res) => {
   const actor = req.session!.user;
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
-  const [existing] = await db.select().from(errorReports).where(eq(errorReports.id, id)).limit(1);
+  const [existing] = await db
+    .select()
+    .from(errorReports)
+    .where(and(eq(errorReports.id, id), manualMistakeOnly))
+    .limit(1);
   if (!existing) return res.status(404).json({ error: "Not found" });
 
   if (existing.userId !== actor.id) {
@@ -523,7 +547,7 @@ router.post("/error-reports/:id/acknowledge", requireAuth, async (req, res) => {
   await createNotification({
     userId: existing.createdById,
     jobId: existing.jobId ?? undefined,
-    title: `Mistake Record Acknowledged: ${existing.title}`,
+    title: `Mistake acknowledged: ${existing.title}`,
     description: `${actor.name} has viewed the mistake record: ${existing.title}.`,
     type: "error",
   });

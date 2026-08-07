@@ -2,6 +2,7 @@ export * from "./users";
 export * from "./sessions";
 export * from "./jobs";
 export * from "./attachments";
+export * from "./job_notes";
 export * from "./job_reworks";
 export * from "./error_reports";
 export * from "./job_members";

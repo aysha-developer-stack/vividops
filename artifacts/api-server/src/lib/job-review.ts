@@ -13,7 +13,7 @@ import {
 import { createNotification } from "./notifications";
 import type { NotificationType } from "./notifications";
 import {
-  createReworkWithErrorReport,
+  createRework,
   markOpenReworksAwaitingReview,
   resolveJobReworks,
 } from "./reworks";
@@ -509,7 +509,7 @@ export async function applyJobReview(opts: {
       return { ok: false, status: 400, error: "Rework reason is required" };
     }
     try {
-      await createReworkWithErrorReport({
+      await createRework({
         actor,
         job,
         reason,

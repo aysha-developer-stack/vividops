@@ -5,7 +5,7 @@ import {
   ArrowLeft, MapPin, Calendar, User, Briefcase, CheckCircle2, Circle,
   Play, Pause, Square, Upload, FileText, Download, MessageCircle, Send,
   RefreshCw, AlertTriangle, Clock, Users, X, Edit2,
-  Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock, ListChecks, Search, Eye, Trash2
+  Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock, ListChecks, Search, Eye, Trash2, StickyNote
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -41,13 +41,14 @@ import {
   TIMER_HEARTBEAT_INTERVAL_MS,
 } from "@/lib/timerSessionApi";
 import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } from "@/lib/downloadFile";
-import { MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategories";
+import { MISTAKE_CATEGORIES, LOG_MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategories";
 import { useQueryClient } from "@tanstack/react-query";
 import FileDropzone from "@/components/FileDropzone";
 import { CHECKLIST_FILE_ACCEPT, filterJobFiles, filterChecklistInstructionFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE, CHECKLIST_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
 import { isCompletedAttachment, fileCategoryFromUploadTag } from "@/lib/attachmentCategories";
 import { useAuth } from "@/lib/auth";
 import UploadProgressPanel from "@/components/UploadProgressPanel";
+import JobNotesTab from "@/components/JobNotesTab";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { uploadFormDataWithProgress } from "@/lib/uploadWithProgress";
 
@@ -147,7 +148,6 @@ type JobReworkApi = {
   assignedAt: string;
   completedAt: string | null;
   approvedAt: string | null;
-  errorReportId: string | null;
   user: { id: string; name: string; role: Role } | null;
   createdBy: { id: string; name: string; role: Role } | null;
 };
@@ -218,7 +218,7 @@ const TABS = [
   { id: "overview", label: "Overview", icon: Briefcase },
   { id: "files", label: "Files", icon: FileText },
   { id: "checklist", label: "Checklist", icon: CheckCircle2 },
-  { id: "mistakes", label: "Mistakes", icon: AlertTriangle },
+  { id: "notes", label: "Notes", icon: StickyNote },
   { id: "communication", label: "Chat", icon: MessageCircle },
   { id: "logs", label: "Timer Logs", icon: Clock },
 ] as const;
@@ -346,7 +346,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const tabFromQuery = (() => {
     try {
       const v = new URLSearchParams(window.location.search).get("tab");
-      if (v === "overview" || v === "checklist" || v === "files" || v === "mistakes" || v === "communication" || v === "logs") return v as TabId;
+      if (v === "overview" || v === "checklist" || v === "files" || v === "notes" || v === "communication" || v === "logs") return v as TabId;
       return null;
     } catch {
       return null;
@@ -369,32 +369,16 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [reworkComments, setReworkComments] = useState("");
   const [reworkDueAt, setReworkDueAt] = useState("");
   const [reworks, setReworks] = useState<JobReworkApi[]>([]);
+  const [mistakeOpen, setMistakeOpen] = useState(false);
+  const [mistakeUserId, setMistakeUserId] = useState("");
+  const [mistakeTitle, setMistakeTitle] = useState("");
+  const [mistakeDesc, setMistakeDesc] = useState("");
+  const [mistakeCategory, setMistakeCategory] = useState("other");
+  const [mistakeSeverity, setMistakeSeverity] = useState<"low" | "medium" | "high">("medium");
+  const [savingMistake, setSavingMistake] = useState(false);
   const [remarksDraft, setRemarksDraft] = useState("");
   const [commentsDraft, setCommentsDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
-  const [jobMistakes, setJobMistakes] = useState<Array<{
-    id: string;
-    userId: string;
-    title: string;
-    description: string;
-    category?: string;
-    severity: "low" | "medium" | "high";
-    status: "open" | "resolved";
-    source?: string;
-    createdAt: string;
-    user: { id: string; name: string } | null;
-    createdBy: { id: string; name: string } | null;
-  }>>([]);
-  const [mistakeModalOpen, setMistakeModalOpen] = useState(false);
-  const [savingMistake, setSavingMistake] = useState(false);
-  const [mistakeDraft, setMistakeDraft] = useState({
-    userId: "",
-    title: "",
-    description: "",
-    category: "other",
-    severity: "medium" as "low" | "medium" | "high",
-  });
-  const canWriteMistakes = role === "super-admin" || role === "admin";
   const [notesSaveError, setNotesSaveError] = useState<string | null>(null);
   const [approveOpen, setApproveOpen] = useState(false);
   const [jobApproved, setJobApproved] = useState(false);
@@ -439,69 +423,6 @@ export default function JobDetail({ role = "user", id }: Props) {
   useEffect(() => {
     void loadReworks();
   }, [job?.id]);
-
-  useEffect(() => {
-    if (!job?.id || tab !== "mistakes") return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`/api/error-reports?jobId=${encodeURIComponent(job.id)}`, {
-          credentials: "include",
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled && Array.isArray(data)) setJobMistakes(data);
-      } catch {
-        if (!cancelled) setJobMistakes([]);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [job?.id, tab]);
-
-  const jobWorkersForMistakes = useMemo(() => {
-    const map = new Map<string, { id: string; name: string }>();
-    if (job?.assignee?.id && (job.assignee as { role?: string }).role === "user") {
-      map.set(job.assignee.id, { id: job.assignee.id, name: job.assignee.name });
-    }
-    for (const m of jobMembers) {
-      if (m.role === "user") map.set(m.id, { id: m.id, name: m.name });
-    }
-    return Array.from(map.values());
-  }, [job?.assignee, jobMembers]);
-
-  const submitJobMistake = async () => {
-    if (!job?.id || !mistakeDraft.userId || !mistakeDraft.title.trim() || !mistakeDraft.description.trim()) return;
-    setSavingMistake(true);
-    try {
-      const res = await fetch("/api/error-reports", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jobId: job.id,
-          userId: mistakeDraft.userId,
-          title: mistakeDraft.title.trim(),
-          description: mistakeDraft.description.trim(),
-          category: mistakeDraft.category,
-          severity: mistakeDraft.severity,
-          source: "manual",
-        }),
-      });
-      if (!res.ok) return;
-      const created = await res.json();
-      setJobMistakes((prev) => [created, ...prev]);
-      setMistakeModalOpen(false);
-      setMistakeDraft({
-        userId: "",
-        title: "",
-        description: "",
-        category: "other",
-        severity: "medium",
-      });
-    } finally {
-      setSavingMistake(false);
-    }
-  };
 
   useEffect(() => {
     setRemarksDraft(((job as any)?.remarks as string | null | undefined) ?? "");
@@ -1580,6 +1501,21 @@ export default function JobDetail({ role = "user", id }: Props) {
                   className="flex items-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-semibold"
                 >
                   <RefreshCw size={12} /> Mark for Rework
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => {
+                    setMistakeUserId(job?.assignee?.id ?? "");
+                    setMistakeTitle("");
+                    setMistakeDesc("");
+                    setMistakeCategory("other");
+                    setMistakeSeverity("medium");
+                    setMistakeOpen(true);
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-semibold"
+                >
+                  <AlertTriangle size={12} /> Log Mistake
                 </motion.button>
                 {role === "supervisor" && (job?.status === "awaiting_supervisor" || job?.status === "in_progress") && (
                   <motion.button
@@ -2717,157 +2653,8 @@ export default function JobDetail({ role = "user", id }: Props) {
           );
         })()}
 
-        {tab === "mistakes" && (
-          <motion.div key="mistakes" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-            <div className="p-5 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <h3 className="font-bold text-gray-900">Mistakes on this job</h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Per-user records for this job only
-                  {canWriteMistakes ? "" : " · view only"}
-                </p>
-              </div>
-              {canWriteMistakes && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMistakeDraft((d) => ({
-                      ...d,
-                      userId: d.userId || jobWorkersForMistakes[0]?.id || "",
-                    }));
-                    setMistakeModalOpen(true);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-primary text-white text-xs font-semibold hover:bg-primary/90"
-                >
-                  Log Mistake
-                </button>
-              )}
-            </div>
-            {jobMistakes.length === 0 ? (
-              <div className="py-14 text-center text-sm text-gray-400">No mistake records for this job yet.</div>
-            ) : (
-              jobMistakes.map((m) => (
-                <div key={m.id} className="px-5 py-4 border-b border-gray-50 last:border-0">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className="text-sm font-bold text-gray-900">{m.user?.name ?? "—"}</span>
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border bg-violet-50 text-violet-700 border-violet-200">
-                      {formatMistakeCategory(m.category)}
-                    </span>
-                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
-                      m.severity === "high" ? "bg-red-50 text-red-700 border-red-200"
-                        : m.severity === "low" ? "bg-blue-50 text-blue-700 border-blue-200"
-                          : "bg-amber-50 text-amber-700 border-amber-200"
-                    }`}>{m.severity}</span>
-                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
-                      m.status === "resolved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-50 text-gray-700 border-gray-200"
-                    }`}>{m.status}</span>
-                    {m.source === "manual" ? (
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border bg-sky-50 text-sky-700 border-sky-200">logged</span>
-                    ) : (
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border bg-orange-50 text-orange-700 border-orange-200">rework</span>
-                    )}
-                  </div>
-                  <p className="text-sm font-semibold text-gray-900">{m.title}</p>
-                  <p className="text-sm text-gray-600 mt-0.5">{m.description}</p>
-                  <p className="text-[10px] text-gray-400 mt-1">
-                    {new Date(m.createdAt).toLocaleString()}
-                    {m.createdBy?.name ? ` · by ${m.createdBy.name}` : ""}
-                  </p>
-                </div>
-              ))
-            )}
-
-            <AnimatePresence>
-              {mistakeModalOpen && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-                  onClick={() => setMistakeModalOpen(false)}
-                >
-                  <motion.div
-                    initial={{ scale: 0.95, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.95, opacity: 0 }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="bg-white rounded-2xl p-6 max-w-md w-full border border-gray-100 shadow-2xl"
-                  >
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-bold text-gray-900">Log Mistake</h3>
-                      <button type="button" onClick={() => setMistakeModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-                    </div>
-                    <div className="space-y-3">
-                      <div>
-                        <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Worker on this job</label>
-                        <select
-                          value={mistakeDraft.userId}
-                          onChange={(e) => setMistakeDraft({ ...mistakeDraft, userId: e.target.value })}
-                          className="w-full bg-white !text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-                        >
-                          <option value="">Select worker</option>
-                          {jobWorkersForMistakes.map((u) => (
-                            <option key={u.id} value={u.id}>{u.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Category</label>
-                        <select
-                          value={mistakeDraft.category}
-                          onChange={(e) => setMistakeDraft({ ...mistakeDraft, category: e.target.value })}
-                          className="w-full bg-white !text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-                        >
-                          {MISTAKE_CATEGORIES.map((c) => (
-                            <option key={c} value={c}>{formatMistakeCategory(c)}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Severity</label>
-                        <select
-                          value={mistakeDraft.severity}
-                          onChange={(e) => setMistakeDraft({ ...mistakeDraft, severity: e.target.value as "low" | "medium" | "high" })}
-                          className="w-full bg-white !text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-                        >
-                          <option value="low">Low</option>
-                          <option value="medium">Medium</option>
-                          <option value="high">High</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Title</label>
-                        <input
-                          value={mistakeDraft.title}
-                          onChange={(e) => setMistakeDraft({ ...mistakeDraft, title: e.target.value })}
-                          className="w-full bg-white !text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary"
-                          placeholder="Short summary"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Details</label>
-                        <textarea
-                          value={mistakeDraft.description}
-                          onChange={(e) => setMistakeDraft({ ...mistakeDraft, description: e.target.value })}
-                          rows={3}
-                          className="w-full bg-white !text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary resize-none"
-                          placeholder="What went wrong?"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        disabled={savingMistake || !mistakeDraft.userId || !mistakeDraft.title.trim() || !mistakeDraft.description.trim()}
-                        onClick={() => void submitJobMistake()}
-                        className="w-full py-2.5 rounded-xl bg-primary text-white text-sm font-bold disabled:opacity-50"
-                      >
-                        {savingMistake ? "Saving…" : "Save Mistake Record"}
-                      </button>
-                    </div>
-                  </motion.div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
+        {tab === "notes" && job?.id && (
+          <JobNotesTab jobId={job.id} role={role} currentUserId={currentUser?.id} />
         )}
 
         {tab === "logs" && (
@@ -3123,6 +2910,131 @@ export default function JobDetail({ role = "user", id }: Props) {
                   className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-semibold hover:bg-amber-600 flex items-center justify-center gap-2"
                 >
                   <RefreshCw size={14} /> Submit
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+        {mistakeOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setMistakeOpen(false)}
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl p-6 max-w-lg w-full"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-gray-900">Log Mistake</h3>
+                <button onClick={() => setMistakeOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              </div>
+              <p className="text-xs text-gray-500 mb-4">Performance record only — not linked to rework workflow.</p>
+              <div className="space-y-3 mb-4">
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">User</label>
+                  <select
+                    value={mistakeUserId}
+                    onChange={(e) => setMistakeUserId(e.target.value)}
+                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm"
+                  >
+                    <option value="">Select user…</option>
+                    {job?.assignee?.id && (
+                      <option value={job.assignee.id}>{job.assignee.name ?? "Assignee"}</option>
+                    )}
+                    {(job?.assignees ?? [])
+                      .filter((m) => m?.role === "user" && m.id && m.id !== job?.assignee?.id)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700 mb-1 block">Type</label>
+                    <select
+                      value={mistakeCategory}
+                      onChange={(e) => setMistakeCategory(e.target.value)}
+                      className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm"
+                    >
+                      {LOG_MISTAKE_CATEGORIES.map((c) => (
+                        <option key={c} value={c}>{formatMistakeCategory(c)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-700 mb-1 block">Severity</label>
+                    <select
+                      value={mistakeSeverity}
+                      onChange={(e) => setMistakeSeverity(e.target.value as typeof mistakeSeverity)}
+                      className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm"
+                    >
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">Title</label>
+                  <input
+                    value={mistakeTitle}
+                    onChange={(e) => setMistakeTitle(e.target.value)}
+                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm"
+                    placeholder="Brief summary"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-700 mb-1 block">Description</label>
+                  <textarea
+                    value={mistakeDesc}
+                    onChange={(e) => setMistakeDesc(e.target.value)}
+                    rows={3}
+                    className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm resize-none"
+                    placeholder="What went wrong"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setMistakeOpen(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold">Cancel</button>
+                <button
+                  disabled={savingMistake || !mistakeUserId || !mistakeTitle.trim() || !mistakeDesc.trim() || !job?.id}
+                  onClick={async () => {
+                    if (!job?.id || !mistakeUserId) return;
+                    setSavingMistake(true);
+                    try {
+                      const res = await fetch("/api/mistakes", {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          jobId: job.id,
+                          userId: mistakeUserId,
+                          title: mistakeTitle.trim(),
+                          description: mistakeDesc.trim(),
+                          category: mistakeCategory,
+                          severity: mistakeSeverity,
+                        }),
+                      });
+                      if (!res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        throw new Error((data as { error?: string }).error || "Failed to log mistake");
+                      }
+                      setMistakeOpen(false);
+                    } catch (err) {
+                      alert(err instanceof Error ? err.message : "Failed to log mistake");
+                    } finally {
+                      setSavingMistake(false);
+                    }
+                  }}
+                  className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold disabled:opacity-50"
+                >
+                  {savingMistake ? "Saving…" : "Save Mistake"}
                 </button>
               </div>
             </motion.div>

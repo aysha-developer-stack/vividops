@@ -17,7 +17,7 @@ import { jobHasCompletedDeliverables } from "../lib/job-review";
 import { logger } from "../lib/logger";
 import { createNotification } from "../lib/notifications";
 import { ensureJobWriteSchema } from "../lib/schema-init";
-import { createReworkWithErrorReport, markOpenReworksAwaitingReview } from "../lib/reworks";
+import { createRework, markOpenReworksAwaitingReview } from "../lib/reworks";
 import { jobStatusPatchFields, type ReviewableStatus } from "../lib/job-review";
 
 const router: IRouter = Router();
@@ -275,7 +275,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         })
         .where(eq(jobs.id, jobId));
 
-      // Keep a personal mistake record for analytics / coaching
+      // Create rework record for this checklist rejection
       let checklistItemLabel = `Checklist item #${itemId}`;
       try {
         const parsed = JSON.parse(typeof job.description === "string" ? job.description : "{}") as any;
@@ -288,7 +288,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         // keep default label
       }
 
-      await createReworkWithErrorReport({
+      await createRework({
         actor,
         job,
         userId: targetUserId,

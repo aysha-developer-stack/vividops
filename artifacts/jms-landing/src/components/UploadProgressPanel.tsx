@@ -1,6 +1,9 @@
+import { useEffect } from "react";
 import { CheckCircle2, ChevronDown, FileText, X } from "lucide-react";
 import type { UploadProgressBatch } from "@/hooks/useUploadProgress";
 import { formatUploadFileSize } from "@/lib/uploadWithProgress";
+
+const AUTO_DISMISS_MS = 2500;
 
 type Props = {
   batch: UploadProgressBatch;
@@ -36,11 +39,19 @@ function aggregateProgress(batch: UploadProgressBatch): number {
 export default function UploadProgressPanel({ batch, onDismiss, onToggleCollapsed }: Props) {
   const progress = aggregateProgress(batch);
   const allDone = batch.items.every((item) => item.status === "completed" || item.status === "error");
+  const allSuccess =
+    batch.items.length > 0 && batch.items.every((item) => item.status === "completed");
   const barColor = batch.items.some((item) => item.status === "error")
     ? "bg-red-500"
     : allDone
       ? "bg-emerald-500"
       : "bg-primary";
+
+  useEffect(() => {
+    if (!allSuccess) return;
+    const timer = window.setTimeout(() => onDismiss(), AUTO_DISMISS_MS);
+    return () => window.clearTimeout(timer);
+  }, [allSuccess, batch.id, onDismiss]);
 
   return (
     <div className="fixed bottom-6 right-6 z-[100] w-[min(100vw-2rem,360px)] overflow-hidden rounded-xl border border-gray-200/80 bg-white/95 shadow-2xl backdrop-blur-md">

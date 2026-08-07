@@ -61,17 +61,6 @@ export default function UserDashboard() {
   const taskDialogResolverRef = useRef<((task: string | null) => void) | null>(
     null,
   );
-  const [errorReports, setErrorReports] = useState<Array<{
-    id: string;
-    title: string;
-    description: string;
-    severity: "low" | "medium" | "high";
-    status: "open" | "resolved";
-    createdAt: string;
-    jobNumber: string | null;
-    jobTitle: string | null;
-  }>>([]);
-
   const readJobTimerState = (jobId: string) => {
     try {
       const raw = localStorage.getItem(`job_timer_v1:${jobId}`);
@@ -166,7 +155,15 @@ export default function UserDashboard() {
       priority: j.priority.charAt(0).toUpperCase() + j.priority.slice(1)
     })), [apiJobs, currentUser]);
 
-  const activeJob = useMemo(() => 
+  const reworkJobs = useMemo(() => (apiJobs ?? [])
+    .filter(j => j.assignee?.id === currentUser?.id && j.status === "rework")
+    .map((j: Job) => ({
+      id: j.id,
+      number: j.number,
+      title: j.title,
+    })), [apiJobs, currentUser]);
+
+  const activeJob = useMemo(() =>
     assignedJobs.find(j => j.id === activeJobId) || assignedJobs[0]
   , [assignedJobs, activeJobId]);
 
@@ -256,25 +253,6 @@ export default function UserDashboard() {
     desc: p.body,
     category: p.category
   })), [apiPosts]);
-
-  useEffect(() => {
-    if (!currentUser?.id) {
-      setErrorReports([]);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/error-reports", { credentials: "include" });
-        if (!res.ok) return;
-        const data = (await res.json()) as unknown;
-        if (!Array.isArray(data)) return;
-        if (!cancelled) setErrorReports(data as any[]);
-      } catch {
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [currentUser?.id]);
 
   const workSummary = useMemo(() => {
     const myJobs = (apiJobs ?? []).filter(j => j.assignee?.id === currentUser?.id);
@@ -541,7 +519,7 @@ export default function UserDashboard() {
             )}
           </motion.div>
 
-          {/* Pending Checklists & Error Reports */}
+          {/* Pending Checklists & Rework */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
               <div className="p-4 border-b border-gray-100 bg-gray-50/50">
@@ -563,21 +541,20 @@ export default function UserDashboard() {
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
               <div className="p-4 border-b border-gray-100 bg-gray-50/50">
                 <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                  <AlertTriangle size={16} className="text-red-600" /> Recent Error Reports
+                  <AlertTriangle size={16} className="text-amber-600" /> Jobs in Rework
                 </h4>
               </div>
               <div className="p-4 space-y-3">
-                {errorReports.slice(0, 3).map(e => (
-                  <div key={e.id} className="space-y-1">
+                {reworkJobs.slice(0, 3).map(j => (
+                  <div key={j.id} className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-red-600 uppercase tracking-wider">{e.severity}</span>
-                      <span className="text-[10px] text-gray-400">{new Date(e.createdAt).toLocaleDateString()}</span>
+                      <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider">Rework</span>
+                      <span className="text-[10px] text-gray-400">{j.number ?? "—"}</span>
                     </div>
-                    <p className="text-xs font-semibold text-gray-900 line-clamp-1">{e.title}</p>
-                    <p className="text-xs text-gray-600 line-clamp-1">{e.jobNumber ?? "—"} · {e.jobTitle ?? "—"}</p>
+                    <p className="text-xs font-semibold text-gray-900 line-clamp-1">{j.title}</p>
                   </div>
                 ))}
-                {errorReports.length === 0 && <div className="text-center py-4 text-xs text-gray-400">No recent errors</div>}
+                {reworkJobs.length === 0 && <div className="text-center py-4 text-xs text-gray-400">No jobs in rework</div>}
               </div>
             </div>
           </div>

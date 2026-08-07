@@ -9,13 +9,14 @@ import postsRouter from "./posts";
 import notificationsRouter from "./notifications";
 import timeLogsRouter from "./time-logs";
 import timerSessionsRouter from "./timer-sessions";
-import errorReportsRouter from "./error-reports";
+import jobNotesRouter from "./job-notes";
 import jobMembersRouter from "./job-members";
 import checklistRouter from "./checklist";
 import checklistTemplatesRouter from "./checklist-templates";
 import cliqRouter from "./cliq";
 import zohoRouter from "./zoho";
 import settingsRouter from "./settings";
+import mistakesRouter from "./mistakes";
 
 const router: IRouter = Router();
 
@@ -29,12 +30,13 @@ router.use(postsRouter);
 router.use(notificationsRouter);
 router.use(timeLogsRouter);
 router.use(timerSessionsRouter);
-router.use(errorReportsRouter);
+router.use(jobNotesRouter);
 router.use(jobMembersRouter);
 router.use(checklistRouter);
 router.use(checklistTemplatesRouter);
 router.use(cliqRouter);
 router.use(zohoRouter);
 router.use(settingsRouter);
+router.use(mistakesRouter);
 
 export default router;

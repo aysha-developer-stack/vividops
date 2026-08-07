@@ -49,3 +49,6 @@ export function formatMistakeCategory(category: string | null | undefined): stri
   }
   return category.replaceAll("_", " ");
 }
+
+/** Categories for manual mistake logging (excludes rework — rework is a separate workflow). */
+export const LOG_MISTAKE_CATEGORIES = MISTAKE_CATEGORIES.filter((c) => c !== "rework");

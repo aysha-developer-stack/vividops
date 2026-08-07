@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, users, jobs, jobMembers, timeLogs, errorReports, sql, desc, eq, and, lt, ne, inArray, gte, lte } from "@workspace/db";
+import { db, users, jobs, jobMembers, timeLogs, errorReports, sql, desc, eq, and, lt, ne, inArray, gte, lte, isNull } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { requireAuth } from "../middlewares/requireAuth";
 import { ensureLegacySupervisorAssignments } from "../lib/schema-init";
@@ -81,13 +81,20 @@ router.get("/dashboard/stats", requireAuth, async (req, res) => {
         if (isSupervisor || isWorker) return null;
         
         const [currentlyWorking] = await db.select({ count: sql<number>`count(distinct ${timeLogs.userId})` }).from(timeLogs).where(sql`${timeLogs.createdAt} >= ${todayStart} and ${timeLogs.duration} = 0`);
-        const [usersMostErrors] = await db.select({ name: users.name, count: sql<number>`count(*)` }).from(errorReports).innerJoin(users, eq(users.id, errorReports.userId)).groupBy(users.name).orderBy(desc(sql`count(*)`)).limit(1);
         const [usersMostRework] = await db.select({ name: users.name, count: sql<number>`count(*)` }).from(jobs).innerJoin(users, eq(users.id, jobs.assigneeId)).where(eq(jobs.status, "rework")).groupBy(users.name).orderBy(desc(sql`count(*)`)).limit(1);
+        const [usersMostMistakes] = await db
+          .select({ name: users.name, count: sql<number>`count(*)::int` })
+          .from(errorReports)
+          .innerJoin(users, eq(users.id, errorReports.userId))
+          .where(and(eq(errorReports.source, "manual"), isNull(errorReports.reworkId)))
+          .groupBy(users.name)
+          .orderBy(desc(sql`count(*)`))
+          .limit(1);
         
         return {
           currentlyWorking: Number(currentlyWorking.count),
-          usersMostErrors: usersMostErrors?.name ?? "None",
           usersMostRework: usersMostRework?.name ?? "None",
+          usersMostMistakes: usersMostMistakes?.name ?? "None",
         };
       })(),
     ]);

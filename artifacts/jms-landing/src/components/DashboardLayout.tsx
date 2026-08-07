@@ -264,11 +264,6 @@ export default function DashboardLayout({
         qc.prefetchQuery(getGetTimeLogsQueryOptions());
         qc.prefetchQuery(getListJobsQueryOptions());
       }
-      if (path.endsWith("/error-reports") || path.includes("/error-reports")) {
-        qc.prefetchQuery(getListUsersQueryOptions());
-        qc.prefetchQuery(getListJobsQueryOptions());
-        qc.prefetchQuery(getGetTimeLogsQueryOptions());
-      }
       if (path.endsWith("/communication") || path.includes("/communication")) {
         qc.prefetchQuery(getListJobsQueryOptions());
       }
