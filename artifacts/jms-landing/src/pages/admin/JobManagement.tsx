@@ -33,7 +33,7 @@ import {
 } from "@/lib/jobMeta";
 import { downloadNamedFile, jobAttachmentDownloadUrl } from "@/lib/downloadFile";
 import FileDropzone from "@/components/FileDropzone";
-import { CHECKLIST_FILE_ACCEPT, isChecklistDocFile } from "@/lib/collectDroppedFiles";
+import { CHECKLIST_FILE_ACCEPT, isChecklistDocFile, filterJobFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
 
 import {
   DropdownMenu,
@@ -487,8 +487,12 @@ export default function JobManagement(
     : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB`
     : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   const addDroppedFiles = (fileList: FileList | File[]) => {
-    const picked = Array.from(fileList).filter((f) => f && typeof f.name === "string");
-    if (picked.length === 0) return;
+    const picked = filterJobFiles(Array.from(fileList).filter((f) => f && typeof f.name === "string"));
+    if (picked.length === 0) {
+      setError(JOB_FILE_REJECTED_MESSAGE);
+      return;
+    }
+    setError(null);
     setJobFiles((prev) => [...prev, ...picked]);
   };
   const removeJobFile = (idx: number) => {
@@ -1443,7 +1447,7 @@ export default function JobManagement(
                   <FileDropzone
                     multiple
                     allowFolders
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.svg,.zip,.dwg,.dxf"
+                    accept={JOB_FILE_ACCEPT}
                     label="Drag & drop job files or folders here"
                     hint="Drawings, instructions, site photos, or client docs · appear in Job Detail → Files"
                     onFiles={(files) => addDroppedFiles(files)}

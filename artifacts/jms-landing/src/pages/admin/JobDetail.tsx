@@ -44,7 +44,7 @@ import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } 
 import { MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategories";
 import { useQueryClient } from "@tanstack/react-query";
 import FileDropzone from "@/components/FileDropzone";
-import { CHECKLIST_FILE_ACCEPT } from "@/lib/collectDroppedFiles";
+import { CHECKLIST_FILE_ACCEPT, filterJobFiles, filterChecklistInstructionFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE, CHECKLIST_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
 
 interface Props { role?: Role; id?: string }
 
@@ -210,8 +210,8 @@ function writeChecklistState(jobId: string, state: LocalChecklistState) {
 
 const TABS = [
   { id: "overview", label: "Overview", icon: Briefcase },
-  { id: "checklist", label: "Checklist", icon: CheckCircle2 },
   { id: "files", label: "Files", icon: FileText },
+  { id: "checklist", label: "Checklist", icon: CheckCircle2 },
   { id: "mistakes", label: "Mistakes", icon: AlertTriangle },
   { id: "communication", label: "Chat", icon: MessageCircle },
   { id: "logs", label: "Timer Logs", icon: Clock },
@@ -344,7 +344,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       return null;
     }
   })();
-  const defaultTab: TabId = tabFromQuery ?? (role === "supervisor" ? "overview" : "checklist");
+  const defaultTab: TabId = tabFromQuery ?? (role === "supervisor" ? "overview" : role === "user" ? "files" : "checklist");
   const [tab, setTab] = useState<TabId>(defaultTab);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [files, setFiles] = useState(INITIAL_FILES);
@@ -920,6 +920,15 @@ export default function JobDetail({ role = "user", id }: Props) {
   const completedCount = checklist.filter((c) => c.status === "completed").length;
   const checklistProgress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
   const progress = checklist.length > 0 ? checklistProgress : (job?.progress ?? 0);
+
+  const jobLevelCompletedFiles = useMemo(
+    () =>
+      attachments.filter(
+        (a) => a.checklistItemId == null && (a.uploadedBy?.role ?? "supervisor") === "user",
+      ),
+    [attachments],
+  );
+  const hasJobLevelCompletedFiles = jobLevelCompletedFiles.length > 0;
   const activeReworks = reworks.filter((r) => r.status === "open" || r.status === "awaiting_review" || r.status === "needs_correction");
   const selectedItemRework = selectedChecklistItem
     ? activeReworks.find((r) => r.checklistItemId === selectedChecklistItem.id)
@@ -1209,9 +1218,24 @@ export default function JobDetail({ role = "user", id }: Props) {
     if (picked.length === 0) return;
     const checklistItemId =
       checklistItemIdOverride !== undefined ? checklistItemIdOverride : uploadChecklistIdRef.current;
+    const isChecklistInstruction =
+      checklistItemId != null && role !== "user" && tag === "input";
+    const allowed = isChecklistInstruction
+      ? filterChecklistInstructionFiles(picked)
+      : filterJobFiles(picked);
+    if (allowed.length === 0) {
+      window.alert(isChecklistInstruction ? CHECKLIST_FILE_REJECTED_MESSAGE : JOB_FILE_REJECTED_MESSAGE);
+      return;
+    }
+    if (allowed.length < picked.length) {
+      window.alert(
+        isChecklistInstruction ? CHECKLIST_FILE_REJECTED_MESSAGE : `${picked.length - allowed.length} file(s) skipped — unsupported type.`,
+      );
+    }
+    const toUpload = allowed;
     if (checklistItemId != null) {
       setChecklistUploads((prev) => {
-        const next = { ...prev, [checklistItemId]: (prev[checklistItemId] ?? 0) + picked.length };
+        const next = { ...prev, [checklistItemId]: (prev[checklistItemId] ?? 0) + toUpload.length };
         persistLocalChecklist(checklist, next);
         return next;
       });
@@ -1219,7 +1243,7 @@ export default function JobDetail({ role = "user", id }: Props) {
 
     if (job?.id) {
       try {
-        for (const f of picked) {
+        for (const f of toUpload) {
           const fd = new FormData();
           fd.append("file", f);
           if (checklistItemId != null) {
@@ -1249,7 +1273,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     uploadChecklistIdRef.current = null;
 
     const me = role === "user" ? "Jordan Reed" : role === "supervisor" ? "Sam Carter" : "Admin";
-    const newItems: FileItem[] = picked.map((f) => {
+    const newItems: FileItem[] = toUpload.map((f) => {
       const id = Date.now() + Math.random();
       if (tag === "output") {
         const group = `deliverable_${Math.floor(id)}`;
@@ -1390,8 +1414,8 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   return (
     <DashboardLayout title="Job Details" role={role}>
-      <input ref={inputPickerRef} type="file" multiple className="hidden" onChange={onPickerChange("input")} />
-      <input ref={outputPickerRef} type="file" multiple className="hidden" onChange={onPickerChange("output")} />
+      <input ref={inputPickerRef} type="file" multiple accept={JOB_FILE_ACCEPT} className="hidden" onChange={onPickerChange("input")} />
+      <input ref={outputPickerRef} type="file" multiple accept={JOB_FILE_ACCEPT} className="hidden" onChange={onPickerChange("output")} />
       {/* Back link */}
       <Link
         href={
@@ -1866,6 +1890,21 @@ export default function JobDetail({ role = "user", id }: Props) {
 
         {tab === "checklist" && (
           <motion.div key="cl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            {role === "user" && !hasJobLevelCompletedFiles && (
+              <div className="lg:col-span-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="text-xs text-amber-900">
+                  <span className="font-bold">Completed files required.</span> Upload your deliverables on the{" "}
+                  <span className="font-semibold">Files</span> tab before marking checklist items complete.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTab("files")}
+                  className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700"
+                >
+                  Go to Files
+                </button>
+              </div>
+            )}
             <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 overflow-hidden h-fit">
               <div className="p-5 border-b border-gray-100 flex items-center justify-between">
                 <div>
@@ -2004,6 +2043,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                           compact
                           multiple
                           allowFolders
+                          accept={JOB_FILE_ACCEPT}
                           label="Drop rework files or folders"
                           hint="Multiple files and folders supported"
                           onFiles={async (files) => {
@@ -2102,6 +2142,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                                   compact
                                   multiple
                                   allowFolders
+                                  accept={JOB_FILE_ACCEPT}
                                   label="Drop completed files or folders"
                                   hint="Upload your completed work for this checklist item"
                                   onFiles={async (files) => {
@@ -2138,18 +2179,18 @@ export default function JobDetail({ role = "user", id }: Props) {
                       {selectedChecklistItem.status !== "completed" && role === "user" && (() => {
                         const allFiles = selectedChecklistItem.files ?? [];
                         const hasChecklistFile = allFiles.some((f) => (f.uploadedBy?.role ?? "supervisor") !== "user");
-                        const hasCompletedFile = allFiles.some((f) => (f.uploadedBy?.role ?? "supervisor") === "user");
-                        const canMarkComplete = hasChecklistFile && hasCompletedFile;
+                        const canMarkComplete = hasChecklistFile && hasJobLevelCompletedFiles;
                         return (
                           <>
                             <button 
                               onClick={async () => {
-                                if (!hasChecklistFile) {
-                                  alert("Checklist file not uploaded. A Word/PDF checklist file is required before marking this item complete.");
+                                if (!hasJobLevelCompletedFiles) {
+                                  alert("Please upload completed files on the Files tab before marking checklist items complete.");
+                                  setTab("files");
                                   return;
                                 }
-                                if (!hasCompletedFile) {
-                                  alert("Completed files not uploaded. Please upload your completed work files before marking this item complete.");
+                                if (!hasChecklistFile) {
+                                  alert("Checklist file not uploaded. A Word/PDF checklist file is required before marking this item complete.");
                                   return;
                                 }
                                 if (!job?.id) return;
@@ -2181,19 +2222,20 @@ export default function JobDetail({ role = "user", id }: Props) {
                               className={`flex-1 py-2.5 text-white text-xs font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-colors ${
                                 canMarkComplete
                                   ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
-                                  : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
+                                  : "bg-gray-400 cursor-not-allowed shadow-none"
                               }`}
+                              disabled={!canMarkComplete}
                             >
                               <CheckCircle2 size={14} /> Mark Complete
                             </button>
-                            {!hasChecklistFile && (
+                            {!hasJobLevelCompletedFiles && (
                               <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                                Checklist file (Word/PDF) is missing for this task.
+                                Upload completed files on the <button type="button" onClick={() => setTab("files")} className="font-bold underline">Files</button> tab first, then return here to mark this task complete.
                               </p>
                             )}
-                            {hasChecklistFile && !hasCompletedFile && (
+                            {hasJobLevelCompletedFiles && !hasChecklistFile && (
                               <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                                Upload your completed files above, then mark this item complete.
+                                Checklist file (Word/PDF) is missing for this task.
                               </p>
                             )}
                           </>

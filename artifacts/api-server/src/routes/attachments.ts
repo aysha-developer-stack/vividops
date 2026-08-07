@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq, desc, inArray, sql as dsql } from "drizzle-orm";
 import { upload, uploadToSupabase, supabase } from "../lib/storage";
+import { validateUploadFileName } from "../lib/upload-file-types";
 import { db, jobs, users, jobAttachments, jobChecklistAttachments, jobMembers, type JobRow, type UserRow, sql } from "@workspace/db";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth";
@@ -162,6 +163,19 @@ router.post(
         return;
       }
 
+      const checklistItemIdRaw = typeof (req.body as any)?.checklistItemId === "string" ? String((req.body as any).checklistItemId) : "";
+      const checklistItemId = Number(checklistItemIdRaw);
+      const isChecklistInstructionUpload =
+        Number.isFinite(checklistItemId) && checklistItemId > 0 && actor.role !== "user";
+
+      const typeError = validateUploadFileName(file.originalname, {
+        checklistInstruction: isChecklistInstructionUpload,
+      });
+      if (typeError) {
+        res.status(400).json({ message: typeError });
+        return;
+      }
+
       // Upload to Supabase Storage
       const jobSlug = String(jobRow.title ?? "job")
         .toLowerCase()
@@ -186,8 +200,6 @@ router.post(
         })
         .returning();
 
-      const checklistItemIdRaw = typeof (req.body as any)?.checklistItemId === "string" ? String((req.body as any).checklistItemId) : "";
-      const checklistItemId = Number(checklistItemIdRaw);
       if (Number.isFinite(checklistItemId) && checklistItemId > 0) {
         const linkUserId =
           actor.role === "user" ? actor.id : (jobRow.assigneeId ?? actor.id);

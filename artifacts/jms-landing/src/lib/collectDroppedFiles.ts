@@ -90,6 +90,20 @@ export function collectFilesFromList(list: FileList | File[] | null | undefined)
   return Array.from(list).filter((f) => f && typeof f.name === "string" && f.size >= 0);
 }
 
+export {
+  CHECKLIST_FILE_ACCEPT,
+  CHECKLIST_FILE_REJECTED_MESSAGE,
+  filterChecklistInstructionFiles,
+  filterJobFiles,
+  isChecklistInstructionFileAllowed,
+  isJobFileAllowed,
+  JOB_FILE_ACCEPT,
+  JOB_FILE_EXTENSIONS,
+  JOB_FILE_REJECTED_MESSAGE,
+} from "./uploadFileTypes";
+
+import { CHECKLIST_FILE_ACCEPT } from "./uploadFileTypes";
+
 /** Filter files by an HTML accept string like ".pdf,.doc,.docx,application/pdf". */
 export function filterFilesByAccept(files: File[], accept?: string): File[] {
   if (!accept || !accept.trim()) return files;
@@ -109,9 +123,6 @@ export function filterFilesByAccept(files: File[], accept?: string): File[] {
     });
   });
 }
-
-export const CHECKLIST_FILE_ACCEPT =
-  ".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 export function isChecklistDocFile(file: File): boolean {
   return filterFilesByAccept([file], CHECKLIST_FILE_ACCEPT).length > 0;

@@ -7,7 +7,7 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import type { Role } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
-import { collectFilesFromDataTransfer, collectFilesFromList } from "@/lib/collectDroppedFiles";
+import { collectFilesFromDataTransfer, collectFilesFromList, filterJobFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
 
 type JobApi = {
   id: string;
@@ -353,10 +353,15 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
 
   const uploadAttachments = async (files: File[]) => {
     if (!activeJobId || files.length === 0) return;
+    const allowed = filterJobFiles(files);
+    if (allowed.length === 0) {
+      toast({ title: "Upload failed", description: JOB_FILE_REJECTED_MESSAGE, variant: "destructive" });
+      return;
+    }
     setAttachMenuOpen(false);
     setAttachmentUploading(true);
     try {
-      for (const file of files) {
+      for (const file of allowed) {
         await uploadAttachment(file);
       }
       toast({
@@ -501,6 +506,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                 ref={attachmentInputRef}
                 type="file"
                 multiple
+                accept={JOB_FILE_ACCEPT}
                 className="hidden"
                 onChange={(e) => {
                   const files = collectFilesFromList(e.target.files);
@@ -512,6 +518,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                 ref={folderInputRef}
                 type="file"
                 multiple
+                accept={JOB_FILE_ACCEPT}
                 className="hidden"
                 {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
                 onChange={(e) => {

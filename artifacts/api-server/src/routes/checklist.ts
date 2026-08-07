@@ -13,6 +13,7 @@ import {
   type UserRow,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
+import { jobHasCompletedDeliverables } from "../lib/job-review";
 import { logger } from "../lib/logger";
 import { createNotification } from "../lib/notifications";
 import { ensureJobWriteSchema } from "../lib/schema-init";
@@ -219,9 +220,6 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         );
 
       const hasChecklistFile = linked.some((r) => r.uploaderRole != null && r.uploaderRole !== "user");
-      const hasCompletedFile = linked.some(
-        (r) => r.uploaderId === targetUserId || r.uploaderRole === "user",
-      );
 
       if (!hasChecklistFile) {
         return res.status(400).json({
@@ -229,10 +227,11 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
             "Checklist file not uploaded. A Word/PDF checklist file is required before marking this item complete.",
         });
       }
-      if (!hasCompletedFile) {
+      const hasJobCompletedFiles = await jobHasCompletedDeliverables(jobId);
+      if (!hasJobCompletedFiles) {
         return res.status(400).json({
           error:
-            "Completed files not uploaded. Please upload your completed work files before marking this item complete.",
+            "Completed files not uploaded. Please upload your completed files on the Files tab before marking checklist items complete.",
         });
       }
     }

@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import {
   db,
@@ -147,6 +147,24 @@ function parseJobChecklist(job: JobRow): ChecklistTemplateItem[] {
   }
 }
 
+/** Job-level completed deliverables uploaded by field users (Files tab, not checklist-linked). */
+export async function jobHasCompletedDeliverables(jobId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: jobAttachments.id })
+    .from(jobAttachments)
+    .innerJoin(users, eq(users.id, jobAttachments.uploadedById))
+    .leftJoin(jobChecklistAttachments, eq(jobChecklistAttachments.attachmentId, jobAttachments.id))
+    .where(
+      and(
+        eq(jobAttachments.jobId, jobId),
+        eq(users.role, "user"),
+        isNull(jobChecklistAttachments.attachmentId),
+      ),
+    )
+    .limit(1);
+  return !!row;
+}
+
 /** Workers must finish every checklist item (and required file uploads) before review. */
 export async function assertWorkerChecklistReady(
   job: JobRow,
@@ -178,7 +196,6 @@ export async function assertWorkerChecklistReady(
 
   const requiredIds = list.map((_item, idx) => idx + 1);
   const missingChecklist: number[] = [];
-  const missingCompleted: number[] = [];
 
   if (requiredIds.length > 0) {
     const linked = await db
@@ -200,19 +217,16 @@ export async function assertWorkerChecklistReady(
     for (const id of requiredIds) {
       const rows = linked.filter((r) => r.itemId === id);
       const hasChecklist = rows.some((r) => r.uploaderRole != null && r.uploaderRole !== "user");
-      const hasCompleted = rows.some(
-        (r) => r.uploaderId === workerUserId || r.uploaderRole === "user",
-      );
       if (!hasChecklist) missingChecklist.push(id);
-      if (!hasCompleted) missingCompleted.push(id);
     }
   }
 
   if (missingChecklist.length > 0) {
     return `Checklist file not uploaded for ${missingChecklist.length} item(s). Word/PDF checklist files are required.`;
   }
-  if (missingCompleted.length > 0) {
-    return `Completed files not uploaded for ${missingCompleted.length} item(s). Upload completed work before submitting.`;
+  const hasJobCompletedFiles = await jobHasCompletedDeliverables(job.id);
+  if (!hasJobCompletedFiles) {
+    return "Completed files not uploaded. Upload completed deliverables on the Files tab before submitting.";
   }
 
   return null;
