@@ -5,7 +5,7 @@ import {
   ArrowLeft, MapPin, Calendar, User, Briefcase, CheckCircle2, Circle,
   Play, Pause, Square, Upload, FileText, Download, MessageCircle, Send,
   RefreshCw, AlertTriangle, Clock, Users, X, Edit2,
-  Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock, ListChecks, Search, Eye
+  Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock, ListChecks, Search, Eye, Trash2
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -45,6 +45,11 @@ import { MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategori
 import { useQueryClient } from "@tanstack/react-query";
 import FileDropzone from "@/components/FileDropzone";
 import { CHECKLIST_FILE_ACCEPT, filterJobFiles, filterChecklistInstructionFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE, CHECKLIST_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
+import { isCompletedAttachment, fileCategoryFromUploadTag } from "@/lib/attachmentCategories";
+import { useAuth } from "@/lib/auth";
+import UploadProgressPanel from "@/components/UploadProgressPanel";
+import { useUploadProgress } from "@/hooks/useUploadProgress";
+import { uploadFormDataWithProgress } from "@/lib/uploadWithProgress";
 
 interface Props { role?: Role; id?: string }
 
@@ -101,6 +106,7 @@ type AttachmentApi = {
   fileUrl: string;
   fileType: string | null;
   fileSize: string | null;
+  fileCategory?: string | null;
   uploadedById: string;
   createdAt: string;
   checklistItemId?: number | null;
@@ -273,6 +279,8 @@ export default function JobDetail({ role = "user", id }: Props) {
   const jobId = id || params?.id || "";
   const jobQuery = useGetJob(jobId);
   const updateJobMutation = useUpdateJob();
+  const { user: currentUser } = useAuth();
+  const uploadProgress = useUploadProgress();
   const timeLogsQuery = useGetTimeLogs();
   const createTimeLogMutation = useCreateTimeLog();
   const qc = useQueryClient();
@@ -924,7 +932,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const jobLevelCompletedFiles = useMemo(
     () =>
       attachments.filter(
-        (a) => a.checklistItemId == null && (a.uploadedBy?.role ?? "supervisor") === "user",
+        (a) => a.checklistItemId == null && isCompletedAttachment(a),
       ),
     [attachments],
   );
@@ -1141,6 +1149,27 @@ export default function JobDetail({ role = "user", id }: Props) {
       window.alert("Download failed. Please try again.");
     });
   };
+  const deleteAttachment = async (attachment: AttachmentApi) => {
+    if (!job?.id) return;
+    if (attachment.uploadedById !== currentUser?.id) {
+      window.alert("You can only delete files you uploaded.");
+      return;
+    }
+    if (!window.confirm(`Delete "${attachment.fileName}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/attachments/${attachment.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(data.message || "Failed to delete file");
+      }
+      setAttachments((prev) => prev.filter((a) => a.id !== attachment.id));
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to delete file");
+    }
+  };
   const openAttachmentPreview = (attachment: AttachmentApi) => {
     if (!job?.id) return;
     if (!canPreviewAttachment(attachment.fileName, attachment.fileType)) {
@@ -1242,21 +1271,37 @@ export default function JobDetail({ role = "user", id }: Props) {
     }
 
     if (job?.id) {
+      const itemIds = uploadProgress.startBatch(toUpload);
+      let uploadFailed = false;
       try {
-        for (const f of toUpload) {
+        for (let i = 0; i < toUpload.length; i++) {
+          const f = toUpload[i];
+          const itemId = itemIds[i];
+          uploadProgress.setItemUploading(itemId);
           const fd = new FormData();
           fd.append("file", f);
+          fd.append("fileCategory", fileCategoryFromUploadTag(tag));
           if (checklistItemId != null) {
             fd.append("checklistItemId", String(checklistItemId));
           }
-          const res = await fetch(`/api/jobs/${job.id}/attachments`, {
-            method: "POST",
-            body: fd,
-            credentials: "include",
-          });
-          if (!res.ok) throw new Error("Upload failed");
+          try {
+            await uploadFormDataWithProgress(
+              `/api/jobs/${job.id}/attachments`,
+              fd,
+              (percent) => uploadProgress.updateItemProgress(itemId, percent),
+            );
+            uploadProgress.completeItem(itemId);
+          } catch (err) {
+            uploadProgress.failItem(itemId, err instanceof Error ? err.message : "Upload failed");
+            uploadFailed = true;
+            break;
+          }
         }
         uploadChecklistIdRef.current = null;
+        if (uploadFailed) {
+          window.alert("One or more files failed to upload. Please try again.");
+          return;
+        }
         const res = await fetch(`/api/jobs/${job.id}/attachments`, { credentials: "include" });
         if (res.ok) {
           const data = (await res.json()) as unknown;
@@ -2306,13 +2351,14 @@ export default function JobDetail({ role = "user", id }: Props) {
           const q = fileSearch.toLowerCase();
           // Keep checklist-linked files on Checklist tab — hide them from Job Files
           const nonChecklist = attachments.filter((a) => a.checklistItemId == null);
-          const inputFiles = nonChecklist.filter((a) => (a.uploadedBy?.role ?? "supervisor") !== "user");
-          const outputFiles = nonChecklist.filter((a) => (a.uploadedBy?.role ?? "supervisor") === "user");
+          const inputFiles = nonChecklist.filter((a) => !isCompletedAttachment(a));
+          const outputFiles = nonChecklist.filter((a) => isCompletedAttachment(a));
           const filteredInput = inputFiles.filter((a) => a.fileName.toLowerCase().includes(q));
           const filteredOutputServer = outputFiles.filter((a) => a.fileName.toLowerCase().includes(q));
 
-          const canUploadInput = role === "super-admin" || role === "admin" || role === "supervisor";
-          const canUploadOutput = role === "user" || role === "super-admin";
+          const canUploadInput = role === "super-admin" || role === "admin";
+          const canUploadOutput =
+            role === "user" || role === "super-admin" || role === "admin" || role === "supervisor";
 
           return (
             <motion.div key="fl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-6">
@@ -2385,6 +2431,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                               <div className="flex items-center justify-end gap-2">
                                 <button onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
                                 <button onClick={() => downloadAttachment(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
+                                {a.uploadedById === currentUser?.id && (
+                                  <button onClick={() => void deleteAttachment(a)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -2441,6 +2490,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                               <div className="flex items-center justify-end gap-2">
                                 <button onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
                                 <button onClick={() => downloadAttachment(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
+                                {a.uploadedById === currentUser?.id && (
+                                  <button onClick={() => void deleteAttachment(a)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -3276,6 +3328,13 @@ export default function JobDetail({ role = "user", id }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {uploadProgress.batch && (
+        <UploadProgressPanel
+          batch={uploadProgress.batch}
+          onDismiss={uploadProgress.dismiss}
+          onToggleCollapsed={uploadProgress.toggleCollapsed}
+        />
+      )}
     </DashboardLayout>
   );
 }

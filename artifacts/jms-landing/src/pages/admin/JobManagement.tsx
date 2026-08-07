@@ -744,6 +744,7 @@ export default function JobManagement(
         for (const file of jobFiles) {
           const fd = new FormData();
           fd.append("file", file);
+          fd.append("fileCategory", "job");
           const res = await fetch(`/api/jobs/${jobId}/attachments`, {
             method: "POST",
             body: fd,

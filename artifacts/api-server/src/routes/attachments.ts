@@ -14,7 +14,15 @@ const router: IRouter = Router();
 
 let jobMembersSchemaEnsured = false;
 const ensureJobMembersSchema = async () => {};
-const ensureAttachmentsSchema = async () => {};
+let attachmentsSchemaEnsured = false;
+const ensureAttachmentsSchema = async () => {
+  if (attachmentsSchemaEnsured) return;
+  await db.execute(sql`
+    ALTER TABLE job_attachments
+    ADD COLUMN IF NOT EXISTS file_category text NOT NULL DEFAULT 'job'
+  `);
+  attachmentsSchemaEnsured = true;
+};
 
 async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
@@ -176,6 +184,19 @@ router.post(
         return;
       }
 
+      const categoryRaw =
+        typeof (req.body as any)?.fileCategory === "string"
+          ? String((req.body as any).fileCategory).trim().toLowerCase()
+          : "";
+      const fileCategory: "job" | "completed" =
+        categoryRaw === "completed"
+          ? "completed"
+          : categoryRaw === "job"
+            ? "job"
+            : actor.role === "user"
+              ? "completed"
+              : "job";
+
       // Upload to Supabase Storage
       const jobSlug = String(jobRow.title ?? "job")
         .toLowerCase()
@@ -183,7 +204,7 @@ router.post(
         .replace(/(^-+|-+$)/g, "")
         .slice(0, 60) || "job";
       const jobFolder = `JOB-${jobRow.serial}-${jobSlug}`;
-      const bucketFolder = `jobs/${jobFolder}/${actor.role === "user" ? "completed-files" : "job-files"}`;
+      const bucketFolder = `jobs/${jobFolder}/${fileCategory === "completed" ? "completed-files" : "job-files"}`;
       const { key, location } = await uploadToSupabase(file, { prefix: bucketFolder });
 
       // Save attachment metadata to DB
@@ -196,6 +217,7 @@ router.post(
           fileUrl: location,
           fileType: file.mimetype,
           fileSize: file.size.toString(),
+          fileCategory,
           uploadedById: actor.id,
         })
         .returning();
@@ -231,9 +253,9 @@ router.post(
       });
 
       // Persistent Notification
-      if (actor.role === "user") {
+      if (fileCategory === "completed") {
         // Completion file upload notification
-        if (jobRow.supervisorId) {
+        if (jobRow.supervisorId && jobRow.supervisorId !== actor.id) {
           await createNotification({
             userId: jobRow.supervisorId,
             jobId: jobId,
@@ -304,5 +326,62 @@ router.post(
     }
   }
 );
+
+router.delete("/jobs/:jobId/attachments/:attachmentId", requireAuth, async (req, res) => {
+  try {
+    await ensureAttachmentsSchema();
+    const jobId = Array.isArray(req.params.jobId) ? req.params.jobId[0] : req.params.jobId;
+    const attachmentId = Array.isArray(req.params.attachmentId)
+      ? req.params.attachmentId[0]
+      : req.params.attachmentId;
+    const actor = req.session!.user;
+
+    const [jobRow] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    if (!jobRow) {
+      res.status(404).json({ message: "Job not found" });
+      return;
+    }
+    if (!(await canViewJob(actor, jobRow))) {
+      res.status(403).json({ message: "Forbidden" });
+      return;
+    }
+
+    const [attachment] = await db
+      .select()
+      .from(jobAttachments)
+      .where(and(eq(jobAttachments.id, attachmentId), eq(jobAttachments.jobId, jobId)))
+      .limit(1);
+    if (!attachment) {
+      res.status(404).json({ message: "Attachment not found" });
+      return;
+    }
+    if (attachment.uploadedById !== actor.id) {
+      res.status(403).json({ message: "You can only delete files you uploaded" });
+      return;
+    }
+
+    const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "vivid-ops-files";
+    if (attachment.fileKey) {
+      try {
+        await supabase.storage.from(bucketName).remove([attachment.fileKey]);
+      } catch (err) {
+        logger.warn({ err, attachmentId }, "Failed to delete attachment from storage");
+      }
+    }
+
+    await db.delete(jobAttachments).where(eq(jobAttachments.id, attachmentId));
+
+    io.to(`job:${jobId}`).emit("attachment:removed", { jobId, attachmentId });
+
+    res.json({ ok: true });
+    return;
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : typeof err === "string" ? err : "Internal server error";
+    logger.error({ err, message }, "Failed to delete attachment");
+    res.status(500).json({ message });
+    return;
+  }
+});
 
 export default router;

@@ -20,6 +20,7 @@ export const jobAttachments = pgTable(
     fileUrl: text("file_url").notNull(),
     fileType: text("file_type"),
     fileSize: text("file_size"),
+    fileCategory: text("file_category").notNull().default("job"),
     uploadedById: uuid("uploaded_by_id")
       .notNull()
       .references(() => users.id),

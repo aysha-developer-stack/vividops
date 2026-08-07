@@ -147,22 +147,29 @@ function parseJobChecklist(job: JobRow): ChecklistTemplateItem[] {
   }
 }
 
-/** Job-level completed deliverables uploaded by field users (Files tab, not checklist-linked). */
+/** Job-level completed deliverables (Files tab, not checklist-linked). */
 export async function jobHasCompletedDeliverables(jobId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ id: jobAttachments.id })
+  const rows = await db
+    .select({
+      id: jobAttachments.id,
+      fileCategory: jobAttachments.fileCategory,
+      uploaderRole: users.role,
+    })
     .from(jobAttachments)
     .innerJoin(users, eq(users.id, jobAttachments.uploadedById))
     .leftJoin(jobChecklistAttachments, eq(jobChecklistAttachments.attachmentId, jobAttachments.id))
     .where(
       and(
         eq(jobAttachments.jobId, jobId),
-        eq(users.role, "user"),
         isNull(jobChecklistAttachments.attachmentId),
       ),
-    )
-    .limit(1);
-  return !!row;
+    );
+
+  return rows.some(
+    (r) =>
+      r.fileCategory === "completed" ||
+      (!r.fileCategory && r.uploaderRole === "user"),
+  );
 }
 
 /** Workers must finish every checklist item (and required file uploads) before review. */
