@@ -194,16 +194,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
 
   return (
     <DashboardLayout title={isWorker ? "My Mistakes" : "Mistakes"} role={role}>
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-        <div>
-          <p className="text-sm text-gray-500">
-            {isWorker
-              ? "Mistake records logged by your supervisor or admin. Separate from job rework."
-              : canLog
-                ? "Track user mistakes for training and accountability. Not linked to rework workflow."
-                : "View mistake records for your team. Only admin can log new mistakes."}
-          </p>
-        </div>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-4 mb-6">
         <div className="flex items-center gap-2 flex-wrap">
           {(["7d", "30d", "90d", "all"] as const).map((p) => (
             <button

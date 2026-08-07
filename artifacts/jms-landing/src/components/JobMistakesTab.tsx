@@ -167,9 +167,6 @@ export default function JobMistakesTab({
           <h3 className="font-bold text-gray-900 flex items-center gap-2">
             <AlertTriangle size={18} className="text-red-600" /> Job Mistakes
           </h3>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Mistake records for this job only — separate from rework workflow
-          </p>
         </div>
         {canLog && (
           <button
@@ -297,8 +294,7 @@ export default function JobMistakesTab({
               onClick={(e) => e.stopPropagation()}
               className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto"
             >
-              <h3 className="font-bold text-gray-900 mb-1">Log Mistake</h3>
-              <p className="text-xs text-gray-500 mb-4">Linked to this job · not part of rework</p>
+              <h3 className="font-bold text-gray-900 mb-4">Log Mistake</h3>
               <div className="space-y-3">
                 <div>
                   <label className="text-xs font-bold text-gray-600 uppercase">User *</label>
