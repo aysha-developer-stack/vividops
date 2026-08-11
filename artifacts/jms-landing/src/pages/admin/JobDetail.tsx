@@ -1281,22 +1281,24 @@ export default function JobDetail({ role = "user", id }: Props) {
     picked: File[],
     tag: FileItem["tag"] = "output",
     checklistItemIdOverride?: number | null,
+    opts?: { checklistWordPdfOnly?: boolean },
   ) => {
     if (picked.length === 0) return;
     const checklistItemId =
       checklistItemIdOverride !== undefined ? checklistItemIdOverride : uploadChecklistIdRef.current;
-    const isChecklistInstruction =
-      checklistItemId != null && role !== "user" && tag === "input";
-    const allowed = isChecklistInstruction
+    const isChecklistWordPdfOnly =
+      opts?.checklistWordPdfOnly === true ||
+      (checklistItemId != null && role !== "user" && tag === "input");
+    const allowed = isChecklistWordPdfOnly
       ? filterChecklistInstructionFiles(picked)
       : filterJobFiles(picked);
     if (allowed.length === 0) {
-      window.alert(isChecklistInstruction ? CHECKLIST_FILE_REJECTED_MESSAGE : JOB_FILE_REJECTED_MESSAGE);
+      window.alert(isChecklistWordPdfOnly ? CHECKLIST_FILE_REJECTED_MESSAGE : JOB_FILE_REJECTED_MESSAGE);
       return;
     }
     if (allowed.length < picked.length) {
       window.alert(
-        isChecklistInstruction ? CHECKLIST_FILE_REJECTED_MESSAGE : `${picked.length - allowed.length} file(s) skipped — unsupported type.`,
+        isChecklistWordPdfOnly ? CHECKLIST_FILE_REJECTED_MESSAGE : `${picked.length - allowed.length} file(s) skipped — unsupported type.`,
       );
     }
     const toUpload = allowed;
@@ -1319,6 +1321,9 @@ export default function JobDetail({ role = "user", id }: Props) {
           const fd = new FormData();
           fd.append("file", f);
           fd.append("fileCategory", fileCategoryFromUploadTag(tag));
+          if (opts?.checklistWordPdfOnly) {
+            fd.append("uploadKind", "checklist-completed");
+          }
           if (checklistItemId != null) {
             fd.append("checklistItemId", String(checklistItemId));
           }
@@ -2233,6 +2238,23 @@ export default function JobDetail({ role = "user", id }: Props) {
                               <p className="text-[11px] text-gray-400 mb-3">No worker completion files yet.</p>
                             ) : (
                               <div className="space-y-2 mb-3">{completedFiles.map(renderFileRow)}</div>
+                            )}
+
+                            {role === "user" && (
+                              <FileDropzone
+                                compact
+                                multiple
+                                allowFolders={false}
+                                accept={CHECKLIST_FILE_ACCEPT}
+                                label="Upload completed checklist (Word / PDF)"
+                                hint="Word (.doc, .docx) and PDF only"
+                                onFiles={async (files) => {
+                                  uploadChecklistIdRef.current = selectedChecklistItem.id;
+                                  await uploadPickedFiles(files, "output", selectedChecklistItem.id, {
+                                    checklistWordPdfOnly: true,
+                                  });
+                                }}
+                              />
                             )}
 
                             {(role === "super-admin" || role === "admin" || role === "supervisor") && (

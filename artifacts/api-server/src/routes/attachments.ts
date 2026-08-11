@@ -173,11 +173,19 @@ router.post(
 
       const checklistItemIdRaw = typeof (req.body as any)?.checklistItemId === "string" ? String((req.body as any).checklistItemId) : "";
       const checklistItemId = Number(checklistItemIdRaw);
+      const uploadKind =
+        typeof (req.body as any)?.uploadKind === "string"
+          ? String((req.body as any).uploadKind).trim().toLowerCase()
+          : "";
       const isChecklistInstructionUpload =
         Number.isFinite(checklistItemId) && checklistItemId > 0 && actor.role !== "user";
+      const isChecklistCompletedUpload =
+        Number.isFinite(checklistItemId) &&
+        checklistItemId > 0 &&
+        uploadKind === "checklist-completed";
 
       const typeError = validateUploadFileName(file.originalname, {
-        checklistInstruction: isChecklistInstructionUpload,
+        checklistInstruction: isChecklistInstructionUpload || isChecklistCompletedUpload,
       });
       if (typeError) {
         res.status(400).json({ message: typeError });
