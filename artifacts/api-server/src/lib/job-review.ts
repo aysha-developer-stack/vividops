@@ -202,6 +202,7 @@ export async function assertWorkerChecklistReady(
 
   const requiredIds = list.map((_item, idx) => idx + 1);
   const missingChecklist: number[] = [];
+  const missingCompletedChecklist: number[] = [];
 
   if (requiredIds.length > 0) {
     const linked = await db
@@ -209,6 +210,7 @@ export async function assertWorkerChecklistReady(
         itemId: jobChecklistAttachments.itemId,
         uploaderId: jobAttachments.uploadedById,
         uploaderRole: users.role,
+        fileCategory: jobAttachments.fileCategory,
       })
       .from(jobChecklistAttachments)
       .innerJoin(jobAttachments, eq(jobAttachments.id, jobChecklistAttachments.attachmentId))
@@ -224,11 +226,20 @@ export async function assertWorkerChecklistReady(
       const rows = linked.filter((r) => r.itemId === id);
       const hasChecklist = rows.some((r) => r.uploaderRole != null && r.uploaderRole !== "user");
       if (!hasChecklist) missingChecklist.push(id);
+      const hasCompletedUpload = rows.some(
+        (r) =>
+          r.fileCategory === "completed" ||
+          (!r.fileCategory && r.uploaderRole === "user"),
+      );
+      if (!hasCompletedUpload) missingCompletedChecklist.push(id);
     }
   }
 
   if (missingChecklist.length > 0) {
     return `Checklist file not uploaded for ${missingChecklist.length} item(s). Word/PDF checklist files are required.`;
+  }
+  if (missingCompletedChecklist.length > 0) {
+    return `Completed checklist not uploaded for ${missingCompletedChecklist.length} item(s). Upload Word/PDF completed checklists before submitting.`;
   }
   const hasJobCompletedFiles = await jobHasCompletedDeliverables(job.id);
   if (!hasJobCompletedFiles) {

@@ -2287,7 +2287,11 @@ export default function JobDetail({ role = "user", id }: Props) {
                         const hasChecklistFile = allFiles.some(
                           (f) => !isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy }),
                         );
-                        const canMarkComplete = hasChecklistFile && hasJobLevelCompletedFiles;
+                        const hasCompletedChecklistUpload = allFiles.some(
+                          (f) => isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy }),
+                        );
+                        const canMarkComplete =
+                          hasChecklistFile && hasJobLevelCompletedFiles && hasCompletedChecklistUpload;
                         return (
                           <>
                             <button 
@@ -2299,6 +2303,10 @@ export default function JobDetail({ role = "user", id }: Props) {
                                 }
                                 if (!hasChecklistFile) {
                                   alert("Checklist file not uploaded. A Word/PDF checklist file is required before marking this item complete.");
+                                  return;
+                                }
+                                if (!hasCompletedChecklistUpload) {
+                                  alert("Please upload your completed Word/PDF checklist above before marking this item complete.");
                                   return;
                                 }
                                 if (!job?.id) return;
@@ -2344,6 +2352,11 @@ export default function JobDetail({ role = "user", id }: Props) {
                             {hasJobLevelCompletedFiles && !hasChecklistFile && (
                               <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                                 Checklist file (Word/PDF) is missing for this task.
+                              </p>
+                            )}
+                            {hasJobLevelCompletedFiles && hasChecklistFile && !hasCompletedChecklistUpload && (
+                              <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                                Upload your completed Word/PDF checklist in <span className="font-bold">Completed uploads</span> above before marking this task complete.
                               </p>
                             )}
                           </>

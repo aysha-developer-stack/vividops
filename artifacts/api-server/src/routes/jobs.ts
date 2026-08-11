@@ -25,6 +25,10 @@ import {
   type JobReviewAction,
   type ReviewableStatus,
 } from "../lib/job-review";
+import {
+  formatTimerDuration,
+  stopActiveTimerForUserOnJob,
+} from "../lib/persist-timer-session";
 
 const router: IRouter = Router();
 
@@ -1999,12 +2003,28 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
 
     // Check for reassignment
     if (body.assigneeId !== undefined && body.assigneeId !== oldAssigneeId) {
+      let savedTimerSeconds = 0;
       if (oldAssigneeId) {
+        try {
+          savedTimerSeconds = await stopActiveTimerForUserOnJob(oldAssigneeId, after.job.id);
+        } catch (err) {
+          logger.error(
+            { err, jobId: after.job.id, userId: oldAssigneeId },
+            "Failed to stop timer for reassigned worker",
+          );
+        }
+      }
+
+      if (oldAssigneeId) {
+        const timerNote =
+          savedTimerSeconds > 0
+            ? ` Your active timer (${formatTimerDuration(savedTimerSeconds)}) was saved to your time log.`
+            : "";
         await createNotification({
           userId: oldAssigneeId,
           jobId: after.job.id,
           title: `Job Reassigned: ${after.job.title}`,
-          description: `You have been removed from the job: ${after.job.title}.`,
+          description: `You have been removed from the job: ${after.job.title}.${timerNote}`,
           type: "updated"
         });
       }

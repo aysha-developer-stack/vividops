@@ -212,6 +212,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         .select({
           uploaderId: jobAttachments.uploadedById,
           uploaderRole: users.role,
+          fileCategory: jobAttachments.fileCategory,
         })
         .from(jobChecklistAttachments)
         .innerJoin(jobAttachments, eq(jobAttachments.id, jobChecklistAttachments.attachmentId))
@@ -229,6 +230,17 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         return res.status(400).json({
           error:
             "Checklist file not uploaded. A Word/PDF checklist file is required before marking this item complete.",
+        });
+      }
+      const hasCompletedChecklistUpload = linked.some(
+        (r) =>
+          r.fileCategory === "completed" ||
+          (!r.fileCategory && r.uploaderRole === "user"),
+      );
+      if (!hasCompletedChecklistUpload) {
+        return res.status(400).json({
+          error:
+            "Completed checklist not uploaded. Upload your completed Word/PDF checklist before marking this item complete.",
         });
       }
       const hasJobCompletedFiles = await jobHasCompletedDeliverables(jobId);

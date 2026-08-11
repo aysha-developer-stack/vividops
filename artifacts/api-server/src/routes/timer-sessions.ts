@@ -5,7 +5,6 @@ import {
   db,
   jobs,
   jobMembers,
-  timeLogs,
   activeTimerSessions,
   type JobRow,
   type UserRow,
@@ -13,12 +12,12 @@ import {
 import { requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { ensureJobWriteSchema } from "../lib/schema-init";
-import { publicTimeLog, resolveReworkCycleForTimeLog } from "../lib/time-log-cycles";
 import {
   canListTeamTimerSessions,
   publicTimerSession,
   timerSessionElapsedSeconds,
 } from "../lib/timer-sessions";
+import { stopTimerSessionAndSaveLog } from "../lib/persist-timer-session";
 import {
   jobStatusPatchFields,
   notifyStatusTransition,
@@ -68,20 +67,7 @@ async function stopSessionAndSaveLog(
   session: typeof activeTimerSessions.$inferSelect,
   actor: UserRow,
 ): Promise<number> {
-  const duration = timerSessionElapsedSeconds(session);
-  if (duration > 0) {
-    const reworkCycleNumber = await resolveReworkCycleForTimeLog(session.jobId ?? null, actor.id);
-    await db.insert(timeLogs).values({
-      id: randomUUID(),
-      task: session.task,
-      duration,
-      jobId: session.jobId ?? null,
-      userId: actor.id,
-      reworkCycleNumber,
-    });
-  }
-  await db.delete(activeTimerSessions).where(eq(activeTimerSessions.id, session.id));
-  return duration;
+  return stopTimerSessionAndSaveLog(session, actor.id);
 }
 
 async function loadSessionForUser(userId: string) {
