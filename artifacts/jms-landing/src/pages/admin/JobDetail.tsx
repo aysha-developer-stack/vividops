@@ -62,6 +62,7 @@ type ChecklistFileApi = {
   fileType: string | null;
   fileSize: string | null;
   fileUrl: string;
+  fileCategory?: string | null;
   uploadedBy: { id: string; name: string; role: Role } | null;
   createdAt: string;
 };
@@ -466,6 +467,9 @@ export default function JobDetail({ role = "user", id }: Props) {
     () => (assignablesQuery.data ?? []).filter((u) => u.role === "user"),
     [assignablesQuery.data],
   );
+
+  const canUploadCompletedFiles =
+    role === "user" || role === "super-admin" || role === "admin" || role === "supervisor";
 
   const openEditModal = () => {
     if (!job) return;
@@ -1220,9 +1224,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   };
   const handleChecklistUpload = (checklistId: number) => {
     uploadChecklistIdRef.current = checklistId;
-    // Managers attach instruction/checklist docs; workers upload completed task files.
-    if (role === "user") outputPickerRef.current?.click();
-    else inputPickerRef.current?.click();
+    outputPickerRef.current?.click();
   };
   const refreshChecklistFiles = async () => {
     if (!job?.id) return;
@@ -1665,7 +1667,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 )}
               </>
             )}
-            {role === "user" && (
+            {canUploadCompletedFiles && (
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -2152,7 +2154,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                           hint="Multiple files and folders supported"
                           onFiles={async (files) => {
                             uploadChecklistIdRef.current = selectedChecklistItem.id;
-                            await uploadPickedFiles(files, role === "user" ? "output" : "input", selectedChecklistItem.id);
+                            await uploadPickedFiles(files, "output", selectedChecklistItem.id);
                           }}
                         />
                       </div>
@@ -2175,8 +2177,12 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <div>
                       {(() => {
                         const allFiles = selectedChecklistItem.files ?? [];
-                        const instructionFiles = allFiles.filter((f) => (f.uploadedBy?.role ?? "supervisor") !== "user");
-                        const completedFiles = allFiles.filter((f) => (f.uploadedBy?.role ?? "supervisor") === "user");
+                        const instructionFiles = allFiles.filter(
+                          (f) => !isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy }),
+                        );
+                        const completedFiles = allFiles.filter(
+                          (f) => isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy }),
+                        );
                         const renderFileRow = (f: ChecklistFileApi) => (
                           <div key={f.id} className="flex items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
                             <FileText size={14} className="text-primary shrink-0" />
@@ -2240,34 +2246,34 @@ export default function JobDetail({ role = "user", id }: Props) {
                               <div className="space-y-2 mb-3">{completedFiles.map(renderFileRow)}</div>
                             )}
 
-                            {(role === "user" || role === "super-admin" || role === "admin" || role === "supervisor") && (
-                              role === "user" ? (
-                                <FileDropzone
-                                  compact
-                                  multiple
-                                  allowFolders
-                                  accept={JOB_FILE_ACCEPT}
-                                  label="Drop completed files or folders"
-                                  hint="Upload your completed work for this checklist item"
-                                  onFiles={async (files) => {
-                                    uploadChecklistIdRef.current = selectedChecklistItem.id;
-                                    await uploadPickedFiles(files, "output", selectedChecklistItem.id);
-                                  }}
-                                />
-                              ) : (
-                                <FileDropzone
-                                  compact
-                                  multiple
-                                  allowFolders
-                                  accept={CHECKLIST_FILE_ACCEPT}
-                                  label="Drop checklist Word/PDF files"
-                                  hint="Word (.doc, .docx) and PDF only"
-                                  onFiles={async (files) => {
-                                    uploadChecklistIdRef.current = selectedChecklistItem.id;
-                                    await uploadPickedFiles(files, "input", selectedChecklistItem.id);
-                                  }}
-                                />
-                              )
+                            {(role === "super-admin" || role === "admin" || role === "supervisor") && (
+                              <FileDropzone
+                                compact
+                                multiple
+                                allowFolders
+                                accept={CHECKLIST_FILE_ACCEPT}
+                                label="Drop checklist Word/PDF files"
+                                hint="Word (.doc, .docx) and PDF only"
+                                onFiles={async (files) => {
+                                  uploadChecklistIdRef.current = selectedChecklistItem.id;
+                                  await uploadPickedFiles(files, "input", selectedChecklistItem.id);
+                                }}
+                              />
+                            )}
+
+                            {canUploadCompletedFiles && (
+                              <FileDropzone
+                                compact
+                                multiple
+                                allowFolders
+                                accept={JOB_FILE_ACCEPT}
+                                label="Drop completed files or folders"
+                                hint="Upload completed work for this checklist item"
+                                onFiles={async (files) => {
+                                  uploadChecklistIdRef.current = selectedChecklistItem.id;
+                                  await uploadPickedFiles(files, "output", selectedChecklistItem.id);
+                                }}
+                              />
                             )}
                           </>
                         );
@@ -2282,7 +2288,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <div className="flex flex-wrap gap-2 pt-2">
                       {selectedChecklistItem.status !== "completed" && role === "user" && (() => {
                         const allFiles = selectedChecklistItem.files ?? [];
-                        const hasChecklistFile = allFiles.some((f) => (f.uploadedBy?.role ?? "supervisor") !== "user");
+                        const hasChecklistFile = allFiles.some(
+                          (f) => !isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy }),
+                        );
                         const canMarkComplete = hasChecklistFile && hasJobLevelCompletedFiles;
                         return (
                           <>
@@ -2416,8 +2424,7 @@ export default function JobDetail({ role = "user", id }: Props) {
           const filteredOutputServer = outputFiles.filter((a) => a.fileName.toLowerCase().includes(q));
 
           const canUploadInput = role === "super-admin" || role === "admin";
-          const canUploadOutput =
-            role === "user" || role === "super-admin" || role === "admin" || role === "supervisor";
+          const canUploadOutput = canUploadCompletedFiles;
 
           return (
             <motion.div key="fl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-6">

@@ -97,6 +97,7 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         fileType: string | null;
         fileSize: string | null;
         fileUrl: string;
+        fileCategory: string | null;
         uploadedBy: { id: string; name: string; role: UserRow["role"] } | null;
         createdAt: Date;
       }>
@@ -112,11 +113,14 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         fileType: row.attachment.fileType,
         fileSize: row.attachment.fileSize,
         fileUrl: row.attachment.fileUrl,
+        fileCategory: row.attachment.fileCategory,
         uploadedBy: row.uploadedBy?.id ? row.uploadedBy : null,
         createdAt: row.attachment.createdAt,
       });
-      // Count only worker completion uploads — not manager instruction files
-      if (row.uploadedBy?.role === "user" || row.attachment.uploadedById === targetUserId) {
+      const isCompleted =
+        row.attachment.fileCategory === "completed" ||
+        (!row.attachment.fileCategory && row.uploadedBy?.role === "user");
+      if (isCompleted) {
         countByItem[itemId] = (countByItem[itemId] ?? 0) + 1;
       }
     }
