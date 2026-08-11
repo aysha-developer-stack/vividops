@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertTriangle, Plus, X, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, Plus, X, CheckCircle2, Trash2 } from "lucide-react";
 import type { Role } from "@/lib/roles";
 import {
   LOG_MISTAKE_CATEGORIES,
@@ -155,6 +155,20 @@ export default function JobMistakesTab({
     if (res.ok || res.status === 204) setSelected(null);
   };
 
+  const deleteMistake = async (id: string) => {
+    if (!confirm("Delete this mistake record? This cannot be undone.")) return;
+    const res = await fetch(`/api/mistakes/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (!res.ok) {
+      alert("Failed to delete mistake record.");
+      return;
+    }
+    setSelected(null);
+    await loadRecords();
+  };
+
   return (
     <motion.div
       key="mistakes-tab"
@@ -261,6 +275,16 @@ export default function JobMistakesTab({
                   >
                     <CheckCircle2 size={14} />
                     Mark {selected.status === "resolved" ? "Open" : "Resolved"}
+                  </button>
+                )}
+                {canResolve && (
+                  <button
+                    type="button"
+                    onClick={() => void deleteMistake(selected.id)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs font-bold hover:bg-red-100"
+                  >
+                    <Trash2 size={14} />
+                    Delete
                   </button>
                 )}
                 {isWorker && selected.userId === currentUserId && (

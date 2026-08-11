@@ -538,6 +538,28 @@ router.patch("/mistakes/:id", requireAuth, async (req, res) => {
   res.json(toPublic({ report: updated, job: job?.id ? job : null, user: userRow, createdBy: creatorRow }));
 });
 
+router.delete("/mistakes/:id", requireAuth, async (req, res) => {
+  const actor = req.session!.user;
+  if (actor.role !== "super-admin" && actor.role !== "admin") {
+    res.status(403).json({ error: "Only admin or super-admin can delete mistake records" });
+    return;
+  }
+
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const [existing] = await db
+    .select()
+    .from(errorReports)
+    .where(and(eq(errorReports.id, id), manualMistakeOnly))
+    .limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  await db.delete(errorReports).where(eq(errorReports.id, id));
+  res.status(204).end();
+});
+
 router.post("/mistakes/:id/acknowledge", requireAuth, async (req, res) => {
   const actor = req.session!.user;
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;

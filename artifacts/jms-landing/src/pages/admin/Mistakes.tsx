@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  AlertTriangle, Plus, Search, X, CheckCircle2, Filter, ChevronRight, Users,
+  AlertTriangle, Plus, Search, X, CheckCircle2, Filter, ChevronRight, Users, Trash2,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -208,6 +208,30 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
       credentials: "include",
     });
     if (res.ok || res.status === 204) setSelected(null);
+  };
+
+  const reloadMistakes = async () => {
+    const userQuery = userFilter ? `&userId=${encodeURIComponent(userFilter)}` : "";
+    const [listRes, analyticsRes] = await Promise.all([
+      fetch(`/api/mistakes?period=${period}${userQuery}`, { credentials: "include" }),
+      fetch(`/api/mistakes/analytics?period=${period}${userQuery}`, { credentials: "include" }),
+    ]);
+    if (listRes.ok) setRecords((await listRes.json()) as MistakeRecord[]);
+    if (analyticsRes.ok) setAnalytics((await analyticsRes.json()) as MistakeAnalytics);
+  };
+
+  const deleteMistake = async (id: string) => {
+    if (!confirm("Delete this mistake record? This cannot be undone.")) return;
+    const res = await fetch(`/api/mistakes/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (!res.ok) {
+      alert("Failed to delete mistake record.");
+      return;
+    }
+    setSelected(null);
+    await reloadMistakes();
   };
 
   const toggleSeverity = (s: "high" | "medium" | "low") =>
@@ -519,6 +543,15 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                   >
                     <CheckCircle2 size={14} />
                     Mark {selected.status === "resolved" ? "Open" : "Resolved"}
+                  </button>
+                )}
+                {canResolve && (
+                  <button
+                    onClick={() => void deleteMistake(selected.id)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs font-bold hover:bg-red-100"
+                  >
+                    <Trash2 size={14} />
+                    Delete
                   </button>
                 )}
                 {isWorker && selected.userId === currentUser?.id && (

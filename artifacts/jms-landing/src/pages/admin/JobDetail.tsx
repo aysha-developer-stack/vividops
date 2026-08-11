@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, MapPin, Calendar, User, Briefcase, CheckCircle2, Circle,
   Play, Pause, Square, Upload, FileText, Download, MessageCircle, Send,
-  RefreshCw, AlertTriangle, Clock, Users, X, Edit2,
+  RefreshCw, AlertTriangle, Clock, Users, X, Edit2, Loader2,
   Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock, ListChecks, Search, Eye, Trash2, StickyNote
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -26,12 +26,13 @@ import {
   getListJobsQueryKey,
   useCreateTimeLog,
   useGetTimeLogs,
+  useListAssignableUsers,
   type Job as ApiJob,
   ApiError,
 } from "@workspace/api-client-react";
-import { statusToUi, priorityToUi, formatShortDate } from "@/lib/jobMappers";
+import { statusToUi, priorityToUi, formatShortDate, PRIORITY_UI_TO_API, type UiPriority } from "@/lib/jobMappers";
 import { buildTimeLogCycleBreakdown, reworkCycleKey, reworkCycleLabel } from "@/lib/timeLogBreakdown";
-import { parseJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
+import { parseJobMeta, serializeJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
 import { postTimerNotification } from "@/lib/timerNotifications";
 import {
   startTimerSession,
@@ -272,6 +273,23 @@ function initialsOf(name: string): string {
   return `${first}${second}`.toUpperCase();
 }
 
+function toDateInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+type EditJobForm = {
+  title: string;
+  client: string;
+  address: string;
+  priority: UiPriority;
+  due: string;
+  estimatedTime: string;
+  description: string;
+};
+
 export default function JobDetail({ role = "user", id }: Props) {
   const routePath = role === "supervisor" ? "/supervisor/jobs/:id"
     : role === "admin" ? "/admin/jobs/:id"
@@ -281,6 +299,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const jobId = id || params?.id || "";
   const jobQuery = useGetJob(jobId);
   const updateJobMutation = useUpdateJob();
+  const assignablesQuery = useListAssignableUsers();
   const { user: currentUser } = useAuth();
   const uploadProgress = useUploadProgress();
   const timeLogsQuery = useGetTimeLogs();
@@ -370,6 +389,20 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [reworkSeverity, setReworkSeverity] = useState<"low" | "medium" | "high">("medium");
   const [reworkComments, setReworkComments] = useState("");
   const [reworkDueAt, setReworkDueAt] = useState("");
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState<EditJobForm>({
+    title: "",
+    client: "",
+    address: "",
+    priority: "Medium",
+    due: "",
+    estimatedTime: "",
+    description: "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [reassignTo, setReassignTo] = useState("");
+  const [reassignSaving, setReassignSaving] = useState(false);
   const [reworks, setReworks] = useState<JobReworkApi[]>([]);
   const [mistakesLogToken, setMistakesLogToken] = useState(0);
   const [remarksDraft, setRemarksDraft] = useState("");
@@ -427,6 +460,79 @@ export default function JobDetail({ role = "user", id }: Props) {
   }, [job?.id, (job as any)?.remarks, (job as any)?.comments]);
 
   const canEditJobNotes = role === "supervisor" || role === "admin" || role === "super-admin";
+  const canManageJobHeader =
+    role === "supervisor" || role === "admin" || role === "super-admin";
+  const workers = useMemo(
+    () => (assignablesQuery.data ?? []).filter((u) => u.role === "user"),
+    [assignablesQuery.data],
+  );
+
+  const openEditModal = () => {
+    if (!job) return;
+    setEditForm({
+      title: job.title ?? "",
+      client: job.client ?? "",
+      address: job.address ?? "",
+      priority: priorityToUi(job.priority),
+      due: toDateInput(job.dueDate),
+      estimatedTime: job.estimatedTime ?? "",
+      description: meta.descriptionText ?? "",
+    });
+    setEditOpen(true);
+  };
+
+  const saveEditJob = async () => {
+    if (!job?.id) return;
+    if (!editForm.title.trim() || !editForm.client.trim()) {
+      alert("Title and client are required.");
+      return;
+    }
+    setEditSaving(true);
+    try {
+      await updateJobMutation.mutateAsync({
+        id: job.id,
+        data: {
+          title: editForm.title.trim(),
+          client: editForm.client.trim(),
+          address: editForm.address.trim() || null,
+          priority: PRIORITY_UI_TO_API[editForm.priority],
+          dueDate: editForm.due ? new Date(editForm.due).toISOString() : null,
+          estimatedTime: editForm.estimatedTime.trim() || null,
+          description: serializeJobMeta(editForm.description, meta.checklist),
+        },
+      });
+      await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+      await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      setEditOpen(false);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Failed to save job");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const openReassignModal = () => {
+    setReassignTo(job?.assignee?.id ?? "");
+    setReassignOpen(true);
+  };
+
+  const saveReassign = async () => {
+    if (!job?.id) return;
+    setReassignSaving(true);
+    try {
+      await updateJobMutation.mutateAsync({
+        id: job.id,
+        data: { assigneeId: reassignTo || null },
+      });
+      await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+      await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      setReassignOpen(false);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Failed to reassign job");
+    } finally {
+      setReassignSaving(false);
+    }
+  };
 
   const jobWorkers = useMemo(() => {
     const out: Array<{ id: string; name: string }> = [];
@@ -1429,14 +1535,24 @@ export default function JobDetail({ role = "user", id }: Props) {
             <h2 className="text-2xl font-bold text-gray-900">{job?.title ?? (jobQuery.isLoading ? "Loading…" : "Job")}</h2>
             <div className="text-sm text-gray-500 mt-1">{job?.client ?? "—"}</div>
           </div>
-          <div className="flex gap-2">
-            {role === "supervisor" && (
-              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold">
+          <div className="flex gap-2 flex-wrap">
+            {canManageJobHeader && job?.status !== "completed" && job?.status !== "cancelled" && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={openEditModal}
+                className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold"
+              >
                 <Edit2 size={12} /> Edit
               </motion.button>
             )}
-            {role === "supervisor" && (
-              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex items-center gap-2 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-semibold shadow-md shadow-primary/30">
+            {canManageJobHeader && job?.status !== "completed" && job?.status !== "cancelled" && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={openReassignModal}
+                className="flex items-center gap-2 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-semibold shadow-md shadow-primary/30"
+              >
                 <Users size={12} /> Reassign
               </motion.button>
             )}
@@ -1462,7 +1578,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                         await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
                         await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
                       } catch (err) {
-                        console.error(err instanceof Error ? err.message : "Failed to resume job");
+                        alert(err instanceof Error ? err.message : "Failed to resume job");
                       }
                     }}
                     className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
@@ -1483,7 +1599,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                         await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
                         await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
                       } catch (err) {
-                        console.error(err instanceof ApiError ? err.message : "Failed to put job on hold");
+                        alert(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Failed to put job on hold");
                       }
                     }}
                     className="flex items-center gap-2 px-3 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-xl text-xs font-semibold"
@@ -2775,6 +2891,114 @@ export default function JobDetail({ role = "user", id }: Props) {
               </div>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit job modal */}
+      <AnimatePresence>
+        {editOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => !editSaving && setEditOpen(false)} className="absolute inset-0 bg-black/50" />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg max-h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between shrink-0">
+                <div>
+                  <h3 className="font-bold text-gray-900 text-base">Edit Job</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">{job?.number ?? jobId} · Update job details</p>
+                </div>
+                <button onClick={() => !editSaving && setEditOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
+              </div>
+              <div className="px-6 py-5 space-y-3 overflow-y-auto">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Title</label>
+                  <input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Client</label>
+                    <input value={editForm.client} onChange={(e) => setEditForm({ ...editForm, client: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Priority</label>
+                    <select value={editForm.priority} onChange={(e) => setEditForm({ ...editForm, priority: e.target.value as UiPriority })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white">
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Address</label>
+                  <input value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Due Date</label>
+                    <input type="date" value={editForm.due} onChange={(e) => setEditForm({ ...editForm, due: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Est. Time</label>
+                    <input value={editForm.estimatedTime} onChange={(e) => setEditForm({ ...editForm, estimatedTime: e.target.value })} placeholder="e.g. 4h" className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Description / Scope</label>
+                  <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={4} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white resize-y" />
+                </div>
+                {role === "supervisor" && (
+                  <p className="text-xs text-gray-500">To change checklist items or assign multiple workers, use Job Management.</p>
+                )}
+              </div>
+              <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50 shrink-0">
+                <button disabled={editSaving} onClick={() => setEditOpen(false)} className="px-4 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50">Cancel</button>
+                <button disabled={editSaving} onClick={() => void saveEditJob()} className="px-5 py-2 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-xl text-sm font-semibold shadow-md shadow-primary/30 flex items-center gap-2">
+                  {editSaving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : "Save changes"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Reassign modal */}
+      <AnimatePresence>
+        {reassignOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => !reassignSaving && setReassignOpen(false)} className="absolute inset-0 bg-black/50" />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md max-h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between shrink-0">
+                <div>
+                  <h3 className="font-bold text-gray-900 text-base">Reassign Job</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">{job?.number ?? jobId} · {job?.title ?? "Job"}</p>
+                </div>
+                <button onClick={() => !reassignSaving && setReassignOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
+              </div>
+              <div className="px-6 py-5 space-y-3 overflow-y-auto">
+                <label className="block text-xs font-semibold text-gray-700">Assign to</label>
+                <select value={reassignTo} onChange={(e) => setReassignTo(e.target.value)} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white">
+                  <option value="">Unassigned</option>
+                  {workers.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50 shrink-0">
+                <button disabled={reassignSaving} onClick={() => setReassignOpen(false)} className="px-4 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50">Cancel</button>
+                <button disabled={reassignSaving} onClick={() => void saveReassign()} className="px-5 py-2 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-xl text-sm font-semibold shadow-md shadow-primary/30 flex items-center gap-2">
+                  {reassignSaving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : "Reassign"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
