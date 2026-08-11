@@ -1537,7 +1537,19 @@ export default function JobDetail({ role = "user", id }: Props) {
             <h2 className="text-2xl font-bold text-gray-900">{job?.title ?? (jobQuery.isLoading ? "Loading…" : "Job")}</h2>
             <div className="text-sm text-gray-500 mt-1">{job?.client ?? "—"}</div>
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex flex-col items-end gap-2">
+            {canUploadCompletedFiles && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => handleUpload("output")}
+                className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/30"
+                title="Quick upload completed files"
+              >
+                <Upload size={12} /> Upload Completed Files
+              </motion.button>
+            )}
+            <div className="flex gap-2 flex-wrap justify-end">
             {canManageJobHeader && job?.status !== "completed" && job?.status !== "cancelled" && (
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -1667,17 +1679,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 )}
               </>
             )}
-            {canUploadCompletedFiles && (
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => handleUpload("output")}
-                className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/30"
-                title="Quick upload completed files"
-              >
-                <Upload size={12} /> Upload Completed Files
-              </motion.button>
-            )}
+            </div>
           </div>
         </div>
 
