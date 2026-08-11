@@ -2239,28 +2239,13 @@ export default function JobDetail({ role = "user", id }: Props) {
                               <FileDropzone
                                 compact
                                 multiple
-                                allowFolders
+                                allowFolders={false}
                                 accept={CHECKLIST_FILE_ACCEPT}
                                 label="Drop checklist Word/PDF files"
                                 hint="Word (.doc, .docx) and PDF only"
                                 onFiles={async (files) => {
                                   uploadChecklistIdRef.current = selectedChecklistItem.id;
                                   await uploadPickedFiles(files, "input", selectedChecklistItem.id);
-                                }}
-                              />
-                            )}
-
-                            {canUploadCompletedFiles && (
-                              <FileDropzone
-                                compact
-                                multiple
-                                allowFolders
-                                accept={JOB_FILE_ACCEPT}
-                                label="Drop completed files or folders"
-                                hint="Upload completed work for this checklist item"
-                                onFiles={async (files) => {
-                                  uploadChecklistIdRef.current = selectedChecklistItem.id;
-                                  await uploadPickedFiles(files, "output", selectedChecklistItem.id);
                                 }}
                               />
                             )}
