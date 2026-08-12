@@ -33,6 +33,14 @@ const USER_ROLE_LABEL: Record<string, string> = {
   "user": "User",
 };
 
+function formatDurationSeconds(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(Number.isFinite(totalSeconds) ? totalSeconds : 0));
+  const h = Math.floor(safe / 3600);
+  const m = Math.floor((safe % 3600) / 60);
+  const s = safe % 60;
+  return `${h}h ${m}m ${s}s`;
+}
+
 interface UserPerf { id: string; name: string; role: UserRoleLabel; jobs: number; completed: number; score: number; scoreTip: string; avg: string; hours: number; rework: number; overdue: number; }
 
 export default function Reports({ role = "super-admin" as Role }: { role?: Role } = {}) {
@@ -124,9 +132,8 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
   const formatAvgResolution = (hours: number) => {
-    if (!Number.isFinite(hours) || hours <= 0) return "0h";
-    if (hours >= 24) return `${(hours / 24).toFixed(1)}d`;
-    return `${hours.toFixed(1)}h`;
+    if (!Number.isFinite(hours) || hours <= 0) return "0h 0m 0s";
+    return formatDurationSeconds(Math.round(hours * 3600));
   };
 
   const periodDays =
@@ -171,7 +178,6 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
           return createdMs != null && createdMs >= periodStartMs;
         });
       const totalSeconds = userLogs.reduce((acc, log) => acc + (log.duration ?? 0), 0);
-      const hours = totalSeconds / 3600;
 
       const completedJobs = userJobs
         .filter(j => j.status === "completed")
@@ -237,7 +243,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
         score,
         scoreTip,
         avg: formatAvgResolution(avgResolutionHours),
-        hours: Number(hours.toFixed(1)),
+        hours: totalSeconds,
         rework,
         overdue,
       };
@@ -270,7 +276,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
       .map(l => ({
         user: userNameById[l.userId] ?? `${l.userId.slice(0, 8)}…`,
         project: l.jobId ? (jobLabelById[l.jobId] ?? "Job") : "General",
-        hours: Number(((l.duration ?? 0) / 3600).toFixed(1)),
+        seconds: l.duration ?? 0,
       }));
   }, [apiTimeLogs, userNameById, jobLabelById, periodStartMs]);
 
@@ -396,24 +402,24 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
       return completedMs != null && completedMs >= periodStartMs;
     });
     const rework = jobs.filter((j) => (j.status as unknown as string) === "rework").length;
-    const hours = (apiTimeLogs ?? [])
+    const totalLoggedSeconds = (apiTimeLogs ?? [])
       .filter((l) => {
         if (!periodStartMs) return true;
         const createdMs = parseMs(l.createdAt);
         return createdMs != null && createdMs >= periodStartMs;
       })
-      .reduce((sum, log) => sum + (log.duration ?? 0), 0) / 3600;
+      .reduce((sum, log) => sum + (log.duration ?? 0), 0);
     return {
       total: jobs.length,
       completed: completed.length,
-      hours,
+      totalLoggedSeconds,
       rework,
     };
   }, [apiJobs, apiTimeLogs, periodStartMs]);
 
   const totalJobs = platformJobStats.total;
   const totalCompleted = platformJobStats.completed;
-  const totalHours = platformJobStats.hours;
+  const totalLoggedSeconds = platformJobStats.totalLoggedSeconds;
   const totalRework = platformJobStats.rework;
 
   const anyLoading = statsLoading || usersLoading || logsLoading || jobsLoading;
@@ -511,7 +517,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 <table>
   <thead><tr><th>Metric</th><th>Value</th><th>Status</th></tr></thead>
   <tbody>
-    <tr><td>Hours logged</td><td>${u.hours.toFixed(1)}h</td><td>—</td></tr>
+    <tr><td>Hours logged</td><td>${formatDurationSeconds(u.hours)}</td><td>—</td></tr>
     <tr><td>Average resolution time</td><td>${u.avg}</td><td>—</td></tr>
     <tr><td>Rework cases</td><td>${u.rework}</td><td style="color:${u.rework > 3 ? "#dc2626" : u.rework > 0 ? "#d97706" : "#10b981"}">${u.rework > 3 ? "High" : u.rework > 0 ? "Moderate" : "Excellent"}</td></tr>
     <tr><td>Overdue jobs</td><td>${u.overdue}</td><td style="color:${u.overdue > 0 ? "#dc2626" : "#10b981"}">${u.overdue > 0 ? "Needs attention" : "On track"}</td></tr>
@@ -545,7 +551,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
     const rows = filteredUsers
       .map(
         (u) =>
-          `<tr><td>${u.name}</td><td>${u.role}</td><td style="text-align:right">${u.jobs}</td><td style="text-align:right">${u.completed}</td><td style="text-align:right">${u.hours.toFixed(1)}h</td><td style="text-align:right">${u.overdue}</td><td style="text-align:right">${u.rework}</td><td style="text-align:right">${u.score}</td></tr>`,
+          `<tr><td>${u.name}</td><td>${u.role}</td><td style="text-align:right">${u.jobs}</td><td style="text-align:right">${u.completed}</td><td style="text-align:right">${formatDurationSeconds(u.hours)}</td><td style="text-align:right">${u.overdue}</td><td style="text-align:right">${u.rework}</td><td style="text-align:right">${u.score}</td></tr>`,
       )
       .join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>User Performance</title>
@@ -593,7 +599,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
     if (!w) return;
     const logoUrl = await resolveLogoDataUrl();
     const rows = filteredTime
-      .map((t) => `<tr><td>${t.user}</td><td>${t.project}</td><td style="text-align:right">${t.hours.toFixed(1)}h</td></tr>`)
+      .map((t) => `<tr><td>${t.user}</td><td>${t.project}</td><td style="text-align:right">${formatDurationSeconds(t.seconds)}</td></tr>`)
       .join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Time Tracking</title>
 <style>
@@ -798,7 +804,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {[
                       { label: "Completed Jobs", value: userPerformance.find(u => u.id === currentUser?.id)?.completed ?? 0, icon: CheckCircle2, color: "emerald" },
-                      { label: "Hours Logged", value: `${(userPerformance.find(u => u.id === currentUser?.id)?.hours ?? 0).toFixed(1)}h`, icon: Clock, color: "amber" },
+                      { label: "Hours Logged", value: formatDurationSeconds(userPerformance.find(u => u.id === currentUser?.id)?.hours ?? 0), icon: Clock, color: "amber" },
                       { label: "Performance Score", value: userPerformance.find(u => u.id === currentUser?.id)?.score ?? 0, icon: TrendingUp, color: "primary" },
                     ].map(k => (
                       <div key={k.label} className="p-5 rounded-2xl border border-gray-100 bg-white">
@@ -840,7 +846,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                             <div className="text-sm font-semibold text-gray-900">Time Log</div>
                             <div className="text-xs text-gray-500">{new Date(l.createdAt).toLocaleDateString()}</div>
                           </div>
-                          <div className="text-sm font-bold text-gray-900">{(l.duration / 3600).toFixed(1)}h</div>
+                          <div className="text-sm font-bold text-gray-900">{formatDurationSeconds(l.duration ?? 0)}</div>
                         </div>
                       ))}
                     </div>
@@ -895,7 +901,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                     {[
                       { label: "Total jobs", value: totalJobs, icon: FileText, color: "primary" },
                       { label: "Completed", value: totalCompleted, icon: TrendingUp, color: "emerald" },
-                      { label: "Hours logged", value: `${totalHours.toFixed(1)}h`, icon: Clock, color: "amber" },
+                      { label: "Hours logged", value: formatDurationSeconds(totalLoggedSeconds), icon: Clock, color: "amber" },
                       { label: "Rework cases", value: totalRework, icon: AlertTriangle, color: "red" },
                     ].map((k, i) => {
                       const Icon = k.icon;
@@ -944,7 +950,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                               </td>
                               <td className="px-3 py-3.5 text-sm text-gray-700 tabular-nums">{u.jobs}</td>
                               <td className="px-3 py-3.5 text-sm text-emerald-700 font-semibold tabular-nums">{u.completed}</td>
-                              <td className="px-3 py-3.5 text-sm text-gray-700 tabular-nums">{u.hours.toFixed(1)}h</td>
+                              <td className="px-3 py-3.5 text-sm text-gray-700 tabular-nums">{formatDurationSeconds(u.hours)}</td>
                               <td className="px-3 py-3.5 text-sm tabular-nums">
                                 <span className={u.rework > 3 ? "text-red-600 font-semibold" : u.rework > 0 ? "text-amber-600" : "text-gray-400"}>{u.rework}</span>
                               </td>
@@ -996,7 +1002,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                       <motion.tr key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} className="border-t border-gray-50 hover:bg-gray-50">
                         <td className="px-4 py-3.5 text-sm font-medium text-gray-900">{t.user}</td>
                         <td className="px-4 py-3.5 text-sm text-gray-700">{t.project}</td>
-                        <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">{t.hours}h</td>
+                        <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">{formatDurationSeconds(t.seconds)}</td>
                       </motion.tr>
                     ))}
                   </tbody>
