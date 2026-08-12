@@ -1,0 +1,9 @@
+node_modules
+**/node_modules
+.git
+.env
+.env.*
+*.log
+.DS_Store
+client-job-flow-manager-workflow.pdf
+scripts/generate_client_flow_pdf.py
