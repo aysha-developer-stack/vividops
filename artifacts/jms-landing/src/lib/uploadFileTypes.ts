@@ -12,6 +12,7 @@ export const JOB_FILE_EXTENSIONS = [
   ".tekla",
   ".ifc",
   ".nc1",
+  ".ckw",
   ".rtd",
   ".rts",
   ".zip",
@@ -61,7 +62,7 @@ export function filterChecklistInstructionFiles(files: File[]): File[] {
 }
 
 export const JOB_FILE_REJECTED_MESSAGE =
-  "File type not allowed. Supported: PDF, CAD/BIM (DWG, DXF, RVT, IFC, etc.), archives (ZIP, RAR, 7Z), Office docs, CSV, and images (JPG, PNG).";
+  "File type not allowed. Supported: PDF, CAD/BIM (DWG, DXF, RVT, CKW, IFC, etc.), archives (ZIP, RAR, 7Z), Office docs, CSV, and images (JPG, PNG).";
 
 export const CHECKLIST_FILE_REJECTED_MESSAGE =
   "Checklist files must be Word (.doc, .docx) or PDF only.";

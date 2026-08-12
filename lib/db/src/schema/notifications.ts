@@ -5,7 +5,7 @@ import { jobs } from "./jobs";
 export const notifications = pgTable("notifications", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+  jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   description: text("description").notNull(),
   type: text("type").notNull(), // assigned, updated, overdue, timer, rework, etc.

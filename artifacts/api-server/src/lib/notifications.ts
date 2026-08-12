@@ -1,8 +1,40 @@
-import { db, userSettings, eq, and, gte, notifications, users, inArray } from "@workspace/db";
+import { db, userSettings, eq, and, gte, notifications, users, inArray, isNull } from "@workspace/db";
 import { logger } from "./logger";
 import { pushNotificationRealtime } from "./socket";
 
 export type NotificationType = "assigned" | "updated" | "overdue" | "timer" | "rework" | "job_message" | "checklist" | "file" | "training" | "progress" | "error" | "completed";
+
+/** Notification types that refer to a job — hide/delete when the job no longer exists. */
+export const JOB_LINKED_NOTIFICATION_TYPES: NotificationType[] = [
+  "assigned",
+  "updated",
+  "overdue",
+  "timer",
+  "rework",
+  "job_message",
+  "checklist",
+  "file",
+  "progress",
+  "error",
+  "completed",
+];
+
+export async function deleteNotificationsForJob(jobId: string): Promise<number> {
+  const deleted = await db
+    .delete(notifications)
+    .where(eq(notifications.jobId, jobId))
+    .returning({ id: notifications.id });
+  return deleted.length;
+}
+
+/** Remove stale alerts left behind when jobs were deleted (job_id was set to null). */
+export async function cleanupOrphanedJobNotifications(): Promise<number> {
+  const deleted = await db
+    .delete(notifications)
+    .where(and(isNull(notifications.jobId), inArray(notifications.type, JOB_LINKED_NOTIFICATION_TYPES)))
+    .returning({ id: notifications.id });
+  return deleted.length;
+}
 
 export function previewText(text: string | null | undefined, max = 120): string {
   const value = (text ?? "").trim();

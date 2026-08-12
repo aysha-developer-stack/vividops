@@ -2,7 +2,14 @@ import { Router, type IRouter } from "express";
 import { and, eq, or, desc, inArray, ne, sql as dsql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, jobs, users, jobMembers, jobAttachments, jobChecklistAttachments, jobReworks, type JobRow, type UserRow, sql } from "@workspace/db";
-import { createNotification, createNotificationOnce, notifyJobManagers, previewText } from "../lib/notifications";
+import {
+  createNotification,
+  createNotificationOnce,
+  deleteNotificationsForJob,
+  notifyJobManagers,
+  previewText,
+  type NotificationType,
+} from "../lib/notifications";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { CreateJobBody, UpdateJobBody } from "@workspace/api-zod";
@@ -2194,8 +2201,14 @@ router.delete("/jobs/:id", creatorRole, async (req, res) => {
   if (!canManageJob(actor, full.job)) {
     return res.status(403).json({ error: "You cannot delete this job" });
   }
-  await db.delete(jobs).where(eq(jobs.id, id));
-  return res.status(204).end();
+  try {
+    await deleteNotificationsForJob(id);
+    await db.delete(jobs).where(eq(jobs.id, id));
+    return res.status(204).end();
+  } catch (err) {
+    logger.error({ err, jobId: id }, "Failed to delete job");
+    return res.status(500).json({ error: "Failed to delete job" });
+  }
 });
 
 router.post("/zoho/cliq/messages/incoming", async (req, res) => {

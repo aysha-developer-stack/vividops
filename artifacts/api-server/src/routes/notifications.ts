@@ -1,9 +1,14 @@
 import { Router } from "express";
-import { db, notifications, eq, desc, and, sql } from "@workspace/db";
+import { db, notifications, jobs, eq, desc, and, sql, or, isNull, isNotNull, not, inArray } from "@workspace/db";
 import { randomUUID } from "crypto";
 import { logger } from "../lib/logger";
 import { requireAuth } from "../middlewares/requireAuth";
-import { createNotification, type NotificationType } from "../lib/notifications";
+import {
+  cleanupOrphanedJobNotifications,
+  createNotification,
+  JOB_LINKED_NOTIFICATION_TYPES,
+  type NotificationType,
+} from "../lib/notifications";
 
 const router = Router();
 
@@ -37,6 +42,25 @@ const ensureSchema = async () => {
 
   await db.execute(sql`CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id);`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS notifications_job_idx ON notifications (job_id);`);
+
+  // Prefer CASCADE so job deletes remove linked alerts (upgrade from older SET NULL FK).
+  await db.execute(sql`
+    ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_job_id_fkey;
+  `);
+  await db.execute(sql`
+    ALTER TABLE notifications
+    ADD CONSTRAINT notifications_job_id_fkey
+    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE;
+  `);
+
+  try {
+    const removed = await cleanupOrphanedJobNotifications();
+    if (removed > 0) {
+      logger.info({ removed }, "Cleaned up orphaned job notifications");
+    }
+  } catch (err) {
+    logger.warn({ err }, "Orphaned job notification cleanup skipped");
+  }
 };
 
 router.get("/notifications", requireAuth, async (req, res) => {
@@ -44,12 +68,22 @@ router.get("/notifications", requireAuth, async (req, res) => {
     await ensureSchema();
     const user = req.session!.user;
 
-    const userNotifs = await db.select()
+    const rows = await db
+      .select({ notification: notifications })
       .from(notifications)
-      .where(eq(notifications.userId, user.id))
+      .leftJoin(jobs, eq(notifications.jobId, jobs.id))
+      .where(
+        and(
+          eq(notifications.userId, user.id),
+          or(
+            isNotNull(jobs.id),
+            and(isNull(notifications.jobId), not(inArray(notifications.type, JOB_LINKED_NOTIFICATION_TYPES))),
+          ),
+        ),
+      )
       .orderBy(desc(notifications.createdAt));
-    
-    res.json(userNotifs);
+
+    res.json(rows.map((row) => row.notification));
   } catch (err) {
     logger.error({ err }, "Failed to fetch notifications");
     res.status(500).json({ error: "Internal server error" });
