@@ -6,8 +6,6 @@ RUN apt-get update \
 
 WORKDIR /app
 
-ENV NODE_ENV=production
-
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -19,7 +17,9 @@ RUN pnpm install --no-frozen-lockfile
 
 COPY . .
 
-RUN pnpm build
+RUN pnpm build:landing && pnpm --filter @workspace/api-server build
+
+ENV NODE_ENV=production
 
 EXPOSE 3000
 
