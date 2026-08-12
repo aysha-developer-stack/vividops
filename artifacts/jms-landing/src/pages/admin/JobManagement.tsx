@@ -48,6 +48,7 @@ interface UiJob {
   number: string;      // JOB-1042
   title: string;
   client: string;
+  address: string | null;
   assignee: string;
   assignees: Array<{ id: string; name: string }>;
   assigneeId: string | null;
@@ -102,6 +103,7 @@ function mapJob(j: ApiJob): UiJob {
     number: j.number,
     title: j.title,
     client: j.client,
+    address: j.address ?? null,
     assignee: assignees.map((a) => a.name).join(", ") || "Unassigned",
     assignees,
     assigneeId: primaryAssignee?.id ?? null,
@@ -572,12 +574,16 @@ export default function JobManagement(
     }
   };
 
+  const searchQuery = search.trim().toLowerCase();
   const filtered = jobs.filter((j) =>
     (filter === "All" || j.status === filter) &&
     (assignmentFilter === "all" || j.assigneeId === null) &&
-    (j.title.toLowerCase().includes(search.toLowerCase()) ||
-      j.client.toLowerCase().includes(search.toLowerCase()) ||
-      j.number.toLowerCase().includes(search.toLowerCase()))
+    (!searchQuery ||
+      j.title.toLowerCase().includes(searchQuery) ||
+      j.client.toLowerCase().includes(searchQuery) ||
+      j.number.toLowerCase().includes(searchQuery) ||
+      j.number.replace(/^JOB-/i, "").toLowerCase().includes(searchQuery) ||
+      (j.address?.toLowerCase().includes(searchQuery) ?? false))
   );
   const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 8);
 
@@ -911,7 +917,7 @@ export default function JobManagement(
         <div className="p-5 border-b border-gray-100 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
           <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 flex-1 max-w-md focus-within:border-primary transition-colors">
             <Search size={16} className="text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search jobs by title or client…" className="bg-transparent !text-gray-900 !placeholder:text-gray-400 text-sm flex-1 focus:outline-none" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by title, client, job number, or address…" className="bg-transparent !text-gray-900 !placeholder:text-gray-400 text-sm flex-1 focus:outline-none" />
           </div>
           {role !== "user" && (
             <motion.button
@@ -956,6 +962,9 @@ export default function JobManagement(
                     >
                       <td className="px-6 py-4 cursor-pointer" onClick={() => setLocation(`${basePath}/${j.id}`)}>
                         <div className="font-medium text-gray-900 text-sm flex items-center gap-1.5 group-hover:text-primary">{j.title} <ExternalLink size={11} className="text-gray-300" /></div>
+                        {j.address ? (
+                          <div className="text-xs text-gray-600 mt-0.5 truncate max-w-md" title={j.address}>{j.address}</div>
+                        ) : null}
                         <div className="text-xs text-gray-500 mt-0.5">{j.number} · {j.client} · <span className="text-gray-400">Created {j.created}</span></div>
                       </td>
                       <td className="px-6 py-4">
