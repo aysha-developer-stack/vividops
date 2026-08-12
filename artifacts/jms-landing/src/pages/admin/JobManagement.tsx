@@ -1197,15 +1197,6 @@ export default function JobManagement(
                         placeholder={jobNumberLoading ? "Loading next number…" : "e.g. 154764"}
                         className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
                       />
-                      {editingId === null && (
-                        <p className="text-[10px] text-gray-500 mt-1">
-                          {jobNumberLoading
-                            ? "Loading next job number…"
-                            : form.jobNumber
-                              ? `Suggested: JOB-${form.jobNumber} — you can change this before saving`
-                              : "Auto-filled on save if left empty"}
-                        </p>
-                      )}
                     </div>
                     <div className="min-w-0">
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Title</label>
