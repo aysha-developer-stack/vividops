@@ -321,6 +321,7 @@ export default function JobManagement(
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [jobNumberLoading, setJobNumberLoading] = useState(false);
   const assigneeMenuRef = useRef<HTMLDivElement>(null);
 
   const selectedWorkerIds = useMemo(
@@ -816,7 +817,42 @@ export default function JobManagement(
     setMemberIds([]);
     setEditLoading(false);
     setUploadingFiles(false);
+    setJobNumberLoading(false);
     setError(null);
+  };
+
+  const openCreateJobModal = async () => {
+    setForm({
+      ...EMPTY_FORM,
+      supervisorId:
+        role === "supervisor"
+          ? (currentUser?.id ?? "")
+          : (supervisors[0]?.id ?? ""),
+    });
+    setEditingId(null);
+    setChecklistTemplate([]);
+    setCheckPendingFile(null);
+    setJobFiles([]);
+    setExistingAttachments([]);
+    setMemberIds([]);
+    setUploadingFiles(false);
+    setError(null);
+    setAssigneeMenuOpen(false);
+    setModalOpen(true);
+    setJobNumberLoading(true);
+    try {
+      const res = await fetch("/api/jobs/next-number", { credentials: "include" });
+      if (res.ok) {
+        const data = (await res.json()) as { jobNumber?: string };
+        if (data.jobNumber) {
+          setForm((prev) => ({ ...prev, jobNumber: data.jobNumber! }));
+        }
+      }
+    } catch {
+      // Server assigns on create if preview fails.
+    } finally {
+      setJobNumberLoading(false);
+    }
   };
 
   const counts = {
@@ -881,25 +917,7 @@ export default function JobManagement(
             <motion.button
               whileHover={{ scale: 1.04, y: -1 }}
               whileTap={{ scale: 0.97 }}
-              onClick={() => {
-                setForm({
-                  ...EMPTY_FORM,
-                  supervisorId:
-                    role === "supervisor"
-                      ? (currentUser?.id ?? "")
-                      : (supervisors[0]?.id ?? ""),
-                });
-                setEditingId(null);
-                setChecklistTemplate([]);
-                setCheckPendingFile(null);
-                setJobFiles([]);
-                setExistingAttachments([]);
-                setMemberIds([]);
-                setUploadingFiles(false);
-                setError(null);
-                setAssigneeMenuOpen(false);
-                setModalOpen(true);
-              }}
+              onClick={() => void openCreateJobModal()}
               className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl font-medium text-sm shadow-lg shadow-primary/30 transition-colors"
             >
               <Plus size={16} /> Create Job
@@ -1176,9 +1194,18 @@ export default function JobManagement(
                       <input
                         value={form.jobNumber}
                         onChange={(e) => setForm({ ...form, jobNumber: e.target.value })}
-                        placeholder="e.g. 2"
+                        placeholder={jobNumberLoading ? "Loading next number…" : "e.g. 154764"}
                         className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
                       />
+                      {editingId === null && (
+                        <p className="text-[10px] text-gray-500 mt-1">
+                          {jobNumberLoading
+                            ? "Loading next job number…"
+                            : form.jobNumber
+                              ? `Suggested: JOB-${form.jobNumber} — you can change this before saving`
+                              : "Auto-filled on save if left empty"}
+                        </p>
+                      )}
                     </div>
                     <div className="min-w-0">
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Title</label>

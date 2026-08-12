@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, or, desc, inArray, ne, sql as dsql } from "drizzle-orm";
+import { and, eq, or, desc, inArray, sql as dsql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, jobs, users, jobMembers, jobAttachments, jobChecklistAttachments, jobReworks, type JobRow, type UserRow, sql } from "@workspace/db";
 import {
@@ -32,6 +32,12 @@ import {
   type JobReviewAction,
   type ReviewableStatus,
 } from "../lib/job-review";
+import {
+  allocateNextJobNumber,
+  isJobNumberTaken,
+  normalizeJobNumber,
+  peekNextJobNumber,
+} from "../lib/job-number";
 import {
   formatTimerDuration,
   stopActiveTimerForUserOnJob,
@@ -245,28 +251,6 @@ function computeCliqChannelName(job: JobRow): string {
 
 function computeCliqChannelDisplayName(job: JobRow): string {
   return computeCliqChannelName(job);
-}
-
-function normalizeJobNumber(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const withoutPrefix = trimmed.replace(/^job[\s-]*/i, "");
-  const normalized = withoutPrefix.trim().toUpperCase();
-  return normalized || null;
-}
-
-async function isJobNumberTaken(jobNumber: string, excludeJobId?: string): Promise<boolean> {
-  const conditions = [eq(jobs.jobNumber, jobNumber)];
-  if (excludeJobId) {
-    conditions.push(ne(jobs.id, excludeJobId));
-  }
-  const [row] = await db
-    .select({ id: jobs.id })
-    .from(jobs)
-    .where(and(...conditions))
-    .limit(1);
-  return Boolean(row);
 }
 
 function datesEqual(a: Date | null | undefined, b: Date | null | undefined): boolean {
@@ -1653,6 +1637,17 @@ router.get("/jobs", requireAuth, async (req, res) => {
 
 const creatorRole = requireRole("super-admin", "admin", "supervisor");
 
+router.get("/jobs/next-number", creatorRole, async (_req, res) => {
+  try {
+    await ensureJobWriteSchema();
+    const jobNumber = await peekNextJobNumber();
+    return res.json({ jobNumber });
+  } catch (err) {
+    logger.error({ err }, "Failed to peek next job number");
+    return res.status(500).json({ error: "Failed to generate job number" });
+  }
+});
+
 router.post("/jobs", creatorRole, async (req, res) => {
   try {
     await ensureJobWriteSchema();
@@ -1663,7 +1658,11 @@ router.post("/jobs", creatorRole, async (req, res) => {
     }
     const actor = req.session!.user;
     const body = parsed.data;
-    const jobNumber = normalizeJobNumber(body.jobNumber);
+    let jobNumber = normalizeJobNumber(body.jobNumber);
+
+    if (!jobNumber) {
+      jobNumber = await allocateNextJobNumber();
+    }
 
     // Validate referenced users exist and are active.
     const refIds = [body.assigneeId, body.supervisorId].filter(
