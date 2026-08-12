@@ -61,28 +61,27 @@ const httpServer = createServer(app);
 setupSocketIO(httpServer);
 
 async function start(): Promise<void> {
-  // 1. Initialize database schemas once at startup
-  try {
-    await ensureAllSchemas();
-    await ensureJobWriteSchema();
-  } catch (err) {
-    logger.error({ err }, "Schema initialization failed");
-  }
-
-  // 2. Seed admin user if needed
-  try {
-    await seedAdminIfEmpty();
-  } catch (err) {
-    logger.error({ err }, "Seed step failed");
-  }
-
   httpServer.listen(port, "0.0.0.0", () => {
     console.log(`[STARTUP] HTTP server listening on 0.0.0.0:${port}`);
   });
 
-  console.log("[STARTUP] Starting background tasks...");
+  void (async () => {
+    try {
+      await ensureAllSchemas();
+      await ensureJobWriteSchema();
+    } catch (err) {
+      logger.error({ err }, "Schema initialization failed");
+    }
 
-  try {
+    try {
+      await seedAdminIfEmpty();
+    } catch (err) {
+      logger.error({ err }, "Seed step failed");
+    }
+
+    console.log("[STARTUP] Starting background tasks...");
+
+    try {
     const { db, jobs, users, jobMembers, timeLogs, posts, userSettings, and, eq, inArray, sql, gte, lt } = await import("@workspace/db");
 
     const cliqWebhookUrl = process.env.ZOHO_CLIQ_WEBHOOK_URL;
@@ -421,6 +420,7 @@ async function start(): Promise<void> {
   } catch (err) {
     logger.error({ err }, "Failed to start overdue scheduler");
   }
+  })();
 }
 
 void start();

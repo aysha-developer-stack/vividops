@@ -23,4 +23,4 @@ ENV NODE_ENV=production
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "pnpm --filter @workspace/db push && pnpm start"]
+CMD ["pnpm", "start"]
