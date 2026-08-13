@@ -8,7 +8,7 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
-import { isJobOverdueByDueDate } from "@/lib/jobMappers";
+import { isJobOverdueByDueDate, formatDurationSeconds } from "@/lib/jobMappers";
 import logoImg from "@assets/vv_1778503190047.png";
 import { useAuth } from "@/lib/auth";
 import {
@@ -33,14 +33,6 @@ const USER_ROLE_LABEL: Record<string, string> = {
   "supervisor": "Supervisor",
   "user": "User",
 };
-
-function formatDurationSeconds(totalSeconds: number): string {
-  const safe = Math.max(0, Math.floor(Number.isFinite(totalSeconds) ? totalSeconds : 0));
-  const h = Math.floor(safe / 3600);
-  const m = Math.floor((safe % 3600) / 60);
-  const s = safe % 60;
-  return `${h}h ${m}m ${s}s`;
-}
 
 interface UserPerf { id: string; name: string; role: UserRoleLabel; jobs: number; completed: number; score: number; scoreTip: string; avg: string; hours: number; rework: number; overdue: number; }
 

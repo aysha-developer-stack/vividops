@@ -44,6 +44,14 @@ export const PRIORITY_UI_TO_API: Record<UiPriority, JobPriority> = {
   High: "high",
 };
 
+export function formatDurationSeconds(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(Number.isFinite(totalSeconds) ? totalSeconds : 0));
+  const h = Math.floor(safe / 3600);
+  const m = Math.floor((safe % 3600) / 60);
+  const s = safe % 60;
+  return `${h}h ${m}m ${s}s`;
+}
+
 export function isJobOverdueByDueDate(
   dueDateIso: string | null | undefined,
   status: string,

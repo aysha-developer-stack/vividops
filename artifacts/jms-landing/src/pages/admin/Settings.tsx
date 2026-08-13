@@ -18,6 +18,7 @@ import {
   getGetSystemMetricsQueryKey
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
+import { ensureDesktopNotificationPermission } from "@/lib/desktopNotifications";
 
 const TABS = [
   { id: "profile", label: "Profile", icon: UserIcon },
@@ -440,8 +441,25 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                     <Row title="Zoho Cliq notifications" desc="Direct messages in Zoho Cliq">
                       <Toggle on={userSettingsState.zohoCliqNotifications} onChange={() => setUserSettingsState({ ...userSettingsState, zohoCliqNotifications: !userSettingsState.zohoCliqNotifications })} />
                     </Row>
-                    <Row title="Push notifications" desc="Browser-level desktop notifications">
-                      <Toggle on={userSettingsState.pushNotifications} onChange={() => setUserSettingsState({ ...userSettingsState, pushNotifications: !userSettingsState.pushNotifications })} />
+                    <Row title="Push notifications" desc="Windows/macOS desktop alerts while the app is open (browser permission required)">
+                      <Toggle
+                        on={userSettingsState.pushNotifications}
+                        onChange={() => {
+                          const next = !userSettingsState.pushNotifications;
+                          setUserSettingsState({ ...userSettingsState, pushNotifications: next });
+                          if (next) {
+                            void ensureDesktopNotificationPermission().then((permission) => {
+                              if (permission === "denied") {
+                                toast({
+                                  title: "Desktop notifications blocked",
+                                  description: "Allow notifications for this site in your browser settings.",
+                                  variant: "destructive",
+                                });
+                              }
+                            });
+                          }
+                        }}
+                      />
                     </Row>
                   </div>
 

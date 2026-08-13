@@ -12,6 +12,7 @@ import {
   type Job,
 } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
+import { formatDurationSeconds } from "@/lib/jobMappers";
 import { getPresenceStatus } from "@/lib/presence";
 import {
   fetchActiveTimerSessions,
@@ -23,8 +24,8 @@ interface Worker {
   id: string;
   name: string;
   avatar: string;
-  hoursToday: number;
-  hoursWeek: number;
+  secondsToday: number;
+  secondsWeek: number;
   jobsCompleted: number;
   reworks: number;
   mistakes: number;
@@ -199,23 +200,23 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
         );
         const userLogs = (apiTimeLogs ?? []).filter((log) => log.userId === u.id);
         const activeSession = sessionByUser.get(u.id) ?? null;
-        const activeHours = activeSession ? liveSessionElapsedSeconds(activeSession) / 3600 : 0;
+        const activeSeconds = activeSession ? liveSessionElapsedSeconds(activeSession) : 0;
 
-        const hoursToday =
+        const secondsToday =
           userLogs
             .filter((log) => {
               const createdMs = parseMs(log.createdAt);
               return createdMs != null && createdMs >= startOfTodayMs;
             })
-            .reduce((sum, log) => sum + log.duration / 3600, 0) + activeHours;
+            .reduce((sum, log) => sum + (log.duration ?? 0), 0) + activeSeconds;
 
-        const hoursWeek =
+        const secondsWeek =
           userLogs
             .filter((log) => {
               const createdMs = parseMs(log.createdAt);
               return createdMs != null && createdMs >= startOfWeekMs;
             })
-            .reduce((sum, log) => sum + log.duration / 3600, 0) + activeHours;
+            .reduce((sum, log) => sum + (log.duration ?? 0), 0) + activeSeconds;
 
         const scoreJobs = userJobs.filter((job) => {
           const createdMs = parseMs(job.createdAt);
@@ -241,8 +242,8 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
           id: u.id,
           name: u.name,
           avatar: u.name.split(" ").map((s) => s[0]).join("").toUpperCase().slice(0, 2),
-          hoursToday: Number(hoursToday.toFixed(1)),
-          hoursWeek: Number(hoursWeek.toFixed(1)),
+          secondsToday,
+          secondsWeek,
           jobsCompleted: userJobs.filter((job) => job.status === "completed").length,
           reworks: userJobs.filter((job) => job.status === "rework").length,
           mistakes: mistakeCounts[u.id] ?? 0,
@@ -389,12 +390,12 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
             <div className="mb-3">
               <div className="flex justify-between text-[10px] text-gray-500 mb-1">
                 <span>Today</span>
-                <span className="font-bold">{w.hoursToday}h / 8h</span>
+                <span className="font-bold">{formatDurationSeconds(w.secondsToday)} / 8h</span>
               </div>
               <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
-                  animate={{ width: `${Math.min((w.hoursToday / 8) * 100, 100)}%` }}
+                  animate={{ width: `${Math.min((w.secondsToday / (8 * 3600)) * 100, 100)}%` }}
                   transition={{ duration: 0.6 + i * 0.04 }}
                   className="h-full bg-primary rounded-full"
                 />
@@ -403,7 +404,7 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
 
             <div className="grid grid-cols-4 gap-2 pt-3 border-t border-gray-100">
               <div className="text-center">
-                <div className="text-base font-bold text-gray-900">{w.hoursWeek}h</div>
+                <div className="text-sm font-bold text-gray-900">{formatDurationSeconds(w.secondsWeek)}</div>
                 <div className="text-[9px] text-gray-500 uppercase tracking-wide">Week</div>
               </div>
               <div className="text-center">
