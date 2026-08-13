@@ -64,7 +64,7 @@ router.get("/dashboard/stats", requireAuth, async (req, res) => {
         .select({
           totalJobs: sql<number>`count(*)`,
           activeJobs: sql<number>`count(*) filter (where ${jobs.status} = 'in_progress')`,
-          overdueJobs: sql<number>`count(*) filter (where ${jobs.status} <> 'completed' and ${jobs.dueDate} < now())`,
+          overdueJobs: sql<number>`count(*) filter (where ${jobs.status} not in ('completed', 'cancelled') and ${jobs.dueDate} is not null and (${jobs.dueDate})::date < CURRENT_DATE)`,
           dueToday: sql<number>`count(*) filter (where ${jobs.dueDate} >= ${todayStart} and ${jobs.dueDate} < ${new Date(todayStart.getTime() + 24 * 60 * 60 * 1000)})`,
           dueThisWeek: sql<number>`count(*) filter (where ${jobs.dueDate} >= ${todayStart} and ${jobs.dueDate} < ${weekEnd})`,
           waitingReview: sql<number>`count(*) filter (where ${jobs.status} = 'in_progress' and ${jobs.progress} >= 90)`,
@@ -168,7 +168,7 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
       .select({
         totalJobs: sql<number>`count(*)`,
         activeJobs: sql<number>`count(*) filter (where ${jobs.status} = 'in_progress')`,
-        overdueJobs: sql<number>`count(*) filter (where ${jobs.status} <> 'completed' and ${jobs.dueDate} < now())`,
+        overdueJobs: sql<number>`count(*) filter (where ${jobs.status} not in ('completed', 'cancelled') and ${jobs.dueDate} is not null and (${jobs.dueDate})::date < CURRENT_DATE)`,
         pendingReworkTasks: sql<number>`count(*) filter (where ${jobs.status} = 'rework')`,
         dueToday: sql<number>`count(*) filter (where ${jobs.dueDate} >= ${todayStart} and ${jobs.dueDate} < ${new Date(todayStart.getTime() + 24 * 60 * 60 * 1000)})`,
         dueThisWeek: sql<number>`count(*) filter (where ${jobs.dueDate} >= ${todayStart} and ${jobs.dueDate} < ${weekEnd})`,
@@ -271,7 +271,8 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
       .where(and(
         eq(jobs.supervisorId, supervisorId),
         ne(jobs.status, "completed"),
-        lt(jobs.dueDate, now)
+        ne(jobs.status, "cancelled"),
+        sql`${jobs.dueDate} is not null and (${jobs.dueDate})::date < CURRENT_DATE`,
       ))
       .orderBy(desc(jobs.dueDate))
       .limit(4);

@@ -8,6 +8,7 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
+import { isJobOverdueByDueDate } from "@/lib/jobMappers";
 import logoImg from "@assets/vv_1778503190047.png";
 import { useAuth } from "@/lib/auth";
 import {
@@ -190,11 +191,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
 
       const isJobOverdue = (j: any) => {
         if (typeof j?.isOverdue === "boolean") return j.isOverdue;
-        const dueMs = parseMs(j?.dueDate);
-        if (!dueMs) return false;
-        const completedMs = parseMs(j?.completedAt);
-        if (completedMs != null) return completedMs > dueMs;
-        return Date.now() > dueMs && j?.status !== "completed";
+        return isJobOverdueByDueDate(j?.dueDate, j?.status ?? "");
       };
 
       const overdue = userJobs.filter(isJobOverdue).length;

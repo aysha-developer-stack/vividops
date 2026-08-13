@@ -83,6 +83,7 @@ async function start(): Promise<void> {
 
     try {
     const { db, jobs, users, jobMembers, timeLogs, posts, userSettings, and, eq, inArray, sql, gte, lt } = await import("@workspace/db");
+    const { calendarDaysOverdue } = await import("./lib/job-due-date");
 
     const cliqWebhookUrl = process.env.ZOHO_CLIQ_WEBHOOK_URL;
 
@@ -141,7 +142,7 @@ async function start(): Promise<void> {
         const overdueJobs = await db
           .select()
           .from(jobs)
-          .where(sql`${jobs.dueDate} is not null and ${jobs.dueDate} < now() and ${jobs.status} <> 'completed' and ${jobs.status} <> 'cancelled'`);
+          .where(sql`${jobs.dueDate} is not null and (${jobs.dueDate})::date < CURRENT_DATE and ${jobs.status} <> 'completed' and ${jobs.status} <> 'cancelled'`);
 
         const admins = await db
           .select({ id: users.id, role: users.role })
@@ -152,7 +153,7 @@ async function start(): Promise<void> {
 
         for (const j of overdueJobs) {
           const due = j.dueDate ? new Date(j.dueDate) : new Date();
-          const daysOverdue = Math.max(1, Math.floor((Date.now() - due.getTime()) / (1000 * 60 * 60 * 24)));
+          const daysOverdue = calendarDaysOverdue(due);
           const title = `Job Overdue: JOB-${j.serial}`;
           const description = `Job ${j.title} for ${j.client} is overdue by ${daysOverdue} day(s).`;
 

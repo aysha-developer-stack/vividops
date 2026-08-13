@@ -30,8 +30,20 @@ interface Worker {
   mistakes: number;
   efficiency: number;
   status: "active" | "idle" | "offline" | "on_job";
-  lastJob: string;
-  activeJobNumber?: string;
+  currentJobId: string | null;
+  currentJobLabel: string | null;
+  lastJobId: string | null;
+  lastJobLabel: string | null;
+}
+
+function formatJobDisplay(number: string | null | undefined, title: string | null | undefined): string | null {
+  const normalizedNumber = number
+    ? number.startsWith("JOB-")
+      ? number
+      : `JOB-${number.replace(/^JOB-/i, "")}`
+    : null;
+  if (normalizedNumber && title) return `${normalizedNumber} · ${title}`;
+  return normalizedNumber ?? title ?? null;
 }
 
 function parseMs(iso: string | null | undefined) {
@@ -44,13 +56,12 @@ function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
 
-function getLatestJobNumber(jobs: Job[]) {
-  const latest = [...jobs].sort((a, b) => {
+function getLatestJob(jobs: Job[]): Job | null {
+  return [...jobs].sort((a, b) => {
     const aMs = parseMs(a.completedAt) ?? parseMs(a.updatedAt) ?? parseMs(a.createdAt) ?? 0;
     const bMs = parseMs(b.completedAt) ?? parseMs(b.updatedAt) ?? parseMs(b.createdAt) ?? 0;
     return bMs - aMs;
-  })[0];
-  return latest?.number ?? "None";
+  })[0] ?? null;
 }
 
 function getWorkerStatus(user: User, activeSession?: ActiveTimerSession | null): Worker["status"] {
@@ -219,7 +230,12 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
           );
         });
 
-        const lastJob = activeSession?.jobNumber ?? getLatestJobNumber(userJobs);
+        const latestJob = getLatestJob(userJobs);
+        const lastJobLabel = latestJob ? formatJobDisplay(latestJob.number, latestJob.title) : null;
+        const currentJobLabel =
+          activeSession?.isLive && (activeSession.jobNumber || activeSession.jobTitle)
+            ? formatJobDisplay(activeSession.jobNumber, activeSession.jobTitle)
+            : null;
 
         return {
           id: u.id,
@@ -232,8 +248,10 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
           mistakes: mistakeCounts[u.id] ?? 0,
           efficiency: getPerformanceScore(scoreJobs),
           status: getWorkerStatus(u, activeSession),
-          lastJob,
-          activeJobNumber: activeSession?.jobNumber ?? undefined,
+          currentJobId: activeSession?.isLive ? activeSession.jobId ?? null : null,
+          currentJobLabel,
+          lastJobId: latestJob?.id ?? null,
+          lastJobLabel,
         };
       });
   }, [apiJobs, apiTimeLogs, apiUsers, jobMemberships, activeSessions, liveTick, mistakeCounts]);
@@ -253,6 +271,11 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
       </DashboardLayout>
     );
   }
+
+  const jobBase =
+    role === "super-admin" ? "/super-admin/jobs"
+    : role === "admin" ? "/admin/jobs"
+    : "/supervisor/jobs";
 
   return (
     <DashboardLayout title="User Monitoring" role={role}>
@@ -313,14 +336,42 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
                 <div className="font-bold text-sm text-gray-900 truncate">{w.name}</div>
                 <div className="text-[10px] text-gray-500">
                   {w.status === "on_job"
-                    ? `On job · ${w.activeJobNumber ?? w.lastJob}`
+                    ? "On job"
                     : w.status === "active"
                       ? "Online"
                       : w.status === "idle"
                         ? "Away"
                         : "Offline"}
-                  {w.status !== "on_job" ? ` · Last job: ${w.lastJob}` : ""}
                 </div>
+                {w.currentJobLabel ? (
+                  <div className="text-[10px] mt-0.5 truncate" title={w.currentJobLabel}>
+                    <span className="text-gray-500">Working on: </span>
+                    {w.currentJobId ? (
+                      <Link
+                        href={`${jobBase}/${w.currentJobId}`}
+                        className="text-sky-700 font-medium hover:underline"
+                      >
+                        {w.currentJobLabel}
+                      </Link>
+                    ) : (
+                      <span className="text-sky-700 font-medium">{w.currentJobLabel}</span>
+                    )}
+                  </div>
+                ) : w.lastJobLabel ? (
+                  <div className="text-[10px] mt-0.5 truncate" title={w.lastJobLabel}>
+                    <span className="text-gray-500">Last job: </span>
+                    {w.lastJobId ? (
+                      <Link
+                        href={`${jobBase}/${w.lastJobId}`}
+                        className="text-gray-700 font-medium hover:underline"
+                      >
+                        {w.lastJobLabel}
+                      </Link>
+                    ) : (
+                      <span className="text-gray-700 font-medium">{w.lastJobLabel}</span>
+                    )}
+                  </div>
+                ) : null}
               </div>
               <div
                 className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${

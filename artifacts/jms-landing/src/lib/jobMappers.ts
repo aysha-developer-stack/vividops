@@ -44,6 +44,17 @@ export const PRIORITY_UI_TO_API: Record<UiPriority, JobPriority> = {
   High: "high",
 };
 
+export function isJobOverdueByDueDate(
+  dueDateIso: string | null | undefined,
+  status: string,
+  now = new Date(),
+): boolean {
+  if (!dueDateIso || status === "completed" || status === "cancelled") return false;
+  const dueDay = dueDateIso.slice(0, 10);
+  const today = now.toISOString().slice(0, 10);
+  return today > dueDay;
+}
+
 export function statusToUi(j: ApiJob): UiStatus {
   if (j.isOverdue) return "Overdue";
   return STATUS_API_TO_UI[j.status] ?? "Not Started";

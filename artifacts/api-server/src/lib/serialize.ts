@@ -1,5 +1,6 @@
 import type { JobRow, UserRow } from "@workspace/db";
 import { parseJobMeta } from "./jobMeta";
+import { isJobOverdueByDueDate } from "./job-due-date";
 
 export function publicUser(u: UserRow) {
   return {
@@ -51,11 +52,7 @@ export function publicJob(
   assignees: JobAssigneeRef[] = [],
 ) {
   const now = new Date();
-  const isOverdue =
-    !!job.dueDate &&
-    job.status !== "completed" &&
-    job.status !== "cancelled" &&
-    job.dueDate < now;
+  const isOverdue = isJobOverdueByDueDate(job.dueDate, job.status, now);
   const displayNumber = job.jobNumber?.trim() ? `JOB-${job.jobNumber.trim()}` : `JOB-${job.serial}`;
   const meta = parseJobMeta(job.description);
   return {

@@ -8,6 +8,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import { useGetDashboardStats, useListUsers, useListJobs, type User } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
+import { isJobOverdueByDueDate } from "@/lib/jobMappers";
 import { formatPresenceLabel, getPresenceStatus } from "@/lib/presence";
 
 type HealthStatus = "healthy" | "degraded" | "down";
@@ -155,16 +156,18 @@ export default function SystemMonitoring({ role = "super-admin" as Role }: { rol
       dashboardData?.stats.overdueJobs ??
       jobs.filter((j) => {
         if (j.isOverdue) return true;
-        const dueMs = parseMs(j.dueDate as string);
-        return dueMs != null && dueMs < now && j.status !== "completed" && j.status !== "cancelled";
+        return isJobOverdueByDueDate(j.dueDate as string, j.status);
       }).length;
     const overdueWasLastWeek = jobs.filter((j) => {
       if (j.status === "completed" || j.status === "cancelled") {
         const completedMs = parseMs(j.completedAt as string);
         if (completedMs != null && completedMs < weekStart) return false;
       }
-      const dueMs = parseMs(j.dueDate as string);
-      return dueMs != null && dueMs < weekStart && j.status !== "completed" && j.status !== "cancelled";
+      const dueDay = parseMs(j.dueDate as string);
+      if (dueDay == null) return false;
+      const dueKey = new Date(dueDay).toISOString().slice(0, 10);
+      const weekStartKey = new Date(weekStart).toISOString().slice(0, 10);
+      return dueKey < weekStartKey && j.status !== "completed" && j.status !== "cancelled";
     }).length;
     const overdueTrend = formatCountDelta(overdueJobs - overdueWasLastWeek, true);
 
