@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Link, useRoute } from "wouter";
+import { Link, useRoute, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, MapPin, Calendar, User, Briefcase, CheckCircle2, Circle,
@@ -297,6 +297,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     : role === "super-admin" ? "/super-admin/jobs/:id"
     : "/user/jobs/:id";
   const [, params] = useRoute(routePath);
+  const [location] = useLocation();
   const jobId = id || params?.id || "";
   const jobQuery = useGetJob(jobId);
   const updateJobMutation = useUpdateJob();
@@ -376,6 +377,24 @@ export default function JobDetail({ role = "user", id }: Props) {
   })();
   const defaultTab: TabId = tabFromQuery ?? (role === "supervisor" ? "overview" : role === "user" ? "files" : "checklist");
   const [tab, setTab] = useState<TabId>(defaultTab);
+
+  useEffect(() => {
+    try {
+      const v = new URLSearchParams(window.location.search).get("tab");
+      if (
+        v === "overview" ||
+        v === "checklist" ||
+        v === "files" ||
+        v === "notes" ||
+        v === "communication" ||
+        v === "logs" ||
+        v === "mistakes"
+      ) {
+        setTab(v as TabId);
+      }
+    } catch {
+    }
+  }, [location, jobId]);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [files, setFiles] = useState(INITIAL_FILES);
   const [messages, setMessages] = useState(INITIAL_MESSAGES);

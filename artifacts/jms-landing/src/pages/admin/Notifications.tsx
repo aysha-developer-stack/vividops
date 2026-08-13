@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { ArrowLeft, Check, Filter as FilterIcon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -13,6 +13,7 @@ import {
 } from "@/lib/notifications";
 import type { Role } from "@/lib/roles";
 import { ROLES } from "@/lib/roles";
+import { getNotificationPath } from "@/lib/notificationNavigation";
 import {
   useGetNotifications,
   useMarkNotificationRead,
@@ -40,6 +41,7 @@ const FILTERS: Array<{ id: "all" | "unread" | NotifType; label: string }> = [
 export default function Notifications({ role = "super-admin" }: { role?: Role }) {
   const qc = useQueryClient();
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
   const notificationsQueryKey = [...getGetNotificationsQueryKey(), user?.id ?? "anonymous"];
   const { data: apiNotifications, isLoading } = useGetNotifications({
     query: {
@@ -56,15 +58,29 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
   const config = ROLES[role];
   const dashboardPath = config.base;
 
-  const items = useMemo(() => {
-    return (apiNotifications ?? []).map(n => ({
-      id: n.id,
-      type: n.type as NotifType,
-      title: n.title,
-      desc: n.description,
-      time: new Date(n.createdAt).toLocaleString(),
-      unread: !n.isRead
-    }));
+  type NotificationItem = {
+    id: string;
+    jobId: string | null;
+    type: NotifType;
+    title: string;
+    desc: string;
+    time: string;
+    unread: boolean;
+  };
+
+  const items = useMemo((): NotificationItem[] => {
+    return (apiNotifications ?? []).map((n) => {
+      const row = n as Notification & { jobId?: string | null };
+      return {
+        id: n.id,
+        jobId: row.jobId ?? null,
+        type: n.type as NotifType,
+        title: n.title,
+        desc: n.description,
+        time: new Date(n.createdAt).toLocaleString(),
+        unread: !n.isRead,
+      };
+    });
   }, [apiNotifications]);
 
   const filtered = useMemo(() => {
@@ -110,6 +126,13 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
     } finally {
       await qc.invalidateQueries({ queryKey: notificationsQueryKey });
     }
+  };
+
+  const openNotification = async (notification: NotificationItem) => {
+    if (notification.unread) {
+      await toggleOne(notification.id);
+    }
+    setLocation(getNotificationPath(role, { type: notification.type, jobId: notification.jobId }));
   };
 
   if (isLoading) {
@@ -188,9 +211,9 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.03 }}
-                  whileHover={n.unread ? { x: 2 } : {}}
-                  onClick={() => n.unread && toggleOne(n.id)}
-                  className={`px-5 py-4 flex gap-4 relative ${n.unread ? "cursor-pointer hover:bg-gray-50 bg-primary/[0.02]" : ""}`}
+                  whileHover={{ x: 2 }}
+                  onClick={() => void openNotification(n)}
+                  className="px-5 py-4 flex gap-4 relative cursor-pointer hover:bg-gray-50"
                 >
                   {n.unread && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
                   <div className={`w-11 h-11 rounded-xl ${style.color} flex items-center justify-center shrink-0`}>
@@ -209,11 +232,14 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
                   </div>
                   {n.unread && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); toggleOne(n.id); }}
+                      onClick={(e) => { e.stopPropagation(); void toggleOne(n.id); }}
                       className="self-start text-[11px] font-semibold text-primary hover:underline shrink-0"
                     >
                       Mark read
                     </button>
+                  )}
+                  {!n.unread && n.jobId && (
+                    <span className="self-start text-[11px] font-semibold text-gray-400 shrink-0">Open job →</span>
                   )}
                 </motion.div>
               );

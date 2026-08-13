@@ -13,6 +13,7 @@ import {
   showDesktopNotificationBatch,
 } from "@/lib/desktopNotifications";
 import { connectNotificationSocket, disconnectNotificationSocket } from "@/lib/notificationSocket";
+import { getNotificationPath } from "@/lib/notificationNavigation";
 import { ROLES, Role } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -82,15 +83,15 @@ export default function DashboardLayout({
   const soundEnabled = userSettings?.soundEnabled !== false;
   const pushEnabledRef = useRef(pushEnabled);
   pushEnabledRef.current = pushEnabled;
-  const openNotificationTargetRef = useRef<(jobId?: string | null) => void>(() => {});
+  const openNotificationTargetRef = useRef<(jobId?: string | null, type?: string) => void>(() => {});
 
-  const openNotificationTarget = useCallback((jobId?: string | null) => {
+  const openNotificationTarget = useCallback((jobId?: string | null, type?: string) => {
     if (jobId) {
-      setLocation(`${config.base}/jobs/${jobId}`);
+      setLocation(getNotificationPath(role, { type: type ?? "updated", jobId }));
       return;
     }
     setLocation(`${config.base}/notifications`);
-  }, [config.base, setLocation]);
+  }, [config.base, role, setLocation]);
 
   openNotificationTargetRef.current = openNotificationTarget;
 
@@ -117,7 +118,7 @@ export default function DashboardLayout({
             return;
           }
           const item = items.find((n) => String(n.id) === id);
-          openNotificationTargetRef.current(item?.jobId);
+          openNotificationTargetRef.current(item?.jobId, item?.type);
         },
       },
     );
@@ -188,7 +189,7 @@ export default function DashboardLayout({
             title: incoming.title,
             body: incoming.description,
           },
-          () => openNotificationTargetRef.current(incoming.jobId),
+          () => openNotificationTargetRef.current(incoming.jobId, incoming.type),
         );
         if (soundEnabled) {
           void playNotificationTone();
@@ -361,6 +362,14 @@ export default function DashboardLayout({
       console.error("Failed to mark as read", err);
       qc.invalidateQueries({ queryKey: key });
     }
+  };
+
+  const handleNotificationClick = (notification: LayoutNotification) => {
+    if (notification.unread) {
+      void markOneRead(notification.id);
+    }
+    setNotifOpen(false);
+    setLocation(getNotificationPath(role, { type: notification.type, jobId: notification.jobId }));
   };
 
   const prefetchDataForPath = (path: string) => {
@@ -677,7 +686,7 @@ export default function DashboardLayout({
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: i * 0.04 }}
                             whileHover={{ x: 3 }}
-                            onClick={() => markOneRead(n.id)}
+                            onClick={() => handleNotificationClick(n)}
                             className={`px-5 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer flex gap-3 relative ${n.unread ? "bg-primary/[0.02]" : ""}`}
                           >
                             {n.unread && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
