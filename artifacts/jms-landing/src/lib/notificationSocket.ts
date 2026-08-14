@@ -8,12 +8,15 @@ export type RealtimeNotification = Pick<
 
 let socket: Socket | null = null;
 let socketUserId: string | null = null;
+let notificationHandler: ((notification: RealtimeNotification) => void) | null = null;
 
 export function connectNotificationSocket(
   userId: string,
   onNotification: (notification: RealtimeNotification) => void,
 ): Socket | null {
   if (typeof window === "undefined") return null;
+
+  notificationHandler = onNotification;
 
   if (socket?.connected && socketUserId === userId) {
     return socket;
@@ -34,7 +37,7 @@ export function connectNotificationSocket(
 
   socket.on("notification:new", (payload: RealtimeNotification) => {
     if (payload?.userId !== userId) return;
-    onNotification(payload);
+    notificationHandler?.(payload);
   });
 
   return socket;
@@ -47,4 +50,5 @@ export function disconnectNotificationSocket() {
   }
   socket = null;
   socketUserId = null;
+  notificationHandler = null;
 }

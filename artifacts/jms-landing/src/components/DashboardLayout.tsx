@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -13,7 +13,7 @@ import {
   shouldPreferInAppNotifications,
   shouldShowDesktopNotifications,
 } from "@/lib/desktopNotifications";
-import { connectNotificationSocket, disconnectNotificationSocket } from "@/lib/notificationSocket";
+import { connectNotificationSocket, disconnectNotificationSocket, type RealtimeNotification } from "@/lib/notificationSocket";
 import { getNotificationPath } from "@/lib/notificationNavigation";
 import { ROLES, Role } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
@@ -176,24 +176,31 @@ export default function DashboardLayout({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const notificationsQueryKey = [...getGetNotificationsQueryKey(), user?.id ?? "anonymous"];
+  const notificationsQueryKey = useMemo(
+    () => [...getGetNotificationsQueryKey(), user?.id ?? "anonymous"],
+    [user?.id],
+  );
+
+  const handleSocketNotificationRef = useRef<(incoming: RealtimeNotification) => void>(() => {});
+  handleSocketNotificationRef.current = (incoming) => {
+    qc.setQueryData(notificationsQueryKey, (prev: Notification[] | undefined) => {
+      if (!prev) return [incoming];
+      if (prev.some((n) => n.id === incoming.id)) return prev;
+      return [incoming, ...prev];
+    });
+  };
 
   useEffect(() => {
     if (!user?.id) return;
 
     connectNotificationSocket(user.id, (incoming) => {
-      qc.setQueryData(notificationsQueryKey, (prev: Notification[] | undefined) => {
-        if (!prev) return [incoming];
-        if (prev.some((n) => n.id === incoming.id)) return prev;
-        return [incoming, ...prev];
-      });
-
+      handleSocketNotificationRef.current(incoming);
     });
 
     return () => {
       disconnectNotificationSocket();
     };
-  }, [user?.id, qc, notificationsQueryKey]);
+  }, [user?.id]);
 
   const handleLogout = async () => {
     setProfileOpen(false);

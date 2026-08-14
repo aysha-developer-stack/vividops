@@ -8,10 +8,10 @@ export function desktopNotificationsSupported(): boolean {
   return typeof window !== "undefined" && "Notification" in window;
 }
 
-/** User is actively viewing this app tab — prefer in-app toasts, not OS popups. */
+/** User is on the OPS browser tab — prefer in-app toasts, not OS popups. */
 export function shouldPreferInAppNotifications(): boolean {
   if (typeof document === "undefined") return true;
-  return document.visibilityState === "visible" && document.hasFocus();
+  return document.visibilityState === "visible";
 }
 
 export function shouldShowDesktopNotifications(): boolean {
