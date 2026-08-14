@@ -9,8 +9,9 @@ import { useAuth, useLogout, purgeAuthState } from "@/lib/auth";
 import { getNotifStyle, playNotificationTone, sortNotificationsByPriority } from "@/lib/notifications";
 import {
   ensureDesktopNotificationPermission,
-  showDesktopNotification,
   showDesktopNotificationBatch,
+  shouldPreferInAppNotifications,
+  shouldShowDesktopNotifications,
 } from "@/lib/desktopNotifications";
 import { connectNotificationSocket, disconnectNotificationSocket } from "@/lib/notificationSocket";
 import { getNotificationPath } from "@/lib/notificationNavigation";
@@ -135,30 +136,35 @@ export default function DashboardLayout({
   ) => {
     if (items.length === 0) return;
 
-    if (opts?.playSound !== false && soundEnabled) {
-      void playNotificationTone();
+    const useInApp = shouldPreferInAppNotifications();
+    const useDesktop = pushEnabledRef.current && shouldShowDesktopNotifications();
+
+    if (useInApp) {
+      const messages = items.filter((n) => n.type === "job_message");
+      const otherAlerts = items.filter(
+        (n) => n.type !== "job_message" && n.type !== "progress" && n.type !== "timer",
+      );
+      const timerAlerts = items.filter((n) => n.type === "timer");
+      const toToast = [
+        ...messages.slice(0, 5),
+        ...timerAlerts.slice(0, 2),
+        ...otherAlerts.slice(0, 3),
+      ];
+
+      toToast.forEach((notification) => {
+        toast({
+          title: notification.title,
+          description: notification.desc,
+          variant: notification.type === "overdue" ? "destructive" : "default",
+        });
+      });
+    } else if (useDesktop) {
+      void showDesktopForNotifications(items);
     }
 
-    const messages = items.filter((n) => n.type === "job_message");
-    const otherAlerts = items.filter(
-      (n) => n.type !== "job_message" && n.type !== "progress" && n.type !== "timer",
-    );
-    const timerAlerts = items.filter((n) => n.type === "timer");
-    const toToast = [
-      ...messages.slice(0, 5),
-      ...timerAlerts.slice(0, 2),
-      ...otherAlerts.slice(0, 3),
-    ];
-
-    toToast.forEach((notification) => {
-      toast({
-        title: notification.title,
-        description: notification.desc,
-        variant: notification.type === "overdue" ? "destructive" : "default",
-      });
-    });
-
-    void showDesktopForNotifications(items);
+    if (opts?.playSound !== false && soundEnabled && (useInApp || useDesktop)) {
+      void playNotificationTone();
+    }
   }, [showDesktopForNotifications, soundEnabled, toast]);
 
   useEffect(() => {
@@ -182,25 +188,12 @@ export default function DashboardLayout({
         return [incoming, ...prev];
       });
 
-      if (pushEnabledRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
-        showDesktopNotification(
-          {
-            id: incoming.id,
-            title: incoming.title,
-            body: incoming.description,
-          },
-          () => openNotificationTargetRef.current(incoming.jobId, incoming.type),
-        );
-        if (soundEnabled) {
-          void playNotificationTone();
-        }
-      }
     });
 
     return () => {
       disconnectNotificationSocket();
     };
-  }, [user?.id, qc, notificationsQueryKey, soundEnabled]);
+  }, [user?.id, qc, notificationsQueryKey]);
 
   const handleLogout = async () => {
     setProfileOpen(false);
