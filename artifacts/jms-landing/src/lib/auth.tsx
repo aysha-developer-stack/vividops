@@ -10,6 +10,8 @@ import {
   ApiError,
 } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
+import { disconnectNotificationSocket } from "@/lib/notificationSocket";
+import { useNotificationSocketSession } from "@/lib/useNotificationSocketSession";
 
 const AUTH_USER_KEY = "vops_auth_user";
 
@@ -50,6 +52,7 @@ function setCachedUser(u: User | null) {
 
 /** Clear all client-side auth state immediately (sync). */
 export function purgeAuthState(qc?: QueryClient) {
+  disconnectNotificationSocket();
   sessionStorage.removeItem("vops_tab_active");
   writeStoredAuthUser(null);
   cachedUser = null;
@@ -130,6 +133,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionStorage.removeItem("vops_tab_active");
     }
   }, [meQuery.data, meQuery.isSuccess]);
+
+  useNotificationSocketSession(meQuery.data?.id);
 
   const value: AuthContextValue = {
     user: meQuery.data ?? null,

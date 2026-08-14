@@ -13,7 +13,6 @@ import {
   shouldPreferInAppNotifications,
   shouldShowDesktopNotifications,
 } from "@/lib/desktopNotifications";
-import { connectNotificationSocket, disconnectNotificationSocket, type RealtimeNotification } from "@/lib/notificationSocket";
 import { getNotificationPath } from "@/lib/notificationNavigation";
 import { ROLES, Role } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
@@ -181,30 +180,8 @@ export default function DashboardLayout({
     [user?.id],
   );
 
-  const handleSocketNotificationRef = useRef<(incoming: RealtimeNotification) => void>(() => {});
-  handleSocketNotificationRef.current = (incoming) => {
-    qc.setQueryData(notificationsQueryKey, (prev: Notification[] | undefined) => {
-      if (!prev) return [incoming];
-      if (prev.some((n) => n.id === incoming.id)) return prev;
-      return [incoming, ...prev];
-    });
-  };
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    connectNotificationSocket(user.id, (incoming) => {
-      handleSocketNotificationRef.current(incoming);
-    });
-
-    return () => {
-      disconnectNotificationSocket();
-    };
-  }, [user?.id]);
-
   const handleLogout = async () => {
     setProfileOpen(false);
-    disconnectNotificationSocket();
 
     // Clear the server session cookie first. Purging local cache before that
     // lets /auth/me restore the user and Login bounces them back to the dashboard.
