@@ -12,6 +12,7 @@ import {
 import type { Role } from "@/lib/roles";
 import { disconnectNotificationSocket } from "@/lib/notificationSocket";
 import { useNotificationSocketSession } from "@/lib/useNotificationSocketSession";
+import { useNotificationAlerts } from "@/lib/useNotificationAlerts";
 
 const AUTH_USER_KEY = "vops_auth_user";
 
@@ -135,6 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [meQuery.data, meQuery.isSuccess]);
 
   useNotificationSocketSession(meQuery.data?.id);
+  useNotificationAlerts(meQuery.data ?? null);
 
   const value: AuthContextValue = {
     user: meQuery.data ?? null,

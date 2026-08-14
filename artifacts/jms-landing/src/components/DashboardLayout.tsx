@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo, ReactNode } from "react";
+import { useState, useEffect, useRef, useMemo, ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -6,16 +6,9 @@ import {
 } from "lucide-react";
 import logoImg from "@assets/vv_1778503190047.png";
 import { useAuth, useLogout, purgeAuthState } from "@/lib/auth";
-import { getNotifStyle, playNotificationTone, sortNotificationsByPriority } from "@/lib/notifications";
-import {
-  ensureDesktopNotificationPermission,
-  showDesktopNotificationBatch,
-  shouldPreferInAppNotifications,
-  shouldShowDesktopNotifications,
-} from "@/lib/desktopNotifications";
+import { getNotifStyle, sortNotificationsByPriority } from "@/lib/notifications";
 import { getNotificationPath } from "@/lib/notificationNavigation";
 import { ROLES, Role } from "@/lib/roles";
-import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetDashboardStatsQueryOptions,
@@ -26,9 +19,7 @@ import {
   getGetNotificationsQueryKey,
   getGetMeQueryKey,
   useGetNotifications,
-  useGetUserSettings,
   useMarkNotificationRead,
-  getGetUserSettingsQueryKey,
   getListJobsQueryOptions,
   type Notification,
 } from "@workspace/api-client-react";
@@ -68,103 +59,8 @@ export default function DashboardLayout({
   const [profileOpen, setProfileOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
-  const seenNotificationIdsRef = useRef<Set<string>>(new Set());
-  const initializedNotificationsRef = useRef(false);
   const qc = useQueryClient();
   const logoutMutation = useLogout();
-  const { toast } = useToast();
-  const { data: userSettings } = useGetUserSettings({
-    query: {
-      queryKey: getGetUserSettingsQueryKey(),
-      enabled: !!user?.id,
-    },
-  });
-  const pushEnabled = userSettings?.pushNotifications !== false;
-  const soundEnabled = userSettings?.soundEnabled !== false;
-  const pushEnabledRef = useRef(pushEnabled);
-  pushEnabledRef.current = pushEnabled;
-  const openNotificationTargetRef = useRef<(jobId?: string | null, type?: string) => void>(() => {});
-
-  const openNotificationTarget = useCallback((jobId?: string | null, type?: string) => {
-    if (jobId) {
-      setLocation(getNotificationPath(role, { type: type ?? "updated", jobId }));
-      return;
-    }
-    setLocation(`${config.base}/notifications`);
-  }, [config.base, role, setLocation]);
-
-  openNotificationTargetRef.current = openNotificationTarget;
-
-  const showDesktopForNotifications = useCallback(async (items: LayoutNotification[]) => {
-    if (!pushEnabledRef.current || items.length === 0) return;
-    if (typeof Notification === "undefined") return;
-
-    let permission: NotificationPermission | "unsupported" = Notification.permission;
-    if (permission === "default") {
-      permission = await ensureDesktopNotificationPermission();
-    }
-    if (permission !== "granted") return;
-
-    showDesktopNotificationBatch(
-      items.map((n) => ({
-        id: String(n.id),
-        title: n.title,
-        body: n.desc,
-      })),
-      {
-        onOpen: (id) => {
-          if (id === "inbox") {
-            openNotificationTargetRef.current(null);
-            return;
-          }
-          const item = items.find((n) => String(n.id) === id);
-          openNotificationTargetRef.current(item?.jobId, item?.type);
-        },
-      },
-    );
-  }, []);
-
-  useEffect(() => {
-    if (!user?.id || !pushEnabled) return;
-    void ensureDesktopNotificationPermission();
-  }, [user?.id, pushEnabled]);
-
-  const alertForNotifications = useCallback((
-    items: LayoutNotification[],
-    opts?: { playSound?: boolean },
-  ) => {
-    if (items.length === 0) return;
-
-    const useInApp = shouldPreferInAppNotifications();
-    const useDesktop = pushEnabledRef.current && shouldShowDesktopNotifications();
-
-    if (useInApp) {
-      const messages = items.filter((n) => n.type === "job_message");
-      const otherAlerts = items.filter(
-        (n) => n.type !== "job_message" && n.type !== "progress" && n.type !== "timer",
-      );
-      const timerAlerts = items.filter((n) => n.type === "timer");
-      const toToast = [
-        ...messages.slice(0, 5),
-        ...timerAlerts.slice(0, 2),
-        ...otherAlerts.slice(0, 3),
-      ];
-
-      toToast.forEach((notification) => {
-        toast({
-          title: notification.title,
-          description: notification.desc,
-          variant: notification.type === "overdue" ? "destructive" : "default",
-        });
-      });
-    } else if (useDesktop) {
-      void showDesktopForNotifications(items);
-    }
-
-    if (opts?.playSound !== false && soundEnabled && (useInApp || useDesktop)) {
-      void playNotificationTone();
-    }
-  }, [showDesktopForNotifications, soundEnabled, toast]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -238,71 +134,6 @@ export default function DashboardLayout({
   });
 
   const unreadCount = notifications.filter((n) => n.unread).length;
-
-  useEffect(() => {
-    initializedNotificationsRef.current = false;
-    seenNotificationIdsRef.current = new Set();
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const storageKey = `seen-notifications:${user.id}`;
-    const currentIds = notifications.map((n) => String(n.id));
-
-    if (!initializedNotificationsRef.current) {
-      const storedIds = new Set<string>();
-      try {
-        const raw = window.sessionStorage.getItem(storageKey);
-        const stored = raw ? JSON.parse(raw) : [];
-        if (Array.isArray(stored)) {
-          for (const id of stored) storedIds.add(String(id));
-        }
-      } catch {
-      }
-
-      const missedUnread = notifications.filter(
-        (n) => n.unread && !storedIds.has(String(n.id)),
-      );
-
-      seenNotificationIdsRef.current = new Set([...storedIds, ...currentIds]);
-      initializedNotificationsRef.current = true;
-
-      try {
-        window.sessionStorage.setItem(
-          storageKey,
-          JSON.stringify(Array.from(seenNotificationIdsRef.current)),
-        );
-      } catch {
-      }
-
-      if (missedUnread.length > 0) {
-        alertForNotifications(missedUnread);
-      }
-      return;
-    }
-
-    const newNotifications = notifications.filter(
-      (notification) =>
-        notification.unread && !seenNotificationIdsRef.current.has(String(notification.id)),
-    );
-
-    if (newNotifications.length === 0) return;
-
-    for (const notification of newNotifications) {
-      seenNotificationIdsRef.current.add(String(notification.id));
-    }
-
-    try {
-      window.sessionStorage.setItem(
-        storageKey,
-        JSON.stringify(Array.from(seenNotificationIdsRef.current)),
-      );
-    } catch {
-    }
-
-    alertForNotifications(newNotifications);
-  }, [alertForNotifications, notifications, user?.id]);
 
   const markAllRead = async () => {
     const unreadIds = notifications.filter((n) => n.unread).map(n => n.id as string);
