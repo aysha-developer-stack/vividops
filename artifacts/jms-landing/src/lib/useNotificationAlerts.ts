@@ -141,22 +141,25 @@ export function useNotificationAlerts(user: User | null | undefined) {
     const candidates = pickToastCandidates(items);
     if (candidates.length === 0) return;
 
-    if (candidates.length === 1) {
-      const n = candidates[0]!;
-      toast({
-        title: n.title,
-        description: n.desc,
-        variant: n.type === "overdue" ? "destructive" : "default",
-      });
-      return;
-    }
-
-    const primary = candidates[0]!;
-    toast({
-      title: `${items.length} new notifications`,
-      description: `${primary.title}${items.length > 1 ? ` and ${items.length - 1} more` : ""}`,
-      variant: primary.type === "overdue" ? "destructive" : "default",
+    candidates.forEach((n, index) => {
+      window.setTimeout(() => {
+        toast({
+          title: n.title,
+          description: n.desc,
+          variant: n.type === "overdue" ? "destructive" : "default",
+        });
+      }, index * 350);
     });
+
+    const remaining = items.length - candidates.length;
+    if (remaining > 0) {
+      window.setTimeout(() => {
+        toast({
+          title: `${remaining} more notification${remaining === 1 ? "" : "s"}`,
+          description: "Open the bell icon to view everything in your inbox.",
+        });
+      }, candidates.length * 350 + 100);
+    }
   }, [toast]);
 
   const deliverAlerts = useCallback((
