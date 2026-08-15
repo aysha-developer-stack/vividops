@@ -60,6 +60,7 @@ import { isCompletedAttachment, fileCategoryFromUploadTag } from "@/lib/attachme
 import { useAuth } from "@/lib/auth";
 import UploadProgressPanel from "@/components/UploadProgressPanel";
 import JobNotesTab from "@/components/JobNotesTab";
+import JobCompletionCommentsTab from "@/components/JobCompletionCommentsTab";
 import JobMistakesTab from "@/components/JobMistakesTab";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { uploadFormDataWithProgress } from "@/lib/uploadWithProgress";
@@ -234,6 +235,7 @@ const TABS = [
   { id: "notes", label: "Notes", icon: StickyNote },
   { id: "communication", label: "Chat", icon: MessageCircle },
   { id: "logs", label: "Timer Logs", icon: Clock },
+  { id: "completion", label: "Comments", icon: MessageSquare },
   { id: "mistakes", label: "Mistakes", icon: AlertTriangle },
 ] as const;
 
@@ -405,7 +407,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const tabFromQuery = (() => {
     try {
       const v = new URLSearchParams(window.location.search).get("tab");
-      if (v === "overview" || v === "checklist" || v === "files" || v === "notes" || v === "communication" || v === "logs" || v === "mistakes") return v as TabId;
+      if (v === "overview" || v === "checklist" || v === "files" || v === "notes" || v === "communication" || v === "logs" || v === "completion" || v === "mistakes") return v as TabId;
       return null;
     } catch {
       return null;
@@ -424,6 +426,7 @@ export default function JobDetail({ role = "user", id }: Props) {
         v === "notes" ||
         v === "communication" ||
         v === "logs" ||
+        v === "completion" ||
         v === "mistakes"
       ) {
         setTab(v as TabId);
@@ -1201,11 +1204,26 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   const displaySeconds = totalLoggedSeconds + seconds;
 
+  const timeLogUserNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    const add = (id: string | null | undefined, name: string | null | undefined) => {
+      if (id && name) map.set(id, name);
+    };
+    add(job?.assignee?.id, job?.assignee?.name);
+    add(job?.supervisor?.id, job?.supervisor?.name);
+    for (const member of job?.assignees ?? []) {
+      add(member?.id, member?.name);
+    }
+    for (const u of assignablesQuery.data ?? []) {
+      add(u.id, u.name);
+    }
+    add(currentUser?.id, currentUser?.name);
+    return map;
+  }, [job?.assignee, job?.supervisor, job?.assignees, assignablesQuery.data, currentUser?.id, currentUser?.name]);
+
   const jobLogRows = useMemo(() => {
-    const assigneeId = job?.assignee?.id;
-    const assigneeName = job?.assignee?.name ?? "User";
     return jobTimeLogs.map((l) => {
-      const userName = l.userId === assigneeId ? assigneeName : `${l.userId.slice(0, 8)}…`;
+      const userName = timeLogUserNameById.get(l.userId) ?? `${l.userId.slice(0, 8)}…`;
       return {
         id: l.id,
         user: userName,
@@ -1215,7 +1233,7 @@ export default function JobDetail({ role = "user", id }: Props) {
         date: l.createdAt ? new Date(l.createdAt as any).toLocaleString() : "—",
       };
     });
-  }, [jobTimeLogs, job?.assignee?.id, job?.assignee?.name]);
+  }, [jobTimeLogs, timeLogUserNameById]);
 
   const jobLogsP = usePagination(jobLogRows, 6);
 
@@ -3007,6 +3025,10 @@ export default function JobDetail({ role = "user", id }: Props) {
           <JobNotesTab jobId={job.id} role={role} currentUserId={currentUser?.id} refreshKey={notesRefreshKey} />
         )}
 
+        {tab === "completion" && job?.id && (
+          <JobCompletionCommentsTab jobId={job.id} refreshKey={notesRefreshKey} />
+        )}
+
         {tab === "mistakes" && job?.id && (
           <JobMistakesTab
             jobId={job.id}
@@ -3443,9 +3465,6 @@ export default function JobDetail({ role = "user", id }: Props) {
                       rows={4}
                       className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-emerald-500 focus:bg-white transition-colors resize-none"
                     />
-                    <p className="text-[11px] text-gray-500 mt-1.5">
-                      Optional — included in notifications to admin, worker, and supervisor.
-                    </p>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => setApproveOpen(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200">Cancel</button>
@@ -3548,9 +3567,6 @@ export default function JobDetail({ role = "user", id }: Props) {
                       rows={4}
                       className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none"
                     />
-                    <p className="text-[11px] text-gray-500 mt-1.5">
-                      Optional — saved on the job and included in notifications.
-                    </p>
                   </div>
                   <div className="flex gap-2">
                     <button

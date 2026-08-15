@@ -23,7 +23,6 @@ const NOTE_TYPE_OPTIONS: Array<{ value: string; label: string; hint?: string }> 
 ];
 
 function noteTypeLabel(value: string): string {
-  if (value === "completion") return "Completion comment";
   return NOTE_TYPE_OPTIONS.find((o) => o.value === value)?.label ?? value;
 }
 
@@ -35,8 +34,6 @@ function noteTypeBadgeClass(value: string): string {
       return "bg-violet-50 text-violet-700 border-violet-200";
     case "internal":
       return "bg-amber-50 text-amber-800 border-amber-200";
-    case "completion":
-      return "bg-emerald-50 text-emerald-800 border-emerald-200";
     default:
       return "bg-gray-50 text-gray-700 border-gray-200";
   }
@@ -105,9 +102,8 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
     void loadNotes();
   }, [loadNotes, refreshKey]);
 
-  const isCompletionNote = (note: JobNoteApi) => note.noteType === "completion";
-  const canModify = (note: JobNoteApi) =>
-    !isCompletionNote(note) && (isAdmin || note.userId === currentUserId);
+  const canModify = (note: JobNoteApi) => isAdmin || note.userId === currentUserId;
+  const jobNotesOnly = notes.filter((n) => n.noteType !== "completion");
 
   const postNote = async () => {
     const text = draft.trim();
@@ -214,8 +210,8 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
     }
   };
 
-  const pinnedNotes = notes.filter((n) => n.pinned);
-  const regularNotes = notes.filter((n) => !n.pinned);
+  const pinnedNotes = jobNotesOnly.filter((n) => n.pinned);
+  const regularNotes = jobNotesOnly.filter((n) => !n.pinned);
 
   const renderNote = (note: JobNoteApi) => {
     const isEditing = editingId === note.id;
@@ -283,7 +279,7 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
           </div>
           {!isEditing && canModify(note) && (
             <div className="flex items-center gap-1 shrink-0">
-              {canPin && !isCompletionNote(note) && (
+              {canPin && (
                 <button
                   type="button"
                   onClick={() => void togglePin(note)}
@@ -374,7 +370,7 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
             <div className="py-10 text-center text-sm text-gray-400">Loading notes…</div>
           ) : loadError ? (
             <div className="py-10 text-center text-sm text-red-600">{loadError}</div>
-          ) : notes.length === 0 ? (
+          ) : jobNotesOnly.length === 0 ? (
             <div className="py-10 text-center text-sm text-gray-400">No notes yet. Be the first to add one.</div>
           ) : (
             <>
