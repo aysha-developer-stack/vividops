@@ -16,6 +16,7 @@ import {
   markOpenReworksAwaitingReview,
   resolveJobReworks,
 } from "./reworks";
+import { finalizeReviewCheckForJob } from "./persist-review-check-session";
 
 export type JobReviewAction =
   | "submit_for_supervisor"
@@ -88,9 +89,6 @@ export function jobStatusPatchFields(opts: {
 
   if (nextStatus === "awaiting_supervisor") {
     patch.completedAt = null;
-    if (previousStatus !== "awaiting_supervisor") {
-      patch.reviewStartedAt = now;
-    }
     return patch;
   }
 
@@ -595,6 +593,10 @@ export async function applyJobReview(opts: {
       }),
     )
     .where(eq(jobs.id, job.id));
+
+  if (previousStatus === "awaiting_supervisor" && nextStatus !== "awaiting_supervisor") {
+    await finalizeReviewCheckForJob(job.id, job.supervisorId ?? undefined);
+  }
 
   await notifyStatusTransition({
     actor,

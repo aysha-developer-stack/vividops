@@ -327,6 +327,21 @@ export async function ensureAllSchemas() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS active_review_check_sessions (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        supervisor_id uuid NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        accumulated_seconds integer NOT NULL DEFAULT 0,
+        segment_started_at timestamptz,
+        last_heartbeat_at timestamptz NOT NULL DEFAULT now(),
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS active_review_check_sessions_job_idx ON active_review_check_sessions (job_id);
+      CREATE INDEX IF NOT EXISTS active_review_check_sessions_heartbeat_idx ON active_review_check_sessions (last_heartbeat_at);
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS job_messages (
         id uuid PRIMARY KEY,
         job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,

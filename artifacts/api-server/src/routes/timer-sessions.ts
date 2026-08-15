@@ -6,6 +6,7 @@ import {
   jobs,
   jobMembers,
   activeTimerSessions,
+  activeReviewCheckSessions,
   type JobRow,
   type UserRow,
 } from "@workspace/db";
@@ -18,6 +19,7 @@ import {
   timerSessionElapsedSeconds,
 } from "../lib/timer-sessions";
 import { stopTimerSessionAndSaveLog } from "../lib/persist-timer-session";
+import { flushReviewCheckSegment } from "../lib/persist-review-check-session";
 import {
   jobStatusPatchFields,
   notifyStatusTransition,
@@ -179,6 +181,24 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
     }
     if (job.status === "on_hold") {
       return res.status(400).json({ error: "Job is on hold — contact your supervisor to resume" });
+    }
+
+    const [reviewSession] = await db
+      .select()
+      .from(activeReviewCheckSessions)
+      .where(eq(activeReviewCheckSessions.supervisorId, actor.id))
+      .limit(1);
+    if (reviewSession?.segmentStartedAt) {
+      await flushReviewCheckSegment(reviewSession);
+      await db
+        .update(activeReviewCheckSessions)
+        .set({
+          accumulatedSeconds: 0,
+          segmentStartedAt: null,
+          lastHeartbeatAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(activeReviewCheckSessions.id, reviewSession.id));
     }
 
     const existing = await loadSessionForUser(actor.id);

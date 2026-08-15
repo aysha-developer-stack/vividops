@@ -11,7 +11,7 @@ import { useAuth } from "@/lib/auth";
 import { useGetTimeLogs, useListJobs, useListUsers, type Job, type TimeLog, type User } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
 import { getPresenceStatus } from "@/lib/presence";
-import { formatShortDate } from "@/lib/jobMappers";
+import { formatShortDate, formatDurationSeconds } from "@/lib/jobMappers";
 
 interface AssignedWorker {
   id: string;
@@ -30,6 +30,7 @@ interface CheckedJobRow {
   checkedAt: string;
   checkedAtMs: number;
   status: string;
+  reviewCheckSeconds: number;
 }
 
 interface SupervisorCard {
@@ -161,6 +162,14 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
         .filter((job) => isCheckedBySupervisor(job, u.id, u.name) && (job as any).checkedAt)
         .map((job) => {
           const checkedAt = String((job as any).checkedAt);
+          const reviewCheckSeconds = (apiTimeLogs ?? [])
+            .filter(
+              (log: TimeLog) =>
+                log.jobId === job.id &&
+                log.userId === u.id &&
+                (log.task === "Supervisor review check" || log.task?.toLowerCase().includes("review check")),
+            )
+            .reduce((sum, log) => sum + (log.duration ?? 0), 0);
           return {
             id: job.id,
             jobNumber: jobNumberOf(job),
@@ -169,6 +178,7 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
             checkedAt,
             checkedAtMs: parseMs(checkedAt) ?? 0,
             status: job.status,
+            reviewCheckSeconds,
           };
         })
         .sort((a, b) => b.checkedAtMs - a.checkedAtMs);
@@ -529,6 +539,11 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
                               <Clock size={11} />
                               {formatCheckTime(job.checkedAt)}
                             </div>
+                            {job.reviewCheckSeconds > 0 && (
+                              <div className="text-[10px] text-indigo-600 font-semibold mt-0.5">
+                                Check time: {formatDurationSeconds(job.reviewCheckSeconds)}
+                              </div>
+                            )}
                             <div className="text-[10px] text-gray-400 mt-0.5">
                               {formatShortDate(job.checkedAt)}
                             </div>

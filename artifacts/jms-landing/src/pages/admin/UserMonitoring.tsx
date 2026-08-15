@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { Search, Activity } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import LiveSupervisorReviewPanel from "@/components/LiveSupervisorReviewPanel";
 import Pagination, { usePagination } from "@/components/Pagination";
 import {
   useListUsers,
@@ -280,6 +281,7 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
 
   return (
     <DashboardLayout title="User Monitoring" role={role}>
+      {(role === "admin" || role === "super-admin") && <LiveSupervisorReviewPanel role={role} />}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
           <Activity size={16} className="text-primary" />

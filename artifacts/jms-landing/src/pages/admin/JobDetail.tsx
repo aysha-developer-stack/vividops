@@ -41,6 +41,16 @@ import {
   heartbeatTimerSession,
   TIMER_HEARTBEAT_INTERVAL_MS,
 } from "@/lib/timerSessionApi";
+import {
+  fetchActiveReviewCheckSessions,
+  fetchJobReviewCheckTime,
+  startReviewCheckSession,
+  pauseReviewCheckSession,
+  heartbeatReviewCheckSession,
+  liveReviewCheckElapsedSeconds,
+  REVIEW_CHECK_HEARTBEAT_INTERVAL_MS,
+  type ReviewCheckSession,
+} from "@/lib/reviewCheckSessionApi";
 import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } from "@/lib/downloadFile";
 import { MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategories";
 import { useQueryClient } from "@tanstack/react-query";
@@ -470,7 +480,9 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [taskDialogValue, setTaskDialogValue] = useState("");
   const [taskDialogError, setTaskDialogError] = useState<string | null>(null);
-  const [reviewElapsedSeconds, setReviewElapsedSeconds] = useState(0);
+  const [reviewCheckSession, setReviewCheckSession] = useState<ReviewCheckSession | null>(null);
+  const [reviewCheckSavedSeconds, setReviewCheckSavedSeconds] = useState(0);
+  const [reviewCheckTick, setReviewCheckTick] = useState(0);
   const taskDialogResolverRef = useRef<((task: string | null) => void) | null>(null);
   const intervalRef = useRef<number | null>(null);
   const pingTimerRef = useRef<number | null>(null);
@@ -626,24 +638,97 @@ export default function JobDetail({ role = "user", id }: Props) {
     }
   };
 
-  const showReviewTimer =
-    (role === "supervisor" || role === "admin" || role === "super-admin") &&
+  const canShowReviewCheck =
     job?.status === "awaiting_supervisor" &&
-    !!job?.reviewStartedAt;
+    ((role === "supervisor" && job.supervisor?.id === currentUser?.id) ||
+      role === "admin" ||
+      role === "super-admin");
+  const reviewCheckRunning = !!reviewCheckSession?.segmentStartedAt && reviewCheckSession.jobId === job?.id;
+  const reviewCheckDisplaySeconds = useMemo(() => {
+    if (reviewCheckSession?.jobId === job?.id) {
+      return liveReviewCheckElapsedSeconds(reviewCheckSession);
+    }
+    return reviewCheckSavedSeconds;
+  }, [reviewCheckSession, job?.id, reviewCheckSavedSeconds, reviewCheckTick]);
 
   useEffect(() => {
-    if (!showReviewTimer || !job?.reviewStartedAt) {
-      setReviewElapsedSeconds(0);
+    if (!canShowReviewCheck || !job?.id) {
+      setReviewCheckSession(null);
+      setReviewCheckSavedSeconds(0);
       return;
     }
-    const startedMs = new Date(job.reviewStartedAt).getTime();
-    const tick = () => {
-      setReviewElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedMs) / 1000)));
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [time, sessions] = await Promise.all([
+          fetchJobReviewCheckTime(job.id),
+          fetchActiveReviewCheckSessions(),
+        ]);
+        if (cancelled) return;
+        if (time) setReviewCheckSavedSeconds(time.totalSeconds);
+        const onThisJob = sessions.filter((s) => s.jobId === job.id);
+        const mine =
+          role === "supervisor"
+            ? onThisJob.find((s) => s.supervisorId === currentUser?.id) ?? null
+            : onThisJob[0] ?? null;
+        setReviewCheckSession(mine);
+      } catch {
+      }
     };
-    tick();
-    const id = window.setInterval(tick, 1000);
+    void load();
+    const id = window.setInterval(load, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [canShowReviewCheck, job?.id, role, currentUser?.id]);
+
+  useEffect(() => {
+    if (!reviewCheckRunning) return;
+    const id = window.setInterval(() => setReviewCheckTick((t) => t + 1), 1000);
     return () => window.clearInterval(id);
-  }, [showReviewTimer, job?.reviewStartedAt]);
+  }, [reviewCheckRunning]);
+
+  useEffect(() => {
+    if (!reviewCheckRunning || role !== "supervisor") return;
+    const id = window.setInterval(() => {
+      void heartbeatReviewCheckSession()
+        .then((s) => {
+          if (s) setReviewCheckSession(s);
+        })
+        .catch(() => {});
+    }, REVIEW_CHECK_HEARTBEAT_INTERVAL_MS);
+    void heartbeatReviewCheckSession().catch(() => {});
+    return () => window.clearInterval(id);
+  }, [reviewCheckRunning, role]);
+
+  const startReviewCheck = async () => {
+    if (!job?.id) return;
+    try {
+      const session = await startReviewCheckSession(job.id);
+      setReviewCheckSession(session);
+      await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+      await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      const time = await fetchJobReviewCheckTime(job.id);
+      if (time) setReviewCheckSavedSeconds(time.totalSeconds);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to start checking");
+    }
+  };
+
+  const pauseReviewCheck = async () => {
+    try {
+      const session = await pauseReviewCheckSession();
+      if (session) setReviewCheckSession(session);
+      if (job?.id) {
+        const time = await fetchJobReviewCheckTime(job.id);
+        if (time) setReviewCheckSavedSeconds(time.totalSeconds);
+        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+      }
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to pause checking");
+    }
+  };
 
   const timerStorageKey = (jid: string) => `job_timer_v1:${jid}`;
   const readTimerState = (jid: string) => {
@@ -1890,8 +1975,8 @@ export default function JobDetail({ role = "user", id }: Props) {
         </motion.div>
       )}
 
-      {/* Supervisor review timer (supervisor, admin, super-admin) */}
-      {showReviewTimer && (
+      {/* Supervisor review check timer */}
+      {canShowReviewCheck && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1900,28 +1985,63 @@ export default function JobDetail({ role = "user", id }: Props) {
         >
           <motion.div
             className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-white/10 blur-2xl"
-            animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
+            animate={{ scale: reviewCheckRunning ? [1, 1.2, 1] : 1, opacity: reviewCheckRunning ? [0.3, 0.5, 0.3] : 0.3 }}
             transition={{ duration: 2, repeat: Infinity }}
           />
           <div className="relative z-10 flex items-center justify-between flex-wrap gap-4">
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-2 h-2 rounded-full bg-amber-300 animate-pulse" />
+                <div className={`w-2 h-2 rounded-full ${reviewCheckRunning ? "bg-amber-300 animate-pulse" : "bg-white/40"}`} />
                 <span className="text-xs font-bold text-white/80 uppercase tracking-wider">
-                  {role === "supervisor" ? "Awaiting supervisor review" : "Awaiting review — you can check this job"}
+                  {reviewCheckRunning
+                    ? "Checking in progress"
+                    : reviewCheckSavedSeconds > 0
+                      ? "Review check paused"
+                      : role === "supervisor"
+                        ? "Ready to check this job"
+                        : "Awaiting supervisor check"}
                 </span>
               </div>
-              <div className="font-mono text-4xl md:text-5xl font-bold text-white tabular-nums">{formatTime(reviewElapsedSeconds)}</div>
+              <div className="font-mono text-4xl md:text-5xl font-bold text-white tabular-nums">
+                {formatTime(reviewCheckDisplaySeconds)}
+              </div>
               <p className="text-xs text-white/70 mt-2">
                 {role === "supervisor"
-                  ? "Timer started when the worker submitted this job for review"
-                  : "Supervisor is pending. Admin or super-admin can check, rework, or complete this job now"}
-                {job?.reviewStartedAt ? ` · ${new Date(job.reviewStartedAt).toLocaleString()}` : ""}
+                  ? reviewCheckRunning
+                    ? "Admins are notified and can monitor this check live."
+                    : "Start checking to track review time on this job."
+                  : "Supervisor check time — live while reviewing."}
+                {job?.reviewStartedAt && reviewCheckRunning
+                  ? ` · Started ${new Date(job.reviewStartedAt).toLocaleString()}`
+                  : ""}
               </p>
             </div>
-            <div className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm font-semibold">
-              <Clock size={16} />
-              {role === "supervisor" ? "Review in progress" : "Cover check available"}
+            <div className="flex gap-2 flex-wrap">
+              {role === "supervisor" && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => {
+                    if (reviewCheckRunning) void pauseReviewCheck();
+                    else void startReviewCheck();
+                  }}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-white text-indigo-700 rounded-xl text-sm font-bold shadow-lg"
+                >
+                  {reviewCheckRunning ? (
+                    <>
+                      <Pause size={14} /> Pause Check
+                    </>
+                  ) : (
+                    <>
+                      <Play size={14} fill="currentColor" /> Start Checking
+                    </>
+                  )}
+                </motion.button>
+              )}
+              <div className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm font-semibold">
+                <Clock size={16} />
+                {reviewCheckRunning ? "Live" : reviewCheckSavedSeconds > 0 ? "Paused" : "Not started"}
+              </div>
             </div>
           </div>
         </motion.div>
