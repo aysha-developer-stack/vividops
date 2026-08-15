@@ -466,7 +466,13 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesSaveError, setNotesSaveError] = useState<string | null>(null);
   const [approveOpen, setApproveOpen] = useState(false);
+  const [approveComment, setApproveComment] = useState("");
   const [jobApproved, setJobApproved] = useState(false);
+  const [submitReviewOpen, setSubmitReviewOpen] = useState(false);
+  const [submitReviewComment, setSubmitReviewComment] = useState("");
+  const [submitReviewSubmitting, setSubmitReviewSubmitting] = useState(false);
+  const [submitReviewDone, setSubmitReviewDone] = useState(false);
+  const [notesRefreshKey, setNotesRefreshKey] = useState(0);
   const [showActivityPing, setShowActivityPing] = useState(false);
   const [autoStopCountdown, setAutoStopCountdown] = useState(300);
   const [fileSubTab, setFileSubTab] = useState<"input" | "output" | "notes">("input");
@@ -488,7 +494,6 @@ export default function JobDetail({ role = "user", id }: Props) {
   const pingTimerRef = useRef<number | null>(null);
   const autoStopRef = useRef<number | null>(null);
   const uploadChecklistIdRef = useRef<number | null>(null);
-  const autoCompleteRef = useRef<string | null>(null);
   const PING_INTERVAL_S = 60 * 60;
   const AUTO_STOP_S = 5 * 60;
 
@@ -1104,6 +1109,56 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   const completedCount = checklist.filter((c) => c.status === "completed").length;
   const checklistProgress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
+  const readyToSubmitReview =
+    (role === "user" || canUseJobTimer) &&
+    job?.status === "in_progress" &&
+    checklist.length > 0 &&
+    completedCount === checklist.length;
+
+  const submitJobForReview = async (comment: string) => {
+    if (!job?.id) return;
+    setSubmitReviewSubmitting(true);
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/review`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "submit_for_supervisor",
+          comments: comment.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as any).error || "Failed to submit for review");
+      }
+      await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+      await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      await loadReworks();
+      setNotesRefreshKey((k) => k + 1);
+      setSubmitReviewDone(true);
+      setTimeout(() => {
+        setSubmitReviewOpen(false);
+        setSubmitReviewDone(false);
+        setSubmitReviewComment("");
+      }, 1400);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to submit for review");
+    } finally {
+      setSubmitReviewSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!approveOpen) setApproveComment("");
+  }, [approveOpen]);
+
+  useEffect(() => {
+    if (!submitReviewOpen) {
+      setSubmitReviewComment("");
+      setSubmitReviewDone(false);
+    }
+  }, [submitReviewOpen]);
   const progress = checklist.length > 0 ? checklistProgress : (job?.progress ?? 0);
 
   const jobLevelCompletedFiles = useMemo(
@@ -1118,34 +1173,6 @@ export default function JobDetail({ role = "user", id }: Props) {
   const selectedItemRework = selectedChecklistItem
     ? activeReworks.find((r) => r.checklistItemId === selectedChecklistItem.id)
     : null;
-
-  useEffect(() => {
-    if (role !== "user") return;
-    if (!job?.id) return;
-    if (job.status === "completed" || job.status === "awaiting_supervisor" || job.status === "awaiting_admin") return;
-    if (checklist.length === 0) return;
-    if (completedCount < checklist.length) return;
-    if (autoCompleteRef.current === job.id) return;
-    autoCompleteRef.current = job.id;
-    void fetch(`/api/jobs/${job.id}/review`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "submit_for_supervisor" }),
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error((data as any).error || "Failed to submit for review");
-        }
-        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
-        await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-        await loadReworks();
-      })
-      .catch(() => {
-        autoCompleteRef.current = null;
-      });
-  }, [role, job?.id, job?.status, checklist.length, completedCount]);
 
   const jobTimeLogs = useMemo(() => {
     const all = timeLogsQuery.data ?? [];
@@ -1575,16 +1602,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     if (!shouldUpdateProgress && !shouldUpdateStatus) return;
     try {
       if (shouldSubmitReview) {
-        const res = await fetch(`/api/jobs/${job.id}/review`, {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "submit_for_supervisor" }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error((data as any).error || "Failed to submit for review");
-        }
+        setSubmitReviewOpen(true);
         if (shouldUpdateProgress) {
           await updateJobMutation.mutateAsync({
             id: job.id,
@@ -2102,6 +2120,28 @@ export default function JobDetail({ role = "user", id }: Props) {
               )}
             </div>
           </div>
+        </motion.div>
+      )}
+
+      {readyToSubmitReview && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+        >
+          <div>
+            <div className="text-sm font-bold text-emerald-900">All checklist tasks are complete</div>
+            <p className="text-xs text-emerald-800/80 mt-1">
+              Add a short note for your supervisor, then submit this job for review.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSubmitReviewOpen(true)}
+            className="shrink-0 inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700"
+          >
+            <Send size={14} /> Submit for Review
+          </button>
         </motion.div>
       )}
 
@@ -2964,7 +3004,7 @@ export default function JobDetail({ role = "user", id }: Props) {
         })()}
 
         {tab === "notes" && job?.id && (
-          <JobNotesTab jobId={job.id} role={role} currentUserId={currentUser?.id} />
+          <JobNotesTab jobId={job.id} role={role} currentUserId={currentUser?.id} refreshKey={notesRefreshKey} />
         )}
 
         {tab === "mistakes" && job?.id && (
@@ -3384,6 +3424,29 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> {attachments.filter((a) => (a.uploadedBy?.role ?? "supervisor") === "user").length} completed file(s) submitted</div>
                     <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> Time logs verified</div>
                   </div>
+                  <div className="mb-5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">
+                      {role === "supervisor"
+                        ? "Supervisor review comment"
+                        : role === "admin" || role === "super-admin"
+                          ? "Completion comment"
+                          : "Comment"}
+                    </label>
+                    <textarea
+                      value={approveComment}
+                      onChange={(e) => setApproveComment(e.target.value)}
+                      placeholder={
+                        role === "supervisor"
+                          ? "Summarize your review, quality notes, or instructions for admin…"
+                          : "Summarize your check, quality notes, or handover details for the worker and team…"
+                      }
+                      rows={4}
+                      className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-emerald-500 focus:bg-white transition-colors resize-none"
+                    />
+                    <p className="text-[11px] text-gray-500 mt-1.5">
+                      Optional — included in notifications to admin, worker, and supervisor.
+                    </p>
+                  </div>
                   <div className="flex gap-2">
                     <button onClick={() => setApproveOpen(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200">Cancel</button>
                     <button
@@ -3395,7 +3458,10 @@ export default function JobDetail({ role = "user", id }: Props) {
                               method: "POST",
                               credentials: "include",
                               headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ action }),
+                              body: JSON.stringify({
+                                action,
+                                comments: approveComment.trim() || null,
+                              }),
                             });
                             if (!res.ok) {
                               const data = await res.json().catch(() => ({}));
@@ -3404,11 +3470,12 @@ export default function JobDetail({ role = "user", id }: Props) {
                             await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
                             await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
                             await loadReworks();
+                            setNotesRefreshKey((k) => k + 1);
                             setJobApproved(true);
                             setTimeout(() => { setApproveOpen(false); setJobApproved(false); }, 1400);
                           } catch (err) {
                             const msg = err instanceof Error ? err.message : "Failed to approve job";
-                            console.error(msg);
+                            window.alert(msg);
                           }
                         }
                       }}
@@ -3420,6 +3487,95 @@ export default function JobDetail({ role = "user", id }: Props) {
                         : job?.status === "awaiting_supervisor" || job?.status === "in_progress"
                           ? "Check & Complete"
                           : "Complete"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+        {submitReviewOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => !submitReviewSubmitting && setSubmitReviewOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center">
+                    <Send size={18} />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900">Submit for Review</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => !submitReviewSubmitting && setSubmitReviewOpen(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              {submitReviewDone ? (
+                <div className="py-6 text-center">
+                  <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3">
+                    <CheckCircle2 size={28} />
+                  </div>
+                  <div className="text-base font-bold text-gray-900">Submitted for supervisor review</div>
+                  <div className="text-xs text-gray-500 mt-1">Your supervisor and admins have been notified.</div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-600 mb-4">
+                    All checklist items are done. Add a note about the work, then send this job to your supervisor.
+                  </p>
+                  <div className="mb-5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">
+                      Submission comment
+                    </label>
+                    <textarea
+                      value={submitReviewComment}
+                      onChange={(e) => setSubmitReviewComment(e.target.value)}
+                      placeholder="What was completed, anything to highlight, or questions for your supervisor…"
+                      rows={4}
+                      className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none"
+                    />
+                    <p className="text-[11px] text-gray-500 mt-1.5">
+                      Optional — saved on the job and included in notifications.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={submitReviewSubmitting}
+                      onClick={() => setSubmitReviewOpen(false)}
+                      className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={submitReviewSubmitting}
+                      onClick={() => void submitJobForReview(submitReviewComment)}
+                      className="flex-1 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {submitReviewSubmitting ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" /> Submitting…
+                        </>
+                      ) : (
+                        <>
+                          <Send size={14} /> Submit for Review
+                        </>
+                      )}
                     </button>
                   </div>
                 </>

@@ -7,16 +7,69 @@ import {
   jobAttachments,
   jobChecklistState,
   jobChecklistAttachments,
+  jobNotes,
+  sql,
   type JobRow,
   type UserRow,
 } from "@workspace/db";
-import { createNotification, notifyJobManagers, type NotificationType } from "./notifications";
+import { createNotification, notifyJobManagers, previewText, type NotificationType } from "./notifications";
 import {
   createRework,
   markOpenReworksAwaitingReview,
   resolveJobReworks,
 } from "./reworks";
 import { finalizeReviewCheckForJob } from "./persist-review-check-session";
+
+const COMPLETION_NOTE_LABELS: Record<JobReviewAction, string | null> = {
+  submit_for_supervisor: "Worker submission",
+  supervisor_approve: "Supervisor review",
+  admin_complete: "Admin completion",
+  rework: null,
+  resume_from_hold: null,
+};
+
+async function ensureJobNotesTable(): Promise<void> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS job_notes (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      text text NOT NULL,
+      note_type text NOT NULL DEFAULT 'general',
+      pinned boolean NOT NULL DEFAULT false,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+}
+
+async function recordCompletionComment(opts: {
+  jobId: string;
+  actor: UserRow;
+  comment: string | null | undefined;
+  action: JobReviewAction;
+}): Promise<string | null> {
+  const trimmed = opts.comment?.trim() ?? "";
+  if (!trimmed) return null;
+  const label = COMPLETION_NOTE_LABELS[opts.action];
+  if (!label) return trimmed;
+
+  await ensureJobNotesTable();
+  await db.insert(jobNotes).values({
+    id: randomUUID(),
+    jobId: opts.jobId,
+    userId: opts.actor.id,
+    text: `${label}: ${trimmed}`,
+    noteType: "completion",
+  });
+  return trimmed;
+}
+
+function commentNotificationSuffix(comments: string | null | undefined): string {
+  const trimmed = comments?.trim();
+  if (!trimmed) return "";
+  return ` Note: ${previewText(trimmed, 220)}`;
+}
 
 export type JobReviewAction =
   | "submit_for_supervisor"
@@ -332,13 +385,15 @@ export async function notifyStatusTransition(opts: {
   const { actor, job, previousStatus, nextStatus, reason, comments } = opts;
   if (previousStatus === nextStatus) return;
 
+  const commentSuffix = commentNotificationSuffix(comments);
+
   if (nextStatus === "awaiting_supervisor") {
     if (job.assigneeId && job.assigneeId !== actor.id) {
       await createNotification({
         userId: job.assigneeId,
         jobId: job.id,
         title: `Submitted for Review: ${job.title}`,
-        description: `Your work on ${job.title} was submitted for supervisor review.`,
+        description: `Your work on ${job.title} was submitted for supervisor review.${commentSuffix}`,
         type: "checklist",
       });
     }
@@ -347,7 +402,7 @@ export async function notifyStatusTransition(opts: {
       supervisorId: job.supervisorId,
       actorId: actor.id,
       title: `Ready for Supervisor Review: ${job.title}`,
-      description: `${actor.name} finished work on ${job.title}. Please review and approve or send for rework.`,
+      description: `${actor.name} finished work on ${job.title}. Please review and approve or send for rework.${commentSuffix}`,
       type: "checklist",
     });
   }
@@ -360,8 +415,8 @@ export async function notifyStatusTransition(opts: {
       actorId: actor.id,
       title: `Ready for Admin Review: ${job.title}`,
       description: approvedBySupervisor
-        ? `${actor.name} approved ${job.title}. Please complete the job or send for rework.`
-        : `${actor.name} forwarded ${job.title} for admin completion.`,
+        ? `${actor.name} approved ${job.title}. Please complete the job or send for rework.${commentSuffix}`
+        : `${actor.name} forwarded ${job.title} for admin completion.${commentSuffix}`,
       type: "updated",
     });
     if (job.assigneeId) {
@@ -370,8 +425,8 @@ export async function notifyStatusTransition(opts: {
         jobId: job.id,
         title: approvedBySupervisor ? `Supervisor Approved: ${job.title}` : `Approved for Admin: ${job.title}`,
         description: approvedBySupervisor
-          ? `Your supervisor approved ${job.title}. It is now awaiting admin completion.`
-          : `${actor.name} approved ${job.title}. It is now awaiting admin completion.`,
+          ? `Your supervisor approved ${job.title}. It is now awaiting admin completion.${commentSuffix}`
+          : `${actor.name} approved ${job.title}. It is now awaiting admin completion.${commentSuffix}`,
         type: "updated",
       });
     }
@@ -381,9 +436,11 @@ export async function notifyStatusTransition(opts: {
     const coveredSupervisor =
       (actor.role === "admin" || actor.role === "super-admin") &&
       (previousStatus === "awaiting_supervisor" || previousStatus === "in_progress");
-    const completeMsg = coveredSupervisor
-      ? `${job.title} was checked and completed by ${actor.name} (covering supervisor review).`
-      : `${job.title} has been marked completed by ${actor.name}.`;
+    const completeMsg = (
+      coveredSupervisor
+        ? `${job.title} was checked and completed by ${actor.name} (covering supervisor review).`
+        : `${job.title} has been marked completed by ${actor.name}.`
+    ) + commentSuffix;
     if (job.assigneeId) {
       await createNotification({
         userId: job.assigneeId,
@@ -580,6 +637,14 @@ export async function applyJobReview(opts: {
   const previousStatus = job.status;
   const shouldRecordChecker =
     nextStatus === "awaiting_admin" || nextStatus === "completed";
+
+  const savedComment = await recordCompletionComment({
+    jobId: job.id,
+    actor,
+    comment: comments,
+    action,
+  });
+
   await db
     .update(jobs)
     .set(
@@ -604,7 +669,7 @@ export async function applyJobReview(opts: {
     previousStatus,
     nextStatus,
     reason,
-    comments,
+    comments: savedComment ?? comments,
   });
 
   return { ok: true, nextStatus };

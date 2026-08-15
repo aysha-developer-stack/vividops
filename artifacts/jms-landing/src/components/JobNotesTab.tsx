@@ -23,6 +23,7 @@ const NOTE_TYPE_OPTIONS: Array<{ value: string; label: string; hint?: string }> 
 ];
 
 function noteTypeLabel(value: string): string {
+  if (value === "completion") return "Completion comment";
   return NOTE_TYPE_OPTIONS.find((o) => o.value === value)?.label ?? value;
 }
 
@@ -34,6 +35,8 @@ function noteTypeBadgeClass(value: string): string {
       return "bg-violet-50 text-violet-700 border-violet-200";
     case "internal":
       return "bg-amber-50 text-amber-800 border-amber-200";
+    case "completion":
+      return "bg-emerald-50 text-emerald-800 border-emerald-200";
     default:
       return "bg-gray-50 text-gray-700 border-gray-200";
   }
@@ -58,9 +61,11 @@ type Props = {
   jobId: string;
   role: Role;
   currentUserId?: string;
+  /** Bump to reload notes after server-side completion comments are saved. */
+  refreshKey?: number;
 };
 
-export default function JobNotesTab({ jobId, role, currentUserId }: Props) {
+export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0 }: Props) {
   const isAdmin = role === "super-admin" || role === "admin";
   const canSetInternal = isAdmin || role === "supervisor";
   const canPin = isAdmin || role === "supervisor";
@@ -98,9 +103,11 @@ export default function JobNotesTab({ jobId, role, currentUserId }: Props) {
 
   useEffect(() => {
     void loadNotes();
-  }, [loadNotes]);
+  }, [loadNotes, refreshKey]);
 
-  const canModify = (note: JobNoteApi) => isAdmin || note.userId === currentUserId;
+  const isCompletionNote = (note: JobNoteApi) => note.noteType === "completion";
+  const canModify = (note: JobNoteApi) =>
+    !isCompletionNote(note) && (isAdmin || note.userId === currentUserId);
 
   const postNote = async () => {
     const text = draft.trim();
@@ -276,7 +283,7 @@ export default function JobNotesTab({ jobId, role, currentUserId }: Props) {
           </div>
           {!isEditing && canModify(note) && (
             <div className="flex items-center gap-1 shrink-0">
-              {canPin && (
+              {canPin && !isCompletionNote(note) && (
                 <button
                   type="button"
                   onClick={() => void togglePin(note)}

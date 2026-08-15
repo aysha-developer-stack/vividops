@@ -390,13 +390,12 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         let nextStatus: ReviewableStatus =
           hasRework ? "rework" : nextProgress > 0 ? "in_progress" : "pending";
 
-        // Only move to supervisor review when every checklist item (+ required files) is done
+        // Keep job in progress at 100% until worker/supervisor explicitly submits for review (with comment).
         if (!hasRework && nextProgress >= 100) {
           const { assertWorkerChecklistReady } = await import("../lib/job-review");
           const checklistError = await assertWorkerChecklistReady(job, targetUserId);
           if (!checklistError) {
             await markOpenReworksAwaitingReview(job.id, targetUserId);
-            nextStatus = "awaiting_supervisor";
           }
         }
 
@@ -413,28 +412,6 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
             ...statusPatch,
           })
           .where(eq(jobs.id, jobId));
-
-        if (nextStatus === "awaiting_supervisor" && previousStatus !== "awaiting_supervisor") {
-          const reviewMessage =
-            actor.role === "supervisor"
-              ? `Field work on ${job.title} is complete and awaiting admin review.`
-              : `Your checklist for ${job.title} is complete and awaiting supervisor review.`;
-          await createNotification({
-            userId: targetUserId,
-            jobId,
-            title: `Submitted for Review: ${job.title}`,
-            description: reviewMessage,
-            type: "checklist",
-          });
-          await notifyJobManagers({
-            jobId,
-            supervisorId: job.supervisorId,
-            actorId: actor.id,
-            title: `Ready for Review: ${job.title}`,
-            description: `Checklist for job ${job.title} has been completed by ${actor.name}. Please review.`,
-            type: "checklist",
-          });
-        }
       }
     }
 

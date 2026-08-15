@@ -157,6 +157,10 @@ router.post("/jobs/:jobId/notes", requireAuth, async (req, res) => {
       res.status(403).json({ message: "You cannot create internal notes" });
       return;
     }
+    if (noteType === "completion") {
+      res.status(403).json({ message: "Completion notes are added when submitting or completing a job" });
+      return;
+    }
 
     const pinned = isAdmin(actor) && req.body?.pinned === true;
 

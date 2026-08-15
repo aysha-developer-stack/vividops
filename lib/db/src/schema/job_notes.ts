@@ -2,7 +2,7 @@ import { pgTable, uuid, text, timestamp, boolean, index } from "drizzle-orm/pg-c
 import { jobs } from "./jobs";
 import { users } from "./users";
 
-export const JOB_NOTE_TYPES = ["general", "site", "client", "internal"] as const;
+export const JOB_NOTE_TYPES = ["general", "site", "client", "internal", "completion"] as const;
 export type JobNoteType = (typeof JOB_NOTE_TYPES)[number];
 
 export const jobNotes = pgTable(
