@@ -68,6 +68,7 @@ export const ROLES: Record<Role, RoleConfig> = {
     nav: [
       { label: "Dashboard", icon: LayoutDashboard, path: "/supervisor" },
       { label: "Jobs", icon: Briefcase, path: "/supervisor/jobs" },
+      { label: "Timer", icon: Timer, path: "/supervisor/timer" },
       { label: "Users", icon: Users, path: "/supervisor/users" },
       { label: "Monitoring", icon: Eye, path: "/supervisor/monitoring" },
       { label: "Communication", icon: MessageCircle, path: "/supervisor/communication" },

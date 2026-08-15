@@ -4,6 +4,7 @@ import { Play, Pause, Square, Plus, Clock, Trash2, Briefcase } from "lucide-reac
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
+import { useAuth } from "@/lib/auth";
 import { postTimerNotification } from "@/lib/timerNotifications";
 import {
   useGetTimeLogs,
@@ -46,6 +47,7 @@ function formatShort(s: number) {
 }
 
 export default function Timer({ role = "super-admin" as Role }: { role?: Role } = {}) {
+  const { user: currentUser } = useAuth();
   const { data: apiLogs, isLoading: logsLoading } = useGetTimeLogs();
   const { data: apiJobs } = useListJobs();
   const createLogMutation = useCreateTimeLog();
@@ -209,7 +211,11 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
   }, []);
 
   const entries: Entry[] = useMemo(() => {
-    return (apiLogs ?? []).map((l: any) => {
+    const logs =
+      role === "supervisor" && currentUser?.id
+        ? (apiLogs ?? []).filter((l: { userId?: string }) => l.userId === currentUser.id)
+        : (apiLogs ?? []);
+    return logs.map((l: any) => {
       const job = apiJobs?.find((j: Job) => j.id === l.jobId);
       return {
         id: l.id,
@@ -219,7 +225,7 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
         date: new Date(l.createdAt).toLocaleDateString()
       };
     });
-  }, [apiLogs, apiJobs]);
+  }, [apiLogs, apiJobs, role, currentUser?.id]);
 
   useEffect(() => {
     if (!running) {

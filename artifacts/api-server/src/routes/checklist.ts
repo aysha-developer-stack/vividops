@@ -19,6 +19,11 @@ import { createNotification, notifyJobManagers, previewText } from "../lib/notif
 import { ensureJobWriteSchema } from "../lib/schema-init";
 import { createRework, markOpenReworksAwaitingReview } from "../lib/reworks";
 import { jobStatusPatchFields, type ReviewableStatus } from "../lib/job-review";
+import {
+  isOwnChecklistWork,
+  isWorkingSupervisor,
+  resolveChecklistTargetUserId,
+} from "../lib/working-supervisor";
 
 const router: IRouter = Router();
 
@@ -63,10 +68,16 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
     if (!job) return res.status(404).json({ error: "Job not found" });
     if (!(await canViewJob(actor, job))) return res.status(403).json({ error: "Forbidden" });
 
-    const targetUserId =
-      actor.role === "user" ? actor.id : (userIdParam ?? job.assigneeId ?? actor.id);
+    const targetUserId = resolveChecklistTargetUserId(actor, job, userIdParam);
 
     if (actor.role === "user" && targetUserId !== actor.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    if (
+      actor.role === "supervisor" &&
+      userIdParam === actor.id &&
+      !isWorkingSupervisor(actor, job)
+    ) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -106,6 +117,14 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
 
     for (const row of linked) {
       const itemId = row.itemId;
+      const linkUserId = row.linkUserId;
+      const isInstructionFile =
+        row.attachment.fileCategory === "job" ||
+        (row.uploadedBy?.role != null &&
+          row.uploadedBy.role !== "user" &&
+          row.attachment.fileCategory !== "completed");
+      if (linkUserId !== targetUserId && !isInstructionFile) continue;
+
       if (!filesByItem[itemId]) filesByItem[itemId] = [];
       filesByItem[itemId].push({
         id: row.attachment.id,
@@ -120,7 +139,7 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       const isCompleted =
         row.attachment.fileCategory === "completed" ||
         (!row.attachment.fileCategory && row.uploadedBy?.role === "user");
-      if (isCompleted) {
+      if (isCompleted && linkUserId === targetUserId) {
         countByItem[itemId] = (countByItem[itemId] ?? 0) + 1;
       }
     }
@@ -177,18 +196,29 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
     }
     if (!(await canViewJob(actor, job))) return res.status(403).json({ error: "Forbidden" });
 
-    const targetUserId = actor.role === "user" ? actor.id : (userIdParam ?? job.assigneeId ?? actor.id);
+    const targetUserId = resolveChecklistTargetUserId(actor, job, userIdParam);
+    const ownChecklistWork = isOwnChecklistWork(actor, job, targetUserId);
     if (actor.role === "user" && targetUserId !== actor.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    if (
+      actor.role === "supervisor" &&
+      userIdParam === actor.id &&
+      !isWorkingSupervisor(actor, job)
+    ) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
     if (actor.role === "user" && status === "rework") {
       return res.status(403).json({ error: "Users cannot set rework status" });
     }
+    if (ownChecklistWork && status === "rework") {
+      return res.status(403).json({ error: "Field workers cannot set rework status" });
+    }
     if (actor.role !== "super-admin" && actor.role !== "admin" && actor.role !== "supervisor" && status === "rework") {
       return res.status(403).json({ error: "Forbidden" });
     }
-    if (actor.role === "supervisor" && !canManageJob(actor, job)) {
+    if (actor.role === "supervisor" && !ownChecklistWork && !canManageJob(actor, job)) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -200,7 +230,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       checklistList = [];
     }
 
-    if (actor.role === "user" && status === "completed") {
+    if (ownChecklistWork && status === "completed") {
       if (checklistList.length === 0) {
         return res.status(400).json({ error: "This job has no checklist items to complete." });
       }
@@ -210,6 +240,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       }
       const linked = await db
         .select({
+          linkUserId: jobChecklistAttachments.userId,
           uploaderId: jobAttachments.uploadedById,
           uploaderRole: users.role,
           fileCategory: jobAttachments.fileCategory,
@@ -234,8 +265,9 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       }
       const hasCompletedChecklistUpload = linked.some(
         (r) =>
-          r.fileCategory === "completed" ||
-          (!r.fileCategory && r.uploaderRole === "user"),
+          r.linkUserId === targetUserId &&
+          (r.fileCategory === "completed" ||
+            (!r.fileCategory && (r.uploaderRole === "user" || r.uploaderRole === "supervisor"))),
       );
       if (!hasCompletedChecklistUpload) {
         return res.status(400).json({
@@ -343,7 +375,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       });
     }
 
-    if (actor.role === "user" && status === "completed") {
+    if (ownChecklistWork && status === "completed") {
       const total = checklistList.length;
 
       if (total > 0) {
@@ -383,18 +415,22 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
           .where(eq(jobs.id, jobId));
 
         if (nextStatus === "awaiting_supervisor" && previousStatus !== "awaiting_supervisor") {
+          const reviewMessage =
+            actor.role === "supervisor"
+              ? `Field work on ${job.title} is complete and awaiting admin review.`
+              : `Your checklist for ${job.title} is complete and awaiting supervisor review.`;
           await createNotification({
             userId: targetUserId,
             jobId,
             title: `Submitted for Review: ${job.title}`,
-            description: `Your checklist for ${job.title} is complete and awaiting supervisor review.`,
+            description: reviewMessage,
             type: "checklist",
           });
           await notifyJobManagers({
             jobId,
             supervisorId: job.supervisorId,
             actorId: actor.id,
-            title: `Ready for Supervisor Review: ${job.title}`,
+            title: `Ready for Review: ${job.title}`,
             description: `Checklist for job ${job.title} has been completed by ${actor.name}. Please review.`,
             type: "checklist",
           });
@@ -425,8 +461,15 @@ router.post("/jobs/:jobId/checklist-attachments", requireAuth, async (req, res) 
     if (!job) return res.status(404).json({ error: "Job not found" });
     if (!(await canViewJob(actor, job))) return res.status(403).json({ error: "Forbidden" });
 
-    const targetUserId = actor.role === "user" ? actor.id : (userIdParam ?? job.assigneeId ?? actor.id);
+    const targetUserId = resolveChecklistTargetUserId(actor, job, userIdParam);
     if (actor.role === "user" && targetUserId !== actor.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    if (
+      actor.role === "supervisor" &&
+      userIdParam === actor.id &&
+      !isWorkingSupervisor(actor, job)
+    ) {
       return res.status(403).json({ error: "Forbidden" });
     }
 

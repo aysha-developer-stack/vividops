@@ -308,6 +308,32 @@ export default function JobDetail({ role = "user", id }: Props) {
   const createTimeLogMutation = useCreateTimeLog();
   const qc = useQueryClient();
   const job = jobQuery.data;
+  const canUseJobTimer = useMemo(() => {
+    if (!job?.id) return false;
+    if (job.status === "completed" || job.status === "cancelled" || job.status === "on_hold") return false;
+    if (role === "user") return true;
+    if (
+      role === "supervisor" &&
+      currentUser?.id &&
+      job.supervisor?.id === currentUser.id &&
+      job.status !== "awaiting_supervisor" &&
+      job.status !== "awaiting_admin"
+    ) {
+      return true;
+    }
+    return false;
+  }, [role, job?.id, job?.status, job?.supervisor?.id, currentUser?.id]);
+  const checklistWorkerUserId = useMemo(() => {
+    if (role === "user") return null;
+    if (canUseJobTimer && role === "supervisor") return currentUser?.id ?? null;
+    return job?.assignee?.id ?? null;
+  }, [role, canUseJobTimer, currentUser?.id, job?.assignee?.id]);
+  const checklistStateUrl = (jobId: string) =>
+    checklistWorkerUserId
+      ? `/api/jobs/${jobId}/checklist-state?userId=${encodeURIComponent(checklistWorkerUserId)}`
+      : `/api/jobs/${jobId}/checklist-state`;
+  const checklistPatchBody = (payload: Record<string, unknown>) =>
+    checklistWorkerUserId ? { ...payload, userId: checklistWorkerUserId } : payload;
   const meta = useMemo(() => {
     const parsed = parseJobMeta(job?.description);
     const apiChecklist = (job as ApiJob & { checklist?: ChecklistTemplateItem[] })?.checklist;
@@ -488,7 +514,12 @@ export default function JobDetail({ role = "user", id }: Props) {
   );
 
   const canUploadCompletedFiles =
-    role === "user" || role === "super-admin" || role === "admin" || role === "supervisor";
+    role === "user" ||
+    role === "super-admin" ||
+    role === "admin" ||
+    (role === "supervisor" && canUseJobTimer);
+  const canManageChecklistAsSupervisor =
+    role === "super-admin" || role === "admin" || (role === "supervisor" && !canUseJobTimer);
 
   const openEditModal = () => {
     if (!job) return;
@@ -787,22 +818,22 @@ export default function JobDetail({ role = "user", id }: Props) {
   }, [job?.status]);
 
   useEffect(() => {
-    if (role !== "user") return;
+    if (!canUseJobTimer) return;
     if (!job?.id) return;
     const state = readTimerState(job.id);
     const elapsed = computeElapsed(state);
     setSeconds(elapsed);
     setRunning(!!state?.running);
-  }, [role, job?.id]);
+  }, [canUseJobTimer, job?.id]);
 
   useEffect(() => {
-    if (!running || role !== "user") return;
+    if (!running || !canUseJobTimer) return;
     const id = window.setInterval(() => {
       void heartbeatTimerSession().catch(() => {});
     }, TIMER_HEARTBEAT_INTERVAL_MS);
     void heartbeatTimerSession().catch(() => {});
     return () => window.clearInterval(id);
-  }, [running, role]);
+  }, [running, canUseJobTimer]);
 
   useEffect(() => {
     if (!job?.id) return;
@@ -842,8 +873,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const userId = role === "user" ? null : (job?.assignee?.id ?? null);
-        const url = userId ? `/api/jobs/${job.id}/checklist-state?userId=${encodeURIComponent(userId)}` : `/api/jobs/${job.id}/checklist-state`;
+        const url = checklistStateUrl(job.id);
         const res = await fetch(url, { credentials: "include" });
         if (!res.ok) throw new Error("Failed");
         const data = (await res.json()) as unknown;
@@ -924,7 +954,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       }
     })();
     return () => { cancelled = true; };
-  }, [job?.id, job?.description, checklistTemplateKey, role, job?.assignee?.id, job?.progress, job?.status, attachments]);
+  }, [job?.id, job?.description, checklistTemplateKey, role, job?.assignee?.id, job?.progress, job?.status, attachments, checklistWorkerUserId]);
 
   // Trigger hourly check-in: every PING_INTERVAL_S of running time, show popup
   useEffect(() => {
@@ -1248,8 +1278,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const refreshChecklistFiles = async () => {
     if (!job?.id) return;
     try {
-      const userId = role === "user" ? null : (job?.assignee?.id ?? null);
-      const url = userId ? `/api/jobs/${job.id}/checklist-state?userId=${encodeURIComponent(userId)}` : `/api/jobs/${job.id}/checklist-state`;
+      const url = checklistStateUrl(job.id);
       const sres = await fetch(url, { credentials: "include" });
       if (!sres.ok) return;
       const sdata = (await sres.json()) as unknown;
@@ -1307,7 +1336,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       checklistItemIdOverride !== undefined ? checklistItemIdOverride : uploadChecklistIdRef.current;
     const isChecklistWordPdfOnly =
       opts?.checklistWordPdfOnly === true ||
-      (checklistItemId != null && role !== "user" && tag === "input");
+      (checklistItemId != null && !canUseJobTimer && tag === "input");
     const allowed = isChecklistWordPdfOnly
       ? filterChecklistInstructionFiles(picked)
       : filterJobFiles(picked);
@@ -1898,8 +1927,8 @@ export default function JobDetail({ role = "user", id }: Props) {
         </motion.div>
       )}
 
-      {/* Start Work / Timer card (USER only or visible on overview) */}
-      {role === "user" && (
+      {/* Start Work / Timer card (field worker or supervising supervisor on this job) */}
+      {canUseJobTimer && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -2009,7 +2038,7 @@ export default function JobDetail({ role = "user", id }: Props) {
 
         {tab === "checklist" && (
           <motion.div key="cl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            {role === "user" && !hasJobLevelCompletedFiles && (
+            {canUseJobTimer && !hasJobLevelCompletedFiles && (
               <div className="lg:col-span-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="text-xs text-amber-900">
                   <span className="font-bold">Completed files required.</span> Upload your deliverables on the{" "}
@@ -2259,7 +2288,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                               <div className="space-y-2 mb-3">{completedFiles.map(renderFileRow)}</div>
                             )}
 
-                            {role === "user" && (
+                            {canUseJobTimer && (
                               <FileDropzone
                                 compact
                                 multiple
@@ -2276,7 +2305,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                               />
                             )}
 
-                            {(role === "super-admin" || role === "admin" || role === "supervisor") && (
+                            {canManageChecklistAsSupervisor && (
                               <FileDropzone
                                 compact
                                 multiple
@@ -2301,7 +2330,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                     </div>
 
                     <div className="flex flex-wrap gap-2 pt-2">
-                      {selectedChecklistItem.status !== "completed" && role === "user" && (() => {
+                      {selectedChecklistItem.status !== "completed" && canUseJobTimer && (() => {
                         const allFiles = selectedChecklistItem.files ?? [];
                         const hasChecklistFile = allFiles.some(
                           (f) => !isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy }),
@@ -2334,7 +2363,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                                     method: "PATCH",
                                     credentials: "include",
                                     headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ itemId: selectedChecklistItem.id, status: "completed" }),
+                                    body: JSON.stringify(checklistPatchBody({ itemId: selectedChecklistItem.id, status: "completed" })),
                                   });
                                   if (!res.ok) {
                                     const data = await res.json().catch(() => ({}));
@@ -2381,7 +2410,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                           </>
                         );
                       })()}
-                      {selectedChecklistItem.status !== "completed" && role !== "user" && (
+                      {selectedChecklistItem.status !== "completed" && canManageChecklistAsSupervisor && (
                         <button 
                           onClick={async () => {
                             const next = checklist.map((i) =>
@@ -2396,7 +2425,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                                   method: "PATCH",
                                   credentials: "include",
                                   headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ itemId: selectedChecklistItem.id, status: "completed" }),
+                                  body: JSON.stringify(checklistPatchBody({ itemId: selectedChecklistItem.id, status: "completed" })),
                                 });
                                 if (!res.ok) throw new Error("Failed");
                                 await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });

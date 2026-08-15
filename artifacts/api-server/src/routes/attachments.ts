@@ -9,6 +9,7 @@ import { io } from "../lib/socket";
 import { addToQueue } from "../lib/queue";
 import { logger } from "../lib/logger";
 import { createNotification, notifyJobManagers, previewText } from "../lib/notifications";
+import { isFieldWorkerOnJob } from "../lib/working-supervisor";
 
 const router: IRouter = Router();
 
@@ -177,12 +178,16 @@ router.post(
         typeof (req.body as any)?.uploadKind === "string"
           ? String((req.body as any).uploadKind).trim().toLowerCase()
           : "";
-      const isChecklistInstructionUpload =
-        Number.isFinite(checklistItemId) && checklistItemId > 0 && actor.role !== "user";
       const isChecklistCompletedUpload =
         Number.isFinite(checklistItemId) &&
         checklistItemId > 0 &&
         uploadKind === "checklist-completed";
+      const isChecklistInstructionUpload =
+        Number.isFinite(checklistItemId) &&
+        checklistItemId > 0 &&
+        actor.role !== "user" &&
+        !isChecklistCompletedUpload;
+      const treatAsFieldWorker = isFieldWorkerOnJob(actor, jobRow);
 
       const typeError = validateUploadFileName(file.originalname, {
         checklistInstruction: isChecklistInstructionUpload || isChecklistCompletedUpload,
@@ -201,7 +206,7 @@ router.post(
           ? "completed"
           : categoryRaw === "job"
             ? "job"
-            : actor.role === "user"
+            : treatAsFieldWorker
               ? "completed"
               : "job";
 
@@ -232,7 +237,9 @@ router.post(
 
       if (Number.isFinite(checklistItemId) && checklistItemId > 0) {
         const linkUserId =
-          actor.role === "user" ? actor.id : (jobRow.assigneeId ?? actor.id);
+          treatAsFieldWorker && (actor.role === "user" || isChecklistCompletedUpload)
+            ? actor.id
+            : (jobRow.assigneeId ?? actor.id);
         await db.execute(sql`
           CREATE TABLE IF NOT EXISTS job_checklist_attachments (
             id uuid PRIMARY KEY,

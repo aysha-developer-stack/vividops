@@ -167,7 +167,7 @@ export async function jobHasCompletedDeliverables(jobId: string): Promise<boolea
   return rows.some(
     (r) =>
       r.fileCategory === "completed" ||
-      (!r.fileCategory && r.uploaderRole === "user"),
+      (!r.fileCategory && (r.uploaderRole === "user" || r.uploaderRole === "supervisor")),
   );
 }
 
@@ -208,6 +208,7 @@ export async function assertWorkerChecklistReady(
     const linked = await db
       .select({
         itemId: jobChecklistAttachments.itemId,
+        linkUserId: jobChecklistAttachments.userId,
         uploaderId: jobAttachments.uploadedById,
         uploaderRole: users.role,
         fileCategory: jobAttachments.fileCategory,
@@ -218,18 +219,30 @@ export async function assertWorkerChecklistReady(
       .where(
         and(
           eq(jobChecklistAttachments.jobId, job.id),
+          eq(jobChecklistAttachments.userId, workerUserId),
           inArray(jobChecklistAttachments.itemId, requiredIds),
         ),
       );
 
     for (const id of requiredIds) {
-      const rows = linked.filter((r) => r.itemId === id);
-      const hasChecklist = rows.some((r) => r.uploaderRole != null && r.uploaderRole !== "user");
+      const itemLinked = linked.filter((r) => r.itemId === id);
+      const instructionLinked = await db
+        .select({
+          uploaderRole: users.role,
+          fileCategory: jobAttachments.fileCategory,
+        })
+        .from(jobChecklistAttachments)
+        .innerJoin(jobAttachments, eq(jobAttachments.id, jobChecklistAttachments.attachmentId))
+        .leftJoin(users, eq(users.id, jobAttachments.uploadedById))
+        .where(
+          and(eq(jobChecklistAttachments.jobId, job.id), eq(jobChecklistAttachments.itemId, id)),
+        );
+      const hasChecklist = instructionLinked.some((r) => r.uploaderRole != null && r.uploaderRole !== "user");
       if (!hasChecklist) missingChecklist.push(id);
-      const hasCompletedUpload = rows.some(
+      const hasCompletedUpload = itemLinked.some(
         (r) =>
           r.fileCategory === "completed" ||
-          (!r.fileCategory && r.uploaderRole === "user"),
+          (!r.fileCategory && (r.uploaderRole === "user" || r.uploaderRole === "supervisor")),
       );
       if (!hasCompletedUpload) missingCompletedChecklist.push(id);
     }
