@@ -643,9 +643,12 @@ export default function JobDetail({ role = "user", id }: Props) {
     ((role === "supervisor" && job.supervisor?.id === currentUser?.id) ||
       role === "admin" ||
       role === "super-admin");
-  const reviewCheckRunning = !!reviewCheckSession?.segmentStartedAt && reviewCheckSession.jobId === job?.id;
+  const reviewCheckRunning =
+    !!reviewCheckSession &&
+    !!reviewCheckSession.segmentStartedAt &&
+    reviewCheckSession.jobId === job?.id;
   const reviewCheckDisplaySeconds = useMemo(() => {
-    if (reviewCheckSession?.jobId === job?.id) {
+    if (reviewCheckSession && reviewCheckSession.jobId === job?.id) {
       return liveReviewCheckElapsedSeconds(reviewCheckSession);
     }
     return reviewCheckSavedSeconds;
@@ -706,7 +709,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     if (!job?.id) return;
     try {
       const session = await startReviewCheckSession(job.id);
-      setReviewCheckSession(session);
+      if (session) setReviewCheckSession(session);
       await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
       await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
       const time = await fetchJobReviewCheckTime(job.id);

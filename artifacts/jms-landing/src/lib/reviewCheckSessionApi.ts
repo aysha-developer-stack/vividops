@@ -21,9 +21,10 @@ export type JobReviewCheckTime = {
 };
 
 export function liveReviewCheckElapsedSeconds(
-  session: Pick<ReviewCheckSession, "accumulatedSeconds" | "segmentStartedAt">,
+  session: Pick<ReviewCheckSession, "accumulatedSeconds" | "segmentStartedAt"> | null | undefined,
   nowMs = Date.now(),
 ): number {
+  if (!session) return 0;
   const base = Math.max(0, session.accumulatedSeconds ?? 0);
   if (!session.segmentStartedAt) return base;
   const segMs = new Date(session.segmentStartedAt).getTime();
