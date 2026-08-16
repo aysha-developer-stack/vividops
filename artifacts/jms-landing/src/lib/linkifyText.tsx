@@ -49,7 +49,7 @@ export function trimTrailingNewlines(text: string): string {
 }
 
 const LINK_ANCHOR_STYLE =
-  "color:#0284c7;text-decoration:underline;text-underline-offset:2px;word-break:break-all;cursor:pointer;";
+  "color:#0284c7;text-decoration:underline;text-underline-offset:2px;word-break:break-all;cursor:pointer;pointer-events:auto;";
 
 export function plainTextToHtml(text: string): string {
   if (!text) return "";
