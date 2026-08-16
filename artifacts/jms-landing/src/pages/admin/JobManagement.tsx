@@ -34,6 +34,7 @@ import {
 import { downloadNamedFile, jobAttachmentDownloadUrl } from "@/lib/downloadFile";
 import FileDropzone from "@/components/FileDropzone";
 import { CHECKLIST_FILE_ACCEPT, isChecklistDocFile, filterJobFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
+import { formatStoredFileSize } from "@/lib/jobForm";
 
 import {
   DropdownMenu,
@@ -1492,7 +1493,9 @@ export default function JobManagement(
                             <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 font-bold text-[10px]">FILE</div>
                             <div className="flex-1 min-w-0">
                               <div className="text-sm font-semibold text-gray-900 truncate">{f.fileName}</div>
-                              {f.fileSize && <div className="text-[11px] text-gray-500">{f.fileSize}</div>}
+                              {formatStoredFileSize(f.fileSize) && (
+                                <div className="text-[11px] text-gray-500">{formatStoredFileSize(f.fileSize)}</div>
+                              )}
                             </div>
                             {(editingId || f.fileUrl) && (
                               <button

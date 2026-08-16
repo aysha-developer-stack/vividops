@@ -27,6 +27,7 @@ import {
   applyJobToForm,
   EMPTY_JOB_FORM,
   formatFileSize,
+  formatStoredFileSize,
   JOB_TITLE_OPTIONS,
   PRIORITY_BUTTON_CONFIG,
   WIND_OPTIONS,
@@ -865,7 +866,9 @@ export default function JobFormModal({
                           <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 font-bold text-[10px]">FILE</div>
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-semibold text-gray-900 truncate">{f.fileName}</div>
-                            {f.fileSize && <div className="text-[11px] text-gray-500">{f.fileSize}</div>}
+                            {formatStoredFileSize(f.fileSize) && (
+                              <div className="text-[11px] text-gray-500">{formatStoredFileSize(f.fileSize)}</div>
+                            )}
                           </div>
                           {jobId && (
                             <button

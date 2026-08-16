@@ -141,3 +141,14 @@ export function formatFileSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/** Format API-stored file_size text (usually raw bytes) for display. */
+export function formatStoredFileSize(fileSize: string | null | undefined): string | null {
+  if (!fileSize) return null;
+  const trimmed = fileSize.trim();
+  if (!trimmed) return null;
+  if (/^\d+(\.\d+)?\s*(B|KB|MB|GB)$/i.test(trimmed)) return trimmed;
+  const bytes = Number(trimmed);
+  if (!Number.isFinite(bytes) || bytes < 0) return trimmed;
+  return formatFileSize(bytes);
+}
