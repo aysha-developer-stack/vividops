@@ -11,7 +11,6 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   getNotificationToastVariant,
-  pickLatestNotification,
   playNotificationTone,
   sortNotificationsByPriority,
 } from "@/lib/notifications";
@@ -36,8 +35,9 @@ type AlertNotification = {
   createdAt: string;
 };
 
-const LIVE_TOAST_STAGGER_MS = 400;
-const LIVE_TOAST_BATCH_CAP = 8;
+const LIVE_TOAST_STAGGER_MS = 350;
+/** Max new notifications to toast in one realtime batch (e.g. bulk job updates). */
+const LIVE_TOAST_BATCH_CAP = 10;
 
 /** Session-level notification alerts (toasts / desktop), independent of page navigation. */
 export function useNotificationAlerts(user: User | null | undefined) {
@@ -101,11 +101,11 @@ export function useNotificationAlerts(user: User | null | undefined) {
     setLocation(getNotificationPath(role, { type: "updated" }));
   }, [role, setLocation]);
 
-  const showNotificationToast = useCallback((item: AlertNotification, extraDesc?: string) => {
+  const showNotificationToast = useCallback((item: AlertNotification) => {
     if (!inAppEnabledRef.current) return;
     toast({
       title: item.title,
-      description: extraDesc ? `${item.desc}${extraDesc}` : item.desc,
+      description: item.desc,
       variant: getNotificationToastVariant(item.type),
       duration: 5000,
     });
@@ -122,7 +122,7 @@ export function useNotificationAlerts(user: User | null | undefined) {
     );
   }, [openNotificationTarget]);
 
-  const deliverNotificationToasts = useCallback((
+  const deliverNewNotificationToasts = useCallback((
     items: AlertNotification[],
     opts?: { playSound?: boolean },
   ) => {
@@ -140,32 +140,11 @@ export function useNotificationAlerts(user: User | null | undefined) {
         window.setTimeout(() => showNotificationToast(item), index * LIVE_TOAST_STAGGER_MS);
       });
     } else if (useDesktop) {
-      batch.slice(-3).forEach((item) => showDesktopForNotification(item));
+      batch.slice(-5).forEach((item) => showDesktopForNotification(item));
     }
 
     if (opts?.playSound !== false && soundEnabledRef.current && (useInApp || useDesktop)) {
       void playNotificationTone();
-    }
-  }, [showDesktopForNotification, showNotificationToast]);
-
-  const deliverLatestUnreadToast = useCallback((unread: AlertNotification[]) => {
-    if (unread.length === 0) return;
-
-    const latest = pickLatestNotification(unread);
-    if (!latest) return;
-
-    const extra =
-      unread.length > 1
-        ? ` (+${unread.length - 1} more in inbox)`
-        : undefined;
-
-    const useInApp = shouldPreferInAppNotifications();
-    const useDesktop = pushEnabledRef.current && shouldShowDesktopNotifications();
-
-    if (useInApp) {
-      showNotificationToast(latest, extra);
-    } else if (useDesktop) {
-      showDesktopForNotification(latest);
     }
   }, [showDesktopForNotification, showNotificationToast]);
 
@@ -214,20 +193,7 @@ export function useNotificationAlerts(user: User | null | undefined) {
       } catch {
       }
 
-      const unread = notifications.filter((n) => n.unread);
-      const summaryKey = `notification-summary-shown:${userId}`;
-      let summaryAlreadyShown = false;
-      try {
-        summaryAlreadyShown = window.sessionStorage.getItem(summaryKey) === "1";
-      } catch {
-      }
-      if (unread.length > 0 && !summaryAlreadyShown) {
-        deliverLatestUnreadToast(unread);
-        try {
-          window.sessionStorage.setItem(summaryKey, "1");
-        } catch {
-        }
-      }
+      // On login: mark existing inbox items as seen — no toast for old unread.
       return;
     }
 
@@ -248,6 +214,6 @@ export function useNotificationAlerts(user: User | null | undefined) {
     } catch {
     }
 
-    deliverNotificationToasts(newNotifications);
-  }, [deliverLatestUnreadToast, deliverNotificationToasts, notifications, userId]);
+    deliverNewNotificationToasts(newNotifications);
+  }, [deliverNewNotificationToasts, notifications, userId]);
 }
