@@ -11,6 +11,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   getNotificationToastVariant,
+  pickLatestNotification,
   playNotificationTone,
   sortNotificationsByPriority,
 } from "@/lib/notifications";
@@ -34,10 +35,6 @@ type AlertNotification = {
   unread: boolean;
   createdAt: string;
 };
-
-const LIVE_TOAST_STAGGER_MS = 350;
-/** Max new notifications to toast in one realtime batch (e.g. bulk job updates). */
-const LIVE_TOAST_BATCH_CAP = 10;
 
 /** Session-level notification alerts (toasts / desktop), independent of page navigation. */
 export function useNotificationAlerts(user: User | null | undefined) {
@@ -122,25 +119,20 @@ export function useNotificationAlerts(user: User | null | undefined) {
     );
   }, [openNotificationTarget]);
 
-  const deliverNewNotificationToasts = useCallback((
+  const deliverNewNotificationToast = useCallback((
     items: AlertNotification[],
     opts?: { playSound?: boolean },
   ) => {
-    if (items.length === 0) return;
+    const latest = pickLatestNotification(items);
+    if (!latest) return;
 
-    const ordered = [...items].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    );
-    const batch = ordered.slice(-LIVE_TOAST_BATCH_CAP);
     const useInApp = shouldPreferInAppNotifications();
     const useDesktop = pushEnabledRef.current && shouldShowDesktopNotifications();
 
     if (useInApp) {
-      batch.forEach((item, index) => {
-        window.setTimeout(() => showNotificationToast(item), index * LIVE_TOAST_STAGGER_MS);
-      });
+      showNotificationToast(latest);
     } else if (useDesktop) {
-      batch.slice(-5).forEach((item) => showDesktopForNotification(item));
+      showDesktopForNotification(latest);
     }
 
     if (opts?.playSound !== false && soundEnabledRef.current && (useInApp || useDesktop)) {
@@ -214,6 +206,6 @@ export function useNotificationAlerts(user: User | null | undefined) {
     } catch {
     }
 
-    deliverNewNotificationToasts(newNotifications);
-  }, [deliverNewNotificationToasts, notifications, userId]);
+    deliverNewNotificationToast(newNotifications);
+  }, [deliverNewNotificationToast, notifications, userId]);
 }
