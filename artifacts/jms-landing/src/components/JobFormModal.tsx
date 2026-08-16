@@ -16,7 +16,7 @@ import { PRIORITY_UI_TO_API, type UiPriority } from "@/lib/jobMappers";
 import { serializeJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
 import { downloadNamedFile, jobAttachmentDownloadUrl } from "@/lib/downloadFile";
 import FileDropzone from "@/components/FileDropzone";
-import DescriptionInput from "@/components/DescriptionInput";
+import DescriptionInput, { AddressUrlHint } from "@/components/DescriptionInput";
 import {
   CHECKLIST_FILE_ACCEPT,
   isChecklistDocFile,
@@ -642,6 +642,18 @@ export default function JobFormModal({
                   </div>
                 </div>
                 <div className="min-w-0">
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Description
+                    <span className="ml-1 font-normal text-gray-400">(text &amp; links)</span>
+                  </label>
+                  <DescriptionInput
+                    key={`description-${jobId ?? "new"}`}
+                    value={form.description}
+                    onChange={(description) => setForm({ ...form, description })}
+                    rows={4}
+                  />
+                </div>
+                <div className="min-w-0">
                   <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Address</label>
                   <input
                     value={form.address}
@@ -649,15 +661,7 @@ export default function JobFormModal({
                     placeholder="e.g. 120 Park Avenue, Sydney NSW 2000"
                     className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
                   />
-                </div>
-                <div className="min-w-0">
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Description</label>
-                  <DescriptionInput
-                    key={`description-${jobId ?? "new"}`}
-                    value={form.description}
-                    onChange={(description) => setForm({ ...form, description })}
-                    rows={2}
-                  />
+                  <AddressUrlHint value={form.address} />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="min-w-0">

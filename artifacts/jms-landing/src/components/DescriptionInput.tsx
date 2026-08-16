@@ -1,6 +1,5 @@
-import { useLayoutEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { extractLinkifiableUrls, LinkifiedText } from "@/lib/linkifyText";
+import { hasLinkifiableUrl, LinkifiedText } from "@/lib/linkifyText";
 
 type DescriptionInputProps = {
   value: string;
@@ -9,71 +8,56 @@ type DescriptionInputProps = {
   className?: string;
 };
 
-const fieldClass =
-  "px-3 py-2.5 text-sm leading-6 whitespace-pre-wrap break-words";
-
 export default function DescriptionInput({
   value,
   onChange,
-  rows = 3,
+  rows = 4,
   className,
 }: DescriptionInputProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const links = extractLinkifiableUrls(value);
-
-  useLayoutEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = "auto";
-    textarea.style.height = `${textarea.scrollHeight}px`;
-  }, [value]);
+  const showPreview = value.trim().length > 0;
 
   return (
     <div
       className={cn(
-        "w-full min-w-0 rounded-xl border-2 border-gray-200 bg-gray-50 text-gray-900 transition-colors focus-within:border-primary focus-within:bg-white",
+        "w-full min-w-0 rounded-xl border-2 border-gray-200 bg-gray-50 text-sm text-gray-900 transition-colors focus-within:border-primary focus-within:bg-white",
         className,
       )}
     >
-      <div className="grid [&>*]:col-start-1 [&>*]:row-start-1">
-        <div aria-hidden className={cn(fieldClass, "text-gray-900 pointer-events-none")}>
-          {value ? (
-            <LinkifiedText text={value} />
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        rows={rows}
+        placeholder="Type notes here. Paste links on their own line — press Enter for new lines."
+        className="block w-full min-w-0 px-3 py-2.5 bg-transparent border-0 outline-none resize-y whitespace-pre-wrap break-words !text-gray-900 !placeholder:text-gray-400"
+      />
+      {showPreview && (
+        <div className="border-t border-gray-200 px-3 py-2.5 text-sm text-gray-700 whitespace-pre-wrap break-words">
+          {hasLinkifiableUrl(value) ? (
+            <>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">
+                Preview with links
+              </p>
+              <LinkifiedText text={value} />
+            </>
           ) : (
-            <span className="text-gray-400">Add description or paste a link...</span>
+            value
           )}
-        </div>
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          rows={rows}
-          spellCheck
-          className={cn(
-            fieldClass,
-            "resize-none overflow-hidden border-0 bg-transparent text-transparent caret-gray-900 outline-none",
-          )}
-          style={{ WebkitTextFillColor: "transparent" }}
-        />
-      </div>
-      {links.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-gray-200 px-3 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 shrink-0">
-            Open
-          </span>
-          {links.map((href) => (
-            <a
-              key={href}
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs font-medium text-primary underline underline-offset-2 hover:text-primary/80 break-all"
-            >
-              {href}
-            </a>
-          ))}
         </div>
       )}
     </div>
+  );
+}
+
+function isLikelyUrl(value: string): boolean {
+  const trimmed = value.trim();
+  return /^(?:https?:\/\/|www\.)/i.test(trimmed);
+}
+
+export function AddressUrlHint({ value }: { value: string }) {
+  if (!isLikelyUrl(value)) return null;
+  return (
+    <p className="mt-1 text-xs text-amber-700">
+      This looks like a web link. Paste links in <strong>Description</strong> instead of Job Address.
+    </p>
   );
 }
