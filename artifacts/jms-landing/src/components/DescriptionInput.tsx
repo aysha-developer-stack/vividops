@@ -1,5 +1,12 @@
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { hasLinkifiableUrl, LinkifiedText } from "@/lib/linkifyText";
+import {
+  extractPlainText,
+  hasLinkifiableUrl,
+  linkifyToHtml,
+  plainTextToHtml,
+  trimTrailingNewlines,
+} from "@/lib/linkifyText";
 
 type DescriptionInputProps = {
   value: string;
@@ -14,37 +21,90 @@ export default function DescriptionInput({
   rows = 4,
   className,
 }: DescriptionInputProps) {
-  const showPreview = value.trim().length > 0;
+  const editorRef = useRef<HTMLDivElement>(null);
+  const focusedRef = useRef(false);
+  const skipFocusPlainRef = useRef(false);
+
+  const renderPlain = (text: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.innerHTML = text ? plainTextToHtml(text) : "";
+  };
+
+  const renderLinkified = (text: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.innerHTML = text ? linkifyToHtml(text) : "";
+  };
+
+  useEffect(() => {
+    if (focusedRef.current || !editorRef.current) return;
+    renderLinkified(value);
+  }, [value]);
+
+  useEffect(() => {
+    renderLinkified(value);
+  }, []);
+
+  const syncPlain = () => {
+    const editor = editorRef.current;
+    if (!editor) return "";
+    const plain = extractPlainText(editor.innerText);
+    onChange(plain);
+    return plain;
+  };
 
   return (
     <div
+      ref={editorRef}
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-multiline="true"
+      onInput={() => {
+        syncPlain();
+      }}
+      onFocus={() => {
+        if (skipFocusPlainRef.current) {
+          skipFocusPlainRef.current = false;
+          return;
+        }
+        focusedRef.current = true;
+        renderPlain(value);
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+        const editor = editorRef.current;
+        if (!editor) return;
+        const plain = trimTrailingNewlines(extractPlainText(editor.innerText));
+        onChange(plain);
+        renderLinkified(plain);
+      }}
+      onPaste={(event) => {
+        event.preventDefault();
+        const text = event.clipboardData.getData("text/plain");
+        document.execCommand("insertText", false, text);
+        const plain = syncPlain();
+        if (hasLinkifiableUrl(plain)) {
+          requestAnimationFrame(() => renderLinkified(plain));
+        }
+      }}
+      onMouseDown={(event) => {
+        const anchor = (event.target as HTMLElement).closest("a");
+        if (!(anchor instanceof HTMLAnchorElement)) return;
+        event.preventDefault();
+        skipFocusPlainRef.current = true;
+        window.open(anchor.href, "_blank", "noopener,noreferrer");
+      }}
       className={cn(
-        "w-full min-w-0 rounded-xl border-2 border-gray-200 bg-gray-50 text-sm text-gray-900 transition-colors focus-within:border-primary focus-within:bg-white",
+        "w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm text-gray-900 transition-colors focus:outline-none focus:border-primary focus:bg-white overflow-auto whitespace-pre-wrap break-words",
+        "empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400",
+        "[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 [&_a]:hover:text-primary/80 [&_a]:break-all",
         className,
       )}
-    >
-      <textarea
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        rows={rows}
-        placeholder="Type notes here. Paste links on their own line — press Enter for new lines."
-        className="block w-full min-w-0 px-3 py-2.5 bg-transparent border-0 outline-none resize-y whitespace-pre-wrap break-words !text-gray-900 !placeholder:text-gray-400"
-      />
-      {showPreview && (
-        <div className="border-t border-gray-200 px-3 py-2.5 text-sm text-gray-700 whitespace-pre-wrap break-words">
-          {hasLinkifiableUrl(value) ? (
-            <>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">
-                Preview with links
-              </p>
-              <LinkifiedText text={value} />
-            </>
-          ) : (
-            value
-          )}
-        </div>
-      )}
-    </div>
+      style={{ minHeight: `${rows * 1.5 + 1.25}rem` }}
+      data-placeholder="Type notes here. Paste links — press Enter for new lines."
+    />
   );
 }
 

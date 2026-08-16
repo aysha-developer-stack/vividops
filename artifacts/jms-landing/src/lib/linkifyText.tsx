@@ -48,6 +48,11 @@ export function trimTrailingNewlines(text: string): string {
   return text.replace(/\n+$/, "");
 }
 
+export function plainTextToHtml(text: string): string {
+  if (!text) return "";
+  return escapeHtml(text).replace(/\n/g, "<br>");
+}
+
 export function linkifyToHtml(text: string): string {
   if (!text) return "";
 
