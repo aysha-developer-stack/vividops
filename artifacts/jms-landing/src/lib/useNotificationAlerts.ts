@@ -9,10 +9,16 @@ import {
   type User,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { playNotificationTone, sortNotificationsByPriority } from "@/lib/notifications";
+import {
+  getNotificationToastVariant,
+  isInAppToastType,
+  pickTopToastNotification,
+  playNotificationTone,
+  sortNotificationsByPriority,
+} from "@/lib/notifications";
 import {
   ensureDesktopNotificationPermission,
-  showDesktopNotificationBatch,
+  showDesktopNotification,
   shouldPreferInAppNotifications,
   shouldShowDesktopNotifications,
 } from "@/lib/desktopNotifications";
@@ -30,19 +36,6 @@ type AlertNotification = {
   unread: boolean;
   createdAt: string;
 };
-
-function pickToastCandidates(items: AlertNotification[]): AlertNotification[] {
-  const messages = items.filter((n) => n.type === "job_message");
-  const otherAlerts = items.filter(
-    (n) => n.type !== "job_message" && n.type !== "progress" && n.type !== "timer",
-  );
-  const timerAlerts = items.filter((n) => n.type === "timer");
-  return [
-    ...messages.slice(0, 5),
-    ...timerAlerts.slice(0, 2),
-    ...otherAlerts.slice(0, 3),
-  ];
-}
 
 /** Session-level notification alerts (toasts / desktop), independent of page navigation. */
 export function useNotificationAlerts(user: User | null | undefined) {
@@ -106,81 +99,83 @@ export function useNotificationAlerts(user: User | null | undefined) {
     setLocation(getNotificationPath(role, { type: "updated" }));
   }, [role, setLocation]);
 
-  const showDesktopForNotifications = useCallback(async (items: AlertNotification[]) => {
-    if (!pushEnabledRef.current || items.length === 0) return;
+  const showUnreadSummaryToast = useCallback((unreadCount: number) => {
+    if (!inAppEnabledRef.current || unreadCount <= 0) return;
+    toast({
+      title: `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}`,
+      description: "Open the bell icon to view your inbox.",
+      variant: "notification",
+      duration: 5000,
+    });
+  }, [toast]);
+
+  const showLiveToast = useCallback((item: AlertNotification) => {
+    if (!inAppEnabledRef.current || !isInAppToastType(item.type)) return;
+    toast({
+      title: item.title,
+      description: item.desc,
+      variant: getNotificationToastVariant(item.type),
+      duration: 5000,
+    });
+  }, [toast]);
+
+  const showDesktopForNotification = useCallback((item: AlertNotification) => {
+    if (!pushEnabledRef.current) return;
     if (typeof Notification === "undefined") return;
+    if (Notification.permission !== "granted") return;
 
-    let permission: NotificationPermission | "unsupported" = Notification.permission;
-    if (permission === "default") {
-      permission = await ensureDesktopNotificationPermission();
-    }
-    if (permission !== "granted") return;
-
-    showDesktopNotificationBatch(
-      items.map((n) => ({
-        id: String(n.id),
-        title: n.title,
-        body: n.desc,
-      })),
-      {
-        onOpen: (id) => {
-          if (id === "inbox") {
-            openNotificationTarget(null);
-            return;
-          }
-          const item = items.find((n) => String(n.id) === id);
-          openNotificationTarget(item?.jobId, item?.type);
-        },
-      },
+    showDesktopNotification(
+      { id: String(item.id), title: item.title, body: item.desc },
+      () => openNotificationTarget(item.jobId, item.type),
     );
   }, [openNotificationTarget]);
 
-  const showInAppForNotifications = useCallback((items: AlertNotification[]) => {
-    if (!inAppEnabledRef.current || items.length === 0) return;
+  const showDesktopUnreadSummary = useCallback((unreadCount: number) => {
+    if (!pushEnabledRef.current || unreadCount <= 0) return;
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission !== "granted") return;
 
-    const candidates = pickToastCandidates(items);
-    if (candidates.length === 0) return;
+    showDesktopNotification(
+      {
+        id: `unread-summary-${Date.now()}`,
+        title: "Vivid OPS",
+        body: `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"} — open the app to view all.`,
+      },
+      () => openNotificationTarget(null),
+    );
+  }, [openNotificationTarget]);
 
-    candidates.forEach((n, index) => {
-      window.setTimeout(() => {
-        toast({
-          title: n.title,
-          description: n.desc,
-          variant: n.type === "overdue" ? "destructive" : "default",
-        });
-      }, index * 350);
-    });
-
-    const remaining = items.length - candidates.length;
-    if (remaining > 0) {
-      window.setTimeout(() => {
-        toast({
-          title: `${remaining} more notification${remaining === 1 ? "" : "s"}`,
-          description: "Open the bell icon to view everything in your inbox.",
-        });
-      }, candidates.length * 350 + 100);
-    }
-  }, [toast]);
-
-  const deliverAlerts = useCallback((
-    items: AlertNotification[],
-    opts?: { playSound?: boolean },
-  ) => {
+  const deliverLiveAlert = useCallback((items: AlertNotification[]) => {
     if (items.length === 0) return;
+
+    const top = pickTopToastNotification(items);
+    const useInApp = shouldPreferInAppNotifications();
+    const useDesktop = pushEnabledRef.current && shouldShowDesktopNotifications();
+
+    if (useInApp) {
+      if (top) showLiveToast(top);
+    } else if (useDesktop) {
+      if (top) showDesktopForNotification(top);
+      else showDesktopUnreadSummary(items.length);
+    }
+
+    if (soundEnabledRef.current && (useInApp || useDesktop) && top) {
+      void playNotificationTone();
+    }
+  }, [showDesktopForNotification, showDesktopUnreadSummary, showLiveToast]);
+
+  const deliverUnreadSummary = useCallback((unreadCount: number) => {
+    if (unreadCount <= 0) return;
 
     const useInApp = shouldPreferInAppNotifications();
     const useDesktop = pushEnabledRef.current && shouldShowDesktopNotifications();
 
     if (useInApp) {
-      showInAppForNotifications(items);
+      showUnreadSummaryToast(unreadCount);
     } else if (useDesktop) {
-      void showDesktopForNotifications(items);
+      showDesktopUnreadSummary(unreadCount);
     }
-
-    if (opts?.playSound !== false && soundEnabledRef.current && (useInApp || useDesktop)) {
-      void playNotificationTone();
-    }
-  }, [showDesktopForNotifications, showInAppForNotifications]);
+  }, [showDesktopUnreadSummary, showUnreadSummaryToast]);
 
   const notifications = useMemo(() => {
     return sortNotificationsByPriority(
@@ -216,10 +211,6 @@ export function useNotificationAlerts(user: User | null | undefined) {
       } catch {
       }
 
-      const missedUnread = notifications.filter(
-        (n) => n.unread && !storedIds.has(String(n.id)),
-      );
-
       seenNotificationIdsRef.current = new Set([...storedIds, ...currentIds]);
       initializedRef.current = true;
 
@@ -231,8 +222,19 @@ export function useNotificationAlerts(user: User | null | undefined) {
       } catch {
       }
 
-      if (missedUnread.length > 0) {
-        deliverAlerts(missedUnread);
+      const unreadCount = notifications.filter((n) => n.unread).length;
+      const summaryKey = `notification-summary-shown:${userId}`;
+      let summaryAlreadyShown = false;
+      try {
+        summaryAlreadyShown = window.sessionStorage.getItem(summaryKey) === "1";
+      } catch {
+      }
+      if (unreadCount > 0 && !summaryAlreadyShown) {
+        deliverUnreadSummary(unreadCount);
+        try {
+          window.sessionStorage.setItem(summaryKey, "1");
+        } catch {
+        }
       }
       return;
     }
@@ -254,6 +256,6 @@ export function useNotificationAlerts(user: User | null | undefined) {
     } catch {
     }
 
-    deliverAlerts(newNotifications);
-  }, [deliverAlerts, notifications, userId]);
+    deliverLiveAlert(newNotifications);
+  }, [deliverLiveAlert, deliverUnreadSummary, notifications, userId]);
 }
