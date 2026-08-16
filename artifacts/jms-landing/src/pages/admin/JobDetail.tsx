@@ -1865,10 +1865,22 @@ export default function JobDetail({ role = "user", id }: Props) {
           </div>
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-4">
           <div>
             <div className="text-[10px] text-gray-500 uppercase font-semibold">Est. Time</div>
             <div className="text-sm text-gray-900 font-medium">{(job as any)?.estimatedTime || "—"}</div>
+          </div>
+          <div>
+            <div className="text-[10px] text-gray-500 uppercase font-semibold">Start Date</div>
+            <div className="text-sm text-gray-900 font-medium">{(job as any)?.startDate ? formatShortDate((job as any).startDate) : "—"}</div>
+          </div>
+          <div>
+            <div className="text-[10px] text-gray-500 uppercase font-semibold">Incoming Date</div>
+            <div className="text-sm text-gray-900 font-medium">{(job as any)?.incomingDate ? formatShortDate((job as any).incomingDate) : "—"}</div>
+          </div>
+          <div>
+            <div className="text-[10px] text-gray-500 uppercase font-semibold">ETA</div>
+            <div className="text-sm text-gray-900 font-medium">{(job as any)?.eta ? formatShortDate((job as any).eta) : "—"}</div>
           </div>
           <div>
             <div className="text-[10px] text-gray-500 uppercase font-semibold">Actual Time</div>
@@ -1876,32 +1888,23 @@ export default function JobDetail({ role = "user", id }: Props) {
             {running && displaySeconds > totalLoggedSeconds && (
               <div className="text-[10px] text-sky-600 font-medium mt-0.5">Includes active timer</div>
             )}
-            {timeBreakdown.length > 0 && (
+            {timeBreakdown.length > 1 && (
               <div className="mt-1.5 space-y-0.5">
                 {timeBreakdown.map((row) => (
-                  <div key={String(row.key)} className="text-[11px] text-gray-500 flex justify-between gap-3">
-                    <span>{row.label}</span>
+                  <div key={String(row.key)} className="text-[11px] text-gray-500">
+                    {row.label}:{" "}
                     <span className="font-medium text-gray-700 tabular-nums">{formatTime(row.seconds)}</span>
                   </div>
                 ))}
               </div>
             )}
           </div>
-          <div>
-            <div className="text-[10px] text-gray-500 uppercase font-semibold">Start Date</div>
-            <div className="text-sm text-gray-900 font-medium">{(job as any)?.startDate ? formatShortDate((job as any).startDate) : "—"}</div>
-          </div>
-          <div>
-            <div className="text-[10px] text-gray-500 uppercase font-semibold">ETA</div>
-            <div className="text-sm text-gray-900 font-medium">{(job as any)?.eta ? formatShortDate((job as any).eta) : "—"}</div>
-          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-4">
           <div>
             <div className="text-[10px] text-gray-500 uppercase font-semibold">Wind</div>
             <div className="text-sm text-gray-900 font-medium">{(job as any)?.wind || "—"}</div>
-          </div>
-          <div>
-            <div className="text-[10px] text-gray-500 uppercase font-semibold">Incoming Date</div>
-            <div className="text-sm text-gray-900 font-medium">{(job as any)?.incomingDate ? formatShortDate((job as any).incomingDate) : "—"}</div>
           </div>
           <div className="sm:col-span-2 lg:col-span-4 space-y-3">
             <div className="grid sm:grid-cols-2 gap-3">
