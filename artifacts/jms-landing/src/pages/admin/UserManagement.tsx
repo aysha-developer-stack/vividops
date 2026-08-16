@@ -470,19 +470,14 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                 </div>
 
                 {isSuperAdmin && form.role === "Admin" && (
-                  <label className="flex items-start gap-3 p-4 rounded-xl border-2 border-gray-200 bg-gray-50 cursor-pointer hover:border-primary/40 transition-colors">
+                  <label className="flex items-center gap-3 p-4 rounded-xl border-2 border-gray-200 bg-gray-50 cursor-pointer hover:border-primary/40 transition-colors">
                     <input
                       type="checkbox"
                       checked={form.cliqChannelAdmin}
                       onChange={(e) => setForm({ ...form, cliqChannelAdmin: e.target.checked })}
-                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                     />
-                    <span>
-                      <span className="block text-sm font-semibold text-gray-900">Cliq channel admin</span>
-                      <span className="block text-xs text-gray-500 mt-0.5">
-                        Adds this admin to every job Cliq channel with Cliq Admin permissions. Use the same email as their Zoho Cliq account.
-                      </span>
-                    </span>
+                    <span className="text-sm font-semibold text-gray-900">Cliq channel admin</span>
                   </label>
                 )}
 

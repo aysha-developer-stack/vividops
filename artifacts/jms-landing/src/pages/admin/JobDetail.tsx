@@ -37,6 +37,7 @@ import {
   buildFallbackCliqChannelName,
 } from "@/lib/cliqChannelName";
 import { parseJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
+import { LinkifiedText } from "@/lib/linkifyText";
 import { postTimerNotification } from "@/lib/timerNotifications";
 import {
   startTimerSession,
@@ -2112,7 +2113,9 @@ export default function JobDetail({ role = "user", id }: Props) {
           <motion.div key="ov" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-6">
               <h3 className="font-bold text-gray-900 mb-2">Description</h3>
-              <p className="text-sm text-gray-600 leading-relaxed">{meta.descriptionText || "—"}</p>
+              <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
+                {meta.descriptionText ? <LinkifiedText text={meta.descriptionText} /> : "—"}
+              </p>
             </div>
             <div className="bg-white rounded-2xl border border-gray-100 p-5">
               <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><Users size={16} className="text-primary" /> People</h3>

@@ -33,6 +33,7 @@ import {
 } from "@/lib/jobMeta";
 import { downloadNamedFile, jobAttachmentDownloadUrl } from "@/lib/downloadFile";
 import FileDropzone from "@/components/FileDropzone";
+import DescriptionInput from "@/components/DescriptionInput";
 import { CHECKLIST_FILE_ACCEPT, isChecklistDocFile, filterJobFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
 import { formatStoredFileSize } from "@/lib/jobForm";
 
@@ -1295,7 +1296,12 @@ export default function JobManagement(
                   </div>
                   <div className="min-w-0">
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Description</label>
-                    <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief job scope..." rows={2} className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none" />
+                    <DescriptionInput
+                      key={`description-${editingId ?? "new"}`}
+                      value={form.description}
+                      onChange={(description) => setForm({ ...form, description })}
+                      rows={2}
+                    />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="min-w-0">
