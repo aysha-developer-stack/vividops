@@ -30,9 +30,9 @@ import {
   type Job as ApiJob,
   ApiError,
 } from "@workspace/api-client-react";
-import { statusToUi, priorityToUi, formatShortDate, PRIORITY_UI_TO_API, type UiPriority } from "@/lib/jobMappers";
+import { statusToUi, priorityToUi, formatShortDate } from "@/lib/jobMappers";
 import { buildTimeLogCycleBreakdown, reworkCycleKey, reworkCycleLabel } from "@/lib/timeLogBreakdown";
-import { parseJobMeta, serializeJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
+import { parseJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
 import { postTimerNotification } from "@/lib/timerNotifications";
 import {
   startTimerSession,
@@ -61,6 +61,7 @@ import { useAuth } from "@/lib/auth";
 import UploadProgressPanel from "@/components/UploadProgressPanel";
 import JobNotesTab from "@/components/JobNotesTab";
 import JobCompletionCommentsTab from "@/components/JobCompletionCommentsTab";
+import JobFormModal from "@/components/JobFormModal";
 import JobMistakesTab from "@/components/JobMistakesTab";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { uploadFormDataWithProgress } from "@/lib/uploadWithProgress";
@@ -286,23 +287,6 @@ function initialsOf(name: string): string {
   return `${first}${second}`.toUpperCase();
 }
 
-function toDateInput(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toISOString().slice(0, 10);
-}
-
-type EditJobForm = {
-  title: string;
-  client: string;
-  address: string;
-  priority: UiPriority;
-  due: string;
-  estimatedTime: string;
-  description: string;
-};
-
 export default function JobDetail({ role = "user", id }: Props) {
   const routePath = role === "supervisor" ? "/supervisor/jobs/:id"
     : role === "admin" ? "/admin/jobs/:id"
@@ -449,16 +433,6 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [reworkComments, setReworkComments] = useState("");
   const [reworkDueAt, setReworkDueAt] = useState("");
   const [editOpen, setEditOpen] = useState(false);
-  const [editForm, setEditForm] = useState<EditJobForm>({
-    title: "",
-    client: "",
-    address: "",
-    priority: "Medium",
-    due: "",
-    estimatedTime: "",
-    description: "",
-  });
-  const [editSaving, setEditSaving] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [reassignTo, setReassignTo] = useState("");
   const [reassignSaving, setReassignSaving] = useState(false);
@@ -543,46 +517,7 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   const openEditModal = () => {
     if (!job) return;
-    setEditForm({
-      title: job.title ?? "",
-      client: job.client ?? "",
-      address: job.address ?? "",
-      priority: priorityToUi(job.priority),
-      due: toDateInput(job.dueDate),
-      estimatedTime: job.estimatedTime ?? "",
-      description: meta.descriptionText ?? "",
-    });
     setEditOpen(true);
-  };
-
-  const saveEditJob = async () => {
-    if (!job?.id) return;
-    if (!editForm.title.trim() || !editForm.client.trim()) {
-      alert("Title and client are required.");
-      return;
-    }
-    setEditSaving(true);
-    try {
-      await updateJobMutation.mutateAsync({
-        id: job.id,
-        data: {
-          title: editForm.title.trim(),
-          client: editForm.client.trim(),
-          address: editForm.address.trim() || null,
-          priority: PRIORITY_UI_TO_API[editForm.priority],
-          dueDate: editForm.due ? new Date(editForm.due).toISOString() : null,
-          estimatedTime: editForm.estimatedTime.trim() || null,
-          description: serializeJobMeta(editForm.description, meta.checklist),
-        },
-      });
-      await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
-      await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-      setEditOpen(false);
-    } catch (err) {
-      alert(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Failed to save job");
-    } finally {
-      setEditSaving(false);
-    }
   };
 
   const openReassignModal = () => {
@@ -3145,75 +3080,18 @@ export default function JobDetail({ role = "user", id }: Props) {
         )}
       </AnimatePresence>
 
-      {/* Edit job modal */}
-      <AnimatePresence>
-        {editOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => !editSaving && setEditOpen(false)} className="absolute inset-0 bg-black/50" />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg max-h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-            >
-              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between shrink-0">
-                <div>
-                  <h3 className="font-bold text-gray-900 text-base">Edit Job</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">{job?.number ?? jobId} · Update job details</p>
-                </div>
-                <button onClick={() => !editSaving && setEditOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} /></button>
-              </div>
-              <div className="px-6 py-5 space-y-3 overflow-y-auto">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Job Title</label>
-                  <input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Client</label>
-                    <input value={editForm.client} onChange={(e) => setEditForm({ ...editForm, client: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Priority</label>
-                    <select value={editForm.priority} onChange={(e) => setEditForm({ ...editForm, priority: e.target.value as UiPriority })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white">
-                      <option value="Low">Low</option>
-                      <option value="Medium">Medium</option>
-                      <option value="High">High</option>
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Address</label>
-                  <input value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Due Date</label>
-                    <input type="date" value={editForm.due} onChange={(e) => setEditForm({ ...editForm, due: e.target.value })} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Est. Time</label>
-                    <input value={editForm.estimatedTime} onChange={(e) => setEditForm({ ...editForm, estimatedTime: e.target.value })} placeholder="e.g. 4h" className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Description / Scope</label>
-                  <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows={4} className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white resize-y" />
-                </div>
-                {role === "supervisor" && (
-                  <p className="text-xs text-gray-500">To change checklist items or assign multiple workers, use Job Management.</p>
-                )}
-              </div>
-              <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2 bg-gray-50 shrink-0">
-                <button disabled={editSaving} onClick={() => setEditOpen(false)} className="px-4 py-2 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50">Cancel</button>
-                <button disabled={editSaving} onClick={() => void saveEditJob()} className="px-5 py-2 bg-primary hover:bg-primary/90 disabled:opacity-60 text-white rounded-xl text-sm font-semibold shadow-md shadow-primary/30 flex items-center gap-2">
-                  {editSaving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : "Save changes"}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <JobFormModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        role={role}
+        jobId={job?.id ?? null}
+        jobNumberLabel={job?.number ?? jobId}
+        onSaved={async () => {
+          if (!job?.id) return;
+          await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+          await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+        }}
+      />
 
       {/* Reassign modal */}
       <AnimatePresence>
