@@ -2,6 +2,11 @@ import type { ReactNode } from "react";
 
 const URL_REGEX = /(?:https?:\/\/|www\.)[^\s<>"']+/gi;
 
+export function hasLinkifiableUrl(text: string): boolean {
+  URL_REGEX.lastIndex = 0;
+  return URL_REGEX.test(text);
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -21,8 +26,17 @@ function splitUrl(raw: string): { href: string; display: string; trailing: strin
   return { href: normalizedHref, display: href, trailing };
 }
 
+export function extractPlainText(text: string): string {
+  return text.replace(/\u00a0/g, " ");
+}
+
+/** @deprecated use extractPlainText while editing */
 export function normalizePlainText(text: string): string {
-  return text.replace(/\u00a0/g, " ").replace(/\n+$/, "");
+  return extractPlainText(text);
+}
+
+export function trimTrailingNewlines(text: string): string {
+  return text.replace(/\n+$/, "");
 }
 
 export function linkifyToHtml(text: string): string {

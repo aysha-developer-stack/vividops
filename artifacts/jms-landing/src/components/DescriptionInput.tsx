@@ -1,16 +1,57 @@
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
-import { linkifyToHtml, normalizePlainText } from "@/lib/linkifyText";
+import {
+  extractPlainText,
+  hasLinkifiableUrl,
+  linkifyToHtml,
+  trimTrailingNewlines,
+} from "@/lib/linkifyText";
 
 function getCaretOffset(root: HTMLElement): number {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) return 0;
 
   const range = selection.getRangeAt(0);
-  const preRange = range.cloneRange();
-  preRange.selectNodeContents(root);
-  preRange.setEnd(range.endContainer, range.endOffset);
-  return preRange.toString().length;
+  let offset = 0;
+  let found = false;
+
+  const walk = (node: Node): void => {
+    if (found) return;
+
+    if (node === range.endContainer) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        offset += range.endOffset;
+        found = true;
+        return;
+      }
+      if (node === root) {
+        const child = node.childNodes[range.endOffset - 1];
+        if (child?.nodeName === "BR") {
+          offset += 1;
+          found = true;
+          return;
+        }
+      }
+    }
+
+    if (node.nodeType === Node.TEXT_NODE) {
+      offset += node.textContent?.length ?? 0;
+      return;
+    }
+
+    if (node.nodeName === "BR") {
+      offset += 1;
+      return;
+    }
+
+    for (let child = node.firstChild; child; child = child.nextSibling) {
+      walk(child);
+      if (found) return;
+    }
+  };
+
+  walk(root);
+  return offset;
 }
 
 function setCaretOffset(root: HTMLElement, offset: number) {
@@ -19,26 +60,48 @@ function setCaretOffset(root: HTMLElement, offset: number) {
 
   const range = document.createRange();
   let current = 0;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let node = walker.nextNode();
+  let placed = false;
 
-  while (node) {
-    const length = node.textContent?.length ?? 0;
-    if (current + length >= offset) {
-      range.setStart(node, offset - current);
-      range.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(range);
-      return;
+  const walk = (node: Node): boolean => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const length = node.textContent?.length ?? 0;
+      if (current + length >= offset) {
+        range.setStart(node, offset - current);
+        range.collapse(true);
+        placed = true;
+        return true;
+      }
+      current += length;
+      return false;
     }
-    current += length;
-    node = walker.nextNode();
+
+    if (node.nodeName === "BR") {
+      if (current + 1 >= offset) {
+        range.setStartAfter(node);
+        range.collapse(true);
+        placed = true;
+        return true;
+      }
+      current += 1;
+      return false;
+    }
+
+    for (let child = node.firstChild; child; child = child.nextSibling) {
+      if (walk(child)) return true;
+    }
+    return false;
+  };
+
+  if (!walk(root)) {
+    range.selectNodeContents(root);
+    range.collapse(false);
+    placed = true;
   }
 
-  range.selectNodeContents(root);
-  range.collapse(false);
-  selection.removeAllRanges();
-  selection.addRange(range);
+  if (placed) {
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
 }
 
 type DescriptionInputProps = {
@@ -63,11 +126,12 @@ export default function DescriptionInput({
     const editor = editorRef.current;
     if (!editor) return;
 
-    const offset = caret ?? (document.activeElement === editor ? getCaretOffset(editor) : undefined);
+    const offset =
+      caret ?? (document.activeElement === editor ? getCaretOffset(editor) : undefined);
     editor.innerHTML = linkifyToHtml(text) || "<br>";
 
     if (offset !== undefined && document.activeElement === editor) {
-      setCaretOffset(editor, Math.min(offset, normalizePlainText(editor.innerText).length));
+      setCaretOffset(editor, Math.min(offset, extractPlainText(editor.innerText).length));
     }
   };
 
@@ -92,7 +156,7 @@ export default function DescriptionInput({
     const editor = editorRef.current;
     if (!editor) return;
 
-    const plain = normalizePlainText(editor.innerText);
+    const plain = extractPlainText(editor.innerText);
     lastRenderedRef.current = plain;
     onChange(plain);
 
@@ -101,9 +165,11 @@ export default function DescriptionInput({
       linkifyTimerRef.current = null;
     }
 
+    if (!hasLinkifiableUrl(plain)) return;
+
     const runLinkify = () => {
       if (!editorRef.current) return;
-      const current = normalizePlainText(editorRef.current.innerText);
+      const current = extractPlainText(editorRef.current.innerText);
       renderHtml(current, getCaretOffset(editorRef.current));
     };
 
@@ -112,7 +178,7 @@ export default function DescriptionInput({
       return;
     }
 
-    linkifyTimerRef.current = window.setTimeout(runLinkify, 350);
+    linkifyTimerRef.current = window.setTimeout(runLinkify, 400);
   };
 
   return (
@@ -125,7 +191,14 @@ export default function DescriptionInput({
       onInput={() => syncFromEditor(false)}
       onBlur={() => {
         focusedRef.current = false;
-        syncFromEditor(true);
+        const editor = editorRef.current;
+        if (!editor) return;
+        const plain = trimTrailingNewlines(extractPlainText(editor.innerText));
+        lastRenderedRef.current = plain;
+        onChange(plain);
+        if (hasLinkifiableUrl(plain)) {
+          renderHtml(plain);
+        }
       }}
       onFocus={() => {
         focusedRef.current = true;
