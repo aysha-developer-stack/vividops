@@ -35,6 +35,7 @@ export const LoginResponse = zod.object({
     role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
     status: zod.enum(["active", "inactive"]),
     mustResetPassword: zod.boolean(),
+    cliqChannelAdmin: zod.boolean(),
     lastSignInAt: zod.coerce.date().nullish(),
     lastSeenAt: zod.coerce.date().nullish(),
     createdAt: zod.coerce.date(),
@@ -54,6 +55,7 @@ export const GetMeResponse = zod.object({
   role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
+  cliqChannelAdmin: zod.boolean(),
   lastSignInAt: zod.coerce.date().nullish(),
   lastSeenAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
@@ -204,6 +206,7 @@ export const UpdateProfileResponse = zod.object({
   role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
+  cliqChannelAdmin: zod.boolean(),
   lastSignInAt: zod.coerce.date().nullish(),
   lastSeenAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
@@ -230,6 +233,7 @@ export const ResetPasswordResponse = zod.object({
   role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
+  cliqChannelAdmin: zod.boolean(),
   lastSignInAt: zod.coerce.date().nullish(),
   lastSeenAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
@@ -260,6 +264,7 @@ export const ListUsersResponseItem = zod.object({
   role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
+  cliqChannelAdmin: zod.boolean(),
   lastSignInAt: zod.coerce.date().nullish(),
   lastSeenAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
@@ -277,6 +282,7 @@ export const CreateUserBody = zod.object({
   bio: zod.string().optional(),
   role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
   delivery: zod.enum(["email-invite", "temp-password"]),
+  cliqChannelAdmin: zod.boolean().optional(),
 });
 
 /**
@@ -296,6 +302,7 @@ export const GetUserResponse = zod.object({
   role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
+  cliqChannelAdmin: zod.boolean(),
   lastSignInAt: zod.coerce.date().nullish(),
   lastSeenAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
@@ -316,6 +323,7 @@ export const UpdateUserBody = zod.object({
   bio: zod.string().nullish(),
   role: zod.enum(["super-admin", "admin", "supervisor", "user"]).optional(),
   status: zod.enum(["active", "inactive"]).optional(),
+  cliqChannelAdmin: zod.boolean().optional(),
 });
 
 export const UpdateUserResponse = zod.object({
@@ -328,6 +336,7 @@ export const UpdateUserResponse = zod.object({
   role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
+  cliqChannelAdmin: zod.boolean(),
   lastSignInAt: zod.coerce.date().nullish(),
   lastSeenAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
@@ -625,6 +634,7 @@ export const ResendInviteResponse = zod.object({
     role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
     status: zod.enum(["active", "inactive"]),
     mustResetPassword: zod.boolean(),
+    cliqChannelAdmin: zod.boolean(),
     lastSignInAt: zod.coerce.date().nullish(),
     lastSeenAt: zod.coerce.date().nullish(),
     createdAt: zod.coerce.date(),

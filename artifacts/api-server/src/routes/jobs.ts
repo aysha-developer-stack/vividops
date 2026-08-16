@@ -22,6 +22,7 @@ import {
   cliqChannelNameLookupVariants,
   computeCliqChannelName,
 } from "../lib/cliq-channel-name";
+import { listOpsCliqChannelAdminEmails } from "../lib/cliq-channel-admins";
 import {
   ensureAllSchemas,
   ensureJobMessageSyncSchema,
@@ -726,6 +727,9 @@ async function listCliqChannelMemberEmails(job: JobRow): Promise<string[]> {
   const adminEmail = getCliqChannelAdminEmail();
   if (adminEmail) emails.add(adminEmail);
 
+  const opsAdminEmails = await listOpsCliqChannelAdminEmails();
+  for (const email of opsAdminEmails) emails.add(email);
+
   return Array.from(emails);
 }
 
@@ -804,41 +808,86 @@ function combineCliqProvisionErrors(...errors: Array<string | null | undefined>)
   return combined || null;
 }
 
-async function alignCliqChannelSuperAdmin(
+async function alignCliqChannelRoles(
   token: string,
   channelId: string,
   channelName: string,
 ): Promise<string | null> {
-  const adminEmail = getCliqChannelAdminEmail();
-  if (!adminEmail) return null;
+  const superAdminEmail = getCliqChannelAdminEmail();
+  const opsAdminEmails = await listOpsCliqChannelAdminEmails();
+  const opsAdminSet = new Set(opsAdminEmails);
 
-  const memberAddError = await addCliqChannelMembersByEmail(token, channelId, channelName, [adminEmail]);
+  const emailsToEnsure = new Set<string>();
+  if (superAdminEmail) emailsToEnsure.add(superAdminEmail);
+  for (const email of opsAdminEmails) emailsToEnsure.add(email);
+
+  if (emailsToEnsure.size === 0) return null;
+
+  const memberAddError = await addCliqChannelMembersByEmail(
+    token,
+    channelId,
+    channelName,
+    Array.from(emailsToEnsure),
+  );
   if (memberAddError) {
-    logger.warn({ channelId, channelName, adminEmail, memberAddError }, "[CLIQ] Could not ensure channel admin member");
+    logger.warn({ channelId, channelName, memberAddError }, "[CLIQ] Could not ensure channel admin members");
   }
 
   const members = await fetchCliqChannelMembers(token, channelId);
   if (members.length === 0) {
-    return memberAddError ?? "Could not resolve Cliq channel members for super-admin alignment";
+    return memberAddError ?? "Could not resolve Cliq channel members for admin alignment";
   }
 
-  const adminMember = members.find((member) => (member.email_id || "").trim().toLowerCase() === adminEmail);
-  if (!adminMember?.user_id) {
-    return memberAddError ?? `Cliq channel admin user not found: ${adminEmail}`;
-  }
+  const errors: string[] = [];
+  if (memberAddError) errors.push(memberAddError);
 
-  const promoteError = await setCliqChannelMemberRole(token, channelId, adminMember.user_id, "super_admin");
-  if (promoteError) return promoteError;
-
-  const demoteErrors: string[] = [];
+  const emailToMember = new Map<string, CliqChannelMember>();
   for (const member of members) {
-    if (member.user_id === adminMember.user_id) continue;
-    if ((member.user_role || "").toLowerCase() !== "super_admin") continue;
-    const demoteError = await setCliqChannelMemberRole(token, channelId, member.user_id, "member");
-    if (demoteError) demoteErrors.push(demoteError);
+    const email = (member.email_id || "").trim().toLowerCase();
+    if (email && member.user_id) emailToMember.set(email, member);
   }
 
-  return combineCliqProvisionErrors(memberAddError, demoteErrors.length > 0 ? demoteErrors.join(" | ") : null);
+  if (superAdminEmail) {
+    const superMember = emailToMember.get(superAdminEmail);
+    if (!superMember?.user_id) {
+      errors.push(`Cliq channel super admin user not found: ${superAdminEmail}`);
+    } else {
+      const promoteError = await setCliqChannelMemberRole(token, channelId, superMember.user_id, "super_admin");
+      if (promoteError) errors.push(promoteError);
+
+      for (const member of members) {
+        if (member.user_id === superMember.user_id) continue;
+        if ((member.user_role || "").toLowerCase() !== "super_admin") continue;
+        const email = (member.email_id || "").trim().toLowerCase();
+        const newRole = opsAdminSet.has(email) ? "admin" : "member";
+        const demoteError = await setCliqChannelMemberRole(token, channelId, member.user_id, newRole);
+        if (demoteError) errors.push(demoteError);
+      }
+    }
+  }
+
+  for (const email of opsAdminEmails) {
+    if (email === superAdminEmail) continue;
+    const member = emailToMember.get(email);
+    if (!member?.user_id) {
+      errors.push(`Cliq channel admin user not found: ${email}`);
+      continue;
+    }
+    const promoteError = await setCliqChannelMemberRole(token, channelId, member.user_id, "admin");
+    if (promoteError) errors.push(promoteError);
+  }
+
+  for (const member of members) {
+    const role = (member.user_role || "").toLowerCase();
+    if (role !== "admin") continue;
+    const email = (member.email_id || "").trim().toLowerCase();
+    if (email === superAdminEmail) continue;
+    if (opsAdminSet.has(email)) continue;
+    const demoteError = await setCliqChannelMemberRole(token, channelId, member.user_id, "member");
+    if (demoteError) errors.push(demoteError);
+  }
+
+  return errors.length > 0 ? errors.join(" | ") : null;
 }
 
 async function postCliqMessageToChannel(
@@ -1479,7 +1528,7 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
       participantEmails.length > 0
         ? await addCliqChannelMembersByEmail(token, ch.channelId, channelName, participantEmails)
         : null;
-    const adminAlignError = await alignCliqChannelSuperAdmin(token, ch.channelId, channelName);
+    const adminAlignError = await alignCliqChannelRoles(token, ch.channelId, channelName);
 
     await db.execute(sql`
       UPDATE job_cliq_channels
@@ -1589,7 +1638,7 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
       ? await addCliqChannelMembersByEmail(token, channelIdForMembers, createdChannelName, participantEmails)
       : null;
   const adminAlignError = channelIdForMembers
-    ? await alignCliqChannelSuperAdmin(token, channelIdForMembers, createdChannelName)
+    ? await alignCliqChannelRoles(token, channelIdForMembers, createdChannelName)
     : null;
 
   const channelUrl = createdChannelUrl;

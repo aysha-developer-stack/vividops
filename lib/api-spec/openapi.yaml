@@ -572,7 +572,7 @@ components:
 
     User:
       type: object
-      required: [id, email, name, role, status, mustResetPassword, createdAt]
+      required: [id, email, name, role, status, mustResetPassword, cliqChannelAdmin, createdAt]
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
@@ -583,6 +583,9 @@ components:
         role: { $ref: "#/components/schemas/UserRole" }
         status: { $ref: "#/components/schemas/UserStatus" }
         mustResetPassword: { type: boolean }
+        cliqChannelAdmin:
+          type: boolean
+          description: When true (Admin role only), user is added as Cliq channel admin on every job channel
         lastSignInAt:
           type: ["string", "null"]
           format: date-time
@@ -604,6 +607,9 @@ components:
         delivery:
           type: string
           enum: [email-invite, temp-password]
+        cliqChannelAdmin:
+          type: boolean
+          description: Admin role only — Cliq channel admin on every job channel
 
     UserUpdate:
       type: object
@@ -615,6 +621,9 @@ components:
         bio: { type: ["string", "null"] }
         role: { $ref: "#/components/schemas/UserRole" }
         status: { $ref: "#/components/schemas/UserStatus" }
+        cliqChannelAdmin:
+          type: boolean
+          description: Admin role only — Cliq channel admin on every job channel
 
     UserSettings:
       type: object

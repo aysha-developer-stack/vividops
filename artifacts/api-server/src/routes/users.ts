@@ -7,6 +7,21 @@ import { publicUser } from "../lib/serialize";
 import { requireRole } from "../middlewares/requireAuth";
 import { sendInviteEmail } from "../lib/email";
 
+function resolveCliqChannelAdminFlag(
+  actor: UserRow,
+  role: UserRow["role"],
+  requested: boolean | undefined,
+): { value?: boolean; error?: { status: number; message: string } } {
+  if (requested === undefined) return {};
+  if (actor.role !== "super-admin") {
+    return { error: { status: 403, message: "Only super-admins can change Cliq channel admin access" } };
+  }
+  if (requested && role !== "admin") {
+    return { error: { status: 400, message: "Cliq channel admin access requires Admin role" } };
+  }
+  return { value: requested && role === "admin" };
+}
+
 const router: IRouter = Router();
 
 const adminOnly = requireRole("super-admin", "admin");
@@ -116,7 +131,7 @@ router.post("/users", adminOnly, async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid user data" });
   }
-  const { name, email, role, delivery } = parsed.data;
+  const { name, email, role, delivery, cliqChannelAdmin } = parsed.data;
   const actor = req.session!.user;
 
   if (actor.role === "admin" && (role === "super-admin" || role === "admin")) {
@@ -135,6 +150,11 @@ router.post("/users", adminOnly, async (req, res) => {
     return res.status(409).json({ error: "A user with that email already exists" });
   }
 
+  const cliqFlag = resolveCliqChannelAdminFlag(actor, role, cliqChannelAdmin);
+  if (cliqFlag.error) {
+    return res.status(cliqFlag.error.status).json({ error: cliqFlag.error.message });
+  }
+
   const tempPassword = generateTempPassword();
   const passwordHash = await hashPassword(tempPassword);
   const [created] = await db
@@ -143,6 +163,7 @@ router.post("/users", adminOnly, async (req, res) => {
       name,
       email: normalizedEmail,
       role,
+      cliqChannelAdmin: cliqFlag.value ?? false,
       passwordHash,
       mustResetPassword: true,
     })
@@ -199,6 +220,12 @@ router.patch("/users/:id", adminOnly, async (req, res) => {
     return res.status(403).json({ error: "Admins can only assign supervisor or user roles" });
   }
 
+  const effectiveRole = parsed.data.role ?? target.role;
+  const cliqFlag = resolveCliqChannelAdminFlag(actor, effectiveRole, parsed.data.cliqChannelAdmin);
+  if (cliqFlag.error) {
+    return res.status(cliqFlag.error.status).json({ error: cliqFlag.error.message });
+  }
+
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (parsed.data.name !== undefined) patch.name = parsed.data.name;
   if (parsed.data.email !== undefined) patch.email = parsed.data.email.toLowerCase();
@@ -206,6 +233,11 @@ router.patch("/users/:id", adminOnly, async (req, res) => {
   if (parsed.data.bio !== undefined) patch.bio = parsed.data.bio;
   if (parsed.data.role !== undefined) patch.role = parsed.data.role;
   if (parsed.data.status !== undefined) patch.status = parsed.data.status;
+  if (parsed.data.role !== undefined && parsed.data.role !== "admin") {
+    patch.cliqChannelAdmin = false;
+  } else if (cliqFlag.value !== undefined) {
+    patch.cliqChannelAdmin = cliqFlag.value;
+  }
 
   const [updated] = await db
     .update(users)

@@ -42,6 +42,7 @@ export interface User {
   role: UserRole;
   status: UserStatus;
   mustResetPassword: boolean;
+  cliqChannelAdmin: boolean;
   /** @nullable */
   lastSignInAt?: string | null;
   /** @nullable */
@@ -65,6 +66,8 @@ export interface UserInput {
   bio?: string;
   role: UserRole;
   delivery: UserInputDelivery;
+  /** Admin role only — Cliq channel admin on every job channel */
+  cliqChannelAdmin?: boolean;
 }
 
 export interface UserUpdate {
@@ -79,6 +82,8 @@ export interface UserUpdate {
   bio?: string | null;
   role?: UserRole;
   status?: UserStatus;
+  /** Admin role only — Cliq channel admin on every job channel */
+  cliqChannelAdmin?: boolean;
 }
 
 export interface UserSettings {

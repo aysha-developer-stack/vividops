@@ -86,6 +86,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
     email: "",
     role: "User" as UiRole,
     delivery: "email-invite" as "email-invite" | "temp-password",
+    cliqChannelAdmin: false,
   });
   const [credentialResult, setCredentialResult] = useState<{
     name: string; email: string; role: UiRole;
@@ -177,7 +178,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
 
   const startCreate = () => {
     setEditingId(null);
-    setForm({ name: "", email: "", role: "User", delivery: "email-invite" });
+    setForm({ name: "", email: "", role: "User", delivery: "email-invite", cliqChannelAdmin: false });
     setFormError(null);
     setModalOpen(true);
   };
@@ -188,6 +189,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
       email: u.email,
       role: ROLE_API_TO_UI[u.role],
       delivery: "email-invite",
+      cliqChannelAdmin: u.cliqChannelAdmin ?? false,
     });
     setFormError(null);
     setModalOpen(true);
@@ -200,6 +202,8 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
     }
     setFormError(null);
     try {
+      const cliqPayload =
+        isSuperAdmin && form.role === "Admin" ? { cliqChannelAdmin: form.cliqChannelAdmin } : {};
       if (editingId !== null) {
         await updateMutation.mutateAsync({
           id: editingId,
@@ -207,6 +211,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
             name: form.name,
             email: form.email,
             role: ROLE_UI_TO_API[form.role],
+            ...cliqPayload,
           },
         });
         await invalidate();
@@ -219,6 +224,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
             email: form.email,
             role: ROLE_UI_TO_API[form.role],
             delivery: form.delivery,
+            ...cliqPayload,
           },
         });
         await invalidate();
@@ -333,10 +339,17 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
-                        <Icon size={11} />
-                        {ui}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
+                          <Icon size={11} />
+                          {ui}
+                        </span>
+                        {u.cliqChannelAdmin && ui === "Admin" && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-[10px] font-semibold text-sky-700">
+                            Cliq Admin
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
@@ -439,7 +452,13 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                           key={r}
                           whileHover={{ y: -2 }}
                           whileTap={{ scale: 0.96 }}
-                          onClick={() => setForm({ ...form, role: r })}
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              role: r,
+                              cliqChannelAdmin: r === "Admin" ? form.cliqChannelAdmin : false,
+                            })
+                          }
                           className={`p-3 rounded-xl border-2 flex flex-col items-center gap-1.5 transition-colors ${selected ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300"}`}
                         >
                           <Icon size={18} className={selected ? "text-primary" : "text-gray-400"} />
@@ -449,6 +468,23 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                     })}
                   </div>
                 </div>
+
+                {isSuperAdmin && form.role === "Admin" && (
+                  <label className="flex items-start gap-3 p-4 rounded-xl border-2 border-gray-200 bg-gray-50 cursor-pointer hover:border-primary/40 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={form.cliqChannelAdmin}
+                      onChange={(e) => setForm({ ...form, cliqChannelAdmin: e.target.checked })}
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold text-gray-900">Cliq channel admin</span>
+                      <span className="block text-xs text-gray-500 mt-0.5">
+                        Adds this admin to every job Cliq channel with Cliq Admin permissions. Use the same email as their Zoho Cliq account.
+                      </span>
+                    </span>
+                  </label>
+                )}
 
                 {editingId === null && (
                   <div>

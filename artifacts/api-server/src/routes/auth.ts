@@ -28,7 +28,8 @@ async function ensureUserColumns() {
       ADD COLUMN IF NOT EXISTS phone text,
       ADD COLUMN IF NOT EXISTS bio text,
       ADD COLUMN IF NOT EXISTS avatar_url text,
-      ADD COLUMN IF NOT EXISTS last_seen_at timestamptz;
+      ADD COLUMN IF NOT EXISTS last_seen_at timestamptz,
+      ADD COLUMN IF NOT EXISTS cliq_channel_admin boolean NOT NULL DEFAULT false;
   `);
 }
 
