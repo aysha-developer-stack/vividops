@@ -32,6 +32,10 @@ import {
 } from "@workspace/api-client-react";
 import { statusToUi, priorityToUi, formatShortDate } from "@/lib/jobMappers";
 import { buildTimeLogCycleBreakdown, reworkCycleKey, reworkCycleLabel } from "@/lib/timeLogBreakdown";
+import {
+  buildCliqChannelDisplayName,
+  buildFallbackCliqChannelName,
+} from "@/lib/cliqChannelName";
 import { parseJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
 import { postTimerNotification } from "@/lib/timerNotifications";
 import {
@@ -92,22 +96,6 @@ interface ChecklistItem {
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
-function slugifyCliqChannelPart(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
-}
-
-function buildFallbackCliqChannelName(job: ApiJob | undefined, jobId: string): string {
-  const jobNumberSource = (job?.number || `job-${jobId}`).replace(/^job[\s-]*/i, "");
-  const numberPart = `job-${slugifyCliqChannelPart(jobNumberSource) || jobId}`;
-  const titlePart = slugifyCliqChannelPart(job?.title || "job");
-  const addressPart = slugifyCliqChannelPart(job?.address || "");
-  return [numberPart, titlePart, addressPart].filter(Boolean).join("-").slice(0, 80);
-}
-
-function buildCliqChannelDisplayName(job: ApiJob | undefined, channelName: string): string {
-  return channelName;
 }
 
 interface FileItem { id: number; name: string; size: string; type: "doc" | "image" | "pdf"; uploadedBy: string; uploadedAt: string; tag: "input" | "output"; version?: number; group?: string }
@@ -2820,7 +2808,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <span className="opacity-70">#</span>{channelDisplayName}
                   </h3>
                   <p className="text-xs text-white/70 mt-1">
-                    Dedicated job channel · {members.length} members · {channelName}
+                    Dedicated job channel · {members.length} members · {channelDisplayName}
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 shrink-0">

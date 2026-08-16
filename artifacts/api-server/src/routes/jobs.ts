@@ -19,6 +19,10 @@ import { requireAuth, requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { getZohoCliqAccessToken } from "../lib/zoho";
 import {
+  cliqChannelNameLookupVariants,
+  computeCliqChannelName,
+} from "../lib/cliq-channel-name";
+import {
   ensureAllSchemas,
   ensureJobMessageSyncSchema,
   ensureJobWriteSchema,
@@ -233,22 +237,6 @@ function canManageJob(actor: UserRow, job: JobRow): boolean {
   return false;
 }
 
-function slugifyChannel(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
-}
-
-function computeCliqChannelName(job: JobRow): string {
-  const numberSeed = job.jobNumber?.trim() || String(job.serial);
-  const numberPart = `job-${slugifyChannel(numberSeed) || job.serial}`;
-  const titlePart = slugifyChannel(job.title || "job");
-  const addressPart = slugifyChannel(job.address || "");
-  return [numberPart, titlePart, addressPart].filter(Boolean).join("-").slice(0, 80);
-}
-
 function computeCliqChannelDisplayName(job: JobRow): string {
   return computeCliqChannelName(job);
 }
@@ -433,9 +421,19 @@ function reportCliqDebug(hypothesisId: string, location: string, msg: string, da
 type CliqChannelLookup = {
   channelId: string | null;
   channelName: string | null;
+  displayName: string | null;
   channelUrl: string | null;
   chatId: string | null;
 };
+
+function normalizeCliqChannelDisplayName(name: string): string {
+  return name.replace(/^#+/, "").replace(/\s+/g, " ").trim();
+}
+
+function cliqChannelDisplayNamesMatch(current: string | null | undefined, expected: string): boolean {
+  if (!current) return false;
+  return normalizeCliqChannelDisplayName(current).toLowerCase() === normalizeCliqChannelDisplayName(expected).toLowerCase();
+}
 
 function parseCliqChannelLookup(raw: any): CliqChannelLookup | null {
   const item =
@@ -446,11 +444,14 @@ function parseCliqChannelLookup(raw: any): CliqChannelLookup | null {
     pickString(item.channel_id) ??
     pickString(item.channelId) ??
     pickString(item.id);
+  const displayName =
+    pickString(item.name) ??
+    pickString(item.channel_name);
   const channelName =
     pickString(item.unique_name) ??
     pickString(item.channel_unique_name) ??
     pickString(item.uniqueName) ??
-    pickString(item.name);
+    displayName;
   const chatId =
     pickString(item.chat_id) ??
     pickString(item.chatId);
@@ -463,7 +464,7 @@ function parseCliqChannelLookup(raw: any): CliqChannelLookup | null {
     pickString(item.webUrl) ??
     computeCliqChannelUrl(channelName ?? "");
   if (!channelId && !channelName && !channelUrl && !chatId) return null;
-  return { channelId, channelName, channelUrl, chatId };
+  return { channelId, channelName, displayName, channelUrl, chatId };
 }
 
 type JobCliqChannelRecord = {
@@ -504,25 +505,13 @@ function getCliqBotUniqueName(): string | null {
 }
 
 function uniqueChannelNameCandidates(channelName: string, job: JobRow): string[] {
-  const names = new Set<string>();
-  const add = (value: string | null | undefined) => {
-    const trimmed = pickString(value);
-    if (trimmed) names.add(trimmed);
-  };
-  const numberSeed = job.jobNumber?.trim() || String(job.serial);
-  const numberPart = `job-${slugifyChannel(numberSeed) || job.serial}`;
-  const titlePart = slugifyChannel(job.title || "job");
-  const addressPart = slugifyChannel(job.address || "");
-  add(channelName);
-  add(computeCliqChannelName(job));
-  add([numberPart, titlePart, addressPart].filter(Boolean).join("-").slice(0, 80)); // previous format
-  add([numberPart, titlePart, addressPart].filter(Boolean).join("").slice(0, 80)); // Cliq-stripped previous format
-  add([numberPart, titlePart].filter(Boolean).join("").slice(0, 60)); // Cliq-stripped current format
-  for (const name of [...names]) {
-    if (name.length > 1) add(name.slice(0, -1));
-    add(`${name}d`);
-  }
-  return Array.from(names);
+  return cliqChannelNameLookupVariants(channelName, {
+    jobNumber: job.jobNumber,
+    serial: job.serial,
+    title: job.title,
+    address: job.address,
+    number: job.number,
+  });
 }
 
 async function refreshJobCliqChannelForPush(job: JobRow, current: JobCliqChannelRecord): Promise<JobCliqChannelRecord> {
@@ -959,6 +948,34 @@ async function resolveCliqChannelById(token: string, channelId: string): Promise
   if (!res.ok) return null;
   const json = (await res.json().catch(() => null)) as any;
   return parseCliqChannelLookup(json);
+}
+
+async function syncCliqChannelDisplayName(
+  token: string,
+  channelId: string,
+  expectedDisplayName: string,
+): Promise<string | null> {
+  const resolved = await resolveCliqChannelById(token, channelId);
+  const currentDisplayName = resolved?.displayName ?? resolved?.channelName;
+  if (cliqChannelDisplayNamesMatch(currentDisplayName, expectedDisplayName)) {
+    return null;
+  }
+
+  const name = normalizeCliqChannelDisplayName(expectedDisplayName);
+  const res = await fetch(`${cliqApiRoot()}/channels/${encodeURIComponent(channelId)}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Zoho-oauthtoken ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    return `Cliq update channel name failed (${res.status}): ${body}`;
+  }
+  logger.info({ channelId, name }, "[CLIQ] Updated channel display name");
+  return null;
 }
 
 async function postCliqMessageViaWebhook(text: string): Promise<void> {
@@ -1439,6 +1456,7 @@ async function markJobCliqStatus(jobId: string, status: string, lastError: strin
 async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
   const ch = await getOrCreateJobCliqChannel(job);
   const channelName = ch.channelName;
+  const expectedDisplayName = computeCliqChannelName(job);
   let token = "";
   try {
     token = await getZohoCliqAccessToken();
@@ -1456,6 +1474,7 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
   await markJobCliqStatus(job.id, "provisioning", null);
 
   if (ch.status === "active" && !ch.lastError && ch.channelId) {
+    const renameError = await syncCliqChannelDisplayName(token, ch.channelId, expectedDisplayName);
     const memberAddError =
       participantEmails.length > 0
         ? await addCliqChannelMembersByEmail(token, ch.channelId, channelName, participantEmails)
@@ -1465,7 +1484,7 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
     await db.execute(sql`
       UPDATE job_cliq_channels
       SET status = 'active',
-          last_error = ${combineCliqProvisionErrors(memberAddError, adminAlignError)},
+          last_error = ${combineCliqProvisionErrors(renameError, memberAddError, adminAlignError)},
           updated_at = now()
       WHERE job_id = ${job.id}
     `);
@@ -1493,8 +1512,8 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
 
     const createBody: Record<string, unknown> = {
       level,
-      name: channelName,
-      description: `Job channel for ${computeCliqChannelDisplayName(job)}`,
+      name: expectedDisplayName,
+      description: `Job channel for ${expectedDisplayName}`,
     };
     if (level === "private" && participantEmails.length > 0) {
       createBody.email_ids = participantEmails;
@@ -1546,6 +1565,12 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
     createdChannelUrl = discoveredUrl ?? computeCliqChannelUrl(createdChannelName);
   }
 
+  const channelIdForRename = discoveredChannelId ?? ch.channelId;
+  const renameError =
+    channelIdForRename
+      ? await syncCliqChannelDisplayName(token, channelIdForRename, expectedDisplayName)
+      : null;
+
   await db.execute(sql`
     UPDATE job_cliq_channels
     SET channel_name = ${createdChannelName},
@@ -1573,7 +1598,7 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
     SET channel_url = ${channelUrl},
         chat_id = ${discoveredChatId},
         status = 'active',
-        last_error = ${combineCliqProvisionErrors(memberAddError, adminAlignError)},
+        last_error = ${combineCliqProvisionErrors(renameError, memberAddError, adminAlignError)},
         updated_at = now()
     WHERE job_id = ${job.id}
   `);
