@@ -11,8 +11,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   getNotificationToastVariant,
-  isInAppToastType,
-  pickTopToastNotification,
+  pickLatestNotification,
   playNotificationTone,
   sortNotificationsByPriority,
 } from "@/lib/notifications";
@@ -36,6 +35,9 @@ type AlertNotification = {
   unread: boolean;
   createdAt: string;
 };
+
+const LIVE_TOAST_STAGGER_MS = 400;
+const LIVE_TOAST_BATCH_CAP = 8;
 
 /** Session-level notification alerts (toasts / desktop), independent of page navigation. */
 export function useNotificationAlerts(user: User | null | undefined) {
@@ -99,21 +101,11 @@ export function useNotificationAlerts(user: User | null | undefined) {
     setLocation(getNotificationPath(role, { type: "updated" }));
   }, [role, setLocation]);
 
-  const showUnreadSummaryToast = useCallback((unreadCount: number) => {
-    if (!inAppEnabledRef.current || unreadCount <= 0) return;
-    toast({
-      title: `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}`,
-      description: "Open the bell icon to view your inbox.",
-      variant: "notification",
-      duration: 5000,
-    });
-  }, [toast]);
-
-  const showLiveToast = useCallback((item: AlertNotification) => {
-    if (!inAppEnabledRef.current || !isInAppToastType(item.type)) return;
+  const showNotificationToast = useCallback((item: AlertNotification, extraDesc?: string) => {
+    if (!inAppEnabledRef.current) return;
     toast({
       title: item.title,
-      description: item.desc,
+      description: extraDesc ? `${item.desc}${extraDesc}` : item.desc,
       variant: getNotificationToastVariant(item.type),
       duration: 5000,
     });
@@ -130,52 +122,52 @@ export function useNotificationAlerts(user: User | null | undefined) {
     );
   }, [openNotificationTarget]);
 
-  const showDesktopUnreadSummary = useCallback((unreadCount: number) => {
-    if (!pushEnabledRef.current || unreadCount <= 0) return;
-    if (typeof Notification === "undefined") return;
-    if (Notification.permission !== "granted") return;
-
-    showDesktopNotification(
-      {
-        id: `unread-summary-${Date.now()}`,
-        title: "Vivid OPS",
-        body: `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"} — open the app to view all.`,
-      },
-      () => openNotificationTarget(null),
-    );
-  }, [openNotificationTarget]);
-
-  const deliverLiveAlert = useCallback((items: AlertNotification[]) => {
+  const deliverNotificationToasts = useCallback((
+    items: AlertNotification[],
+    opts?: { playSound?: boolean },
+  ) => {
     if (items.length === 0) return;
 
-    const top = pickTopToastNotification(items);
+    const ordered = [...items].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+    const batch = ordered.slice(-LIVE_TOAST_BATCH_CAP);
     const useInApp = shouldPreferInAppNotifications();
     const useDesktop = pushEnabledRef.current && shouldShowDesktopNotifications();
 
     if (useInApp) {
-      if (top) showLiveToast(top);
+      batch.forEach((item, index) => {
+        window.setTimeout(() => showNotificationToast(item), index * LIVE_TOAST_STAGGER_MS);
+      });
     } else if (useDesktop) {
-      if (top) showDesktopForNotification(top);
-      else showDesktopUnreadSummary(items.length);
+      batch.slice(-3).forEach((item) => showDesktopForNotification(item));
     }
 
-    if (soundEnabledRef.current && (useInApp || useDesktop) && top) {
+    if (opts?.playSound !== false && soundEnabledRef.current && (useInApp || useDesktop)) {
       void playNotificationTone();
     }
-  }, [showDesktopForNotification, showDesktopUnreadSummary, showLiveToast]);
+  }, [showDesktopForNotification, showNotificationToast]);
 
-  const deliverUnreadSummary = useCallback((unreadCount: number) => {
-    if (unreadCount <= 0) return;
+  const deliverLatestUnreadToast = useCallback((unread: AlertNotification[]) => {
+    if (unread.length === 0) return;
+
+    const latest = pickLatestNotification(unread);
+    if (!latest) return;
+
+    const extra =
+      unread.length > 1
+        ? ` (+${unread.length - 1} more in inbox)`
+        : undefined;
 
     const useInApp = shouldPreferInAppNotifications();
     const useDesktop = pushEnabledRef.current && shouldShowDesktopNotifications();
 
     if (useInApp) {
-      showUnreadSummaryToast(unreadCount);
+      showNotificationToast(latest, extra);
     } else if (useDesktop) {
-      showDesktopUnreadSummary(unreadCount);
+      showDesktopForNotification(latest);
     }
-  }, [showDesktopUnreadSummary, showUnreadSummaryToast]);
+  }, [showDesktopForNotification, showNotificationToast]);
 
   const notifications = useMemo(() => {
     return sortNotificationsByPriority(
@@ -222,15 +214,15 @@ export function useNotificationAlerts(user: User | null | undefined) {
       } catch {
       }
 
-      const unreadCount = notifications.filter((n) => n.unread).length;
+      const unread = notifications.filter((n) => n.unread);
       const summaryKey = `notification-summary-shown:${userId}`;
       let summaryAlreadyShown = false;
       try {
         summaryAlreadyShown = window.sessionStorage.getItem(summaryKey) === "1";
       } catch {
       }
-      if (unreadCount > 0 && !summaryAlreadyShown) {
-        deliverUnreadSummary(unreadCount);
+      if (unread.length > 0 && !summaryAlreadyShown) {
+        deliverLatestUnreadToast(unread);
         try {
           window.sessionStorage.setItem(summaryKey, "1");
         } catch {
@@ -256,6 +248,6 @@ export function useNotificationAlerts(user: User | null | undefined) {
     } catch {
     }
 
-    deliverLiveAlert(newNotifications);
-  }, [deliverLiveAlert, deliverUnreadSummary, notifications, userId]);
+    deliverNotificationToasts(newNotifications);
+  }, [deliverLatestUnreadToast, deliverNotificationToasts, notifications, userId]);
 }

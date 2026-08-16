@@ -48,28 +48,18 @@ export const sortNotificationsByPriority = <T extends { type: string; unread?: b
   });
 };
 
-/** Types important enough for a live in-app toast (everything else stays in the bell inbox). */
-export const IN_APP_TOAST_TYPES = new Set<string>([
-  "overdue",
-  "error",
-  "rework",
-  "timer",
-  "job_message",
-]);
-
-export function isInAppToastType(type: string): boolean {
-  return IN_APP_TOAST_TYPES.has(type);
-}
-
-export function pickTopToastNotification<T extends { type: string }>(items: T[]): T | null {
-  return items.find((item) => isInAppToastType(item.type)) ?? null;
-}
-
 /** Fixed toast styling for alerts — same on every role and theme. */
 export function getNotificationToastVariant(
   type?: string,
 ): "notification" | "notificationUrgent" {
   return type === "overdue" || type === "error" ? "notificationUrgent" : "notification";
+}
+
+export function pickLatestNotification<T extends { createdAt: string }>(items: T[]): T | null {
+  if (items.length === 0) return null;
+  return [...items].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  )[0];
 }
 
 export interface Notif {
