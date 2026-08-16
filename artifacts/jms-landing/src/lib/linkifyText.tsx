@@ -7,6 +7,15 @@ export function hasLinkifiableUrl(text: string): boolean {
   return URL_REGEX.test(text);
 }
 
+export function extractLinkifiableUrls(text: string): string[] {
+  URL_REGEX.lastIndex = 0;
+  const urls = new Set<string>();
+  for (const match of text.matchAll(URL_REGEX)) {
+    urls.add(splitUrl(match[0]).href);
+  }
+  return Array.from(urls);
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
