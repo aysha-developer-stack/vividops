@@ -48,6 +48,9 @@ export function trimTrailingNewlines(text: string): string {
   return text.replace(/\n+$/, "");
 }
 
+const LINK_ANCHOR_STYLE =
+  "color:#0284c7;text-decoration:underline;text-underline-offset:2px;word-break:break-all;cursor:pointer;";
+
 export function plainTextToHtml(text: string): string {
   if (!text) return "";
   return escapeHtml(text).replace(/\n/g, "<br>");
@@ -68,7 +71,7 @@ export function linkifyToHtml(text: string): string {
     const raw = match[0];
     const { href, display, trailing } = splitUrl(raw);
     parts.push(
-      `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="text-primary underline underline-offset-2 hover:text-primary/80 break-all">${escapeHtml(display)}</a>`,
+      `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="${LINK_ANCHOR_STYLE}">${escapeHtml(display)}</a>`,
     );
     if (trailing) parts.push(escapeHtml(trailing));
 
@@ -100,7 +103,12 @@ export function linkifyText(text: string): ReactNode[] {
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-primary underline underline-offset-2 hover:text-primary/80 break-all"
+        style={{
+          color: "#0284c7",
+          textDecoration: "underline",
+          textUnderlineOffset: "2px",
+          wordBreak: "break-all",
+        }}
       >
         {display}
       </a>,
