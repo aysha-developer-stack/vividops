@@ -34,10 +34,10 @@ const EXT_STYLES: Record<string, ExtStyle> = {
   mov: { bg: "bg-pink-600", border: "border-pink-700", text: "text-white", label: "MOV" },
 };
 
-const SIZE_CLASS: Record<IconSize, { box: string; text: string }> = {
-  sm: { box: "w-7 h-8", text: "text-[7px]" },
-  md: { box: "w-8 h-9", text: "text-[8px]" },
-  lg: { box: "w-9 h-10", text: "text-[9px]" },
+const SIZE_CLASS: Record<IconSize, { box: string; text: string; fold: string }> = {
+  sm: { box: "w-5 h-6", text: "text-[6px]", fold: "w-1.5 h-1.5" },
+  md: { box: "w-6 h-7", text: "text-[7px]", fold: "w-1.5 h-1.5" },
+  lg: { box: "w-7 h-8", text: "text-[8px]", fold: "w-2 h-2" },
 };
 
 export function fileExtensionFromName(fileName: string): string {
@@ -76,7 +76,7 @@ export default function FileExtensionIcon({
   return (
     <div
       className={cn(
-        "relative shrink-0 rounded-md border shadow-sm flex items-end justify-center overflow-hidden",
+        "relative shrink-0 rounded border shadow-sm flex items-end justify-center overflow-hidden",
         sizeClass.box,
         style.bg,
         style.border,
@@ -87,13 +87,14 @@ export default function FileExtensionIcon({
     >
       <span
         className={cn(
-          "absolute top-0 right-0 w-2 h-2 bg-white/25",
+          "absolute top-0 right-0 bg-white/25",
           "border-l border-b border-white/30 rounded-bl-sm",
+          sizeClass.fold,
         )}
       />
       <span
         className={cn(
-          "font-extrabold leading-none tracking-tight pb-1 px-0.5",
+          "font-extrabold leading-none tracking-tight pb-0.5 px-0.5",
           sizeClass.text,
           style.text,
         )}

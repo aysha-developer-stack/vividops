@@ -247,7 +247,7 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
                             <tr key={f.id} className="border-t border-gray-50 hover:bg-gray-50/40">
                               <td className="px-6 py-4">
                                 <div className="flex items-start gap-3 min-w-0 pl-12">
-                                  <FileExtensionIcon fileName={f.name} size="md" />
+                                  <FileExtensionIcon fileName={f.name} size="sm" />
                                   <div className="min-w-0">
                                     <div className="text-sm font-semibold text-gray-900 break-words whitespace-normal leading-snug">{f.name}</div>
                                     <div className="text-[11px] text-gray-500 mt-0.5 truncate">{f.uploadedAt}</div>

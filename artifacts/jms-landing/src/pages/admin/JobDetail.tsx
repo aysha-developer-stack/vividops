@@ -2647,7 +2647,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                           <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-6 py-4 align-top">
                               <div className="flex items-start gap-3 min-w-0">
-                                <FileExtensionIcon fileName={a.fileName} size="md" />
+                                <FileExtensionIcon fileName={a.fileName} size="sm" />
                                 <span className="text-sm font-medium text-gray-900 break-words whitespace-normal leading-snug min-w-0">{a.fileName}</span>
                               </div>
                             </td>
@@ -2703,7 +2703,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                             <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-6 py-4 align-top">
                               <div className="flex items-start gap-3 min-w-0">
-                                <FileExtensionIcon fileName={a.fileName} size="md" />
+                                <FileExtensionIcon fileName={a.fileName} size="sm" />
                                 <span className="text-sm font-medium text-gray-900 break-words whitespace-normal leading-snug min-w-0">{a.fileName}</span>
                               </div>
                             </td>
