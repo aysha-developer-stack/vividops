@@ -35,9 +35,9 @@ const EXT_STYLES: Record<string, ExtStyle> = {
 };
 
 const SIZE_CLASS: Record<IconSize, { box: string; text: string; fold: string | null; layout: string }> = {
-  sm: { box: "w-3.5 h-4", text: "text-[5px]", fold: null, layout: "items-center justify-center" },
-  md: { box: "w-4 h-5", text: "text-[6px]", fold: "w-1 h-1", layout: "items-end justify-center" },
-  lg: { box: "w-5 h-6", text: "text-[7px]", fold: "w-1.5 h-1.5", layout: "items-end justify-center" },
+  sm: { box: "w-4 h-5", text: "text-[6px]", fold: null, layout: "items-center justify-center" },
+  md: { box: "w-5 h-6", text: "text-[7px]", fold: "w-1 h-1", layout: "items-end justify-center" },
+  lg: { box: "w-6 h-7", text: "text-[8px]", fold: "w-1.5 h-1.5", layout: "items-end justify-center" },
 };
 
 export function fileExtensionFromName(fileName: string): string {
