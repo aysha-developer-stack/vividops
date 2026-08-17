@@ -34,10 +34,10 @@ const EXT_STYLES: Record<string, ExtStyle> = {
   mov: { bg: "bg-pink-600", border: "border-pink-700", text: "text-white", label: "MOV" },
 };
 
-const SIZE_CLASS: Record<IconSize, { box: string; text: string; fold: string }> = {
-  sm: { box: "w-5 h-6", text: "text-[6px]", fold: "w-1.5 h-1.5" },
-  md: { box: "w-6 h-7", text: "text-[7px]", fold: "w-1.5 h-1.5" },
-  lg: { box: "w-7 h-8", text: "text-[8px]", fold: "w-2 h-2" },
+const SIZE_CLASS: Record<IconSize, { box: string; text: string; fold: string | null; layout: string }> = {
+  sm: { box: "w-3.5 h-4", text: "text-[5px]", fold: null, layout: "items-center justify-center" },
+  md: { box: "w-4 h-5", text: "text-[6px]", fold: "w-1 h-1", layout: "items-end justify-center" },
+  lg: { box: "w-5 h-6", text: "text-[7px]", fold: "w-1.5 h-1.5", layout: "items-end justify-center" },
 };
 
 export function fileExtensionFromName(fileName: string): string {
@@ -76,7 +76,9 @@ export default function FileExtensionIcon({
   return (
     <div
       className={cn(
-        "relative shrink-0 rounded border shadow-sm flex items-end justify-center overflow-hidden",
+        "relative shrink-0 rounded-[3px] border flex overflow-hidden",
+        size === "sm" ? "shadow-none" : "shadow-sm",
+        sizeClass.layout,
         sizeClass.box,
         style.bg,
         style.border,
@@ -85,16 +87,19 @@ export default function FileExtensionIcon({
       title={fileExtensionFromName(fileName).toUpperCase() || "FILE"}
       aria-hidden
     >
+      {sizeClass.fold && (
+        <span
+          className={cn(
+            "absolute top-0 right-0 bg-white/25",
+            "border-l border-b border-white/30 rounded-bl-sm",
+            sizeClass.fold,
+          )}
+        />
+      )}
       <span
         className={cn(
-          "absolute top-0 right-0 bg-white/25",
-          "border-l border-b border-white/30 rounded-bl-sm",
-          sizeClass.fold,
-        )}
-      />
-      <span
-        className={cn(
-          "font-extrabold leading-none tracking-tight pb-0.5 px-0.5",
+          "font-extrabold leading-none tracking-tighter",
+          size === "sm" ? "px-0" : "pb-0.5 px-0.5",
           sizeClass.text,
           style.text,
         )}

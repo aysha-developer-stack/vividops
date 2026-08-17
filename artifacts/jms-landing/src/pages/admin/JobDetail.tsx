@@ -2645,16 +2645,16 @@ export default function JobDetail({ role = "user", id }: Props) {
                           const when = a.createdAt ? new Date(a.createdAt).toLocaleString() : "—";
                           return (
                           <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-6 py-4 align-top">
-                              <div className="flex items-start gap-3 min-w-0">
-                                <FileExtensionIcon fileName={a.fileName} size="sm" />
+                            <td className="px-6 py-2.5 align-top">
+                              <div className="flex items-start gap-2 min-w-0">
+                                <FileExtensionIcon fileName={a.fileName} size="sm" className="mt-0.5" />
                                 <span className="text-sm font-medium text-gray-900 break-words whitespace-normal leading-snug min-w-0">{a.fileName}</span>
                               </div>
                             </td>
-                            <td className="px-6 py-4 text-xs text-gray-600">{who}</td>
-                            <td className="px-6 py-4 text-xs text-gray-600">{when}</td>
-                            <td className="px-6 py-4 text-xs uppercase font-bold text-gray-400">{fileTypeLabel(a.fileName)}</td>
-                            <td className="px-6 py-4 text-right">
+                            <td className="px-6 py-2.5 text-xs text-gray-600">{who}</td>
+                            <td className="px-6 py-2.5 text-xs text-gray-600">{when}</td>
+                            <td className="px-6 py-2.5 text-xs uppercase font-bold text-gray-400">{fileTypeLabel(a.fileName)}</td>
+                            <td className="px-6 py-2.5 text-right">
                               <div className="flex items-center justify-end gap-2">
                                 <button onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
                                 <button onClick={() => downloadAttachment(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
@@ -2701,18 +2701,18 @@ export default function JobDetail({ role = "user", id }: Props) {
                             const when = a.createdAt ? new Date(a.createdAt).toLocaleString() : "—";
                             return (
                             <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-6 py-4 align-top">
-                              <div className="flex items-start gap-3 min-w-0">
-                                <FileExtensionIcon fileName={a.fileName} size="sm" />
+                            <td className="px-6 py-2.5 align-top">
+                              <div className="flex items-start gap-2 min-w-0">
+                                <FileExtensionIcon fileName={a.fileName} size="sm" className="mt-0.5" />
                                 <span className="text-sm font-medium text-gray-900 break-words whitespace-normal leading-snug min-w-0">{a.fileName}</span>
                               </div>
                             </td>
-                            <td className="px-6 py-4 text-xs text-gray-600">{who}</td>
-                            <td className="px-6 py-4 text-xs text-gray-600">{when}</td>
-                            <td className="px-6 py-4">
+                            <td className="px-6 py-2.5 text-xs text-gray-600">{who}</td>
+                            <td className="px-6 py-2.5 text-xs text-gray-600">{when}</td>
+                            <td className="px-6 py-2.5">
                               <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100">Submitted</span>
                             </td>
-                            <td className="px-6 py-4 text-right">
+                            <td className="px-6 py-2.5 text-right">
                               <div className="flex items-center justify-end gap-2">
                                 <button onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
                                 <button onClick={() => downloadAttachment(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
