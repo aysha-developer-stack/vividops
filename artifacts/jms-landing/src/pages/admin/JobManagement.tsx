@@ -759,7 +759,6 @@ export default function JobManagement(
       try {
         const specs = buildJobSaveUploadSpecs(jobFiles, checklistFiles);
         await uploadJobAttachmentsBatch(jobId, specs, {
-          concurrency: 4,
           suppressNotifications: true,
         });
       } finally {

@@ -4,7 +4,8 @@ export type JobAttachmentUploadSpec = {
   checklistItemId?: number;
 };
 
-const DEFAULT_CONCURRENCY = 4;
+/** One upload at a time — parallel uploads overload a single Railway instance and hit ~30s timeouts. */
+const DEFAULT_CONCURRENCY = 1;
 
 async function runWithConcurrency<T>(
   items: T[],

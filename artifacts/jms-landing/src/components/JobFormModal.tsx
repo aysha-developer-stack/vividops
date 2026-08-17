@@ -462,7 +462,6 @@ export default function JobFormModal({
       try {
         const specs = buildJobSaveUploadSpecs(jobFiles, checklistFiles);
         await uploadJobAttachmentsBatch(savedId, specs, {
-          concurrency: 4,
           suppressNotifications: true,
         });
       } finally {
