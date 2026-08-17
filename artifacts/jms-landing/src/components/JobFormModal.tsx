@@ -79,6 +79,7 @@ export default function JobFormModal({
   const [templateName, setTemplateName] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [uploadFileProgress, setUploadFileProgress] = useState<{ completed: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [jobNumberLoading, setJobNumberLoading] = useState(false);
   const assigneeMenuRef = useRef<HTMLDivElement>(null);
@@ -111,6 +112,7 @@ export default function JobFormModal({
     setChecklistItemFiles({});
     setCheckPendingFile(null);
     setUploadingFiles(false);
+    setUploadFileProgress(null);
     setError(null);
     setAssigneeMenuOpen(false);
     setSelectedTemplateId("");
@@ -461,14 +463,19 @@ export default function JobFormModal({
     };
 
     const uploadAllFiles = async (savedId: string, checklistFiles: Record<number, File[]>) => {
+      const specs = buildJobSaveUploadSpecs(jobFiles, checklistFiles);
+      if (specs.length === 0) return;
+
       setUploadingFiles(true);
+      setUploadFileProgress({ completed: 0, total: specs.length });
       try {
-        const specs = buildJobSaveUploadSpecs(jobFiles, checklistFiles);
         await uploadJobAttachmentsBatch(savedId, specs, {
           suppressNotifications: true,
+          onProgress: (completed, total) => setUploadFileProgress({ completed, total }),
         });
       } finally {
         setUploadingFiles(false);
+        setUploadFileProgress(null);
       }
     };
 
@@ -494,6 +501,14 @@ export default function JobFormModal({
   };
 
   const isSaving = createMutation.isPending || updateMutation.isPending || uploadingFiles;
+  const saveButtonLabel =
+    uploadingFiles && uploadFileProgress && uploadFileProgress.total > 0
+      ? `Uploading ${uploadFileProgress.completed}/${uploadFileProgress.total}…`
+      : isSaving
+        ? "Saving…"
+        : isEdit
+          ? "Save changes"
+          : "Create Job";
   const subtitle = isEdit
     ? `${jobNumberLabel ?? (form.jobNumber ? `JOB-${form.jobNumber}` : "Job")} · Update job details`
     : "Assign a new job";
@@ -938,7 +953,7 @@ export default function JobFormModal({
               onClick={() => void submit()}
               className="px-5 py-2 bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold shadow-md shadow-primary/30 transition-colors"
             >
-              {isSaving ? "Saving…" : isEdit ? "Save changes" : "Create Job"}
+              {saveButtonLabel}
             </motion.button>
           </div>
         </motion.div>

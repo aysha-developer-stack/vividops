@@ -321,6 +321,7 @@ export default function JobManagement(
   const [templateName, setTemplateName] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [uploadFileProgress, setUploadFileProgress] = useState<{ completed: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [jobNumberLoading, setJobNumberLoading] = useState(false);
   const assigneeMenuRef = useRef<HTMLDivElement>(null);
@@ -374,6 +375,7 @@ export default function JobManagement(
     setExistingAttachments([]);
     setCheckPendingFile(null);
     setUploadingFiles(false);
+    setUploadFileProgress(null);
     setError(null);
     setAssigneeMenuOpen(false);
     setOpenId(null);
@@ -751,14 +753,19 @@ export default function JobManagement(
     };
 
     const uploadAllFiles = async (jobId: string, checklistFiles: Record<number, File[]>) => {
+      const specs = buildJobSaveUploadSpecs(jobFiles, checklistFiles);
+      if (specs.length === 0) return;
+
       setUploadingFiles(true);
+      setUploadFileProgress({ completed: 0, total: specs.length });
       try {
-        const specs = buildJobSaveUploadSpecs(jobFiles, checklistFiles);
         await uploadJobAttachmentsBatch(jobId, specs, {
           suppressNotifications: true,
+          onProgress: (completed, total) => setUploadFileProgress({ completed, total }),
         });
       } finally {
         setUploadingFiles(false);
+        setUploadFileProgress(null);
       }
     };
 
@@ -782,6 +789,7 @@ export default function JobManagement(
       setChecklistItemFiles({});
       setCheckPendingFile(null);
       setUploadingFiles(false);
+      setUploadFileProgress(null);
       setEditingId(null);
       setModalOpen(false);
     } catch (err) {
@@ -800,6 +808,7 @@ export default function JobManagement(
     setMemberIds([]);
     setEditLoading(false);
     setUploadingFiles(false);
+    setUploadFileProgress(null);
     setJobNumberLoading(false);
     setError(null);
   };
@@ -812,6 +821,7 @@ export default function JobManagement(
     setExistingAttachments([]);
     setMemberIds([]);
     setUploadingFiles(false);
+    setUploadFileProgress(null);
     setError(null);
     setAssigneeMenuOpen(false);
     setModalOpen(true);
@@ -857,6 +867,14 @@ export default function JobManagement(
   };
 
   const isSaving = createMutation.isPending || updateMutation.isPending || uploadingFiles;
+  const saveButtonLabel =
+    uploadingFiles && uploadFileProgress && uploadFileProgress.total > 0
+      ? `Uploading ${uploadFileProgress.completed}/${uploadFileProgress.total}…`
+      : isSaving
+        ? "Saving…"
+        : editingId !== null
+          ? "Save changes"
+          : "Create Job";
 
   return (
     <DashboardLayout title="Job Management" role={role}>
@@ -1558,7 +1576,7 @@ export default function JobManagement(
                   onClick={submit}
                   className="px-5 py-2 bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold shadow-md shadow-primary/30 transition-colors"
                 >
-                  {isSaving ? "Saving…" : editingId !== null ? "Save changes" : "Create Job"}
+                  {saveButtonLabel}
                 </motion.button>
               </div>
             </motion.div>

@@ -69,7 +69,7 @@ export default function DescriptionInput({
         dangerouslySetInnerHTML={{
           __html: value
             ? linkifyToHtml(value)
-            : '<span style="color:#9ca3af">Type notes here. Paste links — press Enter for new lines.</span>',
+            : '<span style="color:#9ca3af">Type notes here. Paste links.</span>',
         }}
       />
     </div>

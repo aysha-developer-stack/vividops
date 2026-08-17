@@ -12,17 +12,20 @@ type PresignResponse = {
 };
 
 /** Direct browser → Supabase uploads; Railway only handles small JSON presign/register calls. */
-const DEFAULT_CONCURRENCY = 3;
+const DEFAULT_CONCURRENCY = 4;
 
 async function runWithConcurrency<T>(
   items: T[],
   limit: number,
   fn: (item: T) => Promise<void>,
+  onProgress?: (completed: number, total: number) => void,
 ): Promise<void> {
   if (items.length === 0) return;
   let index = 0;
+  let completed = 0;
   let firstError: Error | null = null;
   const workerCount = Math.min(Math.max(1, limit), items.length);
+  const total = items.length;
 
   const workers = Array.from({ length: workerCount }, async () => {
     while (index < items.length && !firstError) {
@@ -30,6 +33,8 @@ async function runWithConcurrency<T>(
       index += 1;
       try {
         await fn(items[current]!);
+        completed += 1;
+        onProgress?.(completed, total);
       } catch (err) {
         firstError = err instanceof Error ? err : new Error(String(err));
       }
@@ -158,12 +163,17 @@ async function notifyBulkUpload(
 export async function uploadJobAttachmentsBatch(
   jobId: string,
   specs: JobAttachmentUploadSpec[],
-  options?: { concurrency?: number; suppressNotifications?: boolean },
+  options?: {
+    concurrency?: number;
+    suppressNotifications?: boolean;
+    onProgress?: (completed: number, total: number) => void;
+  },
 ): Promise<void> {
   if (specs.length === 0) return;
 
   const suppressNotifications = options?.suppressNotifications ?? false;
   const concurrency = options?.concurrency ?? DEFAULT_CONCURRENCY;
+  const onProgress = options?.onProgress;
 
   let jobFileCount = 0;
   let checklistFileCount = 0;
@@ -172,8 +182,13 @@ export async function uploadJobAttachmentsBatch(
     else jobFileCount += 1;
   }
 
-  await runWithConcurrency(specs, concurrency, (spec) =>
-    uploadOne(jobId, spec, suppressNotifications),
+  onProgress?.(0, specs.length);
+
+  await runWithConcurrency(
+    specs,
+    concurrency,
+    (spec) => uploadOne(jobId, spec, suppressNotifications),
+    onProgress,
   );
 
   if (suppressNotifications) {
