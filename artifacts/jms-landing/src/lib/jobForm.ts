@@ -80,6 +80,15 @@ export function toJobDateInput(iso: string | null | undefined): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Local calendar date for `<input type="date">` defaults (e.g. Incoming Date on create). */
+export function todayJobDateInput(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function applyJobToForm(
   job: JobWithChecklist,
   extras: string[],

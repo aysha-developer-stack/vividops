@@ -36,7 +36,7 @@ import { downloadNamedFile, jobAttachmentDownloadUrl } from "@/lib/downloadFile"
 import FileDropzone from "@/components/FileDropzone";
 import DescriptionInput, { AddressUrlHint } from "@/components/DescriptionInput";
 import { CHECKLIST_FILE_ACCEPT, isChecklistDocFile, filterJobFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
-import { formatStoredFileSize } from "@/lib/jobForm";
+import { formatStoredFileSize, todayJobDateInput } from "@/lib/jobForm";
 
 import {
   DropdownMenu,
@@ -833,6 +833,7 @@ export default function JobManagement(
   const openCreateJobModal = async () => {
     setForm({
       ...EMPTY_FORM,
+      incomingDate: todayJobDateInput(),
       supervisorId:
         role === "supervisor"
           ? (currentUser?.id ?? "")

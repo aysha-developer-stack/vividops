@@ -31,6 +31,7 @@ import {
   formatStoredFileSize,
   JOB_TITLE_OPTIONS,
   PRIORITY_BUTTON_CONFIG,
+  todayJobDateInput,
   WIND_OPTIONS,
   type ExistingJobAttachment,
   type JobFormState,
@@ -225,6 +226,7 @@ export default function JobFormModal({
     resetModal();
     setForm({
       ...EMPTY_JOB_FORM,
+      incomingDate: todayJobDateInput(),
       supervisorId:
         role === "supervisor"
           ? (currentUser?.id ?? "")
