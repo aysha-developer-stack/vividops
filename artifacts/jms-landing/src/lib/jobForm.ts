@@ -143,7 +143,44 @@ export type ExistingJobAttachment = {
   fileName: string;
   fileSize?: string | null;
   fileUrl?: string | null;
+  uploadedById?: string | null;
 };
+
+export function parseExistingJobAttachment(row: Record<string, unknown>): ExistingJobAttachment | null {
+  const id = typeof row.id === "string" ? row.id : "";
+  if (!id) return null;
+  const uploadedBy =
+    row.uploadedBy && typeof row.uploadedBy === "object"
+      ? (row.uploadedBy as { id?: string }).id
+      : undefined;
+  return {
+    id,
+    fileName:
+      (typeof row.fileName === "string" ? row.fileName : "") ||
+      (typeof row.file_name === "string" ? row.file_name : "") ||
+      "File",
+    fileSize:
+      typeof row.fileSize === "string"
+        ? row.fileSize
+        : typeof row.file_size === "string"
+          ? row.file_size
+          : undefined,
+    fileUrl:
+      typeof row.fileUrl === "string"
+        ? row.fileUrl
+        : typeof row.file_url === "string"
+          ? row.file_url
+          : undefined,
+    uploadedById:
+      typeof row.uploadedById === "string"
+        ? row.uploadedById
+        : typeof row.uploaded_by_id === "string"
+          ? row.uploaded_by_id
+          : typeof uploadedBy === "string"
+            ? uploadedBy
+            : undefined,
+  };
+}
 
 export function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;

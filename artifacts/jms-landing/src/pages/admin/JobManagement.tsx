@@ -36,7 +36,7 @@ import { downloadNamedFile, jobAttachmentDownloadUrl } from "@/lib/downloadFile"
 import FileDropzone from "@/components/FileDropzone";
 import DescriptionInput, { AddressUrlHint } from "@/components/DescriptionInput";
 import { CHECKLIST_FILE_ACCEPT, isChecklistDocFile, filterJobFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
-import { formatStoredFileSize, todayJobDateInput } from "@/lib/jobForm";
+import { formatStoredFileSize, parseExistingJobAttachment, todayJobDateInput, type ExistingJobAttachment } from "@/lib/jobForm";
 import { buildJobSaveUploadSpecs, uploadJobAttachmentsBatch } from "@/lib/uploadJobAttachmentsBatch";
 
 import {
@@ -192,12 +192,7 @@ const EMPTY_FORM: FormState = {
   comments: "",
 };
 
-type ExistingAttachment = {
-  id: string;
-  fileName: string;
-  fileSize?: string | null;
-  fileUrl?: string | null;
-};
+type ExistingAttachment = ExistingJobAttachment;
 
 type JobWithChecklist = ApiJob & {
   checklist?: ChecklistTemplateItem[];
@@ -434,28 +429,8 @@ export default function JobManagement(
           if (Array.isArray(attData)) {
             for (const a of attData) {
               if (!a || typeof a !== "object") continue;
-              const row = a as Record<string, unknown>;
-              const id = typeof row.id === "string" ? row.id : "";
-              if (!id) continue;
-              attachments.push({
-                id,
-                fileName:
-                  (typeof row.fileName === "string" ? row.fileName : "") ||
-                  (typeof row.file_name === "string" ? row.file_name : "") ||
-                  "File",
-                fileSize:
-                  typeof row.fileSize === "string"
-                    ? row.fileSize
-                    : typeof row.file_size === "string"
-                      ? row.file_size
-                      : undefined,
-                fileUrl:
-                  typeof row.fileUrl === "string"
-                    ? row.fileUrl
-                    : typeof row.file_url === "string"
-                      ? row.file_url
-                      : undefined,
-              });
+              const parsed = parseExistingJobAttachment(a as Record<string, unknown>);
+              if (parsed) attachments.push(parsed);
             }
           }
         }
@@ -506,6 +481,27 @@ export default function JobManagement(
   };
   const removeJobFile = (idx: number) => {
     setJobFiles(jobFiles.filter((_, i) => i !== idx));
+  };
+  const deleteExistingAttachment = async (attachment: ExistingAttachment) => {
+    if (!editingId) return;
+    if (attachment.uploadedById && attachment.uploadedById !== currentUser?.id) {
+      window.alert("You can only delete files you uploaded.");
+      return;
+    }
+    if (!window.confirm(`Delete "${attachment.fileName}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/jobs/${editingId}/attachments/${attachment.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(data.message || "Failed to delete file");
+      }
+      setExistingAttachments((prev) => prev.filter((a) => a.id !== attachment.id));
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to delete file");
+    }
   };
   const addChecklistFromFile = (file: File) => {
     if (!isChecklistDocFile(file)) {
@@ -1466,7 +1462,7 @@ export default function JobManagement(
                 </div>
 
                 {/* RIGHT COLUMN — Job Files */}
-                <div className="space-y-3 min-w-0 md:col-span-2 xl:col-span-1 xl:border-l xl:border-gray-100 xl:pl-6">
+                <div className="space-y-3 min-w-0 md:col-span-2 xl:col-span-1 xl:border-l xl:border-gray-100 xl:pl-6 flex flex-col min-h-0">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Job Files</div>
                   <FileDropzone
                     multiple
@@ -1477,12 +1473,12 @@ export default function JobManagement(
                     onFiles={(files) => addDroppedFiles(files)}
                   />
                   {existingAttachments.length > 0 && (
-                    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-3">
-                      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-3 flex flex-col flex-1 min-h-[280px]">
+                      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between shrink-0">
                         <div className="text-xs font-bold text-gray-900">Existing files</div>
                         <div className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{existingAttachments.length}</div>
                       </div>
-                      <div className="divide-y divide-gray-50 max-h-[180px] overflow-y-auto">
+                      <div className="divide-y divide-gray-50 flex-1 min-h-0 overflow-y-auto max-h-[min(520px,calc(92vh-300px))]">
                         {existingAttachments.map((f) => (
                           <div key={f.id} className="px-4 py-3 flex items-start gap-3">
                             <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 font-bold text-[10px]">FILE</div>
@@ -1492,24 +1488,35 @@ export default function JobManagement(
                                 <div className="text-[11px] text-gray-500">{formatStoredFileSize(f.fileSize)}</div>
                               )}
                             </div>
-                            {(editingId || f.fileUrl) && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (!editingId) return;
-                                  void downloadNamedFile(
-                                    jobAttachmentDownloadUrl(editingId, f.id),
-                                    f.fileName,
-                                  ).catch(() => {
-                                    window.alert("Download failed. Please try again.");
-                                  });
-                                }}
-                                className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg"
-                                title="Download"
-                              >
-                                <Download size={14} />
-                              </button>
-                            )}
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              {editingId && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void downloadNamedFile(
+                                      jobAttachmentDownloadUrl(editingId, f.id),
+                                      f.fileName,
+                                    ).catch(() => {
+                                      window.alert("Download failed. Please try again.");
+                                    });
+                                  }}
+                                  className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg"
+                                  title="Download"
+                                >
+                                  <Download size={14} />
+                                </button>
+                              )}
+                              {editingId && f.uploadedById === currentUser?.id && (
+                                <button
+                                  type="button"
+                                  onClick={() => void deleteExistingAttachment(f)}
+                                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                                  title="Delete"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
