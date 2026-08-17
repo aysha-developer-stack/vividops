@@ -15,12 +15,12 @@ import {
   useUpdateUser,
   useDeleteUser,
   useResendInvite,
-  getListUsersQueryKey,
   type User,
   type UserRole as ApiUserRole,
   type UserStatus as ApiUserStatus,
   ApiError,
 } from "@workspace/api-client-react";
+import { invalidateUserDirectoryCaches } from "@/lib/invalidateUserDirectoryCaches";
 
 import {
   DropdownMenu,
@@ -68,8 +68,8 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
   const isInitialLoading = usersQuery.isLoading && !usersQuery.data;
 
   const invalidate = useCallback(
-    () => qc.invalidateQueries({ queryKey: getListUsersQueryKey() }),
-    [qc]
+    () => invalidateUserDirectoryCaches(qc),
+    [qc],
   );
 
   useEffect(() => {

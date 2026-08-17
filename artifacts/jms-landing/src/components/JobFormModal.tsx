@@ -140,6 +140,8 @@ export default function JobFormModal({
     setLoading(true);
     setError(null);
     try {
+      await assignablesQuery.refetch();
+
       let job: JobWithChecklist | undefined;
       const res = await fetch(`/api/jobs/${id}`, { credentials: "include" });
       if (res.ok) job = (await res.json()) as JobWithChecklist;
@@ -218,19 +220,23 @@ export default function JobFormModal({
     } finally {
       setLoading(false);
     }
-  }, [role, currentUser?.id]);
+  }, [role, currentUser?.id, assignablesQuery]);
 
   const loadCreateDefaults = useCallback(async () => {
     setLoading(true);
     setError(null);
     resetModal();
+
+    const { data: freshAssignables } = await assignablesQuery.refetch();
+    const freshSupervisors = (freshAssignables ?? []).filter((u) => u.role === "supervisor");
+
     setForm({
       ...EMPTY_JOB_FORM,
       incomingDate: todayJobDateInput(),
       supervisorId:
         role === "supervisor"
           ? (currentUser?.id ?? "")
-          : (supervisors[0]?.id ?? ""),
+          : (freshSupervisors[0]?.id ?? ""),
     });
     setJobNumberLoading(true);
     try {
@@ -247,7 +253,7 @@ export default function JobFormModal({
       setJobNumberLoading(false);
       setLoading(false);
     }
-  }, [resetModal, role, currentUser?.id, supervisors]);
+  }, [resetModal, role, currentUser?.id, assignablesQuery]);
 
   useEffect(() => {
     if (!open) return;

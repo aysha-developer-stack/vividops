@@ -385,6 +385,8 @@ export default function JobManagement(
     setEditLoading(true);
 
     try {
+      await assignablesQuery.refetch();
+
       let job: JobWithChecklist | undefined;
       try {
         const res = await fetch(`/api/jobs/${j.id}`, { credentials: "include" });
@@ -834,14 +836,6 @@ export default function JobManagement(
   };
 
   const openCreateJobModal = async () => {
-    setForm({
-      ...EMPTY_FORM,
-      incomingDate: todayJobDateInput(),
-      supervisorId:
-        role === "supervisor"
-          ? (currentUser?.id ?? "")
-          : (supervisors[0]?.id ?? ""),
-    });
     setEditingId(null);
     setChecklistTemplate([]);
     setCheckPendingFile(null);
@@ -853,6 +847,19 @@ export default function JobManagement(
     setAssigneeMenuOpen(false);
     setModalOpen(true);
     setJobNumberLoading(true);
+
+    const { data: freshAssignables } = await assignablesQuery.refetch();
+    const freshSupervisors = (freshAssignables ?? []).filter((u) => u.role === "supervisor");
+
+    setForm({
+      ...EMPTY_FORM,
+      incomingDate: todayJobDateInput(),
+      supervisorId:
+        role === "supervisor"
+          ? (currentUser?.id ?? "")
+          : (freshSupervisors[0]?.id ?? ""),
+    });
+
     try {
       const res = await fetch("/api/jobs/next-number", { credentials: "include" });
       if (res.ok) {
