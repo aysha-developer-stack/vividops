@@ -3,8 +3,9 @@ import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, MoreVertical, Edit2, Trash2, UserPlus, X,
-  Calendar, ExternalLink, CheckCircle2, Download, Loader2, FileText, Clock, RefreshCw, Pause, Play,
+  Calendar, ExternalLink, CheckCircle2, Download, Loader2, Clock, RefreshCw, Pause, Play,
 } from "lucide-react";
+import FileExtensionIcon from "@/components/FileExtensionIcon";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
@@ -1465,8 +1466,8 @@ export default function JobManagement(
                               {it.desc && <div className="text-[11px] text-gray-500 mt-0.5">{it.desc}</div>}
                               <div className="mt-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Worker upload required</div>
                               {(checklistItemFiles[idx] ?? []).map((f) => (
-                                <div key={f.name} className="mt-1 text-[11px] text-primary font-medium truncate flex items-center gap-1">
-                                  <FileText size={11} /> {f.name}
+                                <div key={f.name} className="mt-1 text-[11px] text-primary font-medium break-words whitespace-normal leading-snug flex items-start gap-1">
+                                  <FileExtensionIcon fileName={f.name} size="sm" /> {f.name}
                                 </div>
                               ))}
                             </div>
@@ -1499,10 +1500,10 @@ export default function JobManagement(
                       </div>
                       <div className="divide-y divide-gray-50 max-h-[180px] overflow-y-auto">
                         {existingAttachments.map((f) => (
-                          <div key={f.id} className="px-4 py-3 flex items-center gap-3">
+                          <div key={f.id} className="px-4 py-3 flex items-start gap-3">
                             <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 font-bold text-[10px]">FILE</div>
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold text-gray-900 truncate">{f.fileName}</div>
+                              <div className="text-sm font-semibold text-gray-900 break-words whitespace-normal leading-snug">{f.fileName}</div>
                               {formatStoredFileSize(f.fileSize) && (
                                 <div className="text-[11px] text-gray-500">{formatStoredFileSize(f.fileSize)}</div>
                               )}
@@ -1538,10 +1539,10 @@ export default function JobManagement(
                       </div>
                       <div className="divide-y divide-gray-50 max-h-[220px] overflow-y-auto">
                         {jobFiles.map((f, idx) => (
-                          <div key={`${f.name}-${f.size}-${idx}`} className="px-4 py-3 flex items-center gap-3">
+                          <div key={`${f.name}-${f.size}-${idx}`} className="px-4 py-3 flex items-start gap-3">
                             <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 font-bold text-[10px]">FILE</div>
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold text-gray-900 truncate">{f.name}</div>
+                              <div className="text-sm font-semibold text-gray-900 break-words whitespace-normal leading-snug">{f.name}</div>
                               <div className="text-[11px] text-gray-500">{formatSize(f.size)}</div>
                             </div>
                             <button onClick={() => removeJobFile(idx)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">

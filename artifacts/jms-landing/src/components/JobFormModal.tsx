@@ -866,10 +866,10 @@ export default function JobFormModal({
                     </div>
                     <div className="divide-y divide-gray-50 max-h-[180px] overflow-y-auto">
                       {existingAttachments.map((f) => (
-                        <div key={f.id} className="px-4 py-3 flex items-center gap-3">
+                        <div key={f.id} className="px-4 py-3 flex items-start gap-3">
                           <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 font-bold text-[10px]">FILE</div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-semibold text-gray-900 truncate">{f.fileName}</div>
+                            <div className="text-sm font-semibold text-gray-900 break-words whitespace-normal leading-snug">{f.fileName}</div>
                             {formatStoredFileSize(f.fileSize) && (
                               <div className="text-[11px] text-gray-500">{formatStoredFileSize(f.fileSize)}</div>
                             )}
@@ -901,10 +901,10 @@ export default function JobFormModal({
                     </div>
                     <div className="divide-y divide-gray-50 max-h-[220px] overflow-y-auto">
                       {jobFiles.map((f, idx) => (
-                        <div key={`${f.name}-${f.size}-${idx}`} className="px-4 py-3 flex items-center gap-3">
+                        <div key={`${f.name}-${f.size}-${idx}`} className="px-4 py-3 flex items-start gap-3">
                           <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 font-bold text-[10px]">FILE</div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-semibold text-gray-900 truncate">{f.name}</div>
+                            <div className="text-sm font-semibold text-gray-900 break-words whitespace-normal leading-snug">{f.name}</div>
                             <div className="text-[11px] text-gray-500">{formatFileSize(f.size)}</div>
                           </div>
                           <button

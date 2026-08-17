@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { CheckCircle2, ChevronDown, FileText, X } from "lucide-react";
+import FileExtensionIcon from "@/components/FileExtensionIcon";
+import { CheckCircle2, ChevronDown, X } from "lucide-react";
 import type { UploadProgressBatch } from "@/hooks/useUploadProgress";
 import { formatUploadFileSize } from "@/lib/uploadWithProgress";
 
@@ -85,9 +86,7 @@ export default function UploadProgressPanel({ batch, onDismiss, onToggleCollapse
           {batch.items.map((item) => (
             <div key={item.id} className="relative border-b border-gray-50 last:border-b-0">
               <div className="flex items-center gap-3 px-4 py-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500">
-                  <FileText size={16} />
-                </div>
+                <FileExtensionIcon fileName={item.fileName} size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm text-gray-800">
                     {item.fileName}

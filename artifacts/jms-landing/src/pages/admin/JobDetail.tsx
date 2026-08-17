@@ -7,6 +7,7 @@ import {
   RefreshCw, AlertTriangle, Clock, Users, X, Edit2, Loader2,
   Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock, ListChecks, Search, Eye, Trash2, StickyNote
 } from "lucide-react";
+import FileExtensionIcon from "@/components/FileExtensionIcon";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
@@ -231,11 +232,6 @@ const TABS = [
 
 type TabId = typeof TABS[number]["id"];
 
-const FILE_ICON: Record<FileItem["type"], string> = {
-  doc: "bg-blue-50 text-blue-600",
-  image: "bg-purple-50 text-purple-600",
-  pdf: "bg-red-50 text-red-600",
-};
 
 function attachmentExtension(name: string): string {
   return name.split(".").pop()?.toLowerCase() ?? "";
@@ -2202,9 +2198,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                         {(c.files ?? []).length > 0 && (
                           <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()}>
                             {(c.files ?? []).map((f) => (
-                              <div key={f.id} className="flex items-center gap-2 rounded-lg bg-gray-50 border border-gray-100 px-2.5 py-1.5">
-                                <FileText size={12} className="text-primary shrink-0" />
-                                <span className="text-[11px] font-medium text-gray-700 truncate flex-1">{f.fileName}</span>
+                              <div key={f.id} className="flex items-start gap-2 rounded-lg bg-gray-50 border border-gray-100 px-2.5 py-1.5">
+                                <FileExtensionIcon fileName={f.fileName} size="sm" />
+                                <span className="text-[11px] font-medium text-gray-700 break-words whitespace-normal flex-1 min-w-0">{f.fileName}</span>
                                 <button
                                   type="button"
                                   onClick={() => openAttachmentPreview({
@@ -2335,10 +2331,10 @@ export default function JobDetail({ role = "user", id }: Props) {
                           (f) => isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy }),
                         );
                         const renderFileRow = (f: ChecklistFileApi) => (
-                          <div key={f.id} className="flex items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
-                            <FileText size={14} className="text-primary shrink-0" />
+                          <div key={f.id} className="flex items-start gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                            <FileExtensionIcon fileName={f.fileName} size="sm" />
                             <div className="flex-1 min-w-0">
-                              <div className="text-xs font-semibold text-gray-900 truncate">{f.fileName}</div>
+                              <div className="text-xs font-semibold text-gray-900 break-words whitespace-normal leading-snug">{f.fileName}</div>
                               <div className="text-[10px] text-gray-500">{f.uploadedBy?.name ?? "—"}</div>
                             </div>
                             <button
@@ -2634,7 +2630,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="border-b border-gray-50">
-                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">File Name</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider min-w-[280px]">File Name</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Uploaded By</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Upload Date</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Type</th>
@@ -2645,15 +2641,14 @@ export default function JobDetail({ role = "user", id }: Props) {
                         {filteredInput.length === 0 ? (
                           <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-gray-400">No job files found</td></tr>
                         ) : filteredInput.map((a) => {
-                          const t = detectType(a.fileName);
                           const who = a.uploadedBy?.name ?? "—";
                           const when = a.createdAt ? new Date(a.createdAt).toLocaleString() : "—";
                           return (
                           <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-3">
-                                <div className={`w-8 h-8 rounded-lg ${FILE_ICON[t]} flex items-center justify-center`}><FileText size={14} /></div>
-                                <span className="text-sm font-medium text-gray-900 truncate max-w-[200px]">{a.fileName}</span>
+                            <td className="px-6 py-4 align-top">
+                              <div className="flex items-start gap-3 min-w-0">
+                                <FileExtensionIcon fileName={a.fileName} size="md" />
+                                <span className="text-sm font-medium text-gray-900 break-words whitespace-normal leading-snug min-w-0">{a.fileName}</span>
                               </div>
                             </td>
                             <td className="px-6 py-4 text-xs text-gray-600">{who}</td>
@@ -2689,7 +2684,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="border-b border-gray-50">
-                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">File Name</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider min-w-[280px]">File Name</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Uploaded By</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Completion Date</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status</th>
@@ -2702,15 +2697,14 @@ export default function JobDetail({ role = "user", id }: Props) {
                         ) : (
                           <>
                           {filteredOutputServer.map((a) => {
-                            const t = detectType(a.fileName);
                             const who = a.uploadedBy?.name ?? "—";
                             const when = a.createdAt ? new Date(a.createdAt).toLocaleString() : "—";
                             return (
                             <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-3">
-                                <div className={`w-8 h-8 rounded-lg ${FILE_ICON[t]} flex items-center justify-center`}><FileText size={14} /></div>
-                                <span className="text-sm font-medium text-gray-900 truncate max-w-[200px]">{a.fileName}</span>
+                            <td className="px-6 py-4 align-top">
+                              <div className="flex items-start gap-3 min-w-0">
+                                <FileExtensionIcon fileName={a.fileName} size="md" />
+                                <span className="text-sm font-medium text-gray-900 break-words whitespace-normal leading-snug min-w-0">{a.fileName}</span>
                               </div>
                             </td>
                             <td className="px-6 py-4 text-xs text-gray-600">{who}</td>

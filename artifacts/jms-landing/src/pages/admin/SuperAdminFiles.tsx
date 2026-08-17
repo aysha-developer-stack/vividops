@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, Download, Eye, Folder, Search, Trash2, ExternalLink, FileText } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Eye, Folder, Search, Trash2, ExternalLink } from "lucide-react";
+import FileExtensionIcon from "@/components/FileExtensionIcon";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import { useListJobs, type Job as ApiJob } from "@workspace/api-client-react";
@@ -245,12 +246,10 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
                           {folderRow.files.map((f) => (
                             <tr key={f.id} className="border-t border-gray-50 hover:bg-gray-50/40">
                               <td className="px-6 py-4">
-                                <div className="flex items-center gap-3 min-w-[260px] pl-12">
-                                  <div className="w-9 h-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-gray-500">
-                                    <FileText size={16} />
-                                  </div>
+                                <div className="flex items-start gap-3 min-w-0 pl-12">
+                                  <FileExtensionIcon fileName={f.name} size="md" />
                                   <div className="min-w-0">
-                                    <div className="text-sm font-semibold text-gray-900 truncate">{f.name}</div>
+                                    <div className="text-sm font-semibold text-gray-900 break-words whitespace-normal leading-snug">{f.name}</div>
                                     <div className="text-[11px] text-gray-500 mt-0.5 truncate">{f.uploadedAt}</div>
                                   </div>
                                 </div>
