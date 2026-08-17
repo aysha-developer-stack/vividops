@@ -588,7 +588,7 @@ export default function JobManagement(
       j.number.replace(/^JOB-/i, "").toLowerCase().includes(searchQuery) ||
       (j.address?.toLowerCase().includes(searchQuery) ?? false))
   );
-  const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 8);
+  const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 100);
 
   const remove = async (id: string) => {
     setOpenId(null);
