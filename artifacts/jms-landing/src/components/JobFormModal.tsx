@@ -535,7 +535,7 @@ export default function JobFormModal({
               <p className="text-sm">Loading job details…</p>
             </div>
           ) : (
-            <div className="px-6 py-4 grid md:grid-cols-2 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-6 gap-y-4 overflow-y-auto">
+            <div className="px-6 py-4 grid md:grid-cols-2 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-6 gap-y-4 overflow-y-auto flex-1 min-h-0 items-stretch">
               <div className="space-y-3 min-w-0">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Job Details</div>
                 <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)] gap-3">
@@ -838,23 +838,25 @@ export default function JobFormModal({
                 </div>
               </div>
 
-              <div className="space-y-3 min-w-0 md:col-span-2 xl:col-span-1 xl:border-l xl:border-gray-100 xl:pl-6 flex flex-col min-h-0">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Job Files</div>
-                <FileDropzone
-                  multiple
-                  allowFolders
-                  accept={JOB_FILE_ACCEPT}
-                  label="Drag & drop job files or folders here"
-                  hint="Drawings, instructions, site photos, or client docs"
-                  onFiles={(files) => addDroppedFiles(files)}
-                />
+              <div className="min-w-0 md:col-span-2 xl:col-span-1 xl:border-l xl:border-gray-100 xl:pl-6 flex flex-col h-full min-h-0 gap-3">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 shrink-0">Job Files</div>
+                <div className="shrink-0">
+                  <FileDropzone
+                    multiple
+                    allowFolders
+                    accept={JOB_FILE_ACCEPT}
+                    label="Drag & drop job files or folders here"
+                    hint="Drawings, instructions, site photos, or client docs"
+                    onFiles={(files) => addDroppedFiles(files)}
+                  />
+                </div>
                 {existingAttachments.length > 0 && (
-                  <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-3 flex flex-col flex-1 min-h-[280px]">
+                  <div className="bg-white rounded-xl border border-gray-100 overflow-hidden flex flex-col flex-1 min-h-0">
                     <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between shrink-0">
                       <div className="text-xs font-bold text-gray-900">Existing files</div>
                       <div className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{existingAttachments.length}</div>
                     </div>
-                    <div className="divide-y divide-gray-50 flex-1 min-h-0 overflow-y-auto max-h-[min(520px,calc(92vh-300px))]">
+                    <div className="divide-y divide-gray-50 flex-1 min-h-0 overflow-y-auto">
                       {existingAttachments.map((f) => (
                         <div key={f.id} className="px-4 py-3 flex items-start gap-3">
                           <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 font-bold text-[10px]">FILE</div>
@@ -896,7 +898,7 @@ export default function JobFormModal({
                   </div>
                 )}
                 {jobFiles.length > 0 && (
-                  <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                  <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shrink-0">
                     <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                       <div className="text-xs font-bold text-gray-900">New files to upload</div>
                       <div className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary">{jobFiles.length}</div>
