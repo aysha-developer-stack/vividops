@@ -69,10 +69,8 @@ export async function uploadToSupabase(file: Express.Multer.File, options?: { pr
   if (!supabaseUrl || !supabaseServiceKey) {
     throw new Error("Supabase storage is not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)");
   }
-  const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "vivid-ops-files";
-  const safeOriginalName = safePathSegment(file.originalname, "file");
-  const prefix = options?.prefix ? normalizePrefix(options.prefix) : "";
-  const key = `${prefix ? `${prefix}/` : ""}${Date.now()}-${randomUUID()}-${safeOriginalName}`;
+  const bucketName = getBucketName();
+  const key = buildStorageObjectKey(file.originalname, options?.prefix);
   
   // Let Supabase detect content type automatically - don't restrict it
   const { data, error } = await supabase.storage
@@ -86,12 +84,60 @@ export async function uploadToSupabase(file: Express.Multer.File, options?: { pr
     throw new Error(typeof (error as any)?.message === "string" ? (error as any).message : "Supabase upload failed");
   }
 
-  const { data: { publicUrl } } = supabase.storage
-    .from(bucketName)
-    .getPublicUrl(data.path);
-
   return {
     key: data.path,
-    location: publicUrl,
+    location: getPublicUrlForKey(data.path),
   };
+}
+
+export function getBucketName() {
+  return process.env.SUPABASE_STORAGE_BUCKET || "vivid-ops-files";
+}
+
+export function buildStorageObjectKey(fileName: string, prefix?: string) {
+  const safeOriginalName = safePathSegment(fileName, "file");
+  const normalizedPrefix = prefix ? normalizePrefix(prefix) : "";
+  return `${normalizedPrefix ? `${normalizedPrefix}/` : ""}${Date.now()}-${randomUUID()}-${safeOriginalName}`;
+}
+
+export function getPublicUrlForKey(key: string) {
+  const bucketName = getBucketName();
+  const { data: { publicUrl } } = supabase.storage.from(bucketName).getPublicUrl(key);
+  return publicUrl;
+}
+
+export async function createDirectUploadUrl(storageKey: string) {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error("Supabase storage is not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)");
+  }
+  const bucketName = getBucketName();
+  const { data, error } = await supabase.storage
+    .from(bucketName)
+    .createSignedUploadUrl(storageKey);
+
+  if (error || !data) {
+    throw new Error(
+      typeof (error as { message?: string } | null)?.message === "string"
+        ? (error as { message: string }).message
+        : "Failed to create signed upload URL",
+    );
+  }
+
+  return {
+    signedUrl: data.signedUrl,
+    token: data.token,
+    path: data.path,
+  };
+}
+
+export async function storageObjectExists(storageKey: string): Promise<boolean> {
+  const bucketName = getBucketName();
+  const folder = storageKey.includes("/") ? storageKey.slice(0, storageKey.lastIndexOf("/")) : "";
+  const name = storageKey.includes("/") ? storageKey.slice(storageKey.lastIndexOf("/") + 1) : storageKey;
+  const { data, error } = await supabase.storage.from(bucketName).list(folder, {
+    limit: 100,
+    search: name,
+  });
+  if (error) return false;
+  return (data ?? []).some((item) => item.name === name);
 }

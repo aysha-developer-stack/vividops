@@ -4,8 +4,15 @@ export type JobAttachmentUploadSpec = {
   checklistItemId?: number;
 };
 
-/** One upload at a time — parallel uploads overload a single Railway instance and hit ~30s timeouts. */
-const DEFAULT_CONCURRENCY = 1;
+type PresignResponse = {
+  signedUrl: string;
+  token: string;
+  key: string;
+  fileUrl: string;
+};
+
+/** Direct browser → Supabase uploads; Railway only handles small JSON presign/register calls. */
+const DEFAULT_CONCURRENCY = 3;
 
 async function runWithConcurrency<T>(
   items: T[],
@@ -33,7 +40,22 @@ async function runWithConcurrency<T>(
   if (firstError) throw firstError;
 }
 
-async function uploadOne(
+function buildUploadBody(
+  spec: JobAttachmentUploadSpec,
+  suppressNotifications: boolean,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    fileName: spec.file.name,
+    fileType: spec.file.type || "application/octet-stream",
+    fileSize: spec.file.size,
+  };
+  if (spec.fileCategory) body.fileCategory = spec.fileCategory;
+  if (spec.checklistItemId != null) body.checklistItemId = spec.checklistItemId;
+  if (suppressNotifications) body.suppressNotifications = "true";
+  return body;
+}
+
+async function uploadViaProxy(
   jobId: string,
   spec: JobAttachmentUploadSpec,
   suppressNotifications: boolean,
@@ -54,6 +76,64 @@ async function uploadOne(
   if (!res.ok) {
     const text = await res.text();
     throw new Error(text || `Upload failed (${res.status})`);
+  }
+}
+
+async function uploadDirect(
+  jobId: string,
+  spec: JobAttachmentUploadSpec,
+  suppressNotifications: boolean,
+): Promise<void> {
+  const body = buildUploadBody(spec, suppressNotifications);
+
+  const presignRes = await fetch(`/api/jobs/${jobId}/attachments/presign`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!presignRes.ok) {
+    const text = await presignRes.text();
+    throw new Error(text || `Presign failed (${presignRes.status})`);
+  }
+
+  const presign = (await presignRes.json()) as PresignResponse;
+  const contentType = spec.file.type || "application/octet-stream";
+
+  const putRes = await fetch(presign.signedUrl, {
+    method: "PUT",
+    headers: { "Content-Type": contentType },
+    body: spec.file,
+  });
+  if (!putRes.ok) {
+    const text = await putRes.text().catch(() => "");
+    throw new Error(text || `Direct storage upload failed (${putRes.status})`);
+  }
+
+  const registerRes = await fetch(`/api/jobs/${jobId}/attachments/register`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...body,
+      key: presign.key,
+    }),
+  });
+  if (!registerRes.ok) {
+    const text = await registerRes.text();
+    throw new Error(text || `Register failed (${registerRes.status})`);
+  }
+}
+
+async function uploadOne(
+  jobId: string,
+  spec: JobAttachmentUploadSpec,
+  suppressNotifications: boolean,
+): Promise<void> {
+  try {
+    await uploadDirect(jobId, spec, suppressNotifications);
+  } catch {
+    await uploadViaProxy(jobId, spec, suppressNotifications);
   }
 }
 
