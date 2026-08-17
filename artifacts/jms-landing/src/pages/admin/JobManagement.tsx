@@ -37,6 +37,7 @@ import FileDropzone from "@/components/FileDropzone";
 import DescriptionInput, { AddressUrlHint } from "@/components/DescriptionInput";
 import { CHECKLIST_FILE_ACCEPT, isChecklistDocFile, filterJobFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
 import { formatStoredFileSize, todayJobDateInput } from "@/lib/jobForm";
+import { buildJobSaveUploadSpecs, uploadJobAttachmentsBatch } from "@/lib/uploadJobAttachmentsBatch";
 
 import {
   DropdownMenu,
@@ -753,41 +754,14 @@ export default function JobManagement(
       }
     };
 
-    const uploadAllFiles = async (jobId: string) => {
+    const uploadAllFiles = async (jobId: string, checklistFiles: Record<number, File[]>) => {
       setUploadingFiles(true);
       try {
-        for (const file of jobFiles) {
-          const fd = new FormData();
-          fd.append("file", file);
-          fd.append("fileCategory", "job");
-          const res = await fetch(`/api/jobs/${jobId}/attachments`, {
-            method: "POST",
-            body: fd,
-            credentials: "include",
-          });
-          if (!res.ok) {
-            const text = await res.text();
-            throw new Error(text || `Upload failed (${res.status})`);
-          }
-        }
-        for (const [indexStr, files] of Object.entries(finalChecklistFiles)) {
-          const itemId = Number(indexStr) + 1;
-          if (!Number.isFinite(itemId) || itemId <= 0) continue;
-          for (const file of files) {
-            const fd = new FormData();
-            fd.append("file", file);
-            fd.append("checklistItemId", String(itemId));
-            const res = await fetch(`/api/jobs/${jobId}/attachments`, {
-              method: "POST",
-              body: fd,
-              credentials: "include",
-            });
-            if (!res.ok) {
-              const text = await res.text();
-              throw new Error(text || `Checklist file upload failed (${res.status})`);
-            }
-          }
-        }
+        const specs = buildJobSaveUploadSpecs(jobFiles, checklistFiles);
+        await uploadJobAttachmentsBatch(jobId, specs, {
+          concurrency: 4,
+          suppressNotifications: true,
+        });
       } finally {
         setUploadingFiles(false);
       }
@@ -796,12 +770,12 @@ export default function JobManagement(
     try {
       if (editingId !== null) {
         await updateMutation.mutateAsync({ id: editingId, data: payload });
-        await uploadAllFiles(editingId);
+        await uploadAllFiles(editingId, finalChecklistFiles);
         await syncMembers(editingId);
         await invalidateJobs(editingId);
       } else {
         const created = await createMutation.mutateAsync({ data: payload });
-        await uploadAllFiles(created.id);
+        await uploadAllFiles(created.id, finalChecklistFiles);
         await syncMembers(created.id);
         await invalidateJobs(created.id);
       }

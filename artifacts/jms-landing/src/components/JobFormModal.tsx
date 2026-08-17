@@ -37,6 +37,7 @@ import {
   type JobFormState,
   type JobWithChecklist,
 } from "@/lib/jobForm";
+import { buildJobSaveUploadSpecs, uploadJobAttachmentsBatch } from "@/lib/uploadJobAttachmentsBatch";
 
 type Props = {
   open: boolean;
@@ -456,35 +457,14 @@ export default function JobFormModal({
       }
     };
 
-    const uploadAllFiles = async (savedId: string) => {
+    const uploadAllFiles = async (savedId: string, checklistFiles: Record<number, File[]>) => {
       setUploadingFiles(true);
       try {
-        for (const file of jobFiles) {
-          const fd = new FormData();
-          fd.append("file", file);
-          fd.append("fileCategory", "job");
-          const res = await fetch(`/api/jobs/${savedId}/attachments`, {
-            method: "POST",
-            body: fd,
-            credentials: "include",
-          });
-          if (!res.ok) throw new Error(await res.text() || `Upload failed (${res.status})`);
-        }
-        for (const [indexStr, files] of Object.entries(finalChecklistFiles)) {
-          const itemId = Number(indexStr) + 1;
-          if (!Number.isFinite(itemId) || itemId <= 0) continue;
-          for (const file of files) {
-            const fd = new FormData();
-            fd.append("file", file);
-            fd.append("checklistItemId", String(itemId));
-            const res = await fetch(`/api/jobs/${savedId}/attachments`, {
-              method: "POST",
-              body: fd,
-              credentials: "include",
-            });
-            if (!res.ok) throw new Error(await res.text() || `Checklist file upload failed (${res.status})`);
-          }
-        }
+        const specs = buildJobSaveUploadSpecs(jobFiles, checklistFiles);
+        await uploadJobAttachmentsBatch(savedId, specs, {
+          concurrency: 4,
+          suppressNotifications: true,
+        });
       } finally {
         setUploadingFiles(false);
       }
@@ -494,13 +474,13 @@ export default function JobFormModal({
       let savedId = jobId;
       if (isEdit && jobId) {
         await updateMutation.mutateAsync({ id: jobId, data: payload });
-        await uploadAllFiles(jobId);
+        await uploadAllFiles(jobId, finalChecklistFiles);
         await syncMembers(jobId);
         await invalidateJobs(jobId);
       } else {
         const created = await createMutation.mutateAsync({ data: payload });
         savedId = created.id;
-        await uploadAllFiles(created.id);
+        await uploadAllFiles(created.id, finalChecklistFiles);
         await syncMembers(created.id);
         await invalidateJobs(created.id);
       }
