@@ -346,7 +346,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                         </span>
                         {u.cliqChannelAdmin && ui === "Admin" && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-[10px] font-semibold text-sky-700">
-                            Cliq Admin
+                            Admin
                           </span>
                         )}
                       </div>
@@ -477,7 +477,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                       onChange={(e) => setForm({ ...form, cliqChannelAdmin: e.target.checked })}
                       className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                     />
-                    <span className="text-sm font-semibold text-gray-900">Cliq channel admin</span>
+                    <span className="text-sm font-semibold text-gray-900">Admin</span>
                   </label>
                 )}
 
