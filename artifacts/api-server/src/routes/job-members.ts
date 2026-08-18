@@ -3,6 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db, jobs, jobMembers, users, type UserRow } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
+import { announceCliqMemberActivity } from "../lib/cliq-member-activity";
 import { logger } from "../lib/logger";
 import { createNotification, notifyJobManagers } from "../lib/notifications";
 
@@ -119,6 +120,14 @@ router.post("/jobs/:jobId/members", requireAuth, async (req, res) => {
         title: `Team Member Added: ${job.title}`,
         description: `${actor.name} added ${u.name} to ${job.title}.`,
         type: "assigned",
+      });
+
+      void announceCliqMemberActivity({
+        job,
+        actorName: actor.name,
+        memberName: u.name,
+        memberEmail: u.email,
+        kind: "added",
       });
     }
 

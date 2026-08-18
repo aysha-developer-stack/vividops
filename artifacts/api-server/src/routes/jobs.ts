@@ -23,6 +23,7 @@ import {
   computeCliqChannelName,
 } from "../lib/cliq-channel-name";
 import { listOpsCliqChannelAdminEmails } from "../lib/cliq-channel-admins";
+import { announceCliqMemberActivity } from "../lib/cliq-member-activity";
 import {
   ensureAllSchemas,
   ensureJobMessageSyncSchema,
@@ -2137,6 +2138,19 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
           type: "updated"
         });
       }
+
+      if (body.assigneeId && after.assignee) {
+        const assigneeEmail =
+          (await db.select({ email: users.email }).from(users).where(eq(users.id, body.assigneeId)).limit(1))[0]
+            ?.email ?? null;
+        void announceCliqMemberActivity({
+          job: after.job,
+          actorName: actor.name,
+          memberName: after.assignee.name,
+          memberEmail: assigneeEmail,
+          kind: "assignee",
+        });
+      }
     }
 
     // Check for supervisor change
@@ -2148,6 +2162,18 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
           title: `New Job for Supervision: ${after.job.title}`,
           description: `You are now supervising this job: ${after.job.title}.`,
           type: "assigned"
+        });
+
+        const supervisorEmail =
+          (await db.select({ email: users.email }).from(users).where(eq(users.id, body.supervisorId)).limit(1))[0]
+            ?.email ?? null;
+        const supervisorName = after.supervisor?.name ?? "Supervisor";
+        void announceCliqMemberActivity({
+          job: after.job,
+          actorName: actor.name,
+          memberName: supervisorName,
+          memberEmail: supervisorEmail,
+          kind: "supervisor",
         });
       }
     }
@@ -2584,6 +2610,16 @@ router.post("/jobs/:id/cliq/join", requireAuth, async (req, res) => {
 
     await markJobCliqStatus(full.job.id, "active", null);
     ch = await getOrCreateJobCliqChannel(full.job);
+
+    void announceCliqMemberActivity({
+      job: full.job,
+      actorName: actor.name,
+      memberName: actor.name,
+      memberEmail: email,
+      kind: "joined",
+      addToChannel: false,
+    });
+
     // #region debug-point C:join-endpoint-response
     reportCliqDebug("C", "jobs.ts:/jobs/:id/cliq/join", "[DEBUG] Returning join result", {
       jobId: full.job.id,
