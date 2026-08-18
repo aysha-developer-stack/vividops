@@ -17,6 +17,7 @@ import {
   type Job,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { formatJobPickerLabel } from "@/lib/jobMappers";
 import {
   startTimerSession,
   pauseTimerSession,
@@ -192,7 +193,7 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
   };
 
   const projects = useMemo(() => {
-    return (apiJobs ?? []).map((j: Job) => ({ id: j.id, label: `${j.title} (${j.number})` }));
+    return (apiJobs ?? []).map((j: Job) => ({ id: j.id, label: formatJobPickerLabel(j) }));
   }, [apiJobs]);
 
   useEffect(() => {
@@ -220,7 +221,7 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
       return {
         id: l.id,
         task: l.task,
-        project: job ? `${job.title} (${job.number})` : "General",
+        project: job ? formatJobPickerLabel(job) : "General",
         duration: l.duration,
         date: new Date(l.createdAt).toLocaleDateString()
       };

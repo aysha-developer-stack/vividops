@@ -108,3 +108,12 @@ export function daysUntil(iso: string | null | undefined): number {
   const diffTime = target.getTime() - today.getTime();
   return Math.floor(diffTime / (1000 * 60 * 60 * 24));
 }
+
+/** Job title + address for pickers (timer, etc.); falls back to job number if no address. */
+export function formatJobPickerLabel(job: Pick<ApiJob, "title" | "number" | "address">): string {
+  const title = (job.title ?? "").trim() || "Job";
+  const address = (job.address ?? "").trim();
+  const number = (job.number ?? "").trim();
+  const detail = address || number || "No address";
+  return `${title} (${detail})`;
+}
