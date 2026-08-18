@@ -36,11 +36,18 @@ export const JOB_FILE_ACCEPT = JOB_FILE_EXTENSIONS.join(",");
 export const CHECKLIST_FILE_ACCEPT =
   ".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
+export const ARCHIVE_FILE_EXTENSIONS = [".zip", ".rar", ".7z"] as const;
+
 export function fileExtension(name: string): string {
   const base = (name ?? "").trim().toLowerCase();
   const idx = base.lastIndexOf(".");
   if (idx <= 0) return "";
   return base.slice(idx);
+}
+
+export function isArchiveFileName(name: string): boolean {
+  const ext = fileExtension(name);
+  return ext !== "" && (ARCHIVE_FILE_EXTENSIONS as readonly string[]).includes(ext);
 }
 
 export function isJobFileAllowed(name: string): boolean {

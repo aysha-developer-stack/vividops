@@ -15,6 +15,7 @@ import {
 import { PRIORITY_UI_TO_API, type UiPriority } from "@/lib/jobMappers";
 import { serializeJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
 import { downloadNamedFile, jobAttachmentDownloadUrl } from "@/lib/downloadFile";
+import FileExtensionIcon from "@/components/FileExtensionIcon";
 import FileDropzone from "@/components/FileDropzone";
 import DescriptionInput, { AddressUrlHint } from "@/components/DescriptionInput";
 import {
@@ -278,10 +279,17 @@ export default function JobFormModal({
   };
 
   const addDroppedFiles = (fileList: FileList | File[]) => {
-    const picked = filterJobFiles(Array.from(fileList).filter((f) => f && typeof f.name === "string"));
+    const all = Array.from(fileList).filter((f) => f && typeof f.name === "string");
+    const picked = filterJobFiles(all);
     if (picked.length === 0) {
       setError(JOB_FILE_REJECTED_MESSAGE);
       return;
+    }
+    const skipped = all.length - picked.length;
+    if (skipped > 0) {
+      window.alert(
+        `${skipped} file(s) were skipped (unsupported type). ${JOB_FILE_REJECTED_MESSAGE}`,
+      );
     }
     setError(null);
     setJobFiles((prev) => [...prev, ...picked]);
@@ -861,7 +869,7 @@ export default function JobFormModal({
                     allowFolders
                     accept={JOB_FILE_ACCEPT}
                     label="Drag & drop job files or folders here"
-                    hint="Drawings, instructions, site photos, or client docs"
+                    hint="Drawings, site photos, or client docs · ZIP/RAR/7Z stay as one archive (browse or drag the .zip file)"
                     onFiles={(files) => addDroppedFiles(files)}
                   />
                 </div>
@@ -874,7 +882,7 @@ export default function JobFormModal({
                     <div className="divide-y divide-gray-50 flex-1 min-h-0 overflow-y-auto">
                       {existingAttachments.map((f) => (
                         <div key={f.id} className="px-4 py-3 flex items-start gap-3">
-                          <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 font-bold text-[10px]">FILE</div>
+                          <FileExtensionIcon fileName={f.fileName} size="xl" />
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-semibold text-gray-900 break-words whitespace-normal leading-snug">{f.fileName}</div>
                             {formatStoredFileSize(f.fileSize) && (
@@ -921,7 +929,7 @@ export default function JobFormModal({
                     <div className="divide-y divide-gray-50 max-h-[220px] overflow-y-auto">
                       {jobFiles.map((f, idx) => (
                         <div key={`${f.name}-${f.size}-${idx}`} className="px-4 py-3 flex items-start gap-3">
-                          <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 font-bold text-[10px]">FILE</div>
+                          <FileExtensionIcon fileName={f.name} size="xl" />
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-semibold text-gray-900 break-words whitespace-normal leading-snug">{f.name}</div>
                             <div className="text-[11px] text-gray-500">{formatFileSize(f.size)}</div>

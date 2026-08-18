@@ -1,5 +1,7 @@
 /** Collect files from a drag-drop event, including nested folders. */
 
+import { isArchiveFileName } from "./uploadFileTypes";
+
 type FileSystemEntryLike = {
   isFile: boolean;
   isDirectory: boolean;
@@ -51,6 +53,9 @@ async function walkEntry(entry: FileSystemEntryLike, pathPrefix: string, out: Fi
   }
 
   if (entry.isDirectory && typeof entry.createReader === "function") {
+    // Browsers may expose ZIP/RAR/7Z as a virtual folder when dragged — never unpack archives.
+    if (isArchiveFileName(entry.name)) return;
+
     const reader = entry.createReader();
     const children = await readDirectoryEntries(reader);
     const nextPrefix = `${pathPrefix}${entry.name}/`;
@@ -60,7 +65,33 @@ async function walkEntry(entry: FileSystemEntryLike, pathPrefix: string, out: Fi
   }
 }
 
+function collectArchiveFilesFromDataTransfer(dataTransfer: DataTransfer): File[] {
+  const archives: File[] = [];
+  const items = dataTransfer.items;
+  if (items && items.length > 0) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind !== "file") continue;
+      const entry = (item as DataTransferItem & {
+        webkitGetAsEntry?: () => FileSystemEntryLike | null;
+      }).webkitGetAsEntry?.();
+      if (!entry || !isArchiveFileName(entry.name)) continue;
+      const file = item.getAsFile();
+      if (file && file.size > 0) archives.push(file);
+    }
+  }
+
+  if (archives.length > 0) return archives;
+
+  return Array.from(dataTransfer.files ?? []).filter(
+    (f) => f && typeof f.name === "string" && f.size > 0 && isArchiveFileName(f.name),
+  );
+}
+
 export async function collectFilesFromDataTransfer(dataTransfer: DataTransfer): Promise<File[]> {
+  const archiveFiles = collectArchiveFilesFromDataTransfer(dataTransfer);
+  if (archiveFiles.length > 0) return archiveFiles;
+
   const items = dataTransfer.items;
   if (items && items.length > 0) {
     const entries: FileSystemEntryLike[] = [];

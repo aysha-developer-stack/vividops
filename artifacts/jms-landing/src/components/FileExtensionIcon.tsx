@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-type IconSize = "sm" | "md" | "lg";
+type IconSize = "sm" | "md" | "lg" | "xl";
 
 type ExtStyle = {
   bg: string;
@@ -38,6 +38,7 @@ const SIZE_CLASS: Record<IconSize, { box: string; text: string; fold: string | n
   sm: { box: "w-4 h-5", text: "text-[6px]", fold: null, layout: "items-center justify-center" },
   md: { box: "w-5 h-6", text: "text-[7px]", fold: "w-1 h-1", layout: "items-end justify-center" },
   lg: { box: "w-6 h-7", text: "text-[8px]", fold: "w-1.5 h-1.5", layout: "items-end justify-center" },
+  xl: { box: "w-9 h-9", text: "text-[10px]", fold: "w-2 h-2", layout: "items-end justify-center" },
 };
 
 export function fileExtensionFromName(fileName: string): string {
