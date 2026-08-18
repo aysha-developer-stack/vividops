@@ -882,7 +882,7 @@ export default function JobFormModal({
                     <div className="divide-y divide-gray-50 flex-1 min-h-0 overflow-y-auto">
                       {existingAttachments.map((f) => (
                         <div key={f.id} className="px-4 py-3 flex items-start gap-3">
-                          <FileExtensionIcon fileName={f.fileName} size="xl" />
+                          <FileExtensionIcon fileName={f.fileName} size="md" />
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-semibold text-gray-900 break-words whitespace-normal leading-snug">{f.fileName}</div>
                             {formatStoredFileSize(f.fileSize) && (
@@ -929,7 +929,7 @@ export default function JobFormModal({
                     <div className="divide-y divide-gray-50 max-h-[220px] overflow-y-auto">
                       {jobFiles.map((f, idx) => (
                         <div key={`${f.name}-${f.size}-${idx}`} className="px-4 py-3 flex items-start gap-3">
-                          <FileExtensionIcon fileName={f.name} size="xl" />
+                          <FileExtensionIcon fileName={f.name} size="md" />
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-semibold text-gray-900 break-words whitespace-normal leading-snug">{f.name}</div>
                             <div className="text-[11px] text-gray-500">{formatFileSize(f.size)}</div>
