@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-type IconSize = "sm" | "md" | "lg" | "xl";
+type IconSize = "xs" | "sm" | "md" | "lg" | "xl";
 
 type ExtStyle = {
   bg: string;
@@ -35,6 +35,7 @@ const EXT_STYLES: Record<string, ExtStyle> = {
 };
 
 const SIZE_CLASS: Record<IconSize, { box: string; text: string; fold: string | null; layout: string }> = {
+  xs: { box: "w-3.5 h-4", text: "text-[5px]", fold: null, layout: "items-center justify-center" },
   sm: { box: "w-4 h-5", text: "text-[6px]", fold: null, layout: "items-center justify-center" },
   md: { box: "w-5 h-6", text: "text-[7px]", fold: "w-1 h-1", layout: "items-end justify-center" },
   lg: { box: "w-6 h-7", text: "text-[8px]", fold: "w-1.5 h-1.5", layout: "items-end justify-center" },
@@ -78,7 +79,7 @@ export default function FileExtensionIcon({
     <div
       className={cn(
         "relative shrink-0 rounded-[3px] border flex overflow-hidden",
-        size === "sm" ? "shadow-none" : "shadow-sm",
+        size === "sm" || size === "xs" ? "shadow-none" : "shadow-sm",
         sizeClass.layout,
         sizeClass.box,
         style.bg,
@@ -100,7 +101,7 @@ export default function FileExtensionIcon({
       <span
         className={cn(
           "font-extrabold leading-none tracking-tighter",
-          size === "sm" ? "px-0" : "pb-0.5 px-0.5",
+          size === "sm" || size === "xs" ? "px-0" : "pb-0.5 px-0.5",
           sizeClass.text,
           style.text,
         )}
