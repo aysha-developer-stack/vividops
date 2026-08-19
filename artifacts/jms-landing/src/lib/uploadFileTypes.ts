@@ -26,6 +26,16 @@ export const JOB_FILE_EXTENSIONS = [
   ".jpg",
   ".jpeg",
   ".png",
+  ".gif",
+  ".webp",
+  ".bmp",
+  ".svg",
+  ".heic",
+  ".tif",
+  ".tiff",
+  ".txt",
+  ".ppt",
+  ".pptx",
 ] as const;
 
 /** Checklist instruction uploads remain Word/PDF only. */
@@ -69,7 +79,7 @@ export function filterChecklistInstructionFiles(files: File[]): File[] {
 }
 
 export const JOB_FILE_REJECTED_MESSAGE =
-  "File type not allowed. Supported: PDF, CAD/BIM (DWG, DXF, RVT, CKW, IFC, etc.), archives (ZIP, RAR, 7Z), Office docs, CSV, and images (JPG, PNG).";
+  "File type not allowed. Supported: PDF, CAD/BIM (DWG, DXF, RVT, CKW, IFC, etc.), archives (ZIP, RAR, 7Z), Office docs, CSV, and common images (JPG, PNG, GIF, WEBP, etc.).";
 
 export const CHECKLIST_FILE_REJECTED_MESSAGE =
   "Checklist files must be Word (.doc, .docx) or PDF only.";

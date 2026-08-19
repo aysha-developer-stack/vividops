@@ -26,6 +26,16 @@ export const JOB_FILE_EXTENSIONS = [
   ".jpg",
   ".jpeg",
   ".png",
+  ".gif",
+  ".webp",
+  ".bmp",
+  ".svg",
+  ".heic",
+  ".tif",
+  ".tiff",
+  ".txt",
+  ".ppt",
+  ".pptx",
 ] as const;
 
 export const CHECKLIST_FILE_EXTENSIONS = [".pdf", ".doc", ".docx"] as const;
@@ -57,5 +67,5 @@ export function validateUploadFileName(
   if (allowed) return null;
   return opts.checklistInstruction
     ? "Checklist files must be Word (.doc, .docx) or PDF only."
-    : "File type not allowed. Supported: PDF, CAD/BIM (incl. CKW), archives, Office docs, CSV, and JPG/PNG.";
+    : "File type not allowed. Supported: PDF, CAD/BIM (incl. CKW), archives, Office docs, CSV, and common images (JPG, PNG, GIF, WEBP, etc.).";
 }

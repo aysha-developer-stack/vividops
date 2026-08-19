@@ -8,7 +8,7 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import type { Role } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
-import { collectFilesFromDataTransfer, collectFilesFromList, filterJobFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
+import { collectFilesFromDataTransfer, collectFilesFromList } from "@/lib/collectDroppedFiles";
 
 type JobApi = {
   id: string;
@@ -173,6 +173,8 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
+  const attachMenuRef = useRef<HTMLDivElement | null>(null);
+  const emojiMenuRef = useRef<HTMLDivElement | null>(null);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
@@ -246,6 +248,21 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
       // optional
     }
   }, []);
+
+  useEffect(() => {
+    if (!attachMenuOpen && !emojiOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (attachMenuOpen && attachMenuRef.current && !attachMenuRef.current.contains(target)) {
+        setAttachMenuOpen(false);
+      }
+      if (emojiOpen && emojiMenuRef.current && !emojiMenuRef.current.contains(target)) {
+        setEmojiOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [attachMenuOpen, emojiOpen]);
 
   useEffect(() => {
     if (!actionMenuId) return;
@@ -533,6 +550,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
 
   const pickAttachment = () => {
     if (!activeJobId || attachmentUploading) return;
+    setEmojiOpen(false);
     setAttachMenuOpen((prev) => !prev);
   };
 
@@ -557,12 +575,13 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
 
   const uploadAttachments = async (files: File[]) => {
     if (!activeJobId || files.length === 0) return;
-    const allowed = filterJobFiles(files);
+    const allowed = collectFilesFromList(files);
     if (allowed.length === 0) {
-      toast({ title: "Upload failed", description: JOB_FILE_REJECTED_MESSAGE, variant: "destructive" });
+      toast({ title: "No files selected", description: "Choose a picture, file, or folder to share.", variant: "destructive" });
       return;
     }
     setAttachMenuOpen(false);
+    setEmojiOpen(false);
     setAttachmentUploading(true);
     try {
       for (const file of allowed) {
@@ -817,7 +836,6 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                 ref={attachmentInputRef}
                 type="file"
                 multiple
-                accept={JOB_FILE_ACCEPT}
                 className="hidden"
                 onChange={(e) => {
                   const files = collectFilesFromList(e.target.files);
@@ -829,7 +847,6 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                 ref={folderInputRef}
                 type="file"
                 multiple
-                accept={JOB_FILE_ACCEPT}
                 className="hidden"
                 {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
                 onChange={(e) => {
@@ -875,18 +892,18 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                     : "bg-gray-50 border-2 border-gray-200 focus-within:border-primary focus-within:bg-white"
                 }`}
               >
-                <div className="relative">
+                <div className="relative" ref={attachMenuRef}>
                   <button
                     type="button"
                     onClick={pickAttachment}
                     disabled={!activeJobId || attachmentUploading}
                     className="p-1.5 text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    title="Attach files or folder"
+                    title="Attach picture, file, or folder"
                   >
                     <Paperclip size={16} />
                   </button>
                   {attachMenuOpen && activeJobId && (
-                    <div className="absolute bottom-11 left-0 z-10 w-40 rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl">
+                    <div className="absolute bottom-11 left-0 z-10 w-48 rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl">
                       <button
                         type="button"
                         onClick={() => {
@@ -895,7 +912,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                         }}
                         className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50"
                       >
-                        Upload files
+                        Picture or file
                       </button>
                       <button
                         type="button"
@@ -905,7 +922,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                         }}
                         className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50"
                       >
-                        Upload folder
+                        Folder
                       </button>
                     </div>
                   )}
@@ -917,7 +934,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                   onKeyDown={(e) => e.key === "Enter" && void send()}
                   placeholder={
                     composerDragging
-                      ? "Drop files or folders to share…"
+                      ? "Drop pictures, files, or folders to share…"
                       : attachmentUploading
                         ? "Uploading attachment..."
                         : editingMessage
@@ -931,10 +948,13 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                   disabled={!activeJobId || attachmentUploading}
                   className="flex-1 bg-transparent text-sm text-gray-900 focus:outline-none py-1.5 placeholder-gray-400"
                 />
-                <div className="relative">
+                <div className="relative" ref={emojiMenuRef}>
                   <button
                     type="button"
-                    onClick={() => setEmojiOpen((prev) => !prev)}
+                    onClick={() => {
+                      setAttachMenuOpen(false);
+                      setEmojiOpen((prev) => !prev);
+                    }}
                     disabled={!activeJobId}
                     className="p-1.5 text-gray-400 hover:text-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     title="Insert emoji"
