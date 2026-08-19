@@ -89,7 +89,7 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
     return items.filter((n) => n.type === filter);
   }, [items, filter]);
 
-  const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 8);
+  const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 100);
 
   const unreadCount = items.filter((n) => n.unread).length;
 
