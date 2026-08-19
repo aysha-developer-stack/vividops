@@ -4,11 +4,13 @@ import { randomUUID } from "crypto";
 import { logger } from "../lib/logger";
 import { requireAuth } from "../middlewares/requireAuth";
 import {
+  backfillLegacyJobMessageNotificationTitles,
   cleanupOrphanedJobNotifications,
   createNotification,
   JOB_LINKED_NOTIFICATION_TYPES,
   type NotificationType,
 } from "../lib/notifications";
+import { fixLegacyJobMessageNotificationTitle } from "../lib/serialize";
 
 const router = Router();
 
@@ -61,6 +63,15 @@ const ensureSchema = async () => {
   } catch (err) {
     logger.warn({ err }, "Orphaned job notification cleanup skipped");
   }
+
+  try {
+    const updated = await backfillLegacyJobMessageNotificationTitles();
+    if (updated > 0) {
+      logger.info({ updated }, "Backfilled legacy job message notification titles");
+    }
+  } catch (err) {
+    logger.warn({ err }, "Legacy notification title backfill skipped");
+  }
 };
 
 router.get("/notifications", requireAuth, async (req, res) => {
@@ -69,7 +80,7 @@ router.get("/notifications", requireAuth, async (req, res) => {
     const user = req.session!.user;
 
     const rows = await db
-      .select({ notification: notifications })
+      .select({ notification: notifications, job: jobs })
       .from(notifications)
       .leftJoin(jobs, eq(notifications.jobId, jobs.id))
       .where(
@@ -83,7 +94,12 @@ router.get("/notifications", requireAuth, async (req, res) => {
       )
       .orderBy(desc(notifications.createdAt));
 
-    res.json(rows.map((row) => row.notification));
+    res.json(
+      rows.map(({ notification, job }) => ({
+        ...notification,
+        title: fixLegacyJobMessageNotificationTitle(notification.title, job),
+      })),
+    );
   } catch (err) {
     logger.error({ err }, "Failed to fetch notifications");
     res.status(500).json({ error: "Internal server error" });

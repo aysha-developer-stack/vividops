@@ -50,6 +50,17 @@ export function jobDisplayNumber(job: Pick<JobRow, "jobNumber" | "serial">): str
   return job.jobNumber?.trim() ? `JOB-${job.jobNumber.trim()}` : `JOB-${job.serial}`;
 }
 
+/** Rewrite old alerts that used internal serial (JOB-15) instead of the real job number. */
+export function fixLegacyJobMessageNotificationTitle(
+  title: string,
+  job: Pick<JobRow, "jobNumber" | "serial"> | null | undefined,
+): string {
+  if (!job?.jobNumber?.trim()) return title;
+  const legacyPrefix = `New message on JOB-${job.serial}`;
+  if (!title.startsWith(legacyPrefix)) return title;
+  return title.replace(legacyPrefix, `New message on ${jobDisplayNumber(job)}`);
+}
+
 export function publicJob(
   job: JobRow,
   assignee: RefUser,

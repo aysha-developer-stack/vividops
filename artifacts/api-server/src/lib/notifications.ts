@@ -1,4 +1,4 @@
-import { db, userSettings, eq, and, gte, notifications, users, inArray, isNull } from "@workspace/db";
+import { db, userSettings, eq, and, gte, notifications, users, inArray, isNull, sql } from "@workspace/db";
 import { logger } from "./logger";
 import { pushNotificationRealtime } from "./socket";
 
@@ -28,6 +28,21 @@ export async function deleteNotificationsForJob(jobId: string): Promise<number> 
 }
 
 /** Remove stale alerts left behind when jobs were deleted (job_id was set to null). */
+/** One-time-safe DB fix for alerts saved as "New message on JOB-{serial}". */
+export async function backfillLegacyJobMessageNotificationTitles(): Promise<number> {
+  const result = await db.execute(sql`
+    UPDATE notifications n
+    SET title = 'New message on JOB-' || TRIM(j.job_number)
+    FROM jobs j
+    WHERE n.job_id = j.id
+      AND n.type = 'job_message'
+      AND j.job_number IS NOT NULL
+      AND TRIM(j.job_number) <> ''
+      AND n.title = 'New message on JOB-' || j.serial::text
+  `);
+  return Number((result as { rowCount?: number }).rowCount ?? 0);
+}
+
 export async function cleanupOrphanedJobNotifications(): Promise<number> {
   const deleted = await db
     .delete(notifications)
