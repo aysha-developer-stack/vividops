@@ -353,6 +353,15 @@ export async function ensureAllSchemas() {
       CREATE INDEX IF NOT EXISTS job_messages_job_idx ON job_messages (job_id);
       CREATE INDEX IF NOT EXISTS job_messages_job_created_idx ON job_messages (job_id, created_at);
 
+      CREATE TABLE IF NOT EXISTS job_communication_read_state (
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        last_read_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, job_id)
+      );
+      CREATE INDEX IF NOT EXISTS job_communication_read_state_job_idx
+        ON job_communication_read_state (job_id);
+
       -- Cliq Integration
       CREATE TABLE IF NOT EXISTS job_cliq_channels (
         job_id uuid PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,

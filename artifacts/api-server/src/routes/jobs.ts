@@ -26,6 +26,10 @@ import {
 import { listOpsCliqChannelAdminEmails } from "../lib/cliq-channel-admins";
 import { announceCliqMemberActivity } from "../lib/cliq-member-activity";
 import {
+  getCommunicationUnreadCounts,
+  markJobCommunicationRead,
+} from "../lib/job-communication-read";
+import {
   ensureAllSchemas,
   ensureJobMessageSyncSchema,
   ensureJobWriteSchema,
@@ -1751,6 +1755,17 @@ async function provisionCliqChannelForJob(job: JobRow): Promise<void> {
   await finalizeExistingCliqJobChannel(token, job, createdLookup, ch.channelName, participantEmails);
 }
 
+router.get("/communication/unread-counts", requireAuth, async (req, res) => {
+  try {
+    const actor = req.session!.user;
+    const counts = await getCommunicationUnreadCounts(actor);
+    return res.json({ counts });
+  } catch (err) {
+    logger.error({ err }, "Failed to fetch communication unread counts");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/jobs", requireAuth, async (req, res) => {
   await ensureJobWriteSchema();
   const actor = req.session!.user;
@@ -2580,6 +2595,25 @@ router.get("/jobs/:id/messages", requireAuth, async (req, res) => {
     );
   } catch (err) {
     logger.error({ err }, "Failed to list job messages");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/jobs/:id/messages/read", requireAuth, async (req, res) => {
+  try {
+    const id = req.params.id as string;
+    const actor = req.session!.user;
+
+    const full = await loadJob(id);
+    if (!full) return res.status(404).json({ error: "Job not found" });
+    if (!(await canViewJobCommunication(actor, full.job))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    await markJobCommunicationRead(actor.id, id);
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error({ err }, "Failed to mark job messages as read");
     return res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageCircle, Hash, Search, Send, Paperclip, Smile,
@@ -151,11 +151,13 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
   const { toast } = useToast();
   const [jobs, setJobs] = useState<JobApi[]>([]);
   const [activeJobId, setActiveJobId] = useState<string>("");
+  const [unreadByJobId, setUnreadByJobId] = useState<Record<string, number>>({});
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<JobMessageUi[]>([]);
   const [search, setSearch] = useState("");
   const [cliqChannel, setCliqChannel] = useState<JobCliqChannelApi | null>(null);
   const pollRef = useRef<number | null>(null);
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
@@ -191,6 +193,42 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
     };
   }, []);
 
+  const loadUnreadCounts = useCallback(async () => {
+    try {
+      const res = await fetch("/api/communication/unread-counts", { credentials: "include" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { counts?: Record<string, number> };
+      if (data.counts && typeof data.counts === "object") {
+        setUnreadByJobId(data.counts);
+      }
+    } catch {
+      // optional
+    }
+  }, []);
+
+  const markJobRead = useCallback(async (jobId: string) => {
+    setUnreadByJobId((prev) => {
+      if (!prev[jobId]) return prev;
+      const next = { ...prev };
+      delete next[jobId];
+      return next;
+    });
+    try {
+      await fetch(`/api/jobs/${jobId}/messages/read`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // optional
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadUnreadCounts();
+    const interval = window.setInterval(() => void loadUnreadCounts(), 15000);
+    return () => window.clearInterval(interval);
+  }, [loadUnreadCounts]);
+
   const filteredJobs = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return jobs;
@@ -198,6 +236,17 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
   }, [jobs, search]);
 
   const activeJob = useMemo(() => jobs.find((j) => j.id === activeJobId) ?? null, [jobs, activeJobId]);
+
+  const scrollToLatestMessages = useCallback((behavior: ScrollBehavior = "auto") => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+  }, []);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => scrollToLatestMessages("auto"));
+    return () => cancelAnimationFrame(frame);
+  }, [messages, activeJobId, scrollToLatestMessages]);
 
   useEffect(() => {
     if (pollRef.current) {
@@ -228,7 +277,10 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
             time: formatMsgTime(m.createdAt),
             isMe: !!m.isMe,
           }));
-        if (!cancelled) setMessages(next);
+        if (!cancelled) {
+          setMessages(next);
+          void markJobRead(activeJobId);
+        }
       } catch {
       }
     };
@@ -264,7 +316,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
         pollRef.current = null;
       }
     };
-  }, [activeJobId]);
+  }, [activeJobId, markJobRead]);
 
   const openCliq = async () => {
     if (!activeJobId) return;
@@ -426,6 +478,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                 <div className="space-y-0.5">
                   {filteredJobs.map((j) => {
                     const active = activeJobId === j.id;
+                    const unread = active ? 0 : (unreadByJobId[j.id] ?? 0);
                     return (
                       <motion.button
                         key={j.id}
@@ -435,6 +488,15 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                       >
                         <Hash size={14} className={active ? "text-white" : "text-gray-400"} />
                         <span className="font-medium flex-1 text-left truncate">{j.number} · {j.title}</span>
+                        {unread > 0 && (
+                          <span
+                            className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 ${
+                              active ? "bg-white text-red-500" : "bg-red-500 text-white"
+                            }`}
+                          >
+                            {unread > 99 ? "99+" : unread}
+                          </span>
+                        )}
                       </motion.button>
                     );
                   })}
@@ -464,7 +526,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
               </div>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
+            <div ref={messagesScrollRef} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
               <AnimatePresence>
                 {messages.map((m, i) => (
                   <motion.div
@@ -472,7 +534,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                     layout
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.04, duration: 0.25 }}
+                    transition={{ delay: Math.min(i * 0.04, 0.4), duration: 0.25 }}
                     className={`flex gap-3 ${m.isMe ? "flex-row-reverse" : ""}`}
                   >
                     <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${m.isMe ? "from-primary to-sky-700" : "from-gray-300 to-gray-400"} text-white text-xs font-bold flex items-center justify-center shrink-0`}>
