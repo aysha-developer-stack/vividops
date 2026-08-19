@@ -184,6 +184,25 @@ function DailyUpdates({ canPost }: { canPost: boolean }) {
     setMetaByPostId(next);
   }, [apiPosts]);
 
+  const weekStats = useMemo(() => {
+    const now = Date.now();
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    let updatesPosted = 0;
+    let reactions = 0;
+    let comments = 0;
+
+    for (const p of apiPosts ?? []) {
+      const created = new Date(p.createdAt).getTime();
+      if (Number.isNaN(created) || now - created > weekMs) continue;
+      updatesPosted += 1;
+      const meta = metaByPostId[p.id];
+      reactions += meta?.likeCount ?? Number((p as any)?.likeCount ?? 0);
+      comments += meta?.commentCount ?? Number((p as any)?.commentCount ?? 0);
+    }
+
+    return { updatesPosted, reactions, comments };
+  }, [apiPosts, metaByPostId]);
+
   const refreshLikes = async (postId: string) => {
     setLikesLoading(true);
     try {
@@ -275,7 +294,6 @@ function DailyUpdates({ canPost }: { canPost: boolean }) {
           commentCount: (prev[postId]?.commentCount ?? 0) + 1,
         },
       }));
-      setCommentsModal(null);
     } catch (err) {
       console.error("Failed to add comment:", err);
     }
@@ -388,9 +406,9 @@ function DailyUpdates({ canPost }: { canPost: boolean }) {
 
         <div className="bg-white rounded-2xl border border-gray-100 p-5">
           <div className="text-sm font-bold text-gray-900 mb-3">This week</div>
-          <Stat label="Updates posted" value={apiPosts?.length ?? 0} />
-          <Stat label="Reactions" value={0} />
-          <Stat label="Comments" value={0} />
+          <Stat label="Updates posted" value={weekStats.updatesPosted} />
+          <Stat label="Reactions" value={weekStats.reactions} />
+          <Stat label="Comments" value={weekStats.comments} />
           <Stat label="Audience reach" value="All users" subtle />
         </div>
       </div>
