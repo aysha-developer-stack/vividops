@@ -13,7 +13,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { CreateJobBody, UpdateJobBody } from "@workspace/api-zod";
-import { buildJobAssignees, publicJob } from "../lib/serialize";
+import { buildJobAssignees, jobDisplayNumber, publicJob } from "../lib/serialize";
 import { parseJobMeta, serializeJobMeta } from "../lib/jobMeta";
 import { requireAuth, requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -1293,7 +1293,7 @@ async function createStoredJobMessage({
   });
 
   try {
-    const title = `New message on JOB-${job.serial}`;
+    const title = `New message on ${jobDisplayNumber(job)}`;
     const description = `${job.title} — ${actor.name}: ${previewText(cleanText)}`;
 
     await notifyJobManagers({

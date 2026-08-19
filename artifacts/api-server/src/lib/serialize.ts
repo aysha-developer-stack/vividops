@@ -46,6 +46,10 @@ export function buildJobAssignees(
   return result.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export function jobDisplayNumber(job: Pick<JobRow, "jobNumber" | "serial">): string {
+  return job.jobNumber?.trim() ? `JOB-${job.jobNumber.trim()}` : `JOB-${job.serial}`;
+}
+
 export function publicJob(
   job: JobRow,
   assignee: RefUser,
@@ -54,7 +58,7 @@ export function publicJob(
 ) {
   const now = new Date();
   const isOverdue = isJobOverdueByDueDate(job.dueDate, job.status, now);
-  const displayNumber = job.jobNumber?.trim() ? `JOB-${job.jobNumber.trim()}` : `JOB-${job.serial}`;
+  const displayNumber = jobDisplayNumber(job);
   const meta = parseJobMeta(job.description);
   return {
     id: job.id,

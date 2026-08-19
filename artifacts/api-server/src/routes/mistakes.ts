@@ -14,6 +14,7 @@ import {
   type UserRow,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
+import { jobDisplayNumber } from "../lib/serialize";
 import { createNotification, notifyJobManagers, previewText } from "../lib/notifications";
 
 const router: IRouter = Router();
@@ -113,7 +114,7 @@ function toPublic(row: {
     resolvedAt: row.report.resolvedAt?.toISOString() ?? null,
     createdAt: row.report.createdAt.toISOString(),
     updatedAt: row.report.updatedAt.toISOString(),
-    jobNumber: row.job ? `JOB-${row.job.serial}` : null,
+    jobNumber: row.job ? jobDisplayNumber(row.job) : null,
     jobTitle: row.job?.title ?? null,
     user: row.user?.id ? row.user : null,
     createdBy: row.createdBy?.id ? row.createdBy : null,
