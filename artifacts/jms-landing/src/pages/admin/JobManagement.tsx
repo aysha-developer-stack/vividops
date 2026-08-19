@@ -884,7 +884,15 @@ export default function JobManagement(
           : "Create Job";
 
   return (
-    <DashboardLayout title="Job Management" role={role}>
+    <DashboardLayout
+      title="Job Management"
+      role={role}
+      headerSearch={{
+        value: search,
+        onChange: setSearch,
+        placeholder: "Search jobs by title, client, number, address…",
+      }}
+    >
       {(role === "super-admin" || role === "admin") && (
         <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-5 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
           <div className="text-sm font-bold text-gray-900">Quick filters</div>

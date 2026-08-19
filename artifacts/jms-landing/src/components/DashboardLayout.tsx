@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, ReactNode } from "react";
+import { useState, useEffect, useRef, useMemo, ReactNode, type ChangeEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -41,10 +41,17 @@ export default function DashboardLayout({
   title,
   children,
   role: roleProp,
+  headerSearch,
 }: {
   title: string;
   children: ReactNode;
   role?: Role;
+  /** When set, the top-bar search filters the current page (e.g. Job Management). */
+  headerSearch?: {
+    value: string;
+    onChange: (value: string) => void;
+    placeholder?: string;
+  };
 }) {
   const { user } = useAuth();
   const userRole = (user?.role as Role) || "user";
@@ -429,11 +436,19 @@ export default function DashboardLayout({
 
           <div className="flex items-center gap-3">
             {/* Search */}
-            <div className="hidden md:flex items-center gap-2 bg-gray-100 rounded-xl px-4 py-2 w-72 border border-transparent hover:border-gray-200 focus-within:border-primary focus-within:bg-white transition-all">
-              <Search size={16} className="text-gray-400" />
+            <div className="hidden md:flex items-center gap-2 bg-white rounded-xl px-4 py-2 w-72 border border-gray-200 hover:border-gray-300 focus-within:border-primary transition-all">
+              <Search size={16} className="text-gray-400 shrink-0" />
               <input
-                placeholder="Search anything…"
-                className="bg-transparent text-sm flex-1 focus:outline-none placeholder-gray-400"
+                type="search"
+                {...(headerSearch
+                  ? {
+                      value: headerSearch.value,
+                      onChange: (e: ChangeEvent<HTMLInputElement>) =>
+                        headerSearch.onChange(e.target.value),
+                    }
+                  : {})}
+                placeholder={headerSearch?.placeholder ?? "Search anything…"}
+                className="bg-white text-sm flex-1 focus:outline-none !text-[#111827] !placeholder:text-gray-400 caret-gray-900"
               />
             </div>
 
