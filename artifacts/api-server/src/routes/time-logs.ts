@@ -1,9 +1,9 @@
 import { Router, type IRouter } from "express";
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, ilike } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { db, jobs, timeLogs } from "@workspace/db";
+import { db, jobs, timeLogs, users, activeTimerSessions } from "@workspace/db";
 import { CreateTimeLogBody } from "@workspace/api-zod";
-import { requireAuth } from "../middlewares/requireAuth";
+import { requireAuth, requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { ensureJobWriteSchema } from "../lib/schema-init";
 import { publicTimeLog, resolveReworkCycleForTimeLog } from "../lib/time-log-cycles";
@@ -77,5 +77,97 @@ router.post("/time-logs", requireAuth, async (req, res) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 });
+
+/** Super-admin: delete all time logs (and active timers) for one user. */
+router.delete(
+  "/time-logs/user/:userId",
+  requireAuth,
+  requireRole("super-admin"),
+  async (req, res) => {
+    try {
+      await ensureSchema();
+      const userId = Array.isArray(req.params.userId) ? req.params.userId[0] : req.params.userId;
+      const [userRow] = await db
+        .select({ id: users.id, name: users.name })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      if (!userRow) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const deletedLogs = await db
+        .delete(timeLogs)
+        .where(eq(timeLogs.userId, userId))
+        .returning({ id: timeLogs.id });
+      const deletedSessions = await db
+        .delete(activeTimerSessions)
+        .where(eq(activeTimerSessions.userId, userId))
+        .returning({ id: activeTimerSessions.id });
+
+      return res.json({
+        user: userRow,
+        deleted: {
+          timeLogs: deletedLogs.length,
+          activeTimerSessions: deletedSessions.length,
+        },
+      });
+    } catch (err) {
+      logger.error({ err }, "Failed to reset user time logs");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
+
+/** Super-admin: reset time logs by exact user name (case-insensitive). */
+router.post(
+  "/time-logs/reset-by-name",
+  requireAuth,
+  requireRole("super-admin"),
+  async (req, res) => {
+    try {
+      await ensureSchema();
+      const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+      if (!name) {
+        return res.status(400).json({ error: "name is required" });
+      }
+
+      const matches = await db
+        .select({ id: users.id, name: users.name })
+        .from(users)
+        .where(ilike(users.name, name));
+      if (matches.length === 0) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      if (matches.length > 1) {
+        return res.status(409).json({
+          error: "Multiple users match this name",
+          users: matches,
+        });
+      }
+
+      const userId = matches[0]!.id;
+      const deletedLogs = await db
+        .delete(timeLogs)
+        .where(eq(timeLogs.userId, userId))
+        .returning({ id: timeLogs.id });
+      const deletedSessions = await db
+        .delete(activeTimerSessions)
+        .where(eq(activeTimerSessions.userId, userId))
+        .returning({ id: activeTimerSessions.id });
+
+      return res.json({
+        user: matches[0],
+        deleted: {
+          timeLogs: deletedLogs.length,
+          activeTimerSessions: deletedSessions.length,
+        },
+      });
+    } catch (err) {
+      logger.error({ err }, "Failed to reset user time logs by name");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 export default router;
