@@ -379,7 +379,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     search === "" || t.user.toLowerCase().includes(search.toLowerCase()) || t.project.toLowerCase().includes(search.toLowerCase())
   );
 
-  const usersP = usePagination(filteredUsers, 6);
+  const usersP = usePagination(filteredUsers, 50);
   const timeP = usePagination(filteredTime, 8);
 
   const platformJobStats = useMemo(() => {
@@ -911,7 +911,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                         <tr>{["User", "Role", "Jobs", "Completed", "Hours", "Rework", "Overdue", "Score", "Avg time", "Report"].map((h) => (
                           <th
                             key={h}
-                            title={h === "Score" ? "Score out of 100: Completion (60) + On-time (25) + Low rework (15)" : undefined}
+                            title={h === "Score" ? "Score out of 100: Completion (60) + On-time (25) + Low rework (15)" : h === "Avg time" ? "Average time from job assigned to job completed (not timer hours)" : undefined}
                             className="text-left px-3 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider"
                           >
                             {h}
