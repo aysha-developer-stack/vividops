@@ -10,6 +10,8 @@ import {
   useListAssignableUsers,
   getListJobsQueryKey,
   getGetJobQueryKey,
+  getListAssignableUsersQueryKey,
+  listAssignableUsers,
   ApiError,
 } from "@workspace/api-client-react";
 import { PRIORITY_UI_TO_API, type UiPriority } from "@/lib/jobMappers";
@@ -141,11 +143,20 @@ export default function JobFormModal({
     applyWorkerSelection([...selectedWorkerIds, workerId], form.assigneeId || workerId);
   };
 
+  const refetchAssignables = useCallback(
+    () =>
+      qc.fetchQuery({
+        queryKey: getListAssignableUsersQueryKey(),
+        queryFn: () => listAssignableUsers(),
+      }),
+    [qc],
+  );
+
   const loadJobForEdit = useCallback(async (id: string) => {
     setLoading(true);
     setError(null);
     try {
-      await assignablesQuery.refetch();
+      await refetchAssignables();
 
       let job: JobWithChecklist | undefined;
       const res = await fetch(`/api/jobs/${id}`, { credentials: "include" });
@@ -205,14 +216,14 @@ export default function JobFormModal({
     } finally {
       setLoading(false);
     }
-  }, [role, currentUser?.id, assignablesQuery]);
+  }, [role, currentUser?.id, refetchAssignables]);
 
   const loadCreateDefaults = useCallback(async () => {
     setLoading(true);
     setError(null);
     resetModal();
 
-    const { data: freshAssignables } = await assignablesQuery.refetch();
+    const freshAssignables = await refetchAssignables();
     const freshSupervisors = (freshAssignables ?? []).filter((u) => u.role === "supervisor");
 
     setForm({
@@ -238,7 +249,7 @@ export default function JobFormModal({
       setJobNumberLoading(false);
       setLoading(false);
     }
-  }, [resetModal, role, currentUser?.id, assignablesQuery]);
+  }, [resetModal, role, currentUser?.id, refetchAssignables]);
 
   useEffect(() => {
     if (!open) return;
