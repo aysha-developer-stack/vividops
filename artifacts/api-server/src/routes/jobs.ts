@@ -230,6 +230,34 @@ async function canViewJobCommunication(actor: UserRow, job: JobRow): Promise<boo
   return isAdditionalJobMember(job.id, actor.id);
 }
 
+function canModifyJobMessage(actor: UserRow, messageUserId: string): boolean {
+  if (actor.role === "super-admin" || actor.role === "admin") return true;
+  return actor.id === messageUserId;
+}
+
+async function loadJobMessage(jobId: string, messageId: string): Promise<{
+  id: string;
+  job_id: string;
+  user_id: string;
+  text: string;
+  created_at: string;
+} | null> {
+  await ensureJobMessagesSchema();
+  const rows = await db.execute(sql`
+    SELECT id, job_id, user_id, text, created_at
+    FROM job_messages
+    WHERE id = ${messageId} AND job_id = ${jobId}
+    LIMIT 1
+  `);
+  return (((rows as any).rows ?? [])[0] as {
+    id: string;
+    job_id: string;
+    user_id: string;
+    text: string;
+    created_at: string;
+  } | undefined) ?? null;
+}
+
 /**
  * Mutation rules:
  *  - super-admin / admin: full edit on any job
@@ -2614,6 +2642,85 @@ router.post("/jobs/:id/messages/read", requireAuth, async (req, res) => {
     return res.json({ success: true });
   } catch (err) {
     logger.error({ err }, "Failed to mark job messages as read");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/jobs/:id/messages/:messageId", requireAuth, async (req, res) => {
+  try {
+    const jobId = req.params.id as string;
+    const messageId = req.params.messageId as string;
+    const actor = req.session!.user;
+    const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+    if (!text) return res.status(400).json({ error: "text is required" });
+
+    const full = await loadJob(jobId);
+    if (!full) return res.status(404).json({ error: "Job not found" });
+    if (!(await canViewJobCommunication(actor, full.job))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const existing = await loadJobMessage(jobId, messageId);
+    if (!existing) return res.status(404).json({ error: "Message not found" });
+    if (!canModifyJobMessage(actor, existing.user_id)) {
+      return res.status(403).json({ error: "You cannot edit this message" });
+    }
+
+    const updated = await db.execute(sql`
+      UPDATE job_messages
+      SET text = ${text}
+      WHERE id = ${messageId} AND job_id = ${jobId}
+      RETURNING id, text, created_at, user_id
+    `);
+    const row = ((updated as any).rows ?? [])[0] as
+      | { id: string; text: string; created_at: string; user_id: string }
+      | undefined;
+    if (!row) return res.status(404).json({ error: "Message not found" });
+
+    const [author] = await db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(eq(users.id, row.user_id))
+      .limit(1);
+
+    return res.json({
+      id: row.id,
+      text: row.text,
+      createdAt: row.created_at,
+      isMe: row.user_id === actor.id,
+      user: { id: row.user_id, name: author?.name ?? "User" },
+    });
+  } catch (err) {
+    logger.error({ err }, "Failed to update job message");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/jobs/:id/messages/:messageId", requireAuth, async (req, res) => {
+  try {
+    const jobId = req.params.id as string;
+    const messageId = req.params.messageId as string;
+    const actor = req.session!.user;
+
+    const full = await loadJob(jobId);
+    if (!full) return res.status(404).json({ error: "Job not found" });
+    if (!(await canViewJobCommunication(actor, full.job))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const existing = await loadJobMessage(jobId, messageId);
+    if (!existing) return res.status(404).json({ error: "Message not found" });
+    if (!canModifyJobMessage(actor, existing.user_id)) {
+      return res.status(403).json({ error: "You cannot delete this message" });
+    }
+
+    await ensureJobMessageSyncSchema();
+    await db.execute(sql`DELETE FROM job_message_sync WHERE job_message_id = ${messageId}`);
+    await db.execute(sql`DELETE FROM job_messages WHERE id = ${messageId} AND job_id = ${jobId}`);
+
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error({ err }, "Failed to delete job message");
     return res.status(500).json({ error: "Internal server error" });
   }
 });

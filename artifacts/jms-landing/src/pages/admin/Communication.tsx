@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageCircle, Hash, Search, Send, Paperclip, Smile,
   Phone, Video, MoreHorizontal, ExternalLink, Check,
+  Reply, Copy, Forward, Pencil, Trash2, X,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import type { Role } from "@/lib/roles";
@@ -113,6 +114,18 @@ function renderMessageText(text: string) {
   ));
 }
 
+function formatReplyQuote(message: JobMessageUi): string {
+  const preview = message.text.split("\n")[0]?.trim() || message.text.trim();
+  const clipped = preview.length > 120 ? `${preview.slice(0, 120)}…` : preview;
+  return `Replying to ${message.user}:\n"${clipped}"`;
+}
+
+function buildOutgoingText(draft: string, replyTo: JobMessageUi | null): string {
+  const body = draft.trim();
+  if (!replyTo) return body;
+  return `${formatReplyQuote(replyTo)}\n\n${body}`;
+}
+
 function renderMessageBody(text: string, isMe: boolean) {
   const attachment = parseAttachmentMessage(text);
   if (!attachment) {
@@ -164,6 +177,17 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [composerDragging, setComposerDragging] = useState(false);
+  const [replyTo, setReplyTo] = useState<JobMessageUi | null>(null);
+  const [editingMessage, setEditingMessage] = useState<JobMessageUi | null>(null);
+  const [forwardMessage, setForwardMessage] = useState<JobMessageUi | null>(null);
+  const [actionMenuId, setActionMenuId] = useState<string | null>(null);
+  const composerInputRef = useRef<HTMLInputElement | null>(null);
+
+  const canManageMessage = useCallback(
+    (message: JobMessageUi) =>
+      message.isMe || role === "super-admin" || role === "admin",
+    [role],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -224,6 +248,13 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
   }, []);
 
   useEffect(() => {
+    if (!actionMenuId) return;
+    const close = () => setActionMenuId(null);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [actionMenuId]);
+
+  useEffect(() => {
     void loadUnreadCounts();
     const interval = window.setInterval(() => void loadUnreadCounts(), 15000);
     return () => window.clearInterval(interval);
@@ -256,6 +287,9 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
     if (!activeJobId) {
       setMessages([]);
       setCliqChannel(null);
+      setReplyTo(null);
+      setEditingMessage(null);
+      setActionMenuId(null);
       return;
     }
 
@@ -357,10 +391,46 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
   };
 
   const send = async (textOverride?: string, options?: { preserveDraft?: boolean }) => {
-    const text = (textOverride ?? draft).trim();
+    const raw = textOverride ?? draft;
+    const text = editingMessage ? raw.trim() : buildOutgoingText(raw, replyTo);
     if (!text || !activeJobId) return;
+
+    if (editingMessage) {
+      try {
+        const res = await fetch(`/api/jobs/${activeJobId}/messages/${editingMessage.id}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+        if (!res.ok) {
+          toast({ title: "Edit failed", description: "Could not update message.", variant: "destructive" });
+          return;
+        }
+        const updated = (await res.json()) as JobMessageApi;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === editingMessage.id
+              ? {
+                  ...m,
+                  text: updated.text,
+                  time: formatMsgTime(updated.createdAt),
+                }
+              : m,
+          ),
+        );
+        setEditingMessage(null);
+        setDraft("");
+        toast({ title: "Message updated" });
+      } catch {
+        toast({ title: "Edit failed", description: "Could not update message.", variant: "destructive" });
+      }
+      return;
+    }
+
     if (textOverride === undefined && !options?.preserveDraft) {
       setDraft("");
+      setReplyTo(null);
     }
     try {
       const res = await fetch(`/api/jobs/${activeJobId}/messages`, {
@@ -375,7 +445,89 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
       const m = created as JobMessageApi;
       if (typeof m.id !== "string" || typeof m.text !== "string" || typeof m.createdAt !== "string" || !m.user || typeof m.user.name !== "string") return;
       appendMessage(m);
+      if (!options?.preserveDraft) {
+        setReplyTo(null);
+      }
     } catch {
+    }
+  };
+
+  const copyMessage = async (message: JobMessageUi) => {
+    setActionMenuId(null);
+    try {
+      await navigator.clipboard.writeText(message.text);
+      toast({ title: "Copied to clipboard" });
+    } catch {
+      toast({ title: "Copy failed", variant: "destructive" });
+    }
+  };
+
+  const deleteMessage = async (message: JobMessageUi) => {
+    if (!activeJobId) return;
+    if (!window.confirm("Delete this message?")) return;
+    setActionMenuId(null);
+    try {
+      const res = await fetch(`/api/jobs/${activeJobId}/messages/${message.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        toast({ title: "Delete failed", variant: "destructive" });
+        return;
+      }
+      setMessages((prev) => prev.filter((m) => m.id !== message.id));
+      if (editingMessage?.id === message.id) {
+        setEditingMessage(null);
+        setDraft("");
+      }
+      if (replyTo?.id === message.id) setReplyTo(null);
+      toast({ title: "Message deleted" });
+    } catch {
+      toast({ title: "Delete failed", variant: "destructive" });
+    }
+  };
+
+  const startReply = (message: JobMessageUi) => {
+    setActionMenuId(null);
+    setEditingMessage(null);
+    setReplyTo(message);
+    composerInputRef.current?.focus();
+  };
+
+  const startEdit = (message: JobMessageUi) => {
+    setActionMenuId(null);
+    setReplyTo(null);
+    setEditingMessage(message);
+    setDraft(message.text);
+    composerInputRef.current?.focus();
+  };
+
+  const cancelComposerMode = () => {
+    setReplyTo(null);
+    setEditingMessage(null);
+    setDraft("");
+  };
+
+  const forwardToJob = async (targetJobId: string) => {
+    if (!forwardMessage || !activeJob) return;
+    const text = `Forwarded from ${activeJob.number} — ${forwardMessage.user}:\n${forwardMessage.text}`;
+    try {
+      const res = await fetch(`/api/jobs/${targetJobId}/messages`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, pushToCliq: true }),
+      });
+      if (!res.ok) {
+        toast({ title: "Forward failed", variant: "destructive" });
+        return;
+      }
+      const target = jobs.find((j) => j.id === targetJobId);
+      toast({ title: "Message forwarded", description: target ? `Sent to ${target.number}` : undefined });
+      setForwardMessage(null);
+      void loadUnreadCounts();
+    } catch {
+      toast({ title: "Forward failed", variant: "destructive" });
     }
   };
 
@@ -483,7 +635,13 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                       <motion.button
                         key={j.id}
                         whileHover={{ x: 3 }}
-                        onClick={() => setActiveJobId(j.id)}
+                        onClick={() => {
+                          setActiveJobId(j.id);
+                          setReplyTo(null);
+                          setEditingMessage(null);
+                          setDraft("");
+                          setActionMenuId(null);
+                        }}
                         className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${active ? "bg-primary text-white shadow-md shadow-primary/30" : "text-gray-700 hover:bg-white"}`}
                       >
                         <Hash size={14} className={active ? "text-white" : "text-gray-400"} />
@@ -535,22 +693,93 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: Math.min(i * 0.04, 0.4), duration: 0.25 }}
-                    className={`flex gap-3 ${m.isMe ? "flex-row-reverse" : ""}`}
+                    className={`group flex gap-3 ${m.isMe ? "flex-row-reverse" : ""}`}
                   >
                     <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${m.isMe ? "from-primary to-sky-700" : "from-gray-300 to-gray-400"} text-white text-xs font-bold flex items-center justify-center shrink-0`}>
                       {m.avatar}
                     </div>
-                    <div className={`max-w-md ${m.isMe ? "items-end" : "items-start"} flex flex-col`}>
+                    <div className={`relative max-w-md ${m.isMe ? "items-end" : "items-start"} flex flex-col`}>
                       <div className={`flex items-center gap-2 mb-1 ${m.isMe ? "flex-row-reverse" : ""}`}>
                         <span className="text-xs font-semibold text-gray-900">{m.user}</span>
                         <span className="text-[10px] text-gray-400">{m.time}</span>
                       </div>
-                      <motion.div
-                        whileHover={{ scale: 1.01 }}
-                        className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${m.isMe ? "bg-primary text-white rounded-br-sm" : "bg-gray-100 text-gray-800 rounded-bl-sm"}`}
-                      >
-                        {renderMessageBody(m.text, m.isMe)}
-                      </motion.div>
+                      <div className={`relative ${m.isMe ? "self-end" : "self-start"}`}>
+                        <div
+                          className={`absolute ${m.isMe ? "right-0" : "left-0"} -top-9 z-10 flex items-center gap-0.5 rounded-lg border border-gray-200 bg-white px-1 py-0.5 shadow-md opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => startReply(m)}
+                            className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                            title="Reply"
+                          >
+                            <Reply size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void copyMessage(m)}
+                            className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                            title="Copy"
+                          >
+                            <Copy size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActionMenuId(null);
+                              setForwardMessage(m);
+                            }}
+                            className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                            title="Forward"
+                          >
+                            <Forward size={14} />
+                          </button>
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActionMenuId((prev) => (prev === m.id ? null : m.id));
+                              }}
+                              className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                              title="More"
+                            >
+                              <MoreHorizontal size={14} />
+                            </button>
+                            {actionMenuId === m.id && (
+                              <div
+                                className={`absolute top-full mt-1 ${m.isMe ? "right-0" : "left-0"} z-20 w-36 rounded-xl border border-gray-200 bg-white py-1 shadow-xl`}
+                                onMouseDown={(e) => e.stopPropagation()}
+                              >
+                                {canManageMessage(m) && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => startEdit(m)}
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                    >
+                                      <Pencil size={13} /> Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void deleteMessage(m)}
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
+                                    >
+                                      <Trash2 size={13} /> Delete
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <motion.div
+                          whileHover={{ scale: 1.01 }}
+                          className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${m.isMe ? "bg-primary text-white rounded-br-sm" : "bg-gray-100 text-gray-800 rounded-bl-sm"}`}
+                        >
+                          {renderMessageBody(m.text, m.isMe)}
+                        </motion.div>
+                      </div>
                     </div>
                   </motion.div>
                 ))}
@@ -563,7 +792,27 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-100">
+            <div className="p-4 border-t border-gray-100 space-y-2">
+              {(replyTo || editingMessage) && (
+                <div className="flex items-start justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-primary">
+                      {editingMessage ? "Editing message" : `Replying to ${replyTo?.user}`}
+                    </div>
+                    <div className="text-xs text-gray-600 truncate mt-0.5">
+                      {(editingMessage ?? replyTo)?.text.split("\n")[0]}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={cancelComposerMode}
+                    className="p-1 rounded-md text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+                    title="Cancel"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
               <input
                 ref={attachmentInputRef}
                 type="file"
@@ -662,6 +911,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                   )}
                 </div>
                 <input
+                  ref={composerInputRef}
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && void send()}
@@ -670,9 +920,13 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                       ? "Drop files or folders to share…"
                       : attachmentUploading
                         ? "Uploading attachment..."
-                        : activeJob
-                          ? `Message ${activeJob.number}…`
-                          : "Select a job…"
+                        : editingMessage
+                          ? "Edit message…"
+                          : replyTo
+                            ? `Reply to ${replyTo.user}…`
+                            : activeJob
+                              ? `Message ${activeJob.number}…`
+                              : "Select a job…"
                   }
                   disabled={!activeJobId || attachmentUploading}
                   className="flex-1 bg-transparent text-sm text-gray-900 focus:outline-none py-1.5 placeholder-gray-400"
@@ -710,13 +964,52 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                   onClick={() => void send()}
                   disabled={!draft.trim() || !activeJobId || attachmentUploading}
                   className="w-9 h-9 rounded-xl bg-primary hover:bg-primary/90 text-white flex items-center justify-center shadow-md shadow-primary/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title={editingMessage ? "Save edit" : "Send"}
                 >
-                  <Send size={14} />
+                  {editingMessage ? <Check size={14} /> : <Send size={14} />}
                 </motion.button>
               </div>
             </div>
           </div>
         </div>
+
+        {forwardMessage && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+            <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-100 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-gray-900 text-sm">Forward message</h3>
+                  <p className="text-xs text-gray-500 mt-0.5 truncate">From {forwardMessage.user}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setForwardMessage(null)}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="max-h-72 overflow-y-auto p-2">
+                {jobs
+                  .filter((j) => j.id !== activeJobId)
+                  .map((j) => (
+                    <button
+                      key={j.id}
+                      type="button"
+                      onClick={() => void forwardToJob(j.id)}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-gray-50 text-left"
+                    >
+                      <Hash size={14} className="text-gray-400 shrink-0" />
+                      <span className="truncate">{j.number} · {j.title}</span>
+                    </button>
+                  ))}
+                {jobs.filter((j) => j.id !== activeJobId).length === 0 && (
+                  <div className="px-3 py-4 text-xs text-gray-500 text-center">No other jobs available</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );
