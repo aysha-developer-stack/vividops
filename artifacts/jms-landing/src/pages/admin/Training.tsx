@@ -6,6 +6,7 @@ import {
   Users as UsersIcon, X, Pin, MoreVertical, Heart, MessageSquare,
   Paperclip, Calendar, Images, Film, Download, Eye,
   Trash2,
+  Copy,
   ChevronLeft, ChevronRight,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -786,6 +787,27 @@ function PostCard({
   canDelete?: boolean;
   onDelete?: () => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [menuOpen]);
+
+  const copyPostText = async () => {
+    setMenuOpen(false);
+    try {
+      await navigator.clipboard.writeText(post.body);
+    } catch {
+      // optional
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -816,19 +838,46 @@ function PostCard({
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {canDelete && onDelete && (
-              <button
-                onClick={onDelete}
-                className="text-gray-400 hover:text-rose-600 p-1 rounded-lg hover:bg-gray-100"
-                aria-label="Delete post"
-              >
-                <Trash2 size={16} />
-              </button>
-            )}
-            <button className="text-gray-400 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100" aria-label="More">
+          <div className="relative flex items-center gap-2" ref={menuRef}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen((prev) => !prev);
+              }}
+              className="text-gray-400 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100"
+              aria-label="More options"
+            >
               <MoreVertical size={16} />
             </button>
+            {menuOpen && (
+              <div
+                className="absolute right-0 top-full mt-1 z-20 w-40 rounded-xl border border-gray-200 bg-white py-1 shadow-xl"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={() => void copyPostText()}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 text-left"
+                >
+                  <Copy size={13} />
+                  Copy text
+                </button>
+                {canDelete && onDelete && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onDelete();
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 text-left"
+                  >
+                    <Trash2 size={13} />
+                    Delete post
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -1568,7 +1617,7 @@ function CoursesView() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
       ) : (
-        <CourseGrid filtered={filtered} />
+        <CourseGrid filtered={filtered} totalCourses={totalCourses} search={search} filter={filter} />
       )}
     </>
   );
@@ -1576,6 +1625,9 @@ function CoursesView() {
 
 function CourseGrid({
   filtered,
+  totalCourses,
+  search,
+  filter,
 }: {
   filtered: Array<{
     id: string;
@@ -1586,6 +1638,9 @@ function CourseGrid({
     authorName: string;
     files: Attachment[];
   }>;
+  totalCourses: number;
+  search: string;
+  filter: string;
 }) {
   const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 6);
   return (
@@ -1639,7 +1694,22 @@ function CourseGrid({
       </div>
 
       {filtered.length === 0 && (
-        <div className="text-center py-16 text-sm text-gray-400">No courses match your search.</div>
+        <div className="text-center py-16 px-4 max-w-md mx-auto">
+          {totalCourses === 0 ? (
+            <>
+              <GraduationCap size={40} className="mx-auto text-gray-300 mb-3" />
+              <p className="text-sm font-medium text-gray-600">No courses yet</p>
+              <p className="text-sm text-gray-400 mt-2 leading-relaxed">
+                Courses are built from Daily Updates that include a <strong className="font-medium text-gray-500">File</strong> attachment (PDF, DOC, etc.).
+                Go to <strong className="font-medium text-gray-500">Daily Updates</strong>, write your training note, click <strong className="font-medium text-gray-500">File</strong>, and post.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-gray-400">
+              No courses match{search.trim() ? ` “${search.trim()}”` : ""}{filter !== "All" ? ` in ${filter}` : ""}.
+            </p>
+          )}
+        </div>
       )}
       {filtered.length > 0 && (
         <div className="mt-4 bg-white rounded-2xl border border-gray-100 overflow-hidden">
