@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight, Download, Eye, Folder, Search, Trash2, ExternalLink } from "lucide-react";
 import FileExtensionIcon from "@/components/FileExtensionIcon";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useDashboardSearch } from "@/lib/pageSearch";
 import Pagination, { usePagination } from "@/components/Pagination";
 import { useListJobs, type Job as ApiJob } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
@@ -35,7 +36,7 @@ type FolderRow = {
 
 export default function SuperAdminFiles({ role = "super-admin" as Role }: { role?: Role } = {}) {
   const jobsQuery = useListJobs();
-  const [search, setSearch] = useState("");
+  const { search, setSearch, headerSearch } = useDashboardSearch("Search files…");
   const [kind, setKind] = useState<"all" | "job" | "completed">("all");
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
   const [openJobIds, setOpenJobIds] = useState<Record<string, boolean>>({});
@@ -147,7 +148,7 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
   const p = usePagination(folders, 10);
 
   return (
-    <DashboardLayout title="Files Management" role={role}>
+    <DashboardLayout title="Files Management" role={role} headerSearch={headerSearch}>
       <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-5 flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
         <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 flex-1 max-w-xl focus-within:border-primary transition-colors">
           <Search size={16} className="text-gray-400" />

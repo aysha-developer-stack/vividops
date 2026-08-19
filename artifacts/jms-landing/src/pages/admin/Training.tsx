@@ -10,6 +10,7 @@ import {
   ChevronLeft, ChevronRight,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useDashboardSearch } from "@/lib/pageSearch";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 import { useGetPosts, useCreatePost, getGetPostsQueryKey, type Post } from "@workspace/api-client-react";
@@ -77,9 +78,23 @@ function parsePostAttachments(post: Post): Attachment[] {
 export default function Training({ role = "super-admin" as Role }: { role?: Role } = {}) {
   const [tab, setTab] = useState<"updates" | "photos" | "videos" | "courses">("updates");
   const canPost = role !== "user";
+  const { search, setSearch, setPlaceholder, headerSearch } = useDashboardSearch(
+    "Search posts by author or text…",
+  );
+
+  useEffect(() => {
+    const placeholders = {
+      updates: "Search posts by author or text…",
+      photos: "Search photos…",
+      videos: "Search videos…",
+      courses: "Search courses…",
+    } as const;
+    setPlaceholder(placeholders[tab]);
+    setSearch("");
+  }, [tab, setPlaceholder, setSearch]);
 
   return (
-    <DashboardLayout title="Training & Learning" role={role}>
+    <DashboardLayout title="Training & Learning" role={role} headerSearch={headerSearch}>
       {/* Tabs */}
       <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-fit mb-6 flex-wrap">
         {[
@@ -118,10 +133,10 @@ export default function Training({ role = "super-admin" as Role }: { role?: Role
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.2 }}
         >
-          {tab === "updates" && <DailyUpdates canPost={canPost} />}
-          {tab === "photos" && <PhotoGallery canPost={canPost} />}
-          {tab === "videos" && <VideoLibrary canPost={canPost} />}
-          {tab === "courses" && <CoursesView />}
+          {tab === "updates" && <DailyUpdates canPost={canPost} search={search} />}
+          {tab === "photos" && <PhotoGallery canPost={canPost} search={search} setSearch={setSearch} />}
+          {tab === "videos" && <VideoLibrary canPost={canPost} search={search} setSearch={setSearch} />}
+          {tab === "courses" && <CoursesView search={search} setSearch={setSearch} />}
         </motion.div>
       </AnimatePresence>
     </DashboardLayout>
@@ -130,7 +145,7 @@ export default function Training({ role = "super-admin" as Role }: { role?: Role
 
 /* -------------------------- Daily Updates -------------------------- */
 
-function DailyUpdates({ canPost }: { canPost: boolean }) {
+function DailyUpdates({ canPost, search }: { canPost: boolean; search: string }) {
   const { data: apiPosts, isLoading } = useGetPosts();
   const createPostMutation = useCreatePost();
   const qc = useQueryClient();
@@ -331,7 +346,20 @@ function DailyUpdates({ canPost }: { canPost: boolean }) {
     );
   }
 
-  const sorted = [...(apiPosts ?? [])].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const sorted = [...(apiPosts ?? [])]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .filter((post) => {
+      const q = search.trim().toLowerCase();
+      if (!q) return true;
+      const author = (post as any)?.author;
+      const authorName =
+        typeof author?.name === "string" && author.name.trim() ? author.name : "—";
+      return (
+        post.body.toLowerCase().includes(q) ||
+        authorName.toLowerCase().includes(q) ||
+        String(post.title ?? "").toLowerCase().includes(q)
+      );
+    });
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1054,12 +1082,19 @@ interface PhotoItem {
   url: string;
 }
 
-function PhotoGallery({ canPost }: { canPost: boolean }) {
+function PhotoGallery({
+  canPost,
+  search,
+  setSearch,
+}: {
+  canPost: boolean;
+  search: string;
+  setSearch: (value: string) => void;
+}) {
   const { data: apiPosts, isLoading } = useGetPosts();
   const createPostMutation = useCreatePost();
   const qc = useQueryClient();
   const [album, setAlbum] = useState("All");
-  const [search, setSearch] = useState("");
   const [lightbox, setLightbox] = useState<PhotoItem | null>(null);
 
   const photos = useMemo(() => {
@@ -1234,12 +1269,19 @@ interface VideoItem {
   description?: string;
 }
 
-function VideoLibrary({ canPost }: { canPost: boolean }) {
+function VideoLibrary({
+  canPost,
+  search,
+  setSearch,
+}: {
+  canPost: boolean;
+  search: string;
+  setSearch: (value: string) => void;
+}) {
   const { data: apiPosts, isLoading } = useGetPosts();
   const createPostMutation = useCreatePost();
   const qc = useQueryClient();
   const [cat, setCat] = useState("All");
-  const [search, setSearch] = useState("");
   const [player, setPlayer] = useState<VideoItem | null>(null);
 
   const videos = useMemo(() => {
@@ -1505,10 +1547,15 @@ function GalleryToolbar({
 
 /* -------------------------- Courses view -------------------------- */
 
-function CoursesView() {
+function CoursesView({
+  search,
+  setSearch,
+}: {
+  search: string;
+  setSearch: (value: string) => void;
+}) {
   const { data: apiPosts, isLoading } = useGetPosts();
   const [filter, setFilter] = useState("All");
-  const [search, setSearch] = useState("");
 
   const courses = useMemo(() => {
     const out: Array<{

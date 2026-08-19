@@ -5,6 +5,7 @@ import {
   Wifi, Server, Database, HardDrive, TrendingUp, TrendingDown, Eye, Search,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useDashboardSearch } from "@/lib/pageSearch";
 import LiveSupervisorReviewPanel from "@/components/LiveSupervisorReviewPanel";
 import Pagination, { usePagination } from "@/components/Pagination";
 import { useGetDashboardStats, useListUsers, useListJobs, type User } from "@workspace/api-client-react";
@@ -88,7 +89,7 @@ export default function SystemMonitoring({ role = "super-admin" as Role }: { rol
   const { data: apiJobs, isLoading: jobsLoading } = useListJobs();
 
   const [filter, setFilter] = useState<"All" | "Active" | "On Job" | "Idle">("All");
-  const [search, setSearch] = useState("");
+  const { search, setSearch, headerSearch } = useDashboardSearch("Search users…");
   const [systemHealth, setSystemHealth] = useState<SystemHealthResponse | null>(null);
   const [healthLoading, setHealthLoading] = useState(true);
   const [healthError, setHealthError] = useState<string | null>(null);
@@ -274,7 +275,7 @@ export default function SystemMonitoring({ role = "super-admin" as Role }: { rol
   const isLoading = usersLoading || jobsLoading;
   if (isLoading && !apiUsers) {
     return (
-      <DashboardLayout title="System Monitoring" role={role}>
+      <DashboardLayout title="System Monitoring" role={role} headerSearch={headerSearch}>
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
@@ -283,7 +284,7 @@ export default function SystemMonitoring({ role = "super-admin" as Role }: { rol
   }
 
   return (
-    <DashboardLayout title="System Monitoring" role={role}>
+    <DashboardLayout title="System Monitoring" role={role} headerSearch={headerSearch}>
       <LiveSupervisorReviewPanel role={role} />
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

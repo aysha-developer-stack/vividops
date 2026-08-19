@@ -6,6 +6,7 @@ import {
   TrendingUp, TrendingDown, Eye, X, Users, ClipboardCheck,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useDashboardSearch } from "@/lib/pageSearch";
 import Pagination, { usePagination } from "@/components/Pagination";
 import { useAuth } from "@/lib/auth";
 import { useGetTimeLogs, useListJobs, useListUsers, type Job, type TimeLog, type User } from "@workspace/api-client-react";
@@ -113,7 +114,7 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
   });
   const { data: apiJobs, isLoading: jobsLoading } = useListJobs();
   const { data: apiTimeLogs, isLoading: logsLoading } = useGetTimeLogs();
-  const [search, setSearch] = useState("");
+  const { search, setSearch, headerSearch } = useDashboardSearch("Search users or jobs…");
   const [selected, setSelected] = useState<SupervisorCard | null>(null);
 
   const jobBase =
@@ -259,7 +260,7 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
 
   if ((usersLoading || jobsLoading || logsLoading) && !apiUsers && !apiJobs && !apiTimeLogs) {
     return (
-      <DashboardLayout title={pageTitle} role={role}>
+      <DashboardLayout title={pageTitle} role={role} headerSearch={headerSearch}>
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
@@ -268,7 +269,7 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
   }
 
   return (
-    <DashboardLayout title={pageTitle} role={role}>
+    <DashboardLayout title={pageTitle} role={role} headerSearch={headerSearch}>
       <div className="mb-5">
         <h2 className="text-lg font-bold text-gray-900">
           {role === "supervisor" ? "Your supervision overview" : "Supervisor oversight"}

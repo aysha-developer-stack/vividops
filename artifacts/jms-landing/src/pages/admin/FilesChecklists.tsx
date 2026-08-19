@@ -7,6 +7,7 @@ import {
   Folder, ListChecks, FileText, Upload, Download, Eye
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useDashboardSearch } from "@/lib/pageSearch";
 import Pagination, { usePagination } from "@/components/Pagination";
 import { useListJobs, type Job as ApiJob } from "@workspace/api-client-react";
 import {
@@ -64,7 +65,7 @@ const STATUS_CFG: Record<UiStatus, { color: string; icon: any; bar: string }> = 
 };
 
 export default function FilesChecklists() {
-  const [search, setSearch] = useState("");
+  const { search, setSearch, headerSearch } = useDashboardSearch("Search jobs…");
   const [activeTab, setActiveTab] = useState<"checklists" | "files">("checklists");
   const jobsQuery = useListJobs();
 
@@ -83,7 +84,7 @@ export default function FilesChecklists() {
   const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 5);
 
   return (
-    <DashboardLayout title="Files & Checklists" role="user">
+    <DashboardLayout title="Files & Checklists" role="user" headerSearch={headerSearch}>
       {/* Search & Tabs */}
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-6">
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">

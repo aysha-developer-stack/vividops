@@ -6,6 +6,7 @@ import {
   CheckCircle2, Clock, AlertCircle, MapPin, AlertTriangle, Pause,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useDashboardSearch } from "@/lib/pageSearch";
 import Pagination, { usePagination } from "@/components/Pagination";
 import { useListJobs, getListJobsQueryKey, type Job as ApiJob } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
@@ -79,7 +80,7 @@ const FILTERS: ("All" | UiStatus)[] = [
 
 export default function MyJobs() {
   const [filter, setFilter] = useState<"All" | UiStatus>("All");
-  const [search, setSearch] = useState("");
+  const { search, setSearch, headerSearch } = useDashboardSearch("Search by job, client…");
   const { user } = useAuth();
   const jobsQuery = useListJobs({
     query: {
@@ -104,7 +105,7 @@ export default function MyJobs() {
   const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 5);
 
   return (
-    <DashboardLayout title="My Jobs" role="user">
+    <DashboardLayout title="My Jobs" role="user" headerSearch={headerSearch}>
       {/* Stats summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
         {(["Not Started", "In Progress", "On Hold", "Awaiting Supervisor", "Awaiting Admin", "Done", "Overdue", "Rework"] as UiStatus[]).map((s, i) => {

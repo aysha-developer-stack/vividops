@@ -9,6 +9,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 import { isJobOverdueByDueDate, formatDurationSeconds } from "@/lib/jobMappers";
+import { useDashboardSearch } from "@/lib/pageSearch";
 import logoImg from "@assets/vv_1778503190047.png";
 import { useAuth } from "@/lib/auth";
 import {
@@ -113,8 +114,12 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const [period, setPeriod] = useState("30d");
   const [userRoleFilter, setUserRoleFilter] = useState<"All" | UserRoleLabel>("All");
   const [filterOpen, setFilterOpen] = useState(false);
-  const [search, setSearch] = useState("");
+  const { search, setSearch, setPlaceholder, headerSearch } = useDashboardSearch("User name…");
   const [minScore, setMinScore] = useState(0);
+
+  useEffect(() => {
+    setPlaceholder(activeTab === "time" ? "User or project…" : "User name…");
+  }, [activeTab, setPlaceholder]);
 
   const parseMs = (iso: string | null | undefined) => {
     if (!iso) return null;
@@ -416,7 +421,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
 
   if (anyLoading && !anyData) {
     return (
-      <DashboardLayout title="Reports" role={role}>
+      <DashboardLayout title="Reports" role={role} headerSearch={headerSearch}>
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
@@ -699,7 +704,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
   };
 
   return (
-    <DashboardLayout title="Reports" role={role}>
+    <DashboardLayout title="Reports" role={role} headerSearch={headerSearch}>
       {/* Header actions */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between mb-6">
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">

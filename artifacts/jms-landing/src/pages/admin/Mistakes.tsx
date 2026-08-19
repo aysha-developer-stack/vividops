@@ -5,6 +5,7 @@ import {
   AlertTriangle, Plus, Search, X, CheckCircle2, Filter, ChevronRight, Users, Trash2,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useDashboardSearch } from "@/lib/pageSearch";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 import { useAuth } from "@/lib/auth";
@@ -74,7 +75,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
   const canResolve = role === "super-admin" || role === "admin";
 
   const [period, setPeriod] = useState("30d");
-  const [search, setSearch] = useState("");
+  const { search, setSearch, headerSearch } = useDashboardSearch("Search mistakes…");
   const [severityFilter, setSeverityFilter] = useState<("high" | "medium" | "low")[]>(["high", "medium", "low"]);
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "resolved">("all");
   const [userFilter, setUserFilter] = useState("");
@@ -238,7 +239,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
     setSeverityFilter((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
 
   return (
-    <DashboardLayout title={isWorker ? "My Mistakes" : "Mistakes"} role={role}>
+    <DashboardLayout title={isWorker ? "My Mistakes" : "Mistakes"} role={role} headerSearch={headerSearch}>
       <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-4 mb-6">
         <div className="flex items-center gap-2 flex-wrap">
           {(["7d", "30d", "90d", "all"] as const).map((p) => (

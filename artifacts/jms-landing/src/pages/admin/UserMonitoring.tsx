@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { Search, Activity } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useDashboardSearch } from "@/lib/pageSearch";
 import LiveSupervisorReviewPanel from "@/components/LiveSupervisorReviewPanel";
 import Pagination, { usePagination } from "@/components/Pagination";
 import {
@@ -103,7 +104,7 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
   const { data: apiJobs, isLoading: jobsLoading } = useListJobs();
   const { data: apiTimeLogs, isLoading: logsLoading } = useGetTimeLogs();
 
-  const [search, setSearch] = useState("");
+  const { search, setSearch, headerSearch } = useDashboardSearch("Search users…");
   const [jobMemberships, setJobMemberships] = useState<Record<string, string[]>>({});
   const [activeSessions, setActiveSessions] = useState<ActiveTimerSession[]>([]);
   const [liveTick, setLiveTick] = useState(0);
@@ -266,7 +267,7 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
 
   if (isLoading && !anyData) {
     return (
-      <DashboardLayout title="User Monitoring" role={role}>
+      <DashboardLayout title="User Monitoring" role={role} headerSearch={headerSearch}>
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
@@ -280,7 +281,7 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
     : "/supervisor/jobs";
 
   return (
-    <DashboardLayout title="User Monitoring" role={role}>
+    <DashboardLayout title="User Monitoring" role={role} headerSearch={headerSearch}>
       {(role === "admin" || role === "super-admin") && <LiveSupervisorReviewPanel role={role} />}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">

@@ -6,6 +6,7 @@ import {
   Reply, Copy, Forward, Pencil, Trash2, X,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useDashboardSearch } from "@/lib/pageSearch";
 import type { Role } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
 import { collectFilesFromDataTransfer, collectFilesFromList } from "@/lib/collectDroppedFiles";
@@ -167,7 +168,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
   const [unreadByJobId, setUnreadByJobId] = useState<Record<string, number>>({});
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<JobMessageUi[]>([]);
-  const [search, setSearch] = useState("");
+  const { search, setSearch, headerSearch } = useDashboardSearch("Search jobs…");
   const [cliqChannel, setCliqChannel] = useState<JobCliqChannelApi | null>(null);
   const pollRef = useRef<number | null>(null);
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
@@ -608,7 +609,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
   };
 
   return (
-    <DashboardLayout title="Communication" role={role}>
+    <DashboardLayout title="Communication" role={role} headerSearch={headerSearch}>
       <div className="flex h-[calc(100dvh-9rem)] min-h-[560px] flex-col">
         <motion.div
           initial={{ opacity: 0, y: 10 }}

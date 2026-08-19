@@ -4,6 +4,7 @@ import { Link, useLocation } from "wouter";
 import { ArrowLeft, Check, Filter as FilterIcon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useDashboardSearch } from "@/lib/pageSearch";
 import Pagination, { usePagination } from "@/components/Pagination";
 import { useAuth } from "@/lib/auth";
 import {
@@ -54,6 +55,7 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
     },
   });
   const markReadMutation = useMarkNotificationRead();
+  const { search, headerSearch } = useDashboardSearch("Search notifications…");
   const [filter, setFilter] = useState<"all" | "unread" | NotifType>("all");
   const config = ROLES[role];
   const dashboardPath = config.base;
@@ -84,10 +86,17 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
   }, [apiNotifications]);
 
   const filtered = useMemo(() => {
-    if (filter === "all") return items;
-    if (filter === "unread") return items.filter((n) => n.unread);
-    return items.filter((n) => n.type === filter);
-  }, [items, filter]);
+    let list = items;
+    if (filter === "unread") list = list.filter((n) => n.unread);
+    else if (filter !== "all") list = list.filter((n) => n.type === filter);
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter(
+      (n) =>
+        n.title.toLowerCase().includes(q) ||
+        n.desc.toLowerCase().includes(q),
+    );
+  }, [items, filter, search]);
 
   const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 100);
 
@@ -137,7 +146,7 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
 
   if (isLoading) {
     return (
-      <DashboardLayout title="Notifications" role={role}>
+      <DashboardLayout title="Notifications" role={role} headerSearch={headerSearch}>
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
@@ -146,7 +155,7 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
   }
 
   return (
-    <DashboardLayout title="Notifications" role={role}>
+    <DashboardLayout title="Notifications" role={role} headerSearch={headerSearch}>
       <div className="max-w-4xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 10 }}

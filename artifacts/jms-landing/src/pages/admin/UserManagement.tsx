@@ -7,6 +7,7 @@ import {
   Copy, CheckCircle2, AlertTriangle, Loader2, RefreshCw,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useDashboardSearch } from "@/lib/pageSearch";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 import {
@@ -76,7 +77,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
     invalidate();
   }, [invalidate]);
 
-  const [search, setSearch] = useState("");
+  const { search, setSearch, headerSearch } = useDashboardSearch("Search users…");
   const [filter, setFilter] = useState<"All" | UiRole>("All");
   const [openId, setOpenId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -118,7 +119,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
 
   if (isInitialLoading) {
     return (
-      <DashboardLayout title="User Management" role={role}>
+      <DashboardLayout title="User Management" role={role} headerSearch={headerSearch}>
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
@@ -128,7 +129,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
 
   if (usersQuery.isError) {
     return (
-      <DashboardLayout title="User Management" role={role}>
+      <DashboardLayout title="User Management" role={role} headerSearch={headerSearch}>
         <div className="px-6 py-10 text-sm text-red-700">
           Failed to load users.
         </div>
@@ -258,7 +259,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
     createMutation.isPending || updateMutation.isPending;
 
   return (
-    <DashboardLayout title="User Management" role={role}>
+    <DashboardLayout title="User Management" role={role} headerSearch={headerSearch}>
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
         {/* Toolbar */}
         <div className="p-5 border-b border-gray-100 flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">

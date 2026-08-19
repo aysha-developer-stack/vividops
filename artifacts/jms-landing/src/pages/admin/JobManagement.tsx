@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import FileExtensionIcon from "@/components/FileExtensionIcon";
 import DashboardLayout from "@/components/DashboardLayout";
+import { useDashboardSearch } from "@/lib/pageSearch";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 import { useAuth } from "@/lib/auth";
@@ -299,7 +300,9 @@ export default function JobManagement(
     [assignables],
   );
 
-  const [search, setSearch] = useState("");
+  const { search, setSearch, headerSearch } = useDashboardSearch(
+    "Search jobs by title, client, number, address…",
+  );
   const [filter, setFilter] = useState<"All" | UiStatus>(initialTab === "rework" ? "Rework" : "All");
   const [assignmentFilter, setAssignmentFilter] = useState<"all" | "unassigned">(initialTab === "assignments" ? "unassigned" : "all");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -887,11 +890,7 @@ export default function JobManagement(
     <DashboardLayout
       title="Job Management"
       role={role}
-      headerSearch={{
-        value: search,
-        onChange: setSearch,
-        placeholder: "Search jobs by title, client, number, address…",
-      }}
+      headerSearch={headerSearch}
     >
       {(role === "super-admin" || role === "admin") && (
         <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-5 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
