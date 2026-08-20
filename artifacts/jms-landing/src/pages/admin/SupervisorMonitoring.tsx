@@ -329,11 +329,6 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
         <h2 className="text-lg font-bold text-gray-900">
           {role === "supervisor" ? "Your supervision overview" : "Supervisor oversight"}
         </h2>
-        <p className="text-sm text-gray-500 mt-0.5">
-          {role === "supervisor"
-            ? "Track jobs assigned to your workers, checks you completed, and check times."
-            : "Supervisor-only view: jobs each supervisor checked or approved, review times, and what still needs their review."}
-        </p>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
