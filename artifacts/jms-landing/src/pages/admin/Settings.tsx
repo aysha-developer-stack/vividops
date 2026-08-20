@@ -19,6 +19,7 @@ import {
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { ensureDesktopNotificationPermission } from "@/lib/desktopNotifications";
+import { registerWebPush } from "@/lib/webPush";
 
 const TABS = [
   { id: "profile", label: "Profile", icon: UserIcon },
@@ -441,19 +442,27 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                     <Row title="Zoho Cliq notifications" desc="Direct messages in Zoho Cliq">
                       <Toggle on={userSettingsState.zohoCliqNotifications} onChange={() => setUserSettingsState({ ...userSettingsState, zohoCliqNotifications: !userSettingsState.zohoCliqNotifications })} />
                     </Row>
-                    <Row title="Push notifications" desc="Windows/macOS desktop alerts while the app is open (browser permission required)">
+                    <Row title="Push notifications" desc="Windows/macOS alerts when the tab is hidden, minimized, or the browser is closed (permission required)">
                       <Toggle
                         on={userSettingsState.pushNotifications}
                         onChange={() => {
                           const next = !userSettingsState.pushNotifications;
                           setUserSettingsState({ ...userSettingsState, pushNotifications: next });
                           if (next) {
-                            void ensureDesktopNotificationPermission().then((permission) => {
+                            void ensureDesktopNotificationPermission().then(async (permission) => {
                               if (permission === "denied") {
                                 toast({
                                   title: "Desktop notifications blocked",
                                   description: "Allow notifications for this site in your browser settings.",
                                   variant: "destructive",
+                                });
+                                return;
+                              }
+                              const registered = await registerWebPush();
+                              if (!registered && permission === "granted") {
+                                toast({
+                                  title: "Background alerts unavailable",
+                                  description: "Server push is not configured yet. Alerts still work while a tab is open.",
                                 });
                               }
                             });

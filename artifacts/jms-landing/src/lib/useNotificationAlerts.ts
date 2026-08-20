@@ -11,32 +11,50 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   getNotificationToastVariant,
-  pickLatestNotification,
   playNotificationTone,
   sortNotificationsByPriority,
 } from "@/lib/notifications";
 import {
   ensureDesktopNotificationPermission,
   showDesktopNotification,
-  shouldPreferInAppNotifications,
-  shouldShowDesktopNotifications,
 } from "@/lib/desktopNotifications";
+import {
+  configureNotificationAlerts,
+  deliverNotificationAlerts,
+  type AlertNotification,
+} from "@/lib/notificationAlertDelivery";
 import { getNotificationPath } from "@/lib/notificationNavigation";
+import {
+  setRealtimeNotificationAlertHandler,
+  type RealtimeNotification,
+} from "@/lib/notificationSocket";
 import type { Role } from "@/lib/roles";
 
 type ApiNotification = Notification & { jobId?: string | null };
 
-type AlertNotification = {
-  id: string;
-  jobId: string | null;
+function toAlertNotification(row: {
+  id: string | number;
+  jobId?: string | null;
   type: string;
   title: string;
-  desc: string;
-  unread: boolean;
+  description?: string;
+  desc?: string;
+  isRead?: boolean;
+  unread?: boolean;
   createdAt: string;
-};
+}): AlertNotification {
+  return {
+    id: String(row.id),
+    jobId: row.jobId ?? null,
+    type: row.type,
+    title: row.title,
+    desc: row.desc ?? row.description ?? "",
+    unread: row.unread ?? !row.isRead,
+    createdAt: row.createdAt,
+  };
+}
 
-/** Session-level notification alerts (toasts / desktop), independent of page navigation. */
+/** Session-level notification alerts (toasts / desktop / socket), independent of page navigation. */
 export function useNotificationAlerts(user: User | null | undefined) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -58,15 +76,118 @@ export function useNotificationAlerts(user: User | null | undefined) {
   const inAppEnabled = userSettings?.inAppNotifications !== false;
   const pushEnabled = userSettings?.pushNotifications !== false;
   const soundEnabled = userSettings?.soundEnabled !== false;
-  const inAppEnabledRef = useRef(inAppEnabled);
-  const pushEnabledRef = useRef(pushEnabled);
-  const soundEnabledRef = useRef(soundEnabled);
-  inAppEnabledRef.current = inAppEnabled;
-  pushEnabledRef.current = pushEnabled;
-  soundEnabledRef.current = soundEnabled;
 
   const seenNotificationIdsRef = useRef<Set<string>>(new Set());
   const initializedRef = useRef(false);
+  const roleRef = useRef(role);
+  roleRef.current = role;
+
+  const openNotificationTarget = useCallback((jobId?: string | null, type?: string) => {
+    if (jobId) {
+      setLocation(getNotificationPath(roleRef.current, { type: type ?? "updated", jobId }));
+      return;
+    }
+    setLocation(getNotificationPath(roleRef.current, { type: "updated" }));
+  }, [setLocation]);
+
+  const showNotificationToast = useCallback((item: AlertNotification) => {
+    toast({
+      title: item.title,
+      description: item.desc,
+      variant: getNotificationToastVariant(item.type),
+      duration: 5000,
+    });
+  }, [toast]);
+
+  const showDesktopForNotification = useCallback((item: AlertNotification) => {
+    showDesktopNotification(
+      { id: String(item.id), title: item.title, body: item.desc },
+      () => openNotificationTarget(item.jobId, item.type),
+    );
+  }, [openNotificationTarget]);
+
+  const playSound = useCallback(() => {
+    void playNotificationTone();
+  }, []);
+
+  useEffect(() => {
+    configureNotificationAlerts(
+      { inAppEnabled, pushEnabled, soundEnabled },
+      {
+        showToast: showNotificationToast,
+        showDesktop: showDesktopForNotification,
+        openTarget: openNotificationTarget,
+        playSound,
+      },
+    );
+  }, [
+    inAppEnabled,
+    pushEnabled,
+    soundEnabled,
+    showNotificationToast,
+    showDesktopForNotification,
+    openNotificationTarget,
+    playSound,
+  ]);
+
+  useEffect(() => {
+    if (!userId || !pushEnabled) return;
+    void ensureDesktopNotificationPermission();
+  }, [userId, pushEnabled]);
+
+  useEffect(() => {
+    initializedRef.current = false;
+    seenNotificationIdsRef.current = new Set();
+  }, [userId]);
+
+  const markSeen = useCallback((ids: string[]) => {
+    for (const id of ids) {
+      seenNotificationIdsRef.current.add(id);
+    }
+    if (!userId) return;
+    try {
+      window.sessionStorage.setItem(
+        `seen-notifications:${userId}`,
+        JSON.stringify(Array.from(seenNotificationIdsRef.current)),
+      );
+    } catch {
+    }
+  }, [userId]);
+
+  const processNewNotifications = useCallback((
+    items: AlertNotification[],
+    opts?: { forceDesktop?: boolean },
+  ) => {
+    const fresh = items.filter(
+      (n) => n.unread && !seenNotificationIdsRef.current.has(String(n.id)),
+    );
+    if (fresh.length === 0) return;
+
+    markSeen(fresh.map((n) => String(n.id)));
+    deliverNotificationAlerts(fresh, { forceDesktop: opts?.forceDesktop });
+  }, [markSeen]);
+
+  const handleRealtimeNotification = useCallback((incoming: RealtimeNotification) => {
+    if (!userId || incoming.userId !== userId) return;
+
+    const item = toAlertNotification({
+      id: incoming.id,
+      jobId: incoming.jobId,
+      type: incoming.type,
+      title: incoming.title,
+      description: incoming.description,
+      isRead: incoming.isRead,
+      createdAt: incoming.createdAt,
+    });
+
+    if (!initializedRef.current) return;
+    processNewNotifications([item], { forceDesktop: true });
+  }, [processNewNotifications, userId]);
+
+  useEffect(() => {
+    setRealtimeNotificationAlertHandler(handleRealtimeNotification);
+    return () => setRealtimeNotificationAlertHandler(null);
+  }, [handleRealtimeNotification]);
 
   const { data: apiNotifications } = useGetNotifications({
     query: {
@@ -80,79 +201,19 @@ export function useNotificationAlerts(user: User | null | undefined) {
     },
   });
 
-  useEffect(() => {
-    if (!userId || !pushEnabled) return;
-    void ensureDesktopNotificationPermission();
-  }, [userId, pushEnabled]);
-
-  useEffect(() => {
-    initializedRef.current = false;
-    seenNotificationIdsRef.current = new Set();
-  }, [userId]);
-
-  const openNotificationTarget = useCallback((jobId?: string | null, type?: string) => {
-    if (jobId) {
-      setLocation(getNotificationPath(role, { type: type ?? "updated", jobId }));
-      return;
-    }
-    setLocation(getNotificationPath(role, { type: "updated" }));
-  }, [role, setLocation]);
-
-  const showNotificationToast = useCallback((item: AlertNotification) => {
-    if (!inAppEnabledRef.current) return;
-    toast({
-      title: item.title,
-      description: item.desc,
-      variant: getNotificationToastVariant(item.type),
-      duration: 5000,
-    });
-  }, [toast]);
-
-  const showDesktopForNotification = useCallback((item: AlertNotification) => {
-    if (!pushEnabledRef.current) return;
-    if (typeof Notification === "undefined") return;
-    if (Notification.permission !== "granted") return;
-
-    showDesktopNotification(
-      { id: String(item.id), title: item.title, body: item.desc },
-      () => openNotificationTarget(item.jobId, item.type),
-    );
-  }, [openNotificationTarget]);
-
-  const deliverNewNotificationToast = useCallback((
-    items: AlertNotification[],
-    opts?: { playSound?: boolean },
-  ) => {
-    const latest = pickLatestNotification(items);
-    if (!latest) return;
-
-    const useInApp = shouldPreferInAppNotifications();
-    const useDesktop = pushEnabledRef.current && shouldShowDesktopNotifications();
-
-    if (useInApp) {
-      showNotificationToast(latest);
-    } else if (useDesktop) {
-      showDesktopForNotification(latest);
-    }
-
-    if (opts?.playSound !== false && soundEnabledRef.current && (useInApp || useDesktop)) {
-      void playNotificationTone();
-    }
-  }, [showDesktopForNotification, showNotificationToast]);
-
   const notifications = useMemo(() => {
     return sortNotificationsByPriority(
       (apiNotifications ?? []).map((n) => {
         const row = n as ApiNotification;
-        return {
+        return toAlertNotification({
           id: n.id,
           jobId: row.jobId ?? null,
           type: n.type,
           title: n.title,
-          desc: n.description,
-          unread: !n.isRead,
+          description: n.description,
+          isRead: n.isRead,
           createdAt: n.createdAt,
-        };
+        });
       }),
     );
   }, [apiNotifications]);
@@ -185,27 +246,21 @@ export function useNotificationAlerts(user: User | null | undefined) {
       } catch {
       }
 
-      // On login: mark existing inbox items as seen — no toast for old unread.
       return;
     }
 
-    const newNotifications = notifications.filter(
-      (n) => n.unread && !seenNotificationIdsRef.current.has(String(n.id)),
-    );
-    if (newNotifications.length === 0) return;
+    processNewNotifications(notifications);
+  }, [notifications, processNewNotifications, userId]);
 
-    for (const notification of newNotifications) {
-      seenNotificationIdsRef.current.add(String(notification.id));
-    }
+  useEffect(() => {
+    if (!userId) return;
 
-    try {
-      window.sessionStorage.setItem(
-        storageKey,
-        JSON.stringify(Array.from(seenNotificationIdsRef.current)),
-      );
-    } catch {
-    }
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      processNewNotifications(notifications);
+    };
 
-    deliverNewNotificationToast(newNotifications);
-  }, [deliverNewNotificationToast, notifications, userId]);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [notifications, processNewNotifications, userId]);
 }

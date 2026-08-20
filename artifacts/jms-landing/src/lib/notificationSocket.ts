@@ -9,6 +9,13 @@ export type RealtimeNotification = Pick<
 let socket: Socket | null = null;
 let socketUserId: string | null = null;
 let notificationHandler: ((notification: RealtimeNotification) => void) | null = null;
+let realtimeAlertHandler: ((notification: RealtimeNotification) => void) | null = null;
+
+export function setRealtimeNotificationAlertHandler(
+  handler: ((notification: RealtimeNotification) => void) | null,
+): void {
+  realtimeAlertHandler = handler;
+}
 
 export function connectNotificationSocket(
   userId: string,
@@ -38,6 +45,7 @@ export function connectNotificationSocket(
   socket.on("notification:new", (payload: RealtimeNotification) => {
     if (payload?.userId !== userId) return;
     notificationHandler?.(payload);
+    realtimeAlertHandler?.(payload);
   });
 
   return socket;
@@ -51,4 +59,5 @@ export function disconnectNotificationSocket() {
   socket = null;
   socketUserId = null;
   notificationHandler = null;
+  realtimeAlertHandler = null;
 }

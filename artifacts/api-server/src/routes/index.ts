@@ -18,6 +18,7 @@ import cliqRouter from "./cliq";
 import zohoRouter from "./zoho";
 import settingsRouter from "./settings";
 import mistakesRouter from "./mistakes";
+import pushRouter from "./push";
 
 const router: IRouter = Router();
 
@@ -40,5 +41,6 @@ router.use(cliqRouter);
 router.use(zohoRouter);
 router.use(settingsRouter);
 router.use(mistakesRouter);
+router.use(pushRouter);
 
 export default router;

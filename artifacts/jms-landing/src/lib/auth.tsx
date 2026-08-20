@@ -11,8 +11,14 @@ import {
 } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
 import { disconnectNotificationSocket } from "@/lib/notificationSocket";
+import { unregisterWebPush } from "@/lib/webPush";
 import { useNotificationSocketSession } from "@/lib/useNotificationSocketSession";
 import { useNotificationAlerts } from "@/lib/useNotificationAlerts";
+import { useWebPushSession } from "@/lib/useWebPushSession";
+import {
+  getGetUserSettingsQueryKey,
+  useGetUserSettings,
+} from "@workspace/api-client-react";
 
 const AUTH_USER_KEY = "vops_auth_user";
 
@@ -54,6 +60,7 @@ function setCachedUser(u: User | null) {
 /** Clear all client-side auth state immediately (sync). */
 export function purgeAuthState(qc?: QueryClient) {
   disconnectNotificationSocket();
+  void unregisterWebPush();
   sessionStorage.removeItem("vops_tab_active");
   writeStoredAuthUser(null);
   cachedUser = null;
@@ -137,6 +144,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useNotificationSocketSession(meQuery.data?.id);
   useNotificationAlerts(meQuery.data ?? null);
+
+  const { data: alertUserSettings } = useGetUserSettings({
+    query: {
+      queryKey: getGetUserSettingsQueryKey(),
+      enabled: !!meQuery.data?.id,
+    },
+  });
+  useWebPushSession(meQuery.data?.id, alertUserSettings?.pushNotifications);
 
   const value: AuthContextValue = {
     user: meQuery.data ?? null,

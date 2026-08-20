@@ -1,6 +1,7 @@
 import { db, userSettings, eq, and, gte, notifications, users, inArray, isNull, sql } from "@workspace/db";
 import { logger } from "./logger";
 import { pushNotificationRealtime } from "./socket";
+import { sendWebPushNotification } from "./web-push";
 
 export type NotificationType = "assigned" | "updated" | "overdue" | "timer" | "rework" | "job_message" | "checklist" | "file" | "training" | "progress" | "error" | "completed";
 
@@ -159,6 +160,15 @@ export async function createNotification(options: CreateNotificationOptions) {
       createdAt: result.createdAt.toISOString(),
     });
 
+    void sendWebPushNotification({
+      userId: result.userId,
+      notificationId: result.id,
+      title: result.title,
+      body: result.description,
+      type: result.type,
+      jobId: result.jobId,
+    });
+
     return result;
   } catch (err) {
     logger.error({ err, options }, "Failed to create notification");
@@ -178,7 +188,7 @@ async function handleExternalNotification(options: CreateNotificationOptions) {
     logger.info({ to: user.email, title }, "[notification:email] Would send email notification");
   }
 
-  if (channel === "cliq" && await shouldSendNotification(userId, "push")) { // Reusing push toggle for cliq for now
+  if (channel === "cliq" && await shouldSendNotification(userId, "cliq")) {
     const webhookUrl = process.env.ZOHO_CLIQ_WEBHOOK_URL;
     if (webhookUrl) {
       try {
@@ -194,7 +204,7 @@ async function handleExternalNotification(options: CreateNotificationOptions) {
   }
 }
 
-export async function shouldSendNotification(userId: string, type: 'email' | 'push' | 'sms' | 'weekly' | 'mentions'): Promise<boolean> {
+export async function shouldSendNotification(userId: string, type: 'email' | 'push' | 'sms' | 'weekly' | 'mentions' | 'cliq'): Promise<boolean> {
   const settings = await db.query.userSettings.findFirst({
     where: eq(userSettings.userId, userId),
   });
@@ -204,6 +214,7 @@ export async function shouldSendNotification(userId: string, type: 'email' | 'pu
   switch (type) {
     case 'email': return settings.emailNotifications;
     case 'push': return settings.pushNotifications;
+    case 'cliq': return settings.zohoCliqNotifications;
     case 'sms': return settings.smsNotifications;
     case 'weekly': return settings.weeklyDigest;
     case 'mentions': return settings.mentions;
