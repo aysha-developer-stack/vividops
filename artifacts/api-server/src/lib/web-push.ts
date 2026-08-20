@@ -2,6 +2,7 @@ import webpush from "web-push";
 import { db, users, eq, pushSubscriptions } from "@workspace/db";
 import { logger } from "./logger";
 import { shouldSendNotification } from "./notifications";
+import { ensurePushSubscriptionsSchema } from "./schema-init";
 
 export type WebPushPayload = {
   userId: string;
@@ -112,6 +113,8 @@ export async function sendWebPushNotification(payload: WebPushPayload): Promise<
   try {
     if (!configureVapid()) return;
     if (!(await shouldSendNotification(payload.userId, "push"))) return;
+
+    await ensurePushSubscriptionsSchema();
 
     const subscriptions = await db
       .select()

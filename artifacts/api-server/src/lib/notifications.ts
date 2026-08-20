@@ -167,6 +167,8 @@ export async function createNotification(options: CreateNotificationOptions) {
       body: result.description,
       type: result.type,
       jobId: result.jobId,
+    }).catch((err) => {
+      logger.warn({ err, userId: result.userId }, "Web Push send failed");
     });
 
     return result;

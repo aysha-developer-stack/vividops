@@ -37,7 +37,7 @@ const { seedAdminIfEmpty } = await import("./lib/seed");
 const { setupSocketIO } = await import("./lib/socket");
 // Initialize Background Workers (optional — requires REDIS_URL)
 void import("./lib/queue").then(({ setupWorkers }) => setupWorkers());
-const { ensureAllSchemas, ensureJobWriteSchema } = await import("./lib/schema-init");
+const { ensureAllSchemas, ensureJobWriteSchema, ensurePushSubscriptionsSchema } = await import("./lib/schema-init");
 
 const { createNotification, createNotificationOnce } = await import("./lib/notifications");
 
@@ -61,18 +61,19 @@ const httpServer = createServer(app);
 setupSocketIO(httpServer);
 
 async function start(): Promise<void> {
+  try {
+    await ensureAllSchemas();
+    await ensureJobWriteSchema();
+    await ensurePushSubscriptionsSchema();
+  } catch (err) {
+    logger.error({ err }, "Schema initialization failed");
+  }
+
   httpServer.listen(port, "0.0.0.0", () => {
     console.log(`[STARTUP] HTTP server listening on 0.0.0.0:${port}`);
   });
 
   void (async () => {
-    try {
-      await ensureAllSchemas();
-      await ensureJobWriteSchema();
-    } catch (err) {
-      logger.error({ err }, "Schema initialization failed");
-    }
-
     try {
       await seedAdminIfEmpty();
     } catch (err) {

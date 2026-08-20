@@ -1,33 +1,11 @@
 import { Router, type IRouter } from "express";
-import { db, eq, and, sql, pushSubscriptions } from "@workspace/db";
+import { db, eq, and, pushSubscriptions } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { getVapidPublicKey, isWebPushConfigured } from "../lib/web-push";
+import { ensurePushSubscriptionsSchema } from "../lib/schema-init";
 
 const router: IRouter = Router();
-
-let schemaEnsured = false;
-
-const ensureSchema = async () => {
-  if (schemaEnsured) return;
-  schemaEnsured = true;
-
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS push_subscriptions (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      endpoint text NOT NULL UNIQUE,
-      p256dh text NOT NULL,
-      auth text NOT NULL,
-      user_agent text,
-      created_at timestamptz NOT NULL DEFAULT now(),
-      last_used_at timestamptz
-    );
-  `);
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx ON push_subscriptions (user_id);
-  `);
-};
 
 function parseSubscribeBody(body: unknown): { endpoint: string; keys: { p256dh: string; auth: string } } | null {
   if (!body || typeof body !== "object") return null;
@@ -50,7 +28,7 @@ function parseUnsubscribeBody(body: unknown): { endpoint: string } | null {
 
 router.get("/push/vapid-public-key", requireAuth, async (_req, res) => {
   try {
-    await ensureSchema();
+    await ensurePushSubscriptionsSchema();
     const publicKey = getVapidPublicKey();
     if (!publicKey) {
       return res.json({ enabled: false, publicKey: null });
@@ -64,7 +42,7 @@ router.get("/push/vapid-public-key", requireAuth, async (_req, res) => {
 
 router.get("/push/status", requireAuth, async (req, res) => {
   try {
-    await ensureSchema();
+    await ensurePushSubscriptionsSchema();
     const userId = req.session!.user.id;
     const subs = await db
       .select({ id: pushSubscriptions.id })
@@ -84,7 +62,7 @@ router.get("/push/status", requireAuth, async (req, res) => {
 
 router.post("/push/subscribe", requireAuth, async (req, res) => {
   try {
-    await ensureSchema();
+    await ensurePushSubscriptionsSchema();
     const userId = req.session!.user.id;
     const parsed = parseSubscribeBody(req.body);
     if (!parsed) {
@@ -126,7 +104,7 @@ router.post("/push/subscribe", requireAuth, async (req, res) => {
 
 router.delete("/push/subscribe", requireAuth, async (req, res) => {
   try {
-    await ensureSchema();
+    await ensurePushSubscriptionsSchema();
     const userId = req.session!.user.id;
     const parsed = parseUnsubscribeBody(req.body);
     if (!parsed) {
@@ -149,7 +127,7 @@ router.delete("/push/subscribe", requireAuth, async (req, res) => {
 
 router.delete("/push/subscribe/all", requireAuth, async (req, res) => {
   try {
-    await ensureSchema();
+    await ensurePushSubscriptionsSchema();
     const userId = req.session!.user.id;
     await db.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
     return res.json({ ok: true });
