@@ -92,8 +92,14 @@ function formatCheckTime(iso: string | null | undefined) {
 }
 
 function jobNumberOf(job: Job) {
-  const serial = (job as any).jobNumber ?? (job as any).serial;
-  if (serial != null && String(serial).trim()) return `JOB-${serial}`;
+  const display = (job.number ?? "").trim();
+  if (display) return display;
+  const serial = (job as { jobNumber?: string | null; serial?: number | null }).jobNumber
+    ?? (job as { serial?: number | null }).serial;
+  if (serial != null && String(serial).trim()) {
+    const value = String(serial).trim();
+    return value.startsWith("JOB-") ? value : `JOB-${value}`;
+  }
   return `JOB-${job.id.slice(0, 6).toUpperCase()}`;
 }
 
