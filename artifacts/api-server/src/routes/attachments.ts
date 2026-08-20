@@ -27,6 +27,10 @@ const ensureAttachmentsSchema = async () => {
     ALTER TABLE job_attachments
     ADD COLUMN IF NOT EXISTS file_category text NOT NULL DEFAULT 'job'
   `);
+  await db.execute(sql`
+    ALTER TABLE job_attachments
+    ADD COLUMN IF NOT EXISTS review_note_id uuid
+  `);
   attachmentsSchemaEnsured = true;
 };
 
@@ -76,6 +80,7 @@ async function finalizeUploadedAttachment(opts: {
     isChecklistInstructionUpload,
     treatAsFieldWorker,
     fileCategory,
+    reviewNoteId,
     suppressNotifications,
   } = parsed;
 
@@ -89,6 +94,7 @@ async function finalizeUploadedAttachment(opts: {
       fileType,
       fileSize,
       fileCategory,
+      reviewNoteId: reviewNoteId ?? undefined,
       uploadedById: actor.id,
     })
     .returning();
@@ -385,6 +391,7 @@ router.post("/jobs/:jobId/attachments/presign", requireAuth, async (req, res) =>
     const typeError = validateUploadFileName(fileName, {
       checklistInstruction:
         parsed.isChecklistInstructionUpload || parsed.isChecklistCompletedUpload,
+      reviewPhoto: parsed.fileCategory === "review",
     });
     if (typeError) {
       res.status(400).json({ message: typeError });
@@ -447,6 +454,7 @@ router.post("/jobs/:jobId/attachments/register", requireAuth, async (req, res) =
     const typeError = validateUploadFileName(fileName, {
       checklistInstruction:
         parsed.isChecklistInstructionUpload || parsed.isChecklistCompletedUpload,
+      reviewPhoto: parsed.fileCategory === "review",
     });
     if (typeError) {
       res.status(400).json({ message: typeError });
@@ -518,6 +526,7 @@ router.post(
       const typeError = validateUploadFileName(file.originalname, {
         checklistInstruction:
           parsed.isChecklistInstructionUpload || parsed.isChecklistCompletedUpload,
+        reviewPhoto: parsed.fileCategory === "review",
       });
       if (typeError) {
         res.status(400).json({ message: typeError });

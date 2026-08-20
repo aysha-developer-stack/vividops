@@ -77,10 +77,21 @@ export function isChecklistInstructionFileAllowed(name: string): boolean {
   return ext !== "" && (CHECKLIST_FILE_EXTENSIONS as readonly string[]).includes(ext);
 }
 
+export const REVIEW_PHOTO_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif", ".bmp", ".tif", ".tiff"] as const;
+
+export function isReviewPhotoFileAllowed(name: string): boolean {
+  const ext = fileExtension(name);
+  return ext !== "" && (REVIEW_PHOTO_EXTENSIONS as readonly string[]).includes(ext);
+}
+
 export function validateUploadFileName(
   fileName: string,
-  opts: { checklistInstruction: boolean },
+  opts: { checklistInstruction: boolean; reviewPhoto?: boolean },
 ): string | null {
+  if (opts.reviewPhoto) {
+    if (isReviewPhotoFileAllowed(fileName)) return null;
+    return "Review photos must be JPG, PNG, GIF, WebP, or HEIC only.";
+  }
   if (opts.checklistInstruction) {
     if (isChecklistInstructionFileAllowed(fileName)) return null;
     return "Checklist instruction files must be Word (.doc, .docx) or PDF only.";

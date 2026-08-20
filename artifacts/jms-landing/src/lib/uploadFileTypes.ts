@@ -59,6 +59,13 @@ export const JOB_FILE_ACCEPT = "";
 export const CHECKLIST_FILE_ACCEPT =
   ".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
+export const REVIEW_PHOTO_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif", ".bmp", ".tif", ".tiff"] as const;
+
+export const REVIEW_PHOTO_ACCEPT = "image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,image/bmp,image/tiff,.heic,.heif";
+
+export const MAX_REVIEW_PHOTOS = 5;
+export const MAX_REVIEW_PHOTO_BYTES = 10 * 1024 * 1024;
+
 export const ARCHIVE_FILE_EXTENSIONS = [".zip", ".rar", ".7z"] as const;
 
 export function fileExtension(name: string): string {
@@ -90,6 +97,18 @@ export function isChecklistInstructionFileAllowed(name: string): boolean {
   const ext = fileExtension(name);
   return ext !== "" && (CHECKLIST_FILE_EXTENSIONS as readonly string[]).includes(ext);
 }
+
+export function isReviewPhotoFileAllowed(name: string): boolean {
+  const ext = fileExtension(name);
+  return ext !== "" && (REVIEW_PHOTO_EXTENSIONS as readonly string[]).includes(ext);
+}
+
+export function filterReviewPhotoFiles(files: File[]): File[] {
+  return files.filter((f) => isReviewPhotoFileAllowed(f.name) && f.size <= MAX_REVIEW_PHOTO_BYTES);
+}
+
+export const REVIEW_PHOTO_REJECTED_MESSAGE =
+  "Photos must be JPG, PNG, GIF, WebP, or HEIC and under 10MB each.";
 
 export function filterJobFiles(files: File[]): File[] {
   return files.filter((f) => isJobFileAllowed(f.name));

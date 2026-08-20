@@ -67,8 +67,10 @@ import { useAuth } from "@/lib/auth";
 import UploadProgressPanel from "@/components/UploadProgressPanel";
 import JobNotesTab from "@/components/JobNotesTab";
 import JobCompletionCommentsTab from "@/components/JobCompletionCommentsTab";
+import ReviewCompletionForm from "@/components/ReviewCompletionForm";
 import JobFormModal from "@/components/JobFormModal";
 import JobMistakesTab from "@/components/JobMistakesTab";
+import { submitJobReviewWithPhotos } from "@/lib/reviewPhotoUpload";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { uploadFormDataWithProgress } from "@/lib/uploadWithProgress";
 
@@ -438,9 +440,12 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [notesSaveError, setNotesSaveError] = useState<string | null>(null);
   const [approveOpen, setApproveOpen] = useState(false);
   const [approveComment, setApproveComment] = useState("");
+  const [approvePhotos, setApprovePhotos] = useState<File[]>([]);
+  const [approveSubmitting, setApproveSubmitting] = useState(false);
   const [jobApproved, setJobApproved] = useState(false);
   const [submitReviewOpen, setSubmitReviewOpen] = useState(false);
   const [submitReviewComment, setSubmitReviewComment] = useState("");
+  const [submitReviewPhotos, setSubmitReviewPhotos] = useState<File[]>([]);
   const [submitReviewSubmitting, setSubmitReviewSubmitting] = useState(false);
   const [submitReviewDone, setSubmitReviewDone] = useState(false);
   const [notesRefreshKey, setNotesRefreshKey] = useState(0);
@@ -1047,23 +1052,16 @@ export default function JobDetail({ role = "user", id }: Props) {
     checklist.length > 0 &&
     completedCount === checklist.length;
 
-  const submitJobForReview = async (comment: string) => {
+  const submitJobForReview = async (comment: string, photos: File[]) => {
     if (!job?.id) return;
     setSubmitReviewSubmitting(true);
     try {
-      const res = await fetch(`/api/jobs/${job.id}/review`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "submit_for_supervisor",
-          comments: comment.trim() || null,
-        }),
+      await submitJobReviewWithPhotos({
+        jobId: job.id,
+        action: "submit_for_supervisor",
+        comment,
+        photos,
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as any).error || "Failed to submit for review");
-      }
       await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
       await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
       await loadReworks();
@@ -1073,6 +1071,7 @@ export default function JobDetail({ role = "user", id }: Props) {
         setSubmitReviewOpen(false);
         setSubmitReviewDone(false);
         setSubmitReviewComment("");
+        setSubmitReviewPhotos([]);
       }, 1400);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Failed to submit for review");
@@ -1082,12 +1081,17 @@ export default function JobDetail({ role = "user", id }: Props) {
   };
 
   useEffect(() => {
-    if (!approveOpen) setApproveComment("");
+    if (!approveOpen) {
+      setApproveComment("");
+      setApprovePhotos([]);
+      setApproveSubmitting(false);
+    }
   }, [approveOpen]);
 
   useEffect(() => {
     if (!submitReviewOpen) {
       setSubmitReviewComment("");
+      setSubmitReviewPhotos([]);
       setSubmitReviewDone(false);
     }
   }, [submitReviewOpen]);
@@ -3282,7 +3286,7 @@ export default function JobDetail({ role = "user", id }: Props) {
         )}
         {approveOpen && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setApproveOpen(false)}>
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center"><CheckCircle2 size={18} /></div>
@@ -3321,65 +3325,79 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> Time logs verified</div>
                   </div>
                   <div className="mb-5">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">
-                      {role === "supervisor"
-                        ? "Supervisor review comment"
-                        : role === "admin" || role === "super-admin"
-                          ? "Completion comment"
-                          : "Comment"}
-                    </label>
-                    <textarea
-                      value={approveComment}
-                      onChange={(e) => setApproveComment(e.target.value)}
-                      placeholder={
-                        role === "supervisor"
-                          ? "Summarize your review, quality notes, or instructions for admin…"
-                          : "Summarize your check, quality notes, or handover details for the worker and team…"
-                      }
-                      rows={4}
-                      className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-emerald-500 focus:bg-white transition-colors resize-none"
+                    <ReviewCompletionForm
+                      comment={approveComment}
+                      onCommentChange={setApproveComment}
+                      photos={approvePhotos}
+                      onPhotosChange={setApprovePhotos}
+                      disabled={approveSubmitting}
+                      labels={{
+                        comment:
+                          role === "supervisor"
+                            ? "Supervisor review comment"
+                            : role === "admin" || role === "super-admin"
+                              ? "Completion comment"
+                              : "Comment",
+                        commentPlaceholder:
+                          role === "supervisor"
+                            ? "Summarize your review, quality notes, or instructions for admin…"
+                            : "Summarize your check, quality notes, or handover details for the worker and team…",
+                        photos:
+                          role === "supervisor"
+                            ? "Review photos (optional)"
+                            : "Completion photos (optional)",
+                      }}
                     />
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => setApproveOpen(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200">Cancel</button>
+                    <button onClick={() => setApproveOpen(false)} disabled={approveSubmitting} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200 disabled:opacity-50">Cancel</button>
                     <button
+                      disabled={approveSubmitting}
                       onClick={async () => {
-                        if (job?.id) {
-                          try {
-                            const action = role === "supervisor" ? "supervisor_approve" : "admin_complete";
-                            const res = await fetch(`/api/jobs/${job.id}/review`, {
-                              method: "POST",
-                              credentials: "include",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                action,
-                                comments: approveComment.trim() || null,
-                              }),
-                            });
-                            if (!res.ok) {
-                              const data = await res.json().catch(() => ({}));
-                              throw new Error((data as any).error || "Failed to approve job");
-                            }
-                            await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
-                            await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-                            await loadReworks();
-                            setNotesRefreshKey((k) => k + 1);
-                            setJobApproved(true);
-                            setTimeout(() => { setApproveOpen(false); setJobApproved(false); }, 1400);
-                          } catch (err) {
-                            const msg = err instanceof Error ? err.message : "Failed to approve job";
-                            window.alert(msg);
-                          }
+                        if (!job?.id) return;
+                        setApproveSubmitting(true);
+                        try {
+                          const action =
+                            role === "supervisor" ? "supervisor_approve" : "admin_complete";
+                          await submitJobReviewWithPhotos({
+                            jobId: job.id,
+                            action,
+                            comment: approveComment,
+                            photos: approvePhotos,
+                          });
+                          await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+                          await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                          await loadReworks();
+                          setNotesRefreshKey((k) => k + 1);
+                          setJobApproved(true);
+                          setTimeout(() => {
+                            setApproveOpen(false);
+                            setJobApproved(false);
+                            setApprovePhotos([]);
+                          }, 1400);
+                        } catch (err) {
+                          const msg = err instanceof Error ? err.message : "Failed to approve job";
+                          window.alert(msg);
+                        } finally {
+                          setApproveSubmitting(false);
                         }
                       }}
-                      className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2"
+                      className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2 disabled:opacity-50"
                     >
-                      <CheckCircle2 size={14} />{" "}
-                      {role === "supervisor"
-                        ? "Approve"
-                        : job?.status === "awaiting_supervisor" || job?.status === "in_progress"
-                          ? "Check & Complete"
-                          : "Complete"}
+                      {approveSubmitting ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" /> Submitting…
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 size={14} />{" "}
+                          {role === "supervisor"
+                            ? "Approve"
+                            : job?.status === "awaiting_supervisor" || job?.status === "in_progress"
+                              ? "Check & Complete"
+                              : "Complete"}
+                        </>
+                      )}
                     </button>
                   </div>
                 </>
@@ -3400,7 +3418,7 @@ export default function JobDetail({ role = "user", id }: Props) {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl"
+              className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
             >
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
@@ -3430,19 +3448,21 @@ export default function JobDetail({ role = "user", id }: Props) {
                   <p className="text-sm text-gray-600 mb-4">
                     All checklist items are done. Add a note about the work, then send this job to your supervisor.
                   </p>
-                  <div className="mb-5">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">
-                      Submission comment
-                    </label>
-                    <textarea
-                      value={submitReviewComment}
-                      onChange={(e) => setSubmitReviewComment(e.target.value)}
-                      placeholder="What was completed, anything to highlight, or questions for your supervisor…"
-                      rows={4}
-                      className="w-full px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors resize-none"
-                    />
-                  </div>
-                  <div className="flex gap-2">
+                  <ReviewCompletionForm
+                    comment={submitReviewComment}
+                    onCommentChange={setSubmitReviewComment}
+                    photos={submitReviewPhotos}
+                    onPhotosChange={setSubmitReviewPhotos}
+                    disabled={submitReviewSubmitting}
+                    commentFocusClass="focus:border-primary"
+                    labels={{
+                      comment: "Submission comment",
+                      commentPlaceholder:
+                        "What was completed, anything to highlight, or questions for your supervisor…",
+                      photos: "Photos of completed work (optional)",
+                    }}
+                  />
+                  <div className="flex gap-2 mt-5">
                     <button
                       type="button"
                       disabled={submitReviewSubmitting}
@@ -3454,7 +3474,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <button
                       type="button"
                       disabled={submitReviewSubmitting}
-                      onClick={() => void submitJobForReview(submitReviewComment)}
+                      onClick={() => void submitJobForReview(submitReviewComment, submitReviewPhotos)}
                       className="flex-1 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 flex items-center justify-center gap-2 disabled:opacity-50"
                     >
                       {submitReviewSubmitting ? (

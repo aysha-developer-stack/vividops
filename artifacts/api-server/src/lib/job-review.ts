@@ -48,21 +48,25 @@ async function recordCompletionComment(opts: {
   actor: UserRow;
   comment: string | null | undefined;
   action: JobReviewAction;
-}): Promise<string | null> {
+  hasPhotos?: boolean;
+}): Promise<{ noteId: string; text: string } | null> {
   const trimmed = opts.comment?.trim() ?? "";
-  if (!trimmed) return null;
   const label = COMPLETION_NOTE_LABELS[opts.action];
-  if (!label) return trimmed;
+  if (!label) return trimmed ? { noteId: "", text: trimmed } : null;
+
+  const body = trimmed || (opts.hasPhotos ? "(Photos attached)" : "");
+  if (!body) return null;
 
   await ensureJobNotesTable();
+  const noteId = randomUUID();
   await db.insert(jobNotes).values({
-    id: randomUUID(),
+    id: noteId,
     jobId: opts.jobId,
     userId: opts.actor.id,
-    text: `${label}: ${trimmed}`,
+    text: `${label}: ${body}`,
     noteType: "completion",
   });
-  return trimmed;
+  return { noteId, text: body };
 }
 
 function commentNotificationSuffix(comments: string | null | undefined): string {
@@ -533,8 +537,12 @@ export async function applyJobReview(opts: {
   dueAt?: string | null;
   severity?: string | null;
   canManage: boolean;
-}): Promise<{ ok: true; nextStatus: ReviewableStatus } | { ok: false; status: number; error: string }> {
-  const { actor, job, action, reason, category, comments, dueAt, severity, canManage } = opts;
+  hasPhotos?: boolean;
+}): Promise<
+  | { ok: true; nextStatus: ReviewableStatus; completionNoteId: string | null }
+  | { ok: false; status: number; error: string }
+> {
+  const { actor, job, action, reason, category, comments, dueAt, severity, canManage, hasPhotos } = opts;
   const isAssignee = job.assigneeId === actor.id;
   let nextStatus: ReviewableStatus;
 
@@ -643,6 +651,7 @@ export async function applyJobReview(opts: {
     actor,
     comment: comments,
     action,
+    hasPhotos,
   });
 
   await db
@@ -669,8 +678,8 @@ export async function applyJobReview(opts: {
     previousStatus,
     nextStatus,
     reason,
-    comments: savedComment ?? comments,
+    comments: savedComment?.text ?? comments,
   });
 
-  return { ok: true, nextStatus };
+  return { ok: true, nextStatus, completionNoteId: savedComment?.noteId ?? null };
 }

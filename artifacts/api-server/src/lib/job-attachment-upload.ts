@@ -1,7 +1,7 @@
 import type { JobRow, UserRow } from "@workspace/db";
 import { isFieldWorkerOnJob } from "./working-supervisor";
 
-export type AttachmentFileCategory = "job" | "completed";
+export type AttachmentFileCategory = "job" | "completed" | "review";
 
 export type ParsedAttachmentUpload = {
   checklistItemId: number;
@@ -9,6 +9,7 @@ export type ParsedAttachmentUpload = {
   isChecklistInstructionUpload: boolean;
   treatAsFieldWorker: boolean;
   fileCategory: AttachmentFileCategory;
+  reviewNoteId: string | null;
   suppressNotifications: boolean;
 };
 
@@ -19,7 +20,13 @@ export function buildJobAttachmentFolder(jobRow: JobRow, fileCategory: Attachmen
     .replace(/(^-+|-+$)/g, "")
     .slice(0, 60) || "job";
   const jobFolder = `JOB-${jobRow.serial}-${jobSlug}`;
-  return `jobs/${jobFolder}/${fileCategory === "completed" ? "completed-files" : "job-files"}`;
+  const subfolder =
+    fileCategory === "completed"
+      ? "completed-files"
+      : fileCategory === "review"
+        ? "review-photos"
+        : "job-files";
+  return `jobs/${jobFolder}/${subfolder}`;
 }
 
 export function parseAttachmentUploadBody(
@@ -50,16 +57,25 @@ export function parseAttachmentUploadBody(
   const treatAsFieldWorker = isFieldWorkerOnJob(actor, jobRow);
 
   const fileCategory: AttachmentFileCategory =
-    categoryRaw === "completed"
-      ? "completed"
-      : categoryRaw === "job"
-        ? "job"
-        : treatAsFieldWorker
-          ? "completed"
-          : "job";
+    categoryRaw === "review"
+      ? "review"
+      : categoryRaw === "completed"
+        ? "completed"
+        : categoryRaw === "job"
+          ? "job"
+          : treatAsFieldWorker
+            ? "completed"
+            : "job";
+
+  const reviewNoteRaw = body.reviewNoteId;
+  const reviewNoteId =
+    typeof reviewNoteRaw === "string" && reviewNoteRaw.trim().length > 0
+      ? reviewNoteRaw.trim()
+      : null;
 
   const suppressNotifications =
-    String(body.suppressNotifications ?? "").toLowerCase() === "true";
+    String(body.suppressNotifications ?? "").toLowerCase() === "true" ||
+    fileCategory === "review";
 
   return {
     checklistItemId: Number.isFinite(checklistItemId) ? checklistItemId : 0,
@@ -67,6 +83,7 @@ export function parseAttachmentUploadBody(
     isChecklistInstructionUpload,
     treatAsFieldWorker,
     fileCategory,
+    reviewNoteId,
     suppressNotifications,
   };
 }

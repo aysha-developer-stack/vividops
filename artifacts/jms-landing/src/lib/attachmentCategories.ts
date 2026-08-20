@@ -1,4 +1,8 @@
-export type AttachmentFileCategory = "job" | "completed";
+export type AttachmentFileCategory = "job" | "completed" | "review";
+
+export function isReviewAttachment(a: { fileCategory?: string | null }): boolean {
+  return a.fileCategory === "review";
+}
 
 export function isCompletedAttachment(a: {
   fileCategory?: string | null;
@@ -13,6 +17,7 @@ export function isJobAttachment(a: {
   fileCategory?: string | null;
   uploadedBy?: { role?: string | null } | null;
 }): boolean {
+  if (isReviewAttachment(a)) return false;
   return !isCompletedAttachment(a);
 }
 

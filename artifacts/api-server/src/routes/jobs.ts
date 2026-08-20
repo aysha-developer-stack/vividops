@@ -2340,6 +2340,7 @@ router.post("/jobs/:id/review", requireAuth, async (req, res) => {
     const reason = typeof req.body?.reason === "string" ? req.body.reason : null;
     const category = typeof req.body?.category === "string" ? req.body.category : null;
     const comments = typeof req.body?.comments === "string" ? req.body.comments : null;
+    const hasPhotos = req.body?.hasPhotos === true;
     const dueAt = typeof req.body?.dueAt === "string" ? req.body.dueAt : null;
     const severity = typeof req.body?.severity === "string" ? req.body.severity : null;
     const allowed: JobReviewAction[] = [
@@ -2369,13 +2370,15 @@ router.post("/jobs/:id/review", requireAuth, async (req, res) => {
       dueAt,
       severity,
       canManage: canManageJob(actor, full.job),
+      hasPhotos,
     });
     if (!result.ok) {
       return res.status(result.status).json({ error: result.error });
     }
 
     const after = await loadJob(id);
-    return res.json(await toPublicWithAssignees(after!));
+    const publicJob = await toPublicWithAssignees(after!);
+    return res.json({ ...publicJob, completionNoteId: result.completionNoteId });
   } catch (err) {
     logger.error({ err }, "Failed to review job");
     return res.status(500).json({ error: "Failed to review job" });
