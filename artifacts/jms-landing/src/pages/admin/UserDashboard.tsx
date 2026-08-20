@@ -9,6 +9,7 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import TimerActivityPing from "@/components/TimerActivityPing";
 import Pagination, { usePagination } from "@/components/Pagination";
+import JobAddressLine from "@/components/JobAddressLine";
 import { useTimerActivityPing } from "@/hooks/useTimerActivityPing";
 import {
   useGetDashboardStats,
@@ -149,7 +150,7 @@ export default function UserDashboard() {
       number: j.number,
       title: j.title,
       client: j.client,
-      address: j.address ?? "No address",
+      address: j.address,
       due: j.dueDate ? new Date(j.dueDate).toLocaleDateString() : "No date",
       status: j.status.charAt(0).toUpperCase() + j.status.slice(1),
       priority: j.priority.charAt(0).toUpperCase() + j.priority.slice(1)
@@ -485,6 +486,7 @@ export default function UserDashboard() {
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-sm text-gray-900">{j.title}</div>
                     <div className="text-xs text-gray-500 mt-0.5">{j.number} · {j.client}</div>
+                    <JobAddressLine address={j.address} />
                     <div className="text-[10px] text-gray-400 mt-1 flex items-center gap-2">
                       <span className="flex items-center gap-1"><Calendar size={10} /> {j.due}</span>
                       <span className="flex items-center gap-1"><Clock size={10} /> {j.status}</span>

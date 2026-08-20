@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
+import JobAddressLine from "@/components/JobAddressLine";
 import { useGetDashboardStats, useListUsers, useListJobs, type User, type Job } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 import { statusToUi, type UiStatus } from "@/lib/jobMappers";
@@ -120,6 +121,7 @@ export default function AdminDashboard() {
         jobNumber,
         title: j.title || j.client || "Untitled job",
         client: j.client || "—",
+        address: j.address,
         supervisor: j.supervisor?.name ?? "Unassigned",
         status: uiStatus,
         color: STATUS_BADGE[uiStatus],
@@ -236,6 +238,7 @@ export default function AdminDashboard() {
                   <div className="text-xs text-gray-500 mt-0.5 truncate">
                     {j.jobNumber} · Supervised by {j.supervisor}
                   </div>
+                  <JobAddressLine address={j.address} className="text-xs text-gray-500 mt-0.5 flex items-center gap-1 min-w-0 truncate" />
                 </div>
                 <span className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-full shrink-0 ${j.color}`}>{j.status}</span>
               </motion.div>

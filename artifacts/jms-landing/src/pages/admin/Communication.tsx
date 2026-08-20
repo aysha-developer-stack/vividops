@@ -17,6 +17,7 @@ type JobApi = {
   title: string;
   status: string;
   client: string;
+  address?: string | null;
 };
 
 type JobMessageApi = {
@@ -205,7 +206,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
             if (!j || typeof j !== "object") return null;
             const obj = j as Partial<JobApi>;
             if (!obj.id || !obj.number || !obj.title || !obj.status || !obj.client) return null;
-            return { id: obj.id, number: obj.number, title: obj.title, status: obj.status, client: obj.client };
+            return { id: obj.id, number: obj.number, title: obj.title, status: obj.status, client: obj.client, address: obj.address ?? null };
           })
           .filter(Boolean) as JobApi[];
         if (!cancelled) {
@@ -281,7 +282,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
   const filteredJobs = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return jobs;
-    return jobs.filter((j) => `${j.number} ${j.title} ${j.client}`.toLowerCase().includes(q));
+    return jobs.filter((j) => `${j.number} ${j.title} ${j.client} ${j.address ?? ""}`.toLowerCase().includes(q));
   }, [jobs, search]);
 
   const activeJob = useMemo(() => jobs.find((j) => j.id === activeJobId) ?? null, [jobs, activeJobId]);
@@ -665,7 +666,14 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                         className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${active ? "bg-primary text-white shadow-md shadow-primary/30" : "text-gray-700 hover:bg-white"}`}
                       >
                         <Hash size={14} className={active ? "text-white" : "text-gray-400"} />
-                        <span className="font-medium flex-1 text-left truncate">{j.number} · {j.title}</span>
+                        <span className="font-medium flex-1 text-left min-w-0">
+                          <span className="block truncate">{j.number} · {j.title}</span>
+                          {(j.address ?? "").trim() ? (
+                            <span className={`block truncate text-[10px] mt-0.5 ${active ? "text-white/80" : "text-gray-500"}`}>
+                              {j.address}
+                            </span>
+                          ) : null}
+                        </span>
                         {unread > 0 && (
                           <span
                             className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 ${

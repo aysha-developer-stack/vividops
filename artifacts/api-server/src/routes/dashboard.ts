@@ -251,7 +251,7 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
     }
 
     // 3. Get active jobs
-    const activeJobsList = await db.select()
+    const activeJobsRows = await db.select()
       .from(jobs)
       .where(and(
         eq(jobs.supervisorId, supervisorId),
@@ -260,10 +260,34 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
       .orderBy(desc(jobs.updatedAt))
       .limit(5);
 
+    const activeJobPeopleIds = [
+      ...new Set(
+        activeJobsRows
+          .flatMap((job) => [job.assigneeId, job.supervisorId])
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      ),
+    ];
+    const activeJobPeople =
+      activeJobPeopleIds.length > 0
+        ? await db
+            .select({ id: users.id, name: users.name, role: users.role })
+            .from(users)
+            .where(inArray(users.id, activeJobPeopleIds))
+        : [];
+    const activeJobPeopleById = new Map(activeJobPeople.map((u) => [u.id, u]));
+    const activeJobsList = activeJobsRows.map((job) =>
+      publicJob(
+        job,
+        job.assigneeId ? activeJobPeopleById.get(job.assigneeId) ?? null : null,
+        job.supervisorId ? activeJobPeopleById.get(job.supervisorId) ?? null : null,
+      ),
+    );
+
     // 4. Get overdue jobs
     const overdueJobsList = await db.select({
       id: sql<string>`'JOB-' || ${jobs.serial}::text`,
       title: jobs.title,
+      address: jobs.address,
       dueDate: jobs.dueDate,
       assigneeId: jobs.assigneeId
     })
@@ -289,6 +313,7 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
       return {
         id: j.id,
         title: j.title,
+        address: j.address ?? null,
         days: diff,
         assignee: assigneeName
       };

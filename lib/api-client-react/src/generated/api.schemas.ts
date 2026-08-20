@@ -397,6 +397,8 @@ export type SupervisorDashboardDataTeamItem = {
 export type SupervisorDashboardDataOverdueItem = {
   id: string;
   title: string;
+  /** @nullable */
+  address?: string | null;
   days: number;
   assignee: string;
 };

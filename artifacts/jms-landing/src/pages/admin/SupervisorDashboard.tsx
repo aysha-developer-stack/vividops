@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
+import JobAddressLine from "@/components/JobAddressLine";
 import { useGetDashboardSupervisor } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
 
@@ -37,6 +38,7 @@ export default function SupervisorDashboard() {
     number: j.number,
     title: j.title,
     client: j.client,
+    address: j.address,
     due: j.dueDate ? new Date(j.dueDate).toLocaleDateString() : "No date",
     priority: j.priority.charAt(0).toUpperCase() + j.priority.slice(1),
     progress: j.progress
@@ -151,6 +153,7 @@ export default function SupervisorDashboard() {
                       <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${PRIORITY_COLOR[j.priority]}`}>{j.priority}</span>
                     </div>
                     <div className="text-xs text-gray-500">{j.number} · {j.client}</div>
+                    <JobAddressLine address={j.address} />
                   </div>
                   <div className="flex items-center gap-1 text-xs text-gray-500 shrink-0">
                     <Calendar size={12} /> {j.due}
@@ -233,6 +236,7 @@ export default function SupervisorDashboard() {
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-bold text-gray-900 truncate">{j.title}</div>
                       <div className="text-[11px] text-gray-500 mt-0.5">{j.id} · {j.assignee}</div>
+                      <JobAddressLine address={j.address} className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1 min-w-0" iconSize={10} />
                     </div>
                     <div className="text-[10px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full whitespace-nowrap">
                       {j.days}d overdue

@@ -9,6 +9,7 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import { useDashboardSearch } from "@/lib/pageSearch";
 import Pagination, { usePagination } from "@/components/Pagination";
+import JobAddressLine from "@/components/JobAddressLine";
 import { useListJobs, type Job as ApiJob } from "@workspace/api-client-react";
 import {
   statusToUi, priorityToUi, formatShortDate, daysUntil,
@@ -148,6 +149,7 @@ export default function FilesChecklists() {
                   <div>
                     <h4 className="font-bold text-gray-900 group-hover:text-primary transition-colors">{j.title}</h4>
                     <p className="text-xs text-gray-500">{j.number} · {j.client}</p>
+                    <JobAddressLine address={j.address} fallback="—" />
                   </div>
                   <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${STATUS_CFG[j.status].color}`}>
                     {j.status}
@@ -204,6 +206,7 @@ export default function FilesChecklists() {
                   <div>
                     <h4 className="font-bold text-gray-900 group-hover:text-emerald-600 transition-colors">{j.title}</h4>
                     <p className="text-xs text-gray-500">{j.number} · {j.client}</p>
+                    <JobAddressLine address={j.address} fallback="—" />
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="text-right">
