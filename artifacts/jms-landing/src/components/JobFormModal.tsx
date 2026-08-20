@@ -880,7 +880,7 @@ export default function JobFormModal({
                     allowFolders
                     accept={JOB_FILE_ACCEPT}
                     label="Drag & drop job files or folders here"
-                    hint="Drawings, site photos, or client docs · ZIP/RAR/7Z stay as one archive (browse or drag the .zip file)"
+                    hint="Any file type — drawings, photos, videos, documents · folders supported"
                     onFiles={(files) => addDroppedFiles(files)}
                   />
                 </div>

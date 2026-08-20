@@ -239,14 +239,23 @@ function attachmentExtension(name: string): string {
 
 function canPreviewAttachment(fileName: string, fileType?: string | null): boolean {
   const ext = attachmentExtension(fileName);
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "pdf", "txt"].includes(ext)) return true;
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "pdf", "txt", "mp4", "mov", "webm", "m4v"].includes(ext)) {
+    return true;
+  }
   const mime = (fileType || "").toLowerCase();
-  return mime.startsWith("image/") || mime === "application/pdf" || mime.startsWith("text/");
+  return (
+    mime.startsWith("image/") ||
+    mime.startsWith("video/") ||
+    mime === "application/pdf" ||
+    mime.startsWith("text/")
+  );
 }
 
 function fileTypeLabel(name: string): string {
   const ext = attachmentExtension(name);
-  if (["png", "jpg", "jpeg", "gif", "svg", "webp"].includes(ext)) return "Image";
+  if (["png", "jpg", "jpeg", "gif", "svg", "webp", "heic", "heif", "bmp", "tif", "tiff"].includes(ext)) return "Image";
+  if (["mp4", "mov", "avi", "mkv", "webm", "m4v", "wmv"].includes(ext)) return "Video";
+  if (["mp3", "wav", "aac", "m4a"].includes(ext)) return "Audio";
   if (ext === "pdf") return "PDF";
   if (["zip", "rar", "7z"].includes(ext)) return "Archive";
   if (["doc", "docx"].includes(ext)) return "Word";
@@ -3557,6 +3566,18 @@ export default function JobDetail({ role = "user", id }: Props) {
                       src={url}
                       title={previewAttachment.fileName}
                       className="w-full h-[75vh] bg-white"
+                    />
+                  );
+                }
+                if (
+                  ["mp4", "mov", "webm", "m4v"].includes(ext) ||
+                  (previewAttachment.fileType || "").startsWith("video/")
+                ) {
+                  return (
+                    <video
+                      src={url}
+                      controls
+                      className="w-full max-h-[75vh] bg-black mx-auto block"
                     />
                   );
                 }

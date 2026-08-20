@@ -1,4 +1,4 @@
-/** Allowed extensions for general job / completed file uploads (not checklist instruction docs). */
+/** Common job file extensions (informational — uploads accept any valid file name). */
 export const JOB_FILE_EXTENSIONS = [
   ".pdf",
   ".dwg",
@@ -31,11 +31,23 @@ export const JOB_FILE_EXTENSIONS = [
   ".bmp",
   ".svg",
   ".heic",
+  ".heif",
   ".tif",
   ".tiff",
   ".txt",
   ".ppt",
   ".pptx",
+  ".mp4",
+  ".mov",
+  ".avi",
+  ".mkv",
+  ".webm",
+  ".m4v",
+  ".wmv",
+  ".mp3",
+  ".wav",
+  ".aac",
+  ".m4a",
 ] as const;
 
 export const CHECKLIST_FILE_EXTENSIONS = [".pdf", ".doc", ".docx"] as const;
@@ -47,9 +59,17 @@ export function fileExtension(name: string): string {
   return base.slice(idx);
 }
 
+function baseFileName(name: string): string {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) return "";
+  const parts = trimmed.split(/[/\\]/);
+  return parts[parts.length - 1] ?? trimmed;
+}
+
+/** Accept any file like a folder — only reject empty or invalid names. */
 export function isJobFileAllowed(name: string): boolean {
-  const ext = fileExtension(name);
-  return ext !== "" && (JOB_FILE_EXTENSIONS as readonly string[]).includes(ext);
+  const base = baseFileName(name);
+  return base.length > 0 && base !== "." && base !== "..";
 }
 
 export function isChecklistInstructionFileAllowed(name: string): boolean {
@@ -61,11 +81,10 @@ export function validateUploadFileName(
   fileName: string,
   opts: { checklistInstruction: boolean },
 ): string | null {
-  const allowed = opts.checklistInstruction
-    ? isChecklistInstructionFileAllowed(fileName)
-    : isJobFileAllowed(fileName);
-  if (allowed) return null;
-  return opts.checklistInstruction
-    ? "Checklist files must be Word (.doc, .docx) or PDF only."
-    : "File type not allowed. Supported: PDF, CAD/BIM (incl. CKW), archives, Office docs, CSV, and common images (JPG, PNG, GIF, WEBP, etc.).";
+  if (opts.checklistInstruction) {
+    if (isChecklistInstructionFileAllowed(fileName)) return null;
+    return "Checklist instruction files must be Word (.doc, .docx) or PDF only.";
+  }
+  if (isJobFileAllowed(fileName)) return null;
+  return "Invalid file name.";
 }

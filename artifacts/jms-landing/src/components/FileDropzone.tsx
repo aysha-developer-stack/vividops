@@ -113,7 +113,7 @@ export default function FileDropzone({
         type="file"
         className="hidden"
         multiple={multiple}
-        accept={accept}
+        accept={accept || undefined}
         disabled={isDisabled}
         onChange={(e) => {
           const files = collectFilesFromList(e.target.files);
