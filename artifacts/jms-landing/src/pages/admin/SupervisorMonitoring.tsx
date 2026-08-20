@@ -41,10 +41,10 @@ interface SupervisorCard {
   teamSize: number;
   assignedJobs: number;
   activeJobs: number;
-  completedJobs: number;
+  pendingReviewJobs: number;
   checkedJobs: number;
   overdue: number;
-  completionRate: number;
+  checkRate: number;
   hoursThisWeek: number;
   status: "online" | "away" | "offline";
   trend: number;
@@ -111,6 +111,42 @@ function isCheckedBySupervisor(job: Job, supervisorId: string, supervisorName: s
   return namePart === supervisorName.trim().toLowerCase() && /supervisor/i.test(label);
 }
 
+function supervisorHasCheckedJob(
+  job: Job,
+  supervisorId: string,
+  supervisorName: string,
+  logs: TimeLog[],
+): { checkedAt: string; reviewCheckSeconds: number } | null {
+  const reviewStats = supervisorReviewCheckStats(job.id, supervisorId, logs);
+  const formallyChecked = isCheckedBySupervisor(job, supervisorId, supervisorName);
+
+  if (formallyChecked && job.checkedAt) {
+    return { checkedAt: job.checkedAt, reviewCheckSeconds: reviewStats.totalSeconds };
+  }
+
+  // Supervisor approved → awaiting admin (even if checkedBy was cleared later)
+  if (job.status === "awaiting_admin" && job.supervisor?.id === supervisorId) {
+    const at = job.checkedAt ?? job.updatedAt ?? reviewStats.latestAt;
+    if (at) return { checkedAt: at, reviewCheckSeconds: reviewStats.totalSeconds };
+  }
+
+  if (reviewStats.totalSeconds > 0 && reviewStats.latestAt) {
+    return { checkedAt: reviewStats.latestAt, reviewCheckSeconds: reviewStats.totalSeconds };
+  }
+
+  return null;
+}
+
+function isPendingSupervisorReview(job: Job) {
+  return (
+    job.status === "awaiting_supervisor" ||
+    job.status === "in_progress" ||
+    job.status === "rework"
+  );
+}
+
+const UNASSIGNED_WORKER_ID = "__unassigned__";
+
 function supervisorReviewCheckStats(
   jobId: string,
   supervisorId: string,
@@ -165,9 +201,8 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
 
       const workerMap = new Map<string, AssignedWorker>();
       for (const job of supervisedJobs) {
-        const assigneeId = job.assignee?.id;
+        const assigneeId = job.assignee?.id ?? UNASSIGNED_WORKER_ID;
         const assigneeName = job.assignee?.name ?? "Unassigned";
-        if (!assigneeId) continue;
         const existing = workerMap.get(assigneeId) ?? {
           id: assigneeId,
           name: assigneeName,
@@ -179,29 +214,27 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
         existing.assignedJobs += 1;
         existing.jobNumbers.push(jobNumberOf(job));
         if (job.status !== "completed" && job.status !== "cancelled") existing.activeJobs += 1;
-        if (job.status === "completed") existing.completedJobs += 1;
+        if (supervisorHasCheckedJob(job, u.id, u.name, apiTimeLogs ?? [])) {
+          existing.completedJobs += 1;
+        }
         workerMap.set(assigneeId, existing);
       }
       const workers = Array.from(workerMap.values()).sort((a, b) => b.assignedJobs - a.assignedJobs);
 
       const checkedJobsList = supervisedJobs
         .map((job): CheckedJobRow | null => {
-          const reviewStats = supervisorReviewCheckStats(job.id, u.id, apiTimeLogs ?? []);
-          const formallyChecked = isCheckedBySupervisor(job, u.id, u.name) && job.checkedAt;
-          if (!formallyChecked && reviewStats.totalSeconds <= 0) return null;
-
-          const checkedAt = job.checkedAt ?? reviewStats.latestAt ?? null;
-          if (!checkedAt) return null;
+          const check = supervisorHasCheckedJob(job, u.id, u.name, apiTimeLogs ?? []);
+          if (!check) return null;
 
           return {
             id: job.id,
             jobNumber: jobNumberOf(job),
             title: job.title,
             assigneeName: job.assignee?.name ?? "Unassigned",
-            checkedAt: String(checkedAt),
-            checkedAtMs: parseMs(checkedAt) ?? 0,
+            checkedAt: String(check.checkedAt),
+            checkedAtMs: parseMs(check.checkedAt) ?? 0,
             status: String(job.status),
-            reviewCheckSeconds: reviewStats.totalSeconds,
+            reviewCheckSeconds: check.reviewCheckSeconds,
           };
         })
         .filter((row): row is CheckedJobRow => row != null)
@@ -216,25 +249,24 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
       const hoursThisWeek = weekLogs.reduce((sum, log) => sum + (log.duration / 3600), 0);
 
       const activeJobs = supervisedJobs.filter((job) => job.status !== "completed" && job.status !== "cancelled").length;
-      const completedJobs = supervisedJobs.filter((job) => job.status === "completed").length;
+      const pendingReviewJobs = supervisedJobs.filter((job) => isPendingSupervisorReview(job)).length;
       const overdue = supervisedJobs.filter((job) => job.isOverdue).length;
       const assignedJobs = supervisedJobs.length;
       const checkedJobs = checkedJobsList.length;
-      const totalTrackedJobs = activeJobs + completedJobs;
-      const completionRate = totalTrackedJobs > 0 ? Math.round((completedJobs / totalTrackedJobs) * 100) : 0;
+      const checkRate = assignedJobs > 0 ? Math.round((checkedJobs / assignedJobs) * 100) : 0;
 
-      const currentWeekCompleted = supervisedJobs.filter((job) => {
-        const completedMs = parseMs(job.completedAt);
-        return completedMs != null && completedMs >= weekStartMs;
+      const currentWeekChecked = checkedJobsList.filter((row) => {
+        const ms = parseMs(row.checkedAt);
+        return ms != null && ms >= weekStartMs;
       }).length;
-      const previousWeekCompleted = supervisedJobs.filter((job) => {
-        const completedMs = parseMs(job.completedAt);
-        return completedMs != null && completedMs >= prevWeekStartMs && completedMs < weekStartMs;
+      const previousWeekChecked = checkedJobsList.filter((row) => {
+        const ms = parseMs(row.checkedAt);
+        return ms != null && ms >= prevWeekStartMs && ms < weekStartMs;
       }).length;
       const trend =
-        previousWeekCompleted === 0
-          ? currentWeekCompleted > 0 ? 100 : 0
-          : Math.round(((currentWeekCompleted - previousWeekCompleted) / previousWeekCompleted) * 100);
+        previousWeekChecked === 0
+          ? currentWeekChecked > 0 ? 100 : 0
+          : Math.round(((currentWeekChecked - previousWeekChecked) / previousWeekChecked) * 100);
 
       const latestJobActivityMs = supervisedJobs.reduce((max, job) => {
         const ms = parseMs(job.updatedAt) ?? parseMs(job.createdAt) ?? 0;
@@ -253,13 +285,13 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
         id: u.id,
         name: u.name,
         avatar: u.name.split(" ").map((s) => s[0]).join("").toUpperCase().slice(0, 2),
-        teamSize: workers.length,
+        teamSize: workers.filter((w) => w.id !== UNASSIGNED_WORKER_ID).length,
         assignedJobs,
         activeJobs,
-        completedJobs,
+        pendingReviewJobs,
         checkedJobs,
         overdue,
-        completionRate,
+        checkRate,
         hoursThisWeek: Number(hoursThisWeek.toFixed(1)),
         status,
         trend,
@@ -300,7 +332,7 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
         <p className="text-sm text-gray-500 mt-0.5">
           {role === "supervisor"
             ? "Track jobs assigned to your workers, checks you completed, and check times."
-            : "See each supervisor’s assigned jobs by worker, jobs they checked, and when checks happened."}
+            : "Supervisor-only view: jobs each supervisor checked or approved, review times, and what still needs their review."}
         </p>
       </div>
 
@@ -402,9 +434,9 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
                     <div className="text-lg font-bold text-violet-600">{sup.checkedJobs}</div>
                     <div className="text-[10px] text-gray-500 uppercase tracking-wide">Checked</div>
                   </div>
-                  <div className="text-center p-2.5 rounded-xl bg-emerald-50">
-                    <div className="text-lg font-bold text-emerald-600">{sup.completedJobs}</div>
-                    <div className="text-[10px] text-gray-500 uppercase tracking-wide">Done</div>
+                  <div className="text-center p-2.5 rounded-xl bg-amber-50">
+                    <div className="text-lg font-bold text-amber-600">{sup.pendingReviewJobs}</div>
+                    <div className="text-[10px] text-gray-500 uppercase tracking-wide">To review</div>
                   </div>
                   <div className="text-center p-2.5 rounded-xl bg-red-50">
                     <div className="text-lg font-bold text-red-600">{sup.overdue}</div>
@@ -488,8 +520,8 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
                 {[
                   { label: "Assigned", val: selected.assignedJobs },
                   { label: "Checked", val: selected.checkedJobs },
-                  { label: "Active", val: selected.activeJobs },
-                  { label: "Completion", val: `${selected.completionRate}%` },
+                  { label: "To review", val: selected.pendingReviewJobs },
+                  { label: "Check rate", val: `${selected.checkRate}%` },
                 ].map((m) => (
                   <div key={m.label} className="rounded-xl bg-gray-50 border border-gray-100 p-3 text-center">
                     <div className="text-lg font-bold text-gray-900">{m.val}</div>
@@ -522,7 +554,7 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
                           <div className="text-right shrink-0">
                             <div className="text-sm font-bold text-primary">{w.assignedJobs}</div>
                             <div className="text-[10px] text-gray-500 uppercase">
-                              {w.activeJobs} active · {w.completedJobs} done
+                              {w.activeJobs} active · {w.completedJobs} checked
                             </div>
                           </div>
                         </div>
