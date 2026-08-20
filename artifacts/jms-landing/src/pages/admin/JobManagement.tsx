@@ -972,11 +972,10 @@ export default function JobManagement(
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, x: -20 }}
                       transition={{ delay: i * 0.03 }}
-                      whileHover={{ backgroundColor: "rgb(249, 250, 251)" }}
-                      className="border-b border-gray-50 last:border-0"
+                      className="group border-b border-gray-50 last:border-0 transition-colors [&>td]:transition-colors hover:[&>td]:bg-sky-50/70"
                     >
                       <td className="px-6 py-4 cursor-pointer" onClick={() => setLocation(`${basePath}/${j.id}`)}>
-                        <div className="font-medium text-gray-900 text-sm flex items-center gap-1.5 group-hover:text-primary">{j.title} <ExternalLink size={11} className="text-gray-300" /></div>
+                        <div className="font-medium text-gray-900 text-sm flex items-center gap-1.5 transition-colors group-hover:text-primary">{j.title} <ExternalLink size={11} className="text-gray-300 group-hover:text-primary/60" /></div>
                         {j.address ? (
                           <div className="text-xs text-gray-600 mt-0.5 truncate max-w-md" title={j.address}>{j.address}</div>
                         ) : null}
