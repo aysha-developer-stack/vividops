@@ -644,7 +644,8 @@ export async function applyJobReview(opts: {
 
   const previousStatus = job.status;
   const shouldRecordChecker =
-    nextStatus === "awaiting_admin" || nextStatus === "completed";
+    nextStatus === "awaiting_admin" ||
+    (nextStatus === "completed" && !job.checkedById);
 
   const savedComment = await recordCompletionComment({
     jobId: job.id,

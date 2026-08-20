@@ -104,13 +104,32 @@ function jobNumberOf(job: Job) {
 }
 
 function isCheckedBySupervisor(job: Job, supervisorId: string, supervisorName: string) {
-  const checkedById = (job as any).checkedById as string | null | undefined;
-  if (checkedById && checkedById === supervisorId) return true;
-  const label = ((job as any).checkedByLabel as string | null | undefined) ?? "";
+  if (job.checkedById && job.checkedById === supervisorId) return true;
+  const label = job.checkedByLabel ?? "";
   if (!label) return false;
-  // Fallback for older rows: label is "Name · role"
   const namePart = label.split("·")[0]?.trim().toLowerCase() ?? "";
   return namePart === supervisorName.trim().toLowerCase() && /supervisor/i.test(label);
+}
+
+function supervisorReviewCheckStats(
+  jobId: string,
+  supervisorId: string,
+  logs: TimeLog[],
+): { totalSeconds: number; latestAt: string | null } {
+  let totalSeconds = 0;
+  let latestMs = 0;
+  for (const log of logs) {
+    if (log.jobId !== jobId || log.userId !== supervisorId) continue;
+    const task = log.task?.toLowerCase() ?? "";
+    if (log.task !== "Supervisor review check" && !task.includes("review check")) continue;
+    totalSeconds += log.duration ?? 0;
+    const ms = parseMs(log.createdAt) ?? 0;
+    if (ms > latestMs) latestMs = ms;
+  }
+  return {
+    totalSeconds,
+    latestAt: latestMs > 0 ? new Date(latestMs).toISOString() : null,
+  };
 }
 
 export default function SupervisorMonitoring({ role = "admin" as Role }: { role?: Role } = {}) {
@@ -165,29 +184,27 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
       }
       const workers = Array.from(workerMap.values()).sort((a, b) => b.assignedJobs - a.assignedJobs);
 
-      const checkedJobsList: CheckedJobRow[] = supervisedJobs
-        .filter((job) => isCheckedBySupervisor(job, u.id, u.name) && (job as any).checkedAt)
-        .map((job) => {
-          const checkedAt = String((job as any).checkedAt);
-          const reviewCheckSeconds = (apiTimeLogs ?? [])
-            .filter(
-              (log: TimeLog) =>
-                log.jobId === job.id &&
-                log.userId === u.id &&
-                (log.task === "Supervisor review check" || log.task?.toLowerCase().includes("review check")),
-            )
-            .reduce((sum, log) => sum + (log.duration ?? 0), 0);
+      const checkedJobsList = supervisedJobs
+        .map((job): CheckedJobRow | null => {
+          const reviewStats = supervisorReviewCheckStats(job.id, u.id, apiTimeLogs ?? []);
+          const formallyChecked = isCheckedBySupervisor(job, u.id, u.name) && job.checkedAt;
+          if (!formallyChecked && reviewStats.totalSeconds <= 0) return null;
+
+          const checkedAt = job.checkedAt ?? reviewStats.latestAt ?? null;
+          if (!checkedAt) return null;
+
           return {
             id: job.id,
             jobNumber: jobNumberOf(job),
             title: job.title,
             assigneeName: job.assignee?.name ?? "Unassigned",
-            checkedAt,
+            checkedAt: String(checkedAt),
             checkedAtMs: parseMs(checkedAt) ?? 0,
-            status: job.status,
-            reviewCheckSeconds,
+            status: String(job.status),
+            reviewCheckSeconds: reviewStats.totalSeconds,
           };
         })
+        .filter((row): row is CheckedJobRow => row != null)
         .sort((a, b) => b.checkedAtMs - a.checkedAtMs);
 
       const weekLogs = (apiTimeLogs ?? []).filter((log: TimeLog) => {
