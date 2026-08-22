@@ -48,6 +48,15 @@ import {
   TIMER_HEARTBEAT_INTERVAL_MS,
 } from "@/lib/timerSessionApi";
 import {
+  readJobTimerState,
+  writeJobTimerState,
+  clearJobTimerState,
+  computeJobTimerElapsed,
+  clearOtherJobTimerLocalStates,
+  syncJobTimerFromServer,
+  jobTimerStateFromServerSession,
+} from "@/lib/jobTimerLocalState";
+import {
   fetchActiveReviewCheckSessions,
   fetchJobReviewCheckTime,
   startReviewCheckSession,
@@ -676,35 +685,11 @@ export default function JobDetail({ role = "user", id }: Props) {
   };
 
   const timerStorageKey = (jid: string) => `job_timer_v1:${jid}`;
-  const readTimerState = (jid: string) => {
-    try {
-      const raw = localStorage.getItem(timerStorageKey(jid));
-      if (!raw) return null;
-      const data = JSON.parse(raw) as any;
-      if (!data || data.v !== 1) return null;
-      return {
-        running: !!data.running,
-        startedAt: typeof data.startedAt === "number" ? data.startedAt : null,
-        accumulated: typeof data.accumulated === "number" ? data.accumulated : 0,
-        task: typeof data.task === "string" ? data.task : "",
-      };
-    } catch {
-      return null;
-    }
-  };
+  const readTimerState = readJobTimerState;
   const writeTimerState = (jid: string, state: { running: boolean; startedAt: number | null; accumulated: number; task?: string }) => {
-    try {
-      localStorage.setItem(timerStorageKey(jid), JSON.stringify({ v: 1, ...state }));
-    } catch {
-    }
+    writeJobTimerState(jid, { ...state, task: state.task ?? "" });
   };
-  const computeElapsed = (state: { running: boolean; startedAt: number | null; accumulated: number } | null) => {
-    if (!state) return 0;
-    const base = Math.max(0, Math.floor(state.accumulated));
-    if (!state.running || !state.startedAt) return base;
-    const extra = Math.max(0, Math.floor((Date.now() - state.startedAt) / 1000));
-    return base + extra;
-  };
+  const computeElapsed = computeJobTimerElapsed;
 
   const readGlobalTimerState = () => {
     try {
@@ -757,32 +742,8 @@ export default function JobDetail({ role = "user", id }: Props) {
       writeGlobalTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
     }
 
-    const runningJobTimers: Array<{ jobId: string; elapsed: number }> = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key || !key.startsWith("job_timer_v1:")) continue;
-      const jid = key.slice("job_timer_v1:".length);
-      if (!jid || jid === currentJobId) continue;
-      const state = readTimerState(jid);
-      if (!state?.running) continue;
-      const elapsed = computeElapsed(state);
-      if (elapsed > 0) runningJobTimers.push({ jobId: jid, elapsed });
-    }
-
-    for (const jt of runningJobTimers) {
-      const storedTask = readTimerState(jt.jobId)?.task?.trim() ?? "";
-      try {
-        await createTimeLogMutation.mutateAsync({
-          data: {
-            task: storedTask || `Work (Job ${jt.jobId.slice(0, 8)}…)`,
-            duration: jt.elapsed,
-            jobId: jt.jobId,
-          },
-        });
-      } catch {
-      }
-      writeTimerState(jt.jobId, { running: false, startedAt: null, accumulated: 0, task: "" });
-    }
+    // Server timer session is authoritative — clearing stale local keys avoids duplicate logs.
+    clearOtherJobTimerLocalStates(currentJobId);
 
     qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
   };
@@ -822,19 +783,21 @@ export default function JobDetail({ role = "user", id }: Props) {
     const existingTask = state.task?.trim() ?? "";
     const nextTask = existingTask || (await requestTask())?.trim() || "";
     if (!nextTask) return;
-    const elapsed = computeElapsed(state);
-    writeTimerState(job.id, { running: true, startedAt: Date.now(), accumulated: elapsed, task: nextTask });
-    setRunning(true);
-    setSeconds(elapsed);
+
     const session = await startTimerSession({
       jobId: job.id,
       task: nextTask,
-      accumulatedSeconds: elapsed,
+      accumulatedSeconds: state.running ? 0 : computeElapsed(state),
     });
-    if (session) {
-      await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
-      await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-    }
+    if (!session) return;
+
+    const synced = jobTimerStateFromServerSession(session);
+    writeTimerState(job.id, synced);
+    setRunning(synced.running);
+    setSeconds(computeJobTimerElapsed(synced));
+    await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+    await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+    await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
   };
 
   useEffect(() => {
@@ -850,10 +813,18 @@ export default function JobDetail({ role = "user", id }: Props) {
   useEffect(() => {
     if (!canUseJobTimer) return;
     if (!job?.id) return;
-    const state = readTimerState(job.id);
-    const elapsed = computeElapsed(state);
-    setSeconds(elapsed);
-    setRunning(!!state?.running);
+
+    let cancelled = false;
+    void (async () => {
+      const synced = await syncJobTimerFromServer(job.id);
+      if (cancelled) return;
+      setSeconds(computeJobTimerElapsed(synced));
+      setRunning(!!synced?.running);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [canUseJobTimer, job?.id]);
 
   useEffect(() => {
@@ -1579,29 +1550,36 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   const stopAndSaveTimeLog = async (task: string) => {
     if (!job?.id) return;
-    const duration = computeElapsed(readTimerState(job.id));
-    const storedTask = readTimerState(job.id)?.task?.trim() ?? "";
+    const localState = readTimerState(job.id);
+    const localDuration = computeElapsed(localState);
+    const storedTask = localState?.task?.trim() ?? "";
     const t = task.trim() || storedTask || `Work (Job ${job.id.slice(0, 8)}…)`;
+
     setRunning(false);
     setSeconds(0);
     setShowActivityPing(false);
-    writeTimerState(job.id, { running: false, startedAt: null, accumulated: 0, task: "" });
+
     try {
       const result = await stopTimerSession();
-      if (!result || result.duration <= 0) {
-        if (duration > 0) {
-          await createTimeLogMutation.mutateAsync({ data: { task: t, duration, jobId: job.id } });
-        }
+      if (result && result.duration > 0) {
+        clearJobTimerState(job.id);
+        await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+        return;
       }
+      if (localDuration > 0) {
+        await createTimeLogMutation.mutateAsync({ data: { task: t, duration: localDuration, jobId: job.id } });
+      }
+      clearJobTimerState(job.id);
       await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
     } catch {
-      if (duration > 0) {
+      if (localDuration > 0) {
         try {
-          await createTimeLogMutation.mutateAsync({ data: { task: t, duration, jobId: job.id } });
+          await createTimeLogMutation.mutateAsync({ data: { task: t, duration: localDuration, jobId: job.id } });
           await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
         } catch {
         }
       }
+      clearJobTimerState(job.id);
     }
   };
 

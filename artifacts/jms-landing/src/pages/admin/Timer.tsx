@@ -23,8 +23,11 @@ import {
   pauseTimerSession,
   stopTimerSession,
   heartbeatTimerSession,
+  fetchActiveTimerSessions,
+  liveSessionElapsedSeconds,
   TIMER_HEARTBEAT_INTERVAL_MS,
 } from "@/lib/timerSessionApi";
+import { clearOtherJobTimerLocalStates, clearJobTimerState, writeJobTimerState } from "@/lib/jobTimerLocalState";
 
 interface Entry {
   id: string;
@@ -100,47 +103,8 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
   };
 
   const stopOtherRunningTimersAndSave = async () => {
-    const runningJobTimers: Array<{ jobId: string; elapsed: number }> = [];
-    const runningJobTimerTasks = new Map<string, string>();
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key || !key.startsWith("job_timer_v1:")) continue;
-      const jid = key.slice("job_timer_v1:".length);
-      try {
-        const raw = localStorage.getItem(key);
-        if (!raw) continue;
-        const data = JSON.parse(raw) as any;
-        if (!data || data.v !== 1 || !data.running) continue;
-        const startedAt = typeof data.startedAt === "number" ? data.startedAt : null;
-        const accumulated = typeof data.accumulated === "number" ? data.accumulated : 0;
-        const t = typeof data.task === "string" ? data.task : "";
-        const elapsed = computeElapsed({ running: true, startedAt, accumulated });
-        if (t.trim()) runningJobTimerTasks.set(jid, t.trim());
-        if (elapsed > 0) runningJobTimers.push({ jobId: jid, elapsed });
-      } catch {
-      }
-    }
-
-    for (const jt of runningJobTimers) {
-      const label =
-        projects.find((p) => p.id === jt.jobId)?.label ??
-        `Job ${jt.jobId.slice(0, 8)}…`;
-      const task = runningJobTimerTasks.get(jt.jobId) ?? `Work (${label})`;
-      try {
-        await createLogMutation.mutateAsync({
-          data: { task, duration: jt.elapsed, jobId: jt.jobId },
-        });
-      } catch {
-      } finally {
-        try {
-          localStorage.setItem(
-            `job_timer_v1:${jt.jobId}`,
-            JSON.stringify({ v: 1, running: false, startedAt: null, accumulated: 0, task: "" }),
-          );
-        } catch {
-        }
-      }
-    }
+    // Server session is saved when startTimerSession runs — only clear stale local keys.
+    clearOtherJobTimerLocalStates();
   };
 
   const qc = useQueryClient();
@@ -151,30 +115,46 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
       setStartError("Task is required");
       return;
     }
-    await stopOtherRunningTimersAndSave();
-    const prev = readTimerState() ?? { running: false, startedAt: null, accumulated: 0, task: "", jobId: "" };
-    const elapsed = computeElapsed(prev);
-    writeTimerState({
-      running: true,
-      startedAt: Date.now(),
-      accumulated: elapsed,
-      task: t,
-      jobId: jobId || "",
-    });
-    setRunning(true);
-    setSeconds(elapsed);
-    if (jobId) {
-      const session = await startTimerSession({
-        jobId,
-        task: t,
-        accumulatedSeconds: elapsed,
-      });
-      if (session) {
-        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(jobId) });
-        await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-        await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
-      }
+    if (!jobId) {
+      setStartError("Select a job");
+      return;
     }
+
+    await stopOtherRunningTimersAndSave();
+
+    const session = await startTimerSession({
+      jobId,
+      task: t,
+      accumulatedSeconds: computeElapsed(readTimerState()),
+    });
+
+    if (!session) {
+      setStartError("Could not start timer session");
+      return;
+    }
+
+    setStartError(null);
+    const elapsed = liveSessionElapsedSeconds(session);
+    writeTimerState({
+      running: !!session.segmentStartedAt,
+      startedAt: session.segmentStartedAt ? Date.parse(session.segmentStartedAt) : null,
+      accumulated: session.accumulatedSeconds,
+      task: session.task,
+      jobId: session.jobId ?? jobId,
+    });
+    if (session.jobId) {
+      writeJobTimerState(session.jobId, {
+        running: !!session.segmentStartedAt,
+        startedAt: session.segmentStartedAt ? Date.parse(session.segmentStartedAt) : null,
+        accumulated: session.accumulatedSeconds,
+        task: session.task,
+      });
+    }
+    setRunning(!!session.segmentStartedAt);
+    setSeconds(elapsed);
+    await qc.invalidateQueries({ queryKey: getGetJobQueryKey(jobId) });
+    await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+    await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
   };
 
   const pauseTimer = async () => {
@@ -203,12 +183,42 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
   }, [projects, jobId]);
 
   useEffect(() => {
-    const state = readTimerState();
-    if (!state) return;
-    setRunning(state.running);
-    setSeconds(computeElapsed(state));
-    setTask(state.task ?? "");
-    setJobId(state.jobId ?? "");
+    let cancelled = false;
+    void (async () => {
+      const sessions = await fetchActiveTimerSessions();
+      if (cancelled) return;
+      const mine = sessions[0];
+      if (mine?.jobId) {
+        writeTimerState({
+          running: !!mine.segmentStartedAt,
+          startedAt: mine.segmentStartedAt ? Date.parse(mine.segmentStartedAt) : null,
+          accumulated: mine.accumulatedSeconds,
+          task: mine.task,
+          jobId: mine.jobId,
+        });
+        writeJobTimerState(mine.jobId, {
+          running: !!mine.segmentStartedAt,
+          startedAt: mine.segmentStartedAt ? Date.parse(mine.segmentStartedAt) : null,
+          accumulated: mine.accumulatedSeconds,
+          task: mine.task,
+        });
+        setRunning(!!mine.segmentStartedAt);
+        setSeconds(liveSessionElapsedSeconds(mine));
+        setTask(mine.task);
+        setJobId(mine.jobId);
+        return;
+      }
+
+      const state = readTimerState();
+      if (!state) return;
+      setRunning(state.running);
+      setSeconds(computeElapsed(state));
+      setTask(state.task ?? "");
+      setJobId(state.jobId ?? "");
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const entries: Entry[] = useMemo(() => {
@@ -304,21 +314,31 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
 
   const stop = async () => {
     const state = readTimerState();
-    const duration = computeElapsed(state);
+    const localDuration = computeElapsed(state);
     const t = (state?.task ?? task).trim();
     const jid = (state?.jobId ?? jobId) || null;
-    setRunning(false);
-    setSeconds(0);
-    setTask("");
-    writeTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
+
     try {
       const result = await stopTimerSession();
-      if (!result || result.duration <= 0) {
-        if (duration > 0 && t) {
-          await createLogMutation.mutateAsync({
-            data: { task: t, duration, jobId: jid },
-          });
+      setRunning(false);
+      setSeconds(0);
+      setTask("");
+      writeTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
+      if (jid) clearJobTimerState(jid);
+
+      if (result && result.duration > 0) {
+        await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+        if (jid) {
+          await qc.invalidateQueries({ queryKey: getGetJobQueryKey(jid) });
+          await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
         }
+        return;
+      }
+
+      if (localDuration > 0 && t) {
+        await createLogMutation.mutateAsync({
+          data: { task: t, duration: localDuration, jobId: jid },
+        });
       }
       await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
       if (jid) {
@@ -327,10 +347,14 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
       }
     } catch (err) {
       console.error("Failed to save time log:", err);
-      if (duration > 0 && t) {
+      setRunning(false);
+      setSeconds(0);
+      setTask("");
+      writeTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
+      if (localDuration > 0 && t) {
         try {
           await createLogMutation.mutateAsync({
-            data: { task: t, duration, jobId: jid },
+            data: { task: t, duration: localDuration, jobId: jid },
           });
         } catch {
         }
