@@ -3,6 +3,7 @@ export type JobListSortMode = "activity" | "jobNumber";
 export type JobSortFields = {
   number: string;
   status: string;
+  createdAt?: string | null;
   updatedAt?: string | null;
   lastMessageAt?: string | null;
   unreadCount?: number;
@@ -34,6 +35,11 @@ const API_STATUS_PRIORITY: Record<string, number> = {
 export const JOB_LIST_SORT_LABELS: Record<JobListSortMode, string> = {
   activity: "Most active",
   jobNumber: "Job number",
+};
+
+export const JOB_LIST_SORT_HINTS: Record<JobListSortMode, string> = {
+  activity: "Working jobs first, then most recently updated",
+  jobNumber: "Sort by job number (lowest first)",
 };
 
 export const JOB_LIST_SORT_STORAGE_KEY = "jms_job_list_sort_v1";
@@ -76,6 +82,15 @@ function timestampMs(iso: string | null | undefined): number {
   return Number.isFinite(t) ? t : 0;
 }
 
+/** Latest touch: message, edit, or creation — used for recency within a status tier. */
+function latestActivityMs(fields: JobSortFields): number {
+  return Math.max(
+    timestampMs(fields.lastMessageAt),
+    timestampMs(fields.updatedAt),
+    timestampMs(fields.createdAt),
+  );
+}
+
 export function compareJobsByActivity(a: JobSortFields, b: JobSortFields): number {
   const unreadA = a.unreadCount ?? 0;
   const unreadB = b.unreadCount ?? 0;
@@ -90,9 +105,8 @@ export function compareJobsByActivity(a: JobSortFields, b: JobSortFields): numbe
   const reviewB = b.reviewStartedAt ? 1 : 0;
   if (reviewA !== reviewB) return reviewB - reviewA;
 
-  const activityA = timestampMs(a.lastMessageAt ?? a.updatedAt);
-  const activityB = timestampMs(b.lastMessageAt ?? b.updatedAt);
-  if (activityA !== activityB) return activityB - activityA;
+  const activityDiff = latestActivityMs(b) - latestActivityMs(a);
+  if (activityDiff !== 0) return activityDiff;
 
   const numDiff = parseJobNumberSortKey(a.number) - parseJobNumberSortKey(b.number);
   if (numDiff !== 0) return numDiff;

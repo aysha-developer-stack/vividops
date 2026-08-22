@@ -39,12 +39,11 @@ import DescriptionInput, { AddressUrlHint } from "@/components/DescriptionInput"
 import { CHECKLIST_FILE_ACCEPT, isChecklistDocFile, filterJobFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
 import { formatStoredFileSize, parseExistingJobAttachment, todayJobDateInput, type ExistingJobAttachment } from "@/lib/jobForm";
 import { buildJobSaveUploadSpecs, uploadJobAttachmentsBatch } from "@/lib/uploadJobAttachmentsBatch";
+import JobListSortControl from "@/components/JobListSortControl";
 import {
   type JobListSortMode,
-  JOB_LIST_SORT_LABELS,
   readStoredJobListSort,
   sortJobs,
-  storeJobListSort,
 } from "@/lib/jobListSort";
 
 import {
@@ -69,6 +68,7 @@ interface UiJob {
   status: UiStatus;
   priority: UiPriority;
   created: string;
+  createdAt: string;
   due: string;
   completed?: string;
   progress: number;
@@ -125,6 +125,7 @@ function mapJob(j: ApiJob): UiJob {
     status: statusToUi(j),
     priority: priorityToUi(j.priority),
     created: formatShortDate(j.createdAt),
+    createdAt: j.createdAt,
     due: j.dueDate ? formatShortDate(j.dueDate) : "TBD",
     completed: j.completedAt ? formatShortDate(j.completedAt) : undefined,
     progress: j.progress,
@@ -616,6 +617,7 @@ export default function JobManagement(
     return sortJobs(matches, sortMode, (j) => ({
       number: j.number,
       status: j.status,
+      createdAt: j.createdAt,
       updatedAt: j.updatedAt,
       reviewStartedAt: j.reviewStartedAt,
     }));
@@ -957,22 +959,7 @@ export default function JobManagement(
               <Search size={16} className="text-gray-400" />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by title, client, job number, address, assignee, or supervisor…" className="bg-transparent !text-gray-900 !placeholder:text-gray-400 text-sm flex-1 focus:outline-none" />
             </div>
-            <label className="flex items-center gap-2 text-xs font-semibold text-gray-600 shrink-0">
-              <span className="hidden sm:inline">Sort</span>
-              <select
-                value={sortMode}
-                onChange={(e) => {
-                  const next = e.target.value as JobListSortMode;
-                  setSortMode(next);
-                  storeJobListSort(next);
-                }}
-                className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-primary transition-colors"
-              >
-                {(Object.entries(JOB_LIST_SORT_LABELS) as [JobListSortMode, string][]).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </label>
+            <JobListSortControl value={sortMode} onChange={setSortMode} variant="toolbar" />
           </div>
           {role !== "user" && (
             <motion.button
