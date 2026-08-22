@@ -2577,48 +2577,80 @@ export default function JobDetail({ role = "user", id }: Props) {
                           </>
                         );
                       })()}
-                      {selectedChecklistItem.status !== "completed" && canManageChecklistAsSupervisor && (
-                        <button 
-                          onClick={async () => {
-                            if (!canCompleteChecklistItem(selectedChecklistItem)) {
-                              if (!hasJobLevelCompletedFiles) {
-                                alert("Completed files must be uploaded before marking checklist items complete.");
-                                scrollToCompletedFiles();
-                                return;
-                              }
-                              if (!checklistItemHasInstructionFile(selectedChecklistItem.files)) {
-                                alert("Checklist file not uploaded. A Word/PDF checklist file is required before marking this item complete.");
-                                return;
-                              }
-                              alert("Please upload the completed Word/PDF checklist before marking this item complete.");
-                              return;
-                            }
-                            const next = checklist.map((i) =>
-                              i.id === selectedChecklistItem.id ? { ...i, status: "completed" as const, done: true } : i
-                            );
-                            setChecklist(next);
-                            setSelectedChecklistItem({ ...selectedChecklistItem, status: "completed" as const, done: true });
-                            persistLocalChecklist(next, checklistUploads);
-                            if (job?.id) {
-                              try {
-                                const res = await fetch(`/api/jobs/${job.id}/checklist-state`, {
-                                  method: "PATCH",
-                                  credentials: "include",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify(checklistPatchBody({ itemId: selectedChecklistItem.id, status: "completed" })),
-                                });
-                                if (!res.ok) throw new Error("Failed");
-                                await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
-                                await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-                              } catch {
-                              }
-                            }
-                          }}
-                          className="flex-1 py-2.5 text-white text-xs font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-colors bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
-                        >
-                          <CheckCircle2 size={14} /> Mark Complete
-                        </button>
-                      )}
+                      {selectedChecklistItem.status !== "completed" && canManageChecklistAsSupervisor && (() => {
+                        const canMarkComplete = canCompleteChecklistItem(selectedChecklistItem);
+                        const hasChecklistFile = checklistItemHasInstructionFile(selectedChecklistItem.files);
+                        const hasCompletedChecklistUpload = checklistItemHasCompletedUpload(selectedChecklistItem.files);
+                        return (
+                          <>
+                            <button 
+                              onClick={async () => {
+                                if (!canMarkComplete) {
+                                  if (!hasJobLevelCompletedFiles) {
+                                    alert("Completed files must be uploaded before marking checklist items complete.");
+                                    scrollToCompletedFiles();
+                                    return;
+                                  }
+                                  if (!hasChecklistFile) {
+                                    alert("Checklist file not uploaded. A Word/PDF checklist file is required before marking this item complete.");
+                                    return;
+                                  }
+                                  alert("Please upload the completed Word/PDF checklist before marking this item complete.");
+                                  return;
+                                }
+                                const next = checklist.map((i) =>
+                                  i.id === selectedChecklistItem.id ? { ...i, status: "completed" as const, done: true } : i
+                                );
+                                setChecklist(next);
+                                setSelectedChecklistItem({ ...selectedChecklistItem, status: "completed" as const, done: true });
+                                persistLocalChecklist(next, checklistUploads);
+                                if (job?.id) {
+                                  try {
+                                    const res = await fetch(`/api/jobs/${job.id}/checklist-state`, {
+                                      method: "PATCH",
+                                      credentials: "include",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify(checklistPatchBody({ itemId: selectedChecklistItem.id, status: "completed" })),
+                                    });
+                                    if (!res.ok) {
+                                      const data = await res.json().catch(() => ({}));
+                                      throw new Error((data as any).error || "Failed to mark complete");
+                                    }
+                                    await persistProgress(next);
+                                    await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+                                    await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                                  } catch (err) {
+                                    alert(err instanceof Error ? err.message : "Failed to mark complete");
+                                  }
+                                }
+                              }}
+                              className={`flex-1 py-2.5 text-white text-xs font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-colors ${
+                                canMarkComplete
+                                  ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
+                                  : "bg-gray-400 cursor-not-allowed shadow-none"
+                              }`}
+                              disabled={!canMarkComplete}
+                            >
+                              <CheckCircle2 size={14} /> Mark Complete
+                            </button>
+                            {!hasJobLevelCompletedFiles && (
+                              <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                                Upload completed files in <button type="button" onClick={scrollToCompletedFiles} className="font-bold underline">Completed Files</button> above first, then return here to mark this task complete.
+                              </p>
+                            )}
+                            {hasJobLevelCompletedFiles && !hasChecklistFile && (
+                              <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                                Checklist file (Word/PDF) is missing for this task.
+                              </p>
+                            )}
+                            {hasJobLevelCompletedFiles && hasChecklistFile && !hasCompletedChecklistUpload && (
+                              <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                                Upload your completed Word/PDF checklist in <span className="font-bold">Completed uploads</span> above before marking this task complete.
+                              </p>
+                            )}
+                          </>
+                        );
+                      })()}
                       {selectedChecklistItem.status === "completed" && (role === "supervisor" || role === "admin" || role === "super-admin") && (
                         <button 
                           onClick={() => {
