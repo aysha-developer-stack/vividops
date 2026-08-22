@@ -43,6 +43,8 @@ import {
   postTimerNotification,
   TIMER_AUTO_STOP_S,
   TIMER_PING_INTERVAL_S,
+  TIMER_START_REMINDER_INTERVAL_S,
+  timerStartReminderDescription,
   timerStillWorkingDescription,
 } from "@/lib/timerNotifications";
 import {
@@ -490,6 +492,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [submitReviewDone, setSubmitReviewDone] = useState(false);
   const [notesRefreshKey, setNotesRefreshKey] = useState(0);
   const [showActivityPing, setShowActivityPing] = useState(false);
+  const [showStartTimerReminder, setShowStartTimerReminder] = useState(false);
   const [autoStopCountdown, setAutoStopCountdown] = useState(300);
   const [fileSubTab, setFileSubTab] = useState<"input" | "output" | "notes">("input");
   const [fileSearch, setFileSearch] = useState("");
@@ -1019,6 +1022,26 @@ export default function JobDetail({ role = "user", id }: Props) {
     }, PING_INTERVAL_S * 1000);
     return () => { if (pingTimerRef.current) clearTimeout(pingTimerRef.current); };
   }, [running, Math.floor(seconds / PING_INTERVAL_S)]);
+
+  // Remind to start timer every 30 minutes while on this job with no timer running yet.
+  useEffect(() => {
+    if (!canUseJobTimer || !job?.id || running || seconds > 0) {
+      setShowStartTimerReminder(false);
+      return;
+    }
+
+    const tick = () => {
+      setShowStartTimerReminder(true);
+      void postTimerNotification(
+        "Start your timer",
+        timerStartReminderDescription(job.number ?? "this job"),
+        job.id,
+      );
+    };
+
+    const intervalId = window.setInterval(tick, TIMER_START_REMINDER_INTERVAL_S * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [canUseJobTimer, job?.id, job?.number, running, seconds]);
 
   // Auto-stop countdown when popup is open
   useEffect(() => {
@@ -3112,6 +3135,50 @@ export default function JobDetail({ role = "user", id }: Props) {
               </motion.div>
             ))}
             <Pagination page={jobLogsP.page} totalPages={jobLogsP.totalPages} total={jobLogsP.total} pageSize={jobLogsP.pageSize} onChange={jobLogsP.setPage} label="entries" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Start timer reminder */}
+      <AnimatePresence>
+        {showStartTimerReminder && canUseJobTimer && !running && seconds === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.9 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            className="fixed bottom-6 right-6 bg-white border border-primary/20 rounded-2xl shadow-2xl p-5 max-w-sm z-50"
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Play size={18} fill="currentColor" />
+              </div>
+              <div className="flex-1">
+                <div className="font-bold text-gray-900 text-sm">Start your timer</div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {timerStartReminderDescription(job?.number ?? "this job")} Reminder repeats every 30 minutes while the timer is off.
+                </p>
+                <div className="flex gap-2 mt-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowStartTimerReminder(false);
+                      void startTimer();
+                    }}
+                    className="flex-1 py-1.5 bg-primary text-white rounded-lg text-xs font-bold hover:bg-primary/90"
+                  >
+                    Start Work
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowStartTimerReminder(false)}
+                    className="flex-1 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-bold hover:bg-gray-200"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

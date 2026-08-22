@@ -23,6 +23,8 @@ export async function postTimerNotification(
 
 export const TIMER_PING_INTERVAL_S = 3 * 60 * 60;
 export const TIMER_AUTO_STOP_S = 300;
+/** Remind workers/supervisors to start the job timer if it is still off. */
+export const TIMER_START_REMINDER_INTERVAL_S = 30 * 60;
 
 export function formatTimerPingIntervalLabel(): string {
   const hours = TIMER_PING_INTERVAL_S / 3600;
@@ -31,6 +33,10 @@ export function formatTimerPingIntervalLabel(): string {
 
 export function timerStillWorkingDescription(jobLabel: string): string {
   return `Your timer on ${jobLabel} has been running for ${formatTimerPingIntervalLabel()}. Continue or stop within 5 minutes.`;
+}
+
+export function timerStartReminderDescription(jobLabel: string): string {
+  return `You're on ${jobLabel} but your work timer isn't running. Tap Start Work to track your time.`;
 }
 
 export function timerStillWorkingPopupText(jobLabel?: string): string {
