@@ -1272,10 +1272,7 @@ export default function JobManagement(
                       <input value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} placeholder="e.g. Anderson Residence" className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                     </div>
                     <div className="min-w-0">
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                        Supervisor
-                        <span className="ml-1 font-normal text-gray-400">(optional if workers assigned)</span>
-                      </label>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Supervisor</label>
                       {role === "supervisor" ? (
                         <input
                           value={currentUser?.name ?? "Current Supervisor"}

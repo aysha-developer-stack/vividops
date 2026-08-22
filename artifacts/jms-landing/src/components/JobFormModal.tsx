@@ -612,10 +612,7 @@ export default function JobFormModal({
                     />
                   </div>
                   <div className="min-w-0">
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                      Supervisor
-                      <span className="ml-1 font-normal text-gray-400">(optional if workers assigned)</span>
-                    </label>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Supervisor</label>
                     {role === "supervisor" ? (
                       <input
                         value={currentUser?.name ?? "Current Supervisor"}
