@@ -39,6 +39,13 @@ import DescriptionInput, { AddressUrlHint } from "@/components/DescriptionInput"
 import { CHECKLIST_FILE_ACCEPT, isChecklistDocFile, filterJobFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
 import { formatStoredFileSize, parseExistingJobAttachment, todayJobDateInput, type ExistingJobAttachment } from "@/lib/jobForm";
 import { buildJobSaveUploadSpecs, uploadJobAttachmentsBatch } from "@/lib/uploadJobAttachmentsBatch";
+import {
+  type JobListSortMode,
+  JOB_LIST_SORT_LABELS,
+  readStoredJobListSort,
+  sortJobs,
+  storeJobListSort,
+} from "@/lib/jobListSort";
 
 import {
   DropdownMenu,
@@ -66,6 +73,7 @@ interface UiJob {
   completed?: string;
   progress: number;
   reviewStartedAt?: string | null;
+  updatedAt: string;
 }
 
 function formatReviewTime(seconds: number) {
@@ -121,6 +129,7 @@ function mapJob(j: ApiJob): UiJob {
     completed: j.completedAt ? formatShortDate(j.completedAt) : undefined,
     progress: j.progress,
     reviewStartedAt: j.reviewStartedAt ?? null,
+    updatedAt: j.updatedAt,
   };
 }
 
@@ -305,6 +314,7 @@ export default function JobManagement(
   );
   const [filter, setFilter] = useState<"All" | UiStatus>(initialTab === "rework" ? "Rework" : "All");
   const [assignmentFilter, setAssignmentFilter] = useState<"all" | "unassigned">(initialTab === "assignments" ? "unassigned" : "all");
+  const [sortMode, setSortMode] = useState<JobListSortMode>(() => readStoredJobListSort());
   const [openId, setOpenId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -589,20 +599,32 @@ export default function JobManagement(
   };
 
   const searchQuery = search.trim().toLowerCase();
-  const filtered = jobs.filter((j) =>
-    (filter === "All" || j.status === filter) &&
-    (assignmentFilter === "all" || j.assigneeId === null) &&
-    (!searchQuery ||
-      j.title.toLowerCase().includes(searchQuery) ||
-      j.client.toLowerCase().includes(searchQuery) ||
-      j.number.toLowerCase().includes(searchQuery) ||
-      j.number.replace(/^JOB-/i, "").toLowerCase().includes(searchQuery) ||
-      (j.address?.toLowerCase().includes(searchQuery) ?? false) ||
-      j.assignee.toLowerCase().includes(searchQuery) ||
-      j.assignees.some((a) => a.name.toLowerCase().includes(searchQuery)) ||
-      (j.supervisor?.toLowerCase().includes(searchQuery) ?? false))
-  );
+  const filtered = useMemo(() => {
+    const matches = jobs.filter((j) =>
+      (filter === "All" || j.status === filter) &&
+      (assignmentFilter === "all" || j.assigneeId === null) &&
+      (!searchQuery ||
+        j.title.toLowerCase().includes(searchQuery) ||
+        j.client.toLowerCase().includes(searchQuery) ||
+        j.number.toLowerCase().includes(searchQuery) ||
+        j.number.replace(/^JOB-/i, "").toLowerCase().includes(searchQuery) ||
+        (j.address?.toLowerCase().includes(searchQuery) ?? false) ||
+        j.assignee.toLowerCase().includes(searchQuery) ||
+        j.assignees.some((a) => a.name.toLowerCase().includes(searchQuery)) ||
+        (j.supervisor?.toLowerCase().includes(searchQuery) ?? false)),
+    );
+    return sortJobs(matches, sortMode, (j) => ({
+      number: j.number,
+      status: j.status,
+      updatedAt: j.updatedAt,
+      reviewStartedAt: j.reviewStartedAt,
+    }));
+  }, [jobs, filter, assignmentFilter, searchQuery, sortMode]);
   const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 100);
+
+  useEffect(() => {
+    setPage(1);
+  }, [sortMode, setPage]);
 
   const remove = async (id: string) => {
     setOpenId(null);
@@ -930,9 +952,27 @@ export default function JobManagement(
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
         <div className="p-5 border-b border-gray-100 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
-          <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 flex-1 max-w-md focus-within:border-primary transition-colors">
-            <Search size={16} className="text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by title, client, job number, address, assignee, or supervisor…" className="bg-transparent !text-gray-900 !placeholder:text-gray-400 text-sm flex-1 focus:outline-none" />
+          <div className="flex flex-col sm:flex-row gap-3 flex-1">
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 flex-1 max-w-md focus-within:border-primary transition-colors">
+              <Search size={16} className="text-gray-400" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by title, client, job number, address, assignee, or supervisor…" className="bg-transparent !text-gray-900 !placeholder:text-gray-400 text-sm flex-1 focus:outline-none" />
+            </div>
+            <label className="flex items-center gap-2 text-xs font-semibold text-gray-600 shrink-0">
+              <span className="hidden sm:inline">Sort</span>
+              <select
+                value={sortMode}
+                onChange={(e) => {
+                  const next = e.target.value as JobListSortMode;
+                  setSortMode(next);
+                  storeJobListSort(next);
+                }}
+                className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-primary transition-colors"
+              >
+                {(Object.entries(JOB_LIST_SORT_LABELS) as [JobListSortMode, string][]).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </label>
           </div>
           {role !== "user" && (
             <motion.button

@@ -10,6 +10,13 @@ import { useDashboardSearch } from "@/lib/pageSearch";
 import type { Role } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
 import { collectFilesFromDataTransfer, collectFilesFromList } from "@/lib/collectDroppedFiles";
+import {
+  type JobListSortMode,
+  JOB_LIST_SORT_LABELS,
+  readStoredJobListSort,
+  sortJobs,
+  storeJobListSort,
+} from "@/lib/jobListSort";
 
 type JobApi = {
   id: string;
@@ -18,6 +25,8 @@ type JobApi = {
   status: string;
   client: string;
   address?: string | null;
+  updatedAt?: string;
+  lastMessageAt?: string | null;
 };
 
 type JobMessageApi = {
@@ -170,6 +179,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<JobMessageUi[]>([]);
   const { search, setSearch, headerSearch } = useDashboardSearch("Search jobs…");
+  const [sortMode, setSortMode] = useState<JobListSortMode>(() => readStoredJobListSort());
   const [cliqChannel, setCliqChannel] = useState<JobCliqChannelApi | null>(null);
   const pollRef = useRef<number | null>(null);
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
@@ -206,7 +216,16 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
             if (!j || typeof j !== "object") return null;
             const obj = j as Partial<JobApi>;
             if (!obj.id || !obj.number || !obj.title || !obj.status || !obj.client) return null;
-            return { id: obj.id, number: obj.number, title: obj.title, status: obj.status, client: obj.client, address: obj.address ?? null };
+            return {
+              id: obj.id,
+              number: obj.number,
+              title: obj.title,
+              status: obj.status,
+              client: obj.client,
+              address: obj.address ?? null,
+              updatedAt: typeof obj.updatedAt === "string" ? obj.updatedAt : undefined,
+              lastMessageAt: typeof obj.lastMessageAt === "string" ? obj.lastMessageAt : null,
+            };
           })
           .filter(Boolean) as JobApi[];
         if (!cancelled) {
@@ -281,9 +300,17 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
 
   const filteredJobs = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return jobs;
-    return jobs.filter((j) => `${j.number} ${j.title} ${j.client} ${j.address ?? ""}`.toLowerCase().includes(q));
-  }, [jobs, search]);
+    const matches = !q
+      ? jobs
+      : jobs.filter((j) => `${j.number} ${j.title} ${j.client} ${j.address ?? ""}`.toLowerCase().includes(q));
+    return sortJobs(matches, sortMode, (j) => ({
+      number: j.number,
+      status: j.status,
+      updatedAt: j.updatedAt,
+      lastMessageAt: j.lastMessageAt,
+      unreadCount: unreadByJobId[j.id] ?? 0,
+    }));
+  }, [jobs, search, sortMode, unreadByJobId]);
 
   const activeJob = useMemo(() => jobs.find((j) => j.id === activeJobId) ?? null, [jobs, activeJobId]);
 
@@ -464,6 +491,13 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
       const m = created as JobMessageApi;
       if (typeof m.id !== "string" || typeof m.text !== "string" || typeof m.createdAt !== "string" || !m.user || typeof m.user.name !== "string") return;
       appendMessage(m);
+      setJobs((prev) =>
+        prev.map((j) =>
+          j.id === activeJobId
+            ? { ...j, lastMessageAt: m.createdAt, updatedAt: m.createdAt }
+            : j,
+        ),
+      );
       if (!options?.preserveDraft) {
         setReplyTo(null);
       }
@@ -639,11 +673,27 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
 
         <div className="flex-1 min-h-0 bg-white rounded-2xl border border-gray-100 overflow-hidden grid grid-cols-1 md:grid-cols-[280px_1fr]">
           <div className="border-r border-gray-100 flex flex-col bg-gray-50/50 min-h-0">
-            <div className="p-4 border-b border-gray-100">
+            <div className="p-4 border-b border-gray-100 space-y-3">
               <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 focus-within:border-primary transition-colors">
                 <Search size={14} className="text-gray-400" />
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" className="bg-transparent text-sm flex-1 focus:outline-none text-gray-900 placeholder-gray-400" />
               </div>
+              <label className="flex items-center justify-between gap-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                <span>Sort</span>
+                <select
+                  value={sortMode}
+                  onChange={(e) => {
+                    const next = e.target.value as JobListSortMode;
+                    setSortMode(next);
+                    storeJobListSort(next);
+                  }}
+                  className="normal-case tracking-normal bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-primary transition-colors"
+                >
+                  {(Object.entries(JOB_LIST_SORT_LABELS) as [JobListSortMode, string][]).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </label>
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-5">
               <div>

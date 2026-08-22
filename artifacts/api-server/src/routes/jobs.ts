@@ -102,6 +102,25 @@ async function loadExtraMembersByJobIds(jobIds: string[]): Promise<Map<string, U
   return map;
 }
 
+async function loadLastMessageAtByJobIds(jobIds: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (jobIds.length === 0) return map;
+  await ensureJobMessagesSchema();
+  const rows = await db.execute(sql`
+    SELECT job_id, MAX(created_at) AS last_message_at
+    FROM job_messages
+    WHERE job_id IN (${sql.join(jobIds.map((id) => sql`${id}`), sql`, `)})
+    GROUP BY job_id
+  `);
+  const rawRows = ((rows as unknown as { rows?: Array<{ job_id: string; last_message_at: string }> }).rows ?? []);
+  for (const row of rawRows) {
+    if (row.job_id && row.last_message_at) {
+      map.set(row.job_id, new Date(row.last_message_at).toISOString());
+    }
+  }
+  return map;
+}
+
 function rowToPublic({ job, assignee, supervisor }: JobWithRefs, assignees: UserRef[]) {
   return publicJob(
     job,
@@ -1460,6 +1479,12 @@ async function createStoredJobMessage({
     | undefined;
   const createdAt = insertedRow?.created_at ?? new Date().toISOString();
 
+  await db.execute(sql`
+    UPDATE jobs
+    SET updated_at = now()
+    WHERE id = ${job.id}
+  `);
+
   const source: MessageSource = externalSource ?? "app";
   const initialDeliveryState: MessageDeliveryState = externalSource ? "received" : "local_only";
   await upsertJobMessageSync({
@@ -1838,14 +1863,25 @@ router.get("/jobs", requireAuth, async (req, res) => {
   } catch (err) {
     logger.warn({ err }, "Failed to load job members for list");
   }
+  let lastMessageAtByJob = new Map<string, string>();
+  if (forCommunication) {
+    try {
+      lastMessageAtByJob = await loadLastMessageAtByJobIds(jobIds);
+    } catch (err) {
+      logger.warn({ err }, "Failed to load last message timestamps for communication jobs");
+    }
+  }
   return res.json(
     rows.map((r: any) => {
       const assignee = r.assignee?.id ? r.assignee : null;
       const supervisor = r.supervisor?.id ? r.supervisor : null;
-      return rowToPublic(
+      const pub = rowToPublic(
         { job: r.job, assignee, supervisor },
         membersByJob.get(r.job.id) ?? [],
       );
+      if (!forCommunication) return pub;
+      const lastMessageAt = lastMessageAtByJob.get(r.job.id) ?? null;
+      return lastMessageAt ? { ...pub, lastMessageAt } : pub;
     }),
   );
 });
