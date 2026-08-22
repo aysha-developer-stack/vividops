@@ -18,6 +18,7 @@ import { logger } from "../lib/logger";
 import { createNotification, notifyJobManagers, previewText } from "../lib/notifications";
 import { ensureJobWriteSchema } from "../lib/schema-init";
 import { createRework, markOpenReworksAwaitingReview } from "../lib/reworks";
+import { stopAllActiveTimersOnJob } from "../lib/persist-timer-session";
 import { jobStatusPatchFields, type ReviewableStatus } from "../lib/job-review";
 import {
   isOwnChecklistWork,
@@ -305,6 +306,8 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       });
 
     if (status === "rework") {
+      await stopAllActiveTimersOnJob(jobId);
+
       const rows = await db
         .select({ itemId: jobChecklistState.itemId, status: jobChecklistState.status })
         .from(jobChecklistState)

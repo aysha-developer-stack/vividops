@@ -233,7 +233,6 @@ function writeChecklistState(jobId: string, state: LocalChecklistState) {
 const TABS = [
   { id: "overview", label: "Overview", icon: Briefcase },
   { id: "files", label: "Files", icon: FileText },
-  { id: "checklist", label: "Checklist", icon: CheckCircle2 },
   { id: "notes", label: "Notes", icon: StickyNote },
   { id: "communication", label: "Chat", icon: MessageCircle },
   { id: "logs", label: "Timer Logs", icon: Clock },
@@ -242,6 +241,23 @@ const TABS = [
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
+
+function normalizeJobDetailTab(value: string | null): TabId | null {
+  if (!value) return null;
+  if (value === "checklist") return "files";
+  if (
+    value === "overview" ||
+    value === "files" ||
+    value === "notes" ||
+    value === "communication" ||
+    value === "logs" ||
+    value === "completion" ||
+    value === "mistakes"
+  ) {
+    return value;
+  }
+  return null;
+}
 
 
 function attachmentExtension(name: string): string {
@@ -311,14 +327,20 @@ export default function JobDetail({ role = "user", id }: Props) {
   const job = jobQuery.data;
   const canUseJobTimer = useMemo(() => {
     if (!job?.id) return false;
-    if (job.status === "completed" || job.status === "cancelled" || job.status === "on_hold") return false;
+    if (
+      job.status === "completed" ||
+      job.status === "cancelled" ||
+      job.status === "on_hold" ||
+      job.status === "awaiting_supervisor" ||
+      job.status === "awaiting_admin"
+    ) {
+      return false;
+    }
     if (role === "user") return true;
     if (
       role === "supervisor" &&
       currentUser?.id &&
-      job.supervisor?.id === currentUser.id &&
-      job.status !== "awaiting_supervisor" &&
-      job.status !== "awaiting_admin"
+      job.supervisor?.id === currentUser.id
     ) {
       return true;
     }
@@ -395,31 +417,23 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   const tabFromQuery = (() => {
     try {
-      const v = new URLSearchParams(window.location.search).get("tab");
-      if (v === "overview" || v === "checklist" || v === "files" || v === "notes" || v === "communication" || v === "logs" || v === "completion" || v === "mistakes") return v as TabId;
-      return null;
+      return normalizeJobDetailTab(new URLSearchParams(window.location.search).get("tab"));
     } catch {
       return null;
     }
   })();
-  const defaultTab: TabId = tabFromQuery ?? (role === "supervisor" ? "overview" : role === "user" ? "files" : "checklist");
+  const defaultTab: TabId = tabFromQuery ?? (role === "supervisor" ? "overview" : "files");
   const [tab, setTab] = useState<TabId>(defaultTab);
+  const completedFilesSectionRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollToCompletedFiles = () => {
+    completedFilesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   useEffect(() => {
     try {
-      const v = new URLSearchParams(window.location.search).get("tab");
-      if (
-        v === "overview" ||
-        v === "checklist" ||
-        v === "files" ||
-        v === "notes" ||
-        v === "communication" ||
-        v === "logs" ||
-        v === "completion" ||
-        v === "mistakes"
-      ) {
-        setTab(v as TabId);
-      }
+      const normalized = normalizeJobDetailTab(new URLSearchParams(window.location.search).get("tab"));
+      if (normalized) setTab(normalized);
     } catch {
     }
   }, [location, jobId]);
@@ -801,14 +815,28 @@ export default function JobDetail({ role = "user", id }: Props) {
   };
 
   useEffect(() => {
-    if (job?.status !== "completed") return;
+    if (!job?.id || !job.status) return;
+    const autoStop =
+      job.status === "completed" ||
+      job.status === "cancelled" ||
+      job.status === "on_hold" ||
+      job.status === "awaiting_supervisor" ||
+      job.status === "awaiting_admin";
+    if (!autoStop) return;
+
     setRunning(false);
-    if (job?.id) {
-      const state = readTimerState(job.id);
-      const elapsed = computeElapsed(state);
-      writeTimerState(job.id, { running: false, startedAt: null, accumulated: elapsed, task: state?.task ?? "" });
-    }
-  }, [job?.status]);
+    setShowActivityPing(false);
+    void (async () => {
+      try {
+        await stopTimerSession();
+      } catch {
+        // Server may have already stopped the session on status change.
+      }
+      clearJobTimerState(job.id);
+      setSeconds(0);
+      await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+    })();
+  }, [job?.id, job?.status, qc]);
 
   useEffect(() => {
     if (!canUseJobTimer) return;
@@ -1033,6 +1061,14 @@ export default function JobDetail({ role = "user", id }: Props) {
         comment,
         photos,
       });
+      try {
+        await stopTimerSession();
+      } catch {
+      }
+      clearJobTimerState(job.id);
+      setRunning(false);
+      setSeconds(0);
+      await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
       await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
       await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
       await loadReworks();
@@ -2132,20 +2168,33 @@ export default function JobDetail({ role = "user", id }: Props) {
           </motion.div>
         )}
 
-        {tab === "checklist" && (
-          <motion.div key="cl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {tab === "files" && (() => {
+          const q = fileSearch.toLowerCase();
+          // Keep checklist-linked files in the checklist panel — hide them from Job Files tables
+          const nonChecklist = attachments.filter((a) => a.checklistItemId == null);
+          const inputFiles = nonChecklist.filter((a) => !isCompletedAttachment(a));
+          const outputFiles = nonChecklist.filter((a) => isCompletedAttachment(a));
+          const filteredInput = inputFiles.filter((a) => a.fileName.toLowerCase().includes(q));
+          const filteredOutputServer = outputFiles.filter((a) => a.fileName.toLowerCase().includes(q));
+
+          const canUploadInput = role === "super-admin" || role === "admin";
+          const canUploadOutput = canUploadCompletedFiles;
+
+          return (
+            <motion.div key="fl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             {canUseJobTimer && !hasJobLevelCompletedFiles && (
               <div className="lg:col-span-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="text-xs text-amber-900">
-                  <span className="font-bold">Completed files required.</span> Upload your deliverables on the{" "}
-                  <span className="font-semibold">Files</span> tab before marking checklist items complete.
+                  <span className="font-bold">Completed files required.</span> Upload your deliverables in{" "}
+                  <span className="font-semibold">Completed Files</span> below before marking checklist items complete.
                 </div>
                 <button
                   type="button"
-                  onClick={() => setTab("files")}
+                  onClick={scrollToCompletedFiles}
                   className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-700"
                 >
-                  Go to Files
+                  Go to Completed Files
                 </button>
               </div>
             )}
@@ -2441,8 +2490,8 @@ export default function JobDetail({ role = "user", id }: Props) {
                             <button 
                               onClick={async () => {
                                 if (!hasJobLevelCompletedFiles) {
-                                  alert("Please upload completed files on the Files tab before marking checklist items complete.");
-                                  setTab("files");
+                                  alert("Please upload completed files in the Completed Files section below before marking checklist items complete.");
+                                  scrollToCompletedFiles();
                                   return;
                                 }
                                 if (!hasChecklistFile) {
@@ -2490,7 +2539,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                             </button>
                             {!hasJobLevelCompletedFiles && (
                               <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                                Upload completed files on the <button type="button" onClick={() => setTab("files")} className="font-bold underline">Files</button> tab first, then return here to mark this task complete.
+                                Upload completed files in <button type="button" onClick={scrollToCompletedFiles} className="font-bold underline">Completed Files</button> below first, then return here to mark this task complete.
                               </p>
                             )}
                             {hasJobLevelCompletedFiles && !hasChecklistFile && (
@@ -2564,23 +2613,8 @@ export default function JobDetail({ role = "user", id }: Props) {
                 </div>
               )}
             </AnimatePresence>
-          </motion.div>
-        )}
+              </div>
 
-        {tab === "files" && (() => {
-          const q = fileSearch.toLowerCase();
-          // Keep checklist-linked files on Checklist tab — hide them from Job Files
-          const nonChecklist = attachments.filter((a) => a.checklistItemId == null);
-          const inputFiles = nonChecklist.filter((a) => !isCompletedAttachment(a));
-          const outputFiles = nonChecklist.filter((a) => isCompletedAttachment(a));
-          const filteredInput = inputFiles.filter((a) => a.fileName.toLowerCase().includes(q));
-          const filteredOutputServer = outputFiles.filter((a) => a.fileName.toLowerCase().includes(q));
-
-          const canUploadInput = role === "super-admin" || role === "admin";
-          const canUploadOutput = canUploadCompletedFiles;
-
-          return (
-            <motion.div key="fl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-6">
               {/* Search and Global Actions */}
               <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-gray-100">
                 <div className="relative w-full sm:w-96">
@@ -2663,7 +2697,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 </div>
 
                 {/* Completed Files Section (Output) */}
-                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                <div ref={completedFilesSectionRef} id="completed-files-section" className="bg-white rounded-2xl border border-gray-100 overflow-hidden scroll-mt-6">
                   <div className="px-6 py-4 border-b border-gray-100 bg-emerald-50/30 flex items-center justify-between">
                     <div>
                       <h3 className="font-bold text-gray-900">Completed Files</h3>

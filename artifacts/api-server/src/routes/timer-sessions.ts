@@ -18,7 +18,10 @@ import {
   publicTimerSession,
   timerSessionElapsedSeconds,
 } from "../lib/timer-sessions";
-import { stopTimerSessionAndSaveLog } from "../lib/persist-timer-session";
+import {
+  stopTimerSessionAndSaveLog,
+  workerMayStartTimerOnJobStatus,
+} from "../lib/persist-timer-session";
 import { flushReviewCheckSegment } from "../lib/persist-review-check-session";
 import {
   jobStatusPatchFields,
@@ -176,11 +179,13 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
     if (!(await canViewJob(actor, job))) {
       return res.status(403).json({ error: "You cannot work on this job" });
     }
-    if (job.status === "completed" || job.status === "cancelled") {
-      return res.status(400).json({ error: "This job is already finished" });
-    }
-    if (job.status === "on_hold") {
-      return res.status(400).json({ error: "Job is on hold — contact your supervisor to resume" });
+    if (!workerMayStartTimerOnJobStatus(job.status)) {
+      return res.status(400).json({
+        error:
+          job.status === "awaiting_supervisor" || job.status === "awaiting_admin"
+            ? "Job is awaiting review — timer cannot run until rework is needed"
+            : "This job is not in a state where work time can be tracked",
+      });
     }
 
     const [reviewSession] = await db
@@ -321,6 +326,18 @@ router.post("/timer-sessions/heartbeat", requireAuth, async (req, res) => {
     if (!session) return res.status(404).json({ error: "No active timer session" });
     if (!session.segmentStartedAt) {
       return res.status(400).json({ error: "Timer is paused" });
+    }
+
+    if (session.jobId) {
+      const [job] = await db
+        .select({ status: jobs.status })
+        .from(jobs)
+        .where(eq(jobs.id, session.jobId))
+        .limit(1);
+      if (job && !workerMayStartTimerOnJobStatus(job.status)) {
+        const duration = await stopSessionAndSaveLog(session, actor);
+        return res.json({ autoStopped: true, duration, timeLog: duration > 0 ? { duration } : null });
+      }
     }
 
     const now = new Date();

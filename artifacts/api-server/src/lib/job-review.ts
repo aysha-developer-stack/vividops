@@ -19,6 +19,10 @@ import {
   resolveJobReworks,
 } from "./reworks";
 import { finalizeReviewCheckForJob } from "./persist-review-check-session";
+import {
+  shouldAutoStopWorkerTimersForJobStatus,
+  stopAllActiveTimersOnJob,
+} from "./persist-timer-session";
 
 const COMPLETION_NOTE_LABELS: Record<JobReviewAction, string | null> = {
   submit_for_supervisor: "Worker submission",
@@ -608,6 +612,7 @@ export async function applyJobReview(opts: {
     if (!reason?.trim()) {
       return { ok: false, status: 400, error: "Rework reason is required" };
     }
+    await stopAllActiveTimersOnJob(job.id);
     try {
       await createRework({
         actor,
@@ -671,6 +676,10 @@ export async function applyJobReview(opts: {
 
   if (previousStatus === "awaiting_supervisor" && nextStatus !== "awaiting_supervisor") {
     await finalizeReviewCheckForJob(job.id, job.supervisorId ?? undefined);
+  }
+
+  if (shouldAutoStopWorkerTimersForJobStatus(nextStatus)) {
+    await stopAllActiveTimersOnJob(job.id);
   }
 
   await notifyStatusTransition({

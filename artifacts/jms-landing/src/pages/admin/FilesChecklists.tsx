@@ -173,7 +173,7 @@ export default function FilesChecklists() {
               </div>
 
               <div className="flex gap-2 w-full md:w-auto">
-                <Link href={`/user/jobs/${j.id}?tab=checklist`} className="flex-1 md:flex-none">
+                <Link href={`/user/jobs/${j.id}?tab=files`} className="flex-1 md:flex-none">
                   <button className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-50 hover:bg-primary hover:text-white text-gray-600 rounded-xl text-xs font-bold transition-all border border-gray-100">
                     <ListChecks size={14} /> Open Checklist
                   </button>

@@ -8,7 +8,7 @@ export type NotificationLinkInput = {
 
 const JOB_TABS: Record<string, string> = {
   job_message: "communication",
-  checklist: "checklist",
+  checklist: "files",
   file: "files",
   timer: "logs",
   rework: "mistakes",

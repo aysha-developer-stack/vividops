@@ -52,6 +52,8 @@ import {
 import {
   formatTimerDuration,
   stopActiveTimerForUserOnJob,
+  stopAllActiveTimersOnJob,
+  shouldAutoStopWorkerTimersForJobStatus,
 } from "../lib/persist-timer-session";
 
 const router: IRouter = Router();
@@ -2256,6 +2258,9 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
         previousStatus,
         nextStatus,
       });
+      if (shouldAutoStopWorkerTimersForJobStatus(nextStatus)) {
+        await stopAllActiveTimersOnJob(after.job.id);
+      }
     }
 
     // Check for reassignment

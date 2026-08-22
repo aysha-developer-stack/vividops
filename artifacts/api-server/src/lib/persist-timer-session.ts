@@ -8,6 +8,24 @@ import {
 } from "@workspace/db";
 import { resolveReworkCycleForTimeLog } from "./time-log-cycles";
 import { timerSessionElapsedSeconds } from "./timer-sessions";
+import { logger } from "./logger";
+
+/** Safety cap — prevents runaway sessions if auto-stop is missed (24h). */
+const MAX_TIMER_SEGMENT_SECONDS = 24 * 3600;
+
+export function shouldAutoStopWorkerTimersForJobStatus(status: string): boolean {
+  return (
+    status === "awaiting_supervisor" ||
+    status === "awaiting_admin" ||
+    status === "completed" ||
+    status === "cancelled" ||
+    status === "on_hold"
+  );
+}
+
+export function workerMayStartTimerOnJobStatus(status: string): boolean {
+  return status === "pending" || status === "in_progress" || status === "rework";
+}
 
 export function formatTimerDuration(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds));
@@ -24,7 +42,20 @@ export async function stopTimerSessionAndSaveLog(
   session: ActiveTimerSessionRow,
   workerUserId: string,
 ): Promise<number> {
-  const duration = timerSessionElapsedSeconds(session);
+  const rawDuration = timerSessionElapsedSeconds(session);
+  const duration = Math.min(Math.max(0, rawDuration), MAX_TIMER_SEGMENT_SECONDS);
+  if (rawDuration > MAX_TIMER_SEGMENT_SECONDS) {
+    logger.warn(
+      {
+        sessionId: session.id,
+        jobId: session.jobId,
+        userId: workerUserId,
+        rawDuration,
+        cappedDuration: duration,
+      },
+      "Capped inflated timer segment before saving time log",
+    );
+  }
   if (duration > 0) {
     const reworkCycleNumber = await resolveReworkCycleForTimeLog(session.jobId ?? null, workerUserId);
     await db.insert(timeLogs).values({
@@ -38,6 +69,20 @@ export async function stopTimerSessionAndSaveLog(
   }
   await db.delete(activeTimerSessions).where(eq(activeTimerSessions.id, session.id));
   return duration;
+}
+
+/** Stop every active timer on a job and persist elapsed time (assignee + members). */
+export async function stopAllActiveTimersOnJob(jobId: string): Promise<number> {
+  const sessions = await db
+    .select()
+    .from(activeTimerSessions)
+    .where(eq(activeTimerSessions.jobId, jobId));
+
+  let saved = 0;
+  for (const session of sessions) {
+    saved += await stopTimerSessionAndSaveLog(session, session.userId);
+  }
+  return saved;
 }
 
 /**
