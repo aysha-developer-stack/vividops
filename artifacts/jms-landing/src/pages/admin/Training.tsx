@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Play, BookOpen, Award, Clock, CheckCircle2,
   Search, GraduationCap, Megaphone, Image as ImageIcon, Video, Send,
-  Users as UsersIcon, X, Pin, MoreVertical, Heart, MessageSquare,
+  Users as UsersIcon, X, Pin, MoreVertical, ThumbsUp, MessageSquare,
   Paperclip, Calendar, Images, Film, Download, Eye,
   Trash2,
   Copy,
@@ -525,7 +525,7 @@ function DailyUpdates({ canPost, search }: { canPost: boolean; search: string })
                           <div className="text-sm font-semibold text-gray-900 truncate">{u.name}</div>
                           <div className="text-[11px] text-gray-500">{roleLabel(u.role)}</div>
                         </div>
-                        <Heart size={16} className="text-rose-600" />
+                        <ThumbsUp size={16} className="text-primary" />
                       </div>
                     ))}
                   </div>
@@ -928,9 +928,9 @@ function PostCard({
       <div className="px-5 py-3 mt-3 border-t border-gray-100 flex items-center gap-1">
         <button
           onClick={onToggleLike}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${post.reacted ? "text-rose-600 bg-rose-50" : "text-gray-600 hover:bg-gray-50"}`}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${post.reacted ? "text-primary bg-primary/10" : "text-gray-600 hover:bg-gray-50"}`}
         >
-          <Heart size={14} fill={post.reacted ? "currentColor" : "none"} />
+          <ThumbsUp size={14} fill={post.reacted ? "currentColor" : "none"} />
           Like
         </button>
         <button
