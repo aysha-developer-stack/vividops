@@ -36,13 +36,19 @@ function channelNameCandidates(channelName: string, job: JobRow): string[] {
   });
 }
 
+function cliqDisplayTimezone(): string {
+  const configured = (process.env.ZOHO_CLIQ_DISPLAY_TIMEZONE || process.env.APP_DISPLAY_TIMEZONE || "Asia/Karachi").trim();
+  return configured.includes("/") ? configured : "Asia/Karachi";
+}
+
 export function formatCliqActivityTime(date = new Date()): string {
-  const tz = (process.env.TZ || "Australia/Brisbane").trim();
-  return new Intl.DateTimeFormat("en-AU", {
-    timeZone: tz.includes("/") ? tz : "Australia/Brisbane",
+  const timeZone = cliqDisplayTimezone();
+  return new Intl.DateTimeFormat("en-PK", {
+    timeZone,
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
+    timeZoneName: "short",
   }).format(date);
 }
 
