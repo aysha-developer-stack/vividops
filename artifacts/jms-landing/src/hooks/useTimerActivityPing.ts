@@ -3,6 +3,7 @@ import {
   postTimerNotification,
   TIMER_AUTO_STOP_S,
   TIMER_PING_INTERVAL_S,
+  timerStillWorkingDescription,
 } from "@/lib/timerNotifications";
 
 export function useTimerActivityPing({
@@ -40,7 +41,7 @@ export function useTimerActivityPing({
       setAutoStopCountdown(TIMER_AUTO_STOP_S);
       void postTimerNotification(
         "Still working?",
-        `Your timer on ${jobLabel} has been running for 1 hour. Continue or stop within 5 minutes.`,
+        timerStillWorkingDescription(jobLabel),
         jobId ?? undefined,
       );
     }, msUntilNextPing);

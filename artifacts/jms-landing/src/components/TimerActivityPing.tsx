@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock } from "lucide-react";
-import { TIMER_AUTO_STOP_S } from "@/lib/timerNotifications";
+import { TIMER_AUTO_STOP_S, timerStillWorkingPopupText } from "@/lib/timerNotifications";
 
 export default function TimerActivityPing({
   open,
@@ -37,9 +37,7 @@ export default function TimerActivityPing({
                 </span>
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                {jobLabel
-                  ? `Timer on ${jobLabel} has been running for 1 hour.`
-                  : "Your timer has been running for 1 hour."}{" "}
+                {timerStillWorkingPopupText(jobLabel)}{" "}
                 We&apos;ll auto-stop and save the log if you don&apos;t respond.
               </p>
               <div className="h-1 bg-gray-100 rounded-full overflow-hidden mt-2">

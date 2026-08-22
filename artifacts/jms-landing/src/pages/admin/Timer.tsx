@@ -5,7 +5,12 @@ import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 import { useAuth } from "@/lib/auth";
-import { postTimerNotification } from "@/lib/timerNotifications";
+import {
+  postTimerNotification,
+  TIMER_AUTO_STOP_S,
+  TIMER_PING_INTERVAL_S,
+  timerStillWorkingDescription,
+} from "@/lib/timerNotifications";
 import {
   useGetTimeLogs,
   useCreateTimeLog,
@@ -67,8 +72,8 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
   const [autoStopCountdown, setAutoStopCountdown] = useState(300);
   const pingTimerRef = useRef<number | null>(null);
   const autoStopRef = useRef<number | null>(null);
-  const PING_INTERVAL_S = 3600;
-  const AUTO_STOP_S = 300;
+  const PING_INTERVAL_S = TIMER_PING_INTERVAL_S;
+  const AUTO_STOP_S = TIMER_AUTO_STOP_S;
 
   const timerStorageKey = "global_timer_v1";
   const readTimerState = () => {
@@ -279,7 +284,7 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
       const label = projects.find((p) => p.id === jobId)?.label ?? "your task";
       void postTimerNotification(
         "Still working?",
-        `Your timer on ${label} has been running for 1 hour. Continue or stop within 5 minutes.`,
+        timerStillWorkingDescription(label),
         jobId || undefined,
       );
     }, PING_INTERVAL_S * 1000);
@@ -401,7 +406,7 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
               className="w-full max-w-md bg-white rounded-2xl border border-gray-100 shadow-2xl overflow-hidden"
             >
               <div className="p-5 border-b border-gray-100">
-                <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Hourly check-in</div>
+                <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Activity check-in</div>
                 <div className="text-lg font-bold text-gray-900 mt-1">Are you still working?</div>
                 <div className="text-xs text-gray-500 mt-1">Timer will auto-stop in {autoStopCountdown}s if there’s no response.</div>
               </div>

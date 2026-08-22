@@ -39,7 +39,12 @@ import {
 } from "@/lib/cliqChannelName";
 import { parseJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
 import { LinkifiedText } from "@/lib/linkifyText";
-import { postTimerNotification } from "@/lib/timerNotifications";
+import {
+  postTimerNotification,
+  TIMER_AUTO_STOP_S,
+  TIMER_PING_INTERVAL_S,
+  timerStillWorkingDescription,
+} from "@/lib/timerNotifications";
 import {
   startTimerSession,
   pauseTimerSession,
@@ -505,8 +510,8 @@ export default function JobDetail({ role = "user", id }: Props) {
   const pingTimerRef = useRef<number | null>(null);
   const autoStopRef = useRef<number | null>(null);
   const uploadChecklistIdRef = useRef<number | null>(null);
-  const PING_INTERVAL_S = 60 * 60;
-  const AUTO_STOP_S = 5 * 60;
+  const PING_INTERVAL_S = TIMER_PING_INTERVAL_S;
+  const AUTO_STOP_S = TIMER_AUTO_STOP_S;
 
   const loadReworks = async () => {
     if (!job?.id) {
@@ -997,7 +1002,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     return () => { cancelled = true; };
   }, [job?.id, job?.description, checklistTemplateKey, role, job?.assignee?.id, job?.progress, job?.status, attachments, checklistWorkerUserId]);
 
-  // Trigger hourly check-in: every PING_INTERVAL_S of running time, show popup
+  // Trigger check-in every TIMER_PING_INTERVAL_S of running time, show popup
   useEffect(() => {
     if (!running) {
       if (pingTimerRef.current) clearTimeout(pingTimerRef.current);
@@ -1008,7 +1013,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       setAutoStopCountdown(AUTO_STOP_S);
       void postTimerNotification(
         "Still working?",
-        `Your timer on ${job?.number ?? "this job"} has been running for 1 hour. Continue or stop within 5 minutes.`,
+        timerStillWorkingDescription(job?.number ?? "this job"),
         job?.id,
       );
     }, PING_INTERVAL_S * 1000);
