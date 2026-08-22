@@ -96,6 +96,18 @@ type ChecklistFileApi = {
   createdAt: string;
 };
 
+function checklistItemHasInstructionFile(files: ChecklistFileApi[] | undefined): boolean {
+  return (files ?? []).some(
+    (f) => !isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy }),
+  );
+}
+
+function checklistItemHasCompletedUpload(files: ChecklistFileApi[] | undefined): boolean {
+  return (files ?? []).some(
+    (f) => isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy }),
+  );
+}
+
 interface ChecklistItem { 
   id: number; 
   text: string; 
@@ -1045,11 +1057,29 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   const completedCount = checklist.filter((c) => c.status === "completed").length;
   const checklistProgress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
+  const jobLevelCompletedFiles = useMemo(
+    () =>
+      attachments.filter(
+        (a) => a.checklistItemId == null && isCompletedAttachment(a),
+      ),
+    [attachments],
+  );
+  const hasJobLevelCompletedFiles = jobLevelCompletedFiles.length > 0;
+  const allChecklistItemsHaveCompletedUploads = useMemo(
+    () => checklist.length > 0 && checklist.every((c) => checklistItemHasCompletedUpload(c.files)),
+    [checklist],
+  );
+  const canCompleteChecklistItem = (item: ChecklistItem) =>
+    checklistItemHasInstructionFile(item.files) &&
+    hasJobLevelCompletedFiles &&
+    checklistItemHasCompletedUpload(item.files);
   const readyToSubmitReview =
     (role === "user" || canUseJobTimer) &&
     job?.status === "in_progress" &&
     checklist.length > 0 &&
-    completedCount === checklist.length;
+    completedCount === checklist.length &&
+    hasJobLevelCompletedFiles &&
+    allChecklistItemsHaveCompletedUploads;
 
   const submitJobForReview = async (comment: string, photos: File[]) => {
     if (!job?.id) return;
@@ -1104,14 +1134,6 @@ export default function JobDetail({ role = "user", id }: Props) {
   }, [submitReviewOpen]);
   const progress = checklist.length > 0 ? checklistProgress : (job?.progress ?? 0);
 
-  const jobLevelCompletedFiles = useMemo(
-    () =>
-      attachments.filter(
-        (a) => a.checklistItemId == null && isCompletedAttachment(a),
-      ),
-    [attachments],
-  );
-  const hasJobLevelCompletedFiles = jobLevelCompletedFiles.length > 0;
   const activeReworks = reworks.filter((r) => r.status === "open" || r.status === "awaiting_review" || r.status === "needs_correction");
   const selectedItemRework = selectedChecklistItem
     ? activeReworks.find((r) => r.checklistItemId === selectedChecklistItem.id)
@@ -1548,7 +1570,14 @@ export default function JobDetail({ role = "user", id }: Props) {
     const total = nextChecklist.length;
     const done = nextChecklist.filter((c) => c.status === "completed").length;
     const nextProgress = total > 0 ? Math.round((done / total) * 100) : 0;
-    const shouldSubmitReview = total > 0 && done === total;
+    const hasCompletedFiles = attachments.some(
+      (a) => a.checklistItemId == null && isCompletedAttachment(a),
+    );
+    const allHaveChecklistUploads =
+      total > 0 &&
+      nextChecklist.every((c) => checklistItemHasCompletedUpload(c.files));
+    const shouldSubmitReview =
+      total > 0 && done === total && hasCompletedFiles && allHaveChecklistUploads;
     const shouldAutoStart =
       job.status === "pending" && total > 0 && done > 0;
     const shouldUpdateProgress = (job.progress ?? 0) !== nextProgress;
@@ -2180,14 +2209,13 @@ export default function JobDetail({ role = "user", id }: Props) {
           const canUploadInput = role === "super-admin" || role === "admin";
           const canUploadOutput = canUploadCompletedFiles;
 
-          return (
-            <motion.div key="fl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-6">
+          const checklistSection = (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             {canUseJobTimer && !hasJobLevelCompletedFiles && (
               <div className="lg:col-span-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="text-xs text-amber-900">
                   <span className="font-bold">Completed files required.</span> Upload your deliverables in{" "}
-                  <span className="font-semibold">Completed Files</span> below before marking checklist items complete.
+                  <span className="font-semibold">Completed Files</span> above before marking checklist items complete.
                 </div>
                 <button
                   type="button"
@@ -2476,21 +2504,15 @@ export default function JobDetail({ role = "user", id }: Props) {
 
                     <div className="flex flex-wrap gap-2 pt-2">
                       {selectedChecklistItem.status !== "completed" && canUseJobTimer && (() => {
-                        const allFiles = selectedChecklistItem.files ?? [];
-                        const hasChecklistFile = allFiles.some(
-                          (f) => !isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy }),
-                        );
-                        const hasCompletedChecklistUpload = allFiles.some(
-                          (f) => isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy }),
-                        );
-                        const canMarkComplete =
-                          hasChecklistFile && hasJobLevelCompletedFiles && hasCompletedChecklistUpload;
+                        const canMarkComplete = canCompleteChecklistItem(selectedChecklistItem);
+                        const hasChecklistFile = checklistItemHasInstructionFile(selectedChecklistItem.files);
+                        const hasCompletedChecklistUpload = checklistItemHasCompletedUpload(selectedChecklistItem.files);
                         return (
                           <>
                             <button 
                               onClick={async () => {
                                 if (!hasJobLevelCompletedFiles) {
-                                  alert("Please upload completed files in the Completed Files section below before marking checklist items complete.");
+                                  alert("Please upload completed files in the Completed Files section above before marking checklist items complete.");
                                   scrollToCompletedFiles();
                                   return;
                                 }
@@ -2539,7 +2561,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                             </button>
                             {!hasJobLevelCompletedFiles && (
                               <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                                Upload completed files in <button type="button" onClick={scrollToCompletedFiles} className="font-bold underline">Completed Files</button> below first, then return here to mark this task complete.
+                                Upload completed files in <button type="button" onClick={scrollToCompletedFiles} className="font-bold underline">Completed Files</button> above first, then return here to mark this task complete.
                               </p>
                             )}
                             {hasJobLevelCompletedFiles && !hasChecklistFile && (
@@ -2558,6 +2580,19 @@ export default function JobDetail({ role = "user", id }: Props) {
                       {selectedChecklistItem.status !== "completed" && canManageChecklistAsSupervisor && (
                         <button 
                           onClick={async () => {
+                            if (!canCompleteChecklistItem(selectedChecklistItem)) {
+                              if (!hasJobLevelCompletedFiles) {
+                                alert("Completed files must be uploaded before marking checklist items complete.");
+                                scrollToCompletedFiles();
+                                return;
+                              }
+                              if (!checklistItemHasInstructionFile(selectedChecklistItem.files)) {
+                                alert("Checklist file not uploaded. A Word/PDF checklist file is required before marking this item complete.");
+                                return;
+                              }
+                              alert("Please upload the completed Word/PDF checklist before marking this item complete.");
+                              return;
+                            }
                             const next = checklist.map((i) =>
                               i.id === selectedChecklistItem.id ? { ...i, status: "completed" as const, done: true } : i
                             );
@@ -2614,7 +2649,10 @@ export default function JobDetail({ role = "user", id }: Props) {
               )}
             </AnimatePresence>
               </div>
+          );
 
+          return (
+            <motion.div key="fl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-6">
               {/* Search and Global Actions */}
               <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-gray-100">
                 <div className="relative w-full sm:w-96">
@@ -2756,6 +2794,8 @@ export default function JobDetail({ role = "user", id }: Props) {
                   </div>
                 </div>
               </div>
+
+              {checklistSection}
             </motion.div>
           );
         })()}

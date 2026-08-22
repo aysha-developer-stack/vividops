@@ -231,7 +231,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       checklistList = [];
     }
 
-    if (ownChecklistWork && status === "completed") {
+    if (status === "completed") {
       if (checklistList.length === 0) {
         return res.status(400).json({ error: "This job has no checklist items to complete." });
       }
