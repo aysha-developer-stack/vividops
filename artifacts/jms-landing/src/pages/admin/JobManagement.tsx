@@ -700,8 +700,13 @@ export default function JobManagement(
     }
     const effectiveSupervisorId =
       role === "supervisor" ? (currentUser?.id ?? "") : form.supervisorId;
-    if ((role === "super-admin" || role === "admin") && !effectiveSupervisorId) {
-      setError("Supervisor is required");
+
+    const workerIds = new Set(workers.map((w) => w.id));
+    const selectedValidWorkerIds = selectedWorkerIds.filter((id) => workerIds.has(id));
+    const hasAssignees = selectedValidWorkerIds.length > 0;
+
+    if ((role === "super-admin" || role === "admin") && !effectiveSupervisorId && !hasAssignees) {
+      setError("Select a supervisor or at least one assignee (worker)");
       return;
     }
 
@@ -722,8 +727,6 @@ export default function JobManagement(
       return;
     }
 
-    const workerIds = new Set(workers.map((w) => w.id));
-    const selectedValidWorkerIds = selectedWorkerIds.filter((id) => workerIds.has(id));
     const primaryAssigneeId =
       form.assigneeId && workerIds.has(form.assigneeId)
         ? form.assigneeId
@@ -1269,7 +1272,10 @@ export default function JobManagement(
                       <input value={form.client} onChange={(e) => setForm({ ...form, client: e.target.value })} placeholder="e.g. Anderson Residence" className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                     </div>
                     <div className="min-w-0">
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">Supervisor</label>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                        Supervisor
+                        <span className="ml-1 font-normal text-gray-400">(optional if workers assigned)</span>
+                      </label>
                       {role === "supervisor" ? (
                         <input
                           value={currentUser?.name ?? "Current Supervisor"}
@@ -1282,7 +1288,7 @@ export default function JobManagement(
                           onChange={(e) => setForm({ ...form, supervisorId: e.target.value })}
                           className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors"
                         >
-                          <option value="">Select supervisor</option>
+                          <option value="">No supervisor</option>
                           {supervisors.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                         </select>
                       )}
