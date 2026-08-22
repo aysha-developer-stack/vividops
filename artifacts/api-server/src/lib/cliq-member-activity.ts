@@ -215,6 +215,11 @@ export async function announceCliqMemberActivity(options: {
 }): Promise<void> {
   const { job, actorName, memberName, memberEmail, kind, addToChannel = true } = options;
 
+  if (kind === "joined") {
+    logger.info({ jobId: job.id }, "[CLIQ-ACTIVITY] Skipping joined-channel bot announcement");
+    return;
+  }
+
   try {
     const channel = await loadJobCliqChannel(job.id);
     if (!channel) {
