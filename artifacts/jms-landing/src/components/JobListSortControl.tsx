@@ -1,11 +1,10 @@
-import { ArrowDownUp } from "lucide-react";
+import { ArrowDownUp, Check, ChevronDown } from "lucide-react";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   type JobListSortMode,
   JOB_LIST_SORT_HINTS,
@@ -22,54 +21,58 @@ type Props = {
 const MODES = Object.entries(JOB_LIST_SORT_LABELS) as [JobListSortMode, string][];
 
 export default function JobListSortControl({ value, onChange, variant = "toolbar" }: Props) {
-  const handleChange = (next: string) => {
-    const mode = next as JobListSortMode;
+  const isToolbar = variant === "toolbar";
+  const selectedLabel = JOB_LIST_SORT_LABELS[value];
+
+  const handleChange = (mode: JobListSortMode) => {
     onChange(mode);
     storeJobListSort(mode);
   };
 
-  const isToolbar = variant === "toolbar";
-  const selectedLabel = JOB_LIST_SORT_LABELS[value];
-
   return (
-    <div className={isToolbar ? "shrink-0" : "w-full"}>
-      <Select value={value} onValueChange={handleChange}>
-        <SelectTrigger
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
           className={
             isToolbar
-              ? "h-auto min-w-[168px] gap-2 rounded-xl border-gray-200 bg-gray-50 px-3 py-2.5 text-sm shadow-none hover:bg-white focus:ring-0 focus:border-primary transition-colors [&>span]:line-clamp-none"
-              : "h-auto w-full gap-2 rounded-lg border-gray-200 bg-white px-2.5 py-2 text-xs shadow-none focus:ring-0 focus:border-primary transition-colors [&>span]:line-clamp-none"
+              ? "inline-flex min-w-[168px] items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold text-gray-900 shadow-none transition-colors hover:bg-white focus:outline-none focus:border-primary data-[state=open]:border-primary data-[state=open]:bg-white"
+              : "inline-flex w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-semibold text-gray-900 shadow-none transition-colors focus:outline-none focus:border-primary data-[state=open]:border-primary"
           }
         >
-          <span className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
-            <ArrowDownUp size={isToolbar ? 15 : 13} className="text-gray-500 shrink-0" />
-            <span className={`truncate font-semibold text-gray-900 ${isToolbar ? "text-sm" : "text-xs"}`}>
-              {selectedLabel}
-            </span>
-          </span>
-          <SelectValue className="sr-only" aria-label={selectedLabel} />
-        </SelectTrigger>
-        <SelectContent
-          align={isToolbar ? "end" : "start"}
-          className="z-50 min-w-[260px] border border-gray-200 bg-white text-gray-900 shadow-xl"
-        >
-          {MODES.map(([mode, label]) => (
-            <SelectItem
+          <ArrowDownUp size={isToolbar ? 15 : 13} className="text-gray-500 shrink-0" />
+          <span className="truncate flex-1 text-left">{selectedLabel}</span>
+          <ChevronDown size={isToolbar ? 15 : 13} className="text-gray-400 shrink-0" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align={isToolbar ? "end" : "start"}
+        className="z-50 min-w-[260px] border border-gray-200 bg-white p-1.5 text-gray-900 shadow-xl"
+      >
+        {MODES.map(([mode, label]) => {
+          const selected = value === mode;
+          return (
+            <DropdownMenuItem
               key={mode}
-              value={mode}
-              textValue={label}
-              className="cursor-pointer py-2.5 pl-3 pr-8 text-gray-900 focus:bg-primary/10 focus:text-gray-900 data-[highlighted]:bg-primary/10 data-[highlighted]:text-gray-900"
+              onClick={() => handleChange(mode)}
+              className="cursor-pointer rounded-lg px-2 py-2 focus:bg-primary/10 focus:text-gray-900 data-[highlighted]:bg-primary/10 data-[highlighted]:text-gray-900"
             >
-              <div className="flex flex-col items-start gap-0.5 pr-1">
-                <span className="font-semibold text-gray-900">{label}</span>
-                <span className="text-[11px] font-normal text-gray-500 leading-snug whitespace-normal">
-                  {JOB_LIST_SORT_HINTS[mode]}
-                </span>
+              <div className="flex w-full items-start gap-2.5">
+                <Check
+                  size={14}
+                  className={`mt-0.5 shrink-0 ${selected ? "text-primary opacity-100" : "opacity-0"}`}
+                />
+                <div className="min-w-0">
+                  <div className="font-semibold text-gray-900">{label}</div>
+                  <div className="text-[11px] font-normal text-gray-500 leading-snug whitespace-normal">
+                    {JOB_LIST_SORT_HINTS[mode]}
+                  </div>
+                </div>
               </div>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
