@@ -19,6 +19,7 @@ import zohoRouter from "./zoho";
 import settingsRouter from "./settings";
 import mistakesRouter from "./mistakes";
 import pushRouter from "./push";
+import reportsRouter from "./reports";
 
 const router: IRouter = Router();
 
@@ -42,5 +43,6 @@ router.use(zohoRouter);
 router.use(settingsRouter);
 router.use(mistakesRouter);
 router.use(pushRouter);
+router.use(reportsRouter);
 
 export default router;

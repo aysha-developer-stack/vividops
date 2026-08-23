@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Download, FileText, Users, AlertTriangle, Clock, TrendingUp,
   ChevronRight, Filter, Shield, UserCog, User as UserIcon, Crown,
-  X, Check, Search, CheckCircle2,
+  X, Check, Search, CheckCircle2, CalendarDays,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -37,6 +37,49 @@ const USER_ROLE_LABEL: Record<string, string> = {
 
 interface UserPerf { id: string; name: string; role: UserRoleLabel; jobs: number; completed: number; score: number; scoreTip: string; avg: string; hours: number; rework: number; overdue: number; }
 
+interface DailyTimeRow {
+  userId: string;
+  userName: string;
+  userRole: string;
+  date: string;
+  totalSeconds: number;
+  sessionCount: number;
+  jobCount: number;
+}
+
+interface DailyTimeReport {
+  timezone: string;
+  from: string;
+  to: string;
+  rows: DailyTimeRow[];
+  userTotals: Array<{
+    userId: string;
+    userName: string;
+    userRole: string;
+    totalSeconds: number;
+    daysWorked: number;
+    sessionCount: number;
+    jobCount: number;
+  }>;
+}
+
+const REPORT_TZ = "Asia/Karachi";
+
+const formatDatePkt = (ms: number) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: REPORT_TZ }).format(new Date(ms));
+
+const formatDisplayDate = (dateStr: string) => {
+  const parsed = new Date(`${dateStr}T12:00:00`);
+  if (!Number.isFinite(parsed.getTime())) return dateStr;
+  return parsed.toLocaleDateString(undefined, {
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: REPORT_TZ,
+  });
+};
+
 export default function Reports({ role = "super-admin" as Role }: { role?: Role } = {}) {
   const { user: currentUser } = useAuth();
   const { data: dashboardData, isLoading: statsLoading } = useGetDashboardStats();
@@ -52,16 +95,24 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     : role === "supervisor" ? "/supervisor/jobs"
     : "/user/jobs";
 
+  const canViewDailyReport = role === "admin" || role === "super-admin";
+
   const USER_TABS = [
     { id: "progress", label: "Progress Report", icon: TrendingUp },
     { id: "summary", label: "Work Summary", icon: FileText },
   ];
 
-  const ADMIN_TABS = [
-    { id: "system", label: "System-wide", icon: TrendingUp },
-    { id: "users", label: "User Performance", icon: Users },
-    { id: "time", label: "Time Tracking", icon: Clock },
-  ];
+  const ADMIN_TABS = useMemo(() => {
+    const tabs = [
+      { id: "system", label: "System-wide", icon: TrendingUp },
+      { id: "users", label: "User Performance", icon: Users },
+      { id: "time", label: "Time Tracking", icon: Clock },
+    ];
+    if (canViewDailyReport) {
+      tabs.push({ id: "daily", label: "Daily Time", icon: CalendarDays });
+    }
+    return tabs;
+  }, [canViewDailyReport]);
 
   const ACTIVE_TABS = isUser ? USER_TABS : ADMIN_TABS;
 
@@ -116,9 +167,16 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const [filterOpen, setFilterOpen] = useState(false);
   const { search, setSearch, setPlaceholder, headerSearch } = useDashboardSearch("User name…");
   const [minScore, setMinScore] = useState(0);
+  const [dailyUserFilter, setDailyUserFilter] = useState("all");
+  const [dailyReport, setDailyReport] = useState<DailyTimeReport | null>(null);
+  const [dailyLoading, setDailyLoading] = useState(false);
 
   useEffect(() => {
-    setPlaceholder(activeTab === "time" ? "User or project…" : "User name…");
+    const placeholder =
+      activeTab === "time" ? "User or project…"
+      : activeTab === "daily" ? "Worker name…"
+      : "User name…";
+    setPlaceholder(placeholder);
   }, [activeTab, setPlaceholder]);
 
   const parseMs = (iso: string | null | undefined) => {
@@ -142,6 +200,38 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
 
   const periodAnchorMs = useMemo(() => Date.now(), [period]);
   const periodStartMs = periodDays ? periodAnchorMs - periodDays * 24 * 60 * 60 * 1000 : null;
+
+  const dailyRange = useMemo(() => {
+    const to = formatDatePkt(periodAnchorMs);
+    if (!periodDays) return { from: "2020-01-01", to };
+    return { from: formatDatePkt(periodStartMs!), to };
+  }, [periodAnchorMs, periodDays, periodStartMs]);
+
+  useEffect(() => {
+    if (activeTab !== "daily" || !canViewDailyReport) return;
+    let cancelled = false;
+    (async () => {
+      setDailyLoading(true);
+      try {
+        const params = new URLSearchParams({
+          from: dailyRange.from,
+          to: dailyRange.to,
+        });
+        if (dailyUserFilter !== "all") params.set("userId", dailyUserFilter);
+        const res = await fetch(`/api/reports/daily-time?${params.toString()}`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to load daily time report");
+        const data = (await res.json()) as DailyTimeReport;
+        if (!cancelled) setDailyReport(data);
+      } catch {
+        if (!cancelled) setDailyReport(null);
+      } finally {
+        if (!cancelled) setDailyLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, canViewDailyReport, dailyRange.from, dailyRange.to, dailyUserFilter]);
 
   const isJobInPeriod = (j: any) => {
     if (!periodStartMs) return true;
@@ -348,11 +438,13 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const resetFilters = () => {
     setSearch(""); setUserRoleFilter("All");
     setMinScore(0);
+    setDailyUserFilter("all");
   };
 
   const isFilterableTab =
     activeTab === "users" ||
-    activeTab === "time";
+    activeTab === "time" ||
+    activeTab === "daily";
 
   useEffect(() => {
     if (!isFilterableTab && filterOpen) setFilterOpen(false);
@@ -367,8 +459,11 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     if (activeTab === "time") {
       return base;
     }
+    if (activeTab === "daily") {
+      return base + (dailyUserFilter !== "all" ? 1 : 0);
+    }
     return base;
-  }, [activeTab, isFilterableTab, search, userRoleFilter, minScore]);
+  }, [activeTab, isFilterableTab, search, userRoleFilter, minScore, dailyUserFilter]);
   const isSuperAdmin = role === "super-admin";
   const ROLE_FILTERS: ("All" | UserRoleLabel)[] = isSuperAdmin
     ? ["All", "Admin", "Supervisor", "User"]
@@ -384,8 +479,40 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     search === "" || t.user.toLowerCase().includes(search.toLowerCase()) || t.project.toLowerCase().includes(search.toLowerCase())
   );
 
+  const dailyWorkers = useMemo(
+    () => (apiUsers ?? []).filter((u) => u.role === "user" || u.role === "supervisor"),
+    [apiUsers],
+  );
+
+  const filteredDailyRows = useMemo(() => {
+    const rows = dailyReport?.rows ?? [];
+    if (!search.trim()) return rows;
+    const q = search.toLowerCase();
+    return rows.filter((row) => row.userName.toLowerCase().includes(q));
+  }, [dailyReport, search]);
+
+  const dailySummary = useMemo(() => {
+    const rows = filteredDailyRows;
+    const totalSeconds = rows.reduce((sum, row) => sum + row.totalSeconds, 0);
+    const uniqueWorkers = new Set(rows.map((row) => row.userId)).size;
+    const uniqueDays = new Set(rows.map((row) => row.date)).size;
+    const totalSessions = rows.reduce((sum, row) => sum + row.sessionCount, 0);
+    return { totalSeconds, uniqueWorkers, uniqueDays, totalSessions, rowCount: rows.length };
+  }, [filteredDailyRows]);
+
+  const dailyChartRows = useMemo(() => {
+    if (dailyUserFilter === "all") return [];
+    return [...filteredDailyRows].sort((a, b) => a.date.localeCompare(b.date));
+  }, [filteredDailyRows, dailyUserFilter]);
+
+  const dailyChartMaxSeconds = useMemo(
+    () => dailyChartRows.reduce((max, row) => Math.max(max, row.totalSeconds), 0),
+    [dailyChartRows],
+  );
+
   const usersP = usePagination(filteredUsers, 50);
   const timeP = usePagination(filteredTime, 8);
+  const dailyP = usePagination(filteredDailyRows, 20);
 
   const platformJobStats = useMemo(() => {
     const jobs = (apiJobs ?? []).filter(isJobInPeriod);
@@ -700,7 +827,117 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
     if (activeTab === "users") return exportUsersPDF();
     if (activeTab === "time") return exportTimePDF();
     if (activeTab === "system") return exportSystemPDF();
+    if (activeTab === "daily") return exportDailyPDF();
     alert("Nothing to export on this tab.");
+  };
+
+  const exportDailyCSV = () => {
+    const rows = filteredDailyRows;
+    if (rows.length === 0) {
+      alert("No daily time rows to export.");
+      return;
+    }
+    const header = ["Date", "Worker", "Role", "Hours", "Jobs", "Sessions"];
+    const lines = rows.map((row) => [
+      row.date,
+      `"${row.userName.replaceAll('"', '""')}"`,
+      row.userRole,
+      (row.totalSeconds / 3600).toFixed(2),
+      String(row.jobCount),
+      String(row.sessionCount),
+    ].join(","));
+    const workerLabel =
+      dailyUserFilter === "all"
+        ? "all-workers"
+        : (dailyWorkers.find((w) => w.id === dailyUserFilter)?.name ?? "worker")
+            .replace(/[^\w.-]+/g, "-");
+    const blob = new Blob([[header.join(","), ...lines].join("\n")], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `daily-time-${workerLabel}-${dailyRange.from}-to-${dailyRange.to}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportDailyPDF = async () => {
+    const periodLabel = period === "All" ? "All time" : `Last ${period}`;
+    const w = openPrintWindow();
+    if (!w) return;
+    const logoUrl = await resolveLogoDataUrl();
+    const workerName =
+      dailyUserFilter === "all"
+        ? "All workers"
+        : dailyWorkers.find((worker) => worker.id === dailyUserFilter)?.name ?? "Worker";
+    const summaryRows = (dailyReport?.userTotals ?? [])
+      .filter((total) =>
+        dailyUserFilter === "all" ? true : total.userId === dailyUserFilter,
+      )
+      .map(
+        (total) =>
+          `<tr><td>${total.userName}</td><td>${USER_ROLE_LABEL[total.userRole] ?? total.userRole}</td><td style="text-align:right">${total.daysWorked}</td><td style="text-align:right">${formatDurationSeconds(total.totalSeconds)}</td><td style="text-align:right">${total.sessionCount}</td></tr>`,
+      )
+      .join("");
+    const detailRows = filteredDailyRows
+      .map(
+        (row) =>
+          `<tr><td>${formatDisplayDate(row.date)}</td><td>${row.userName}</td><td>${USER_ROLE_LABEL[row.userRole] ?? row.userRole}</td><td style="text-align:right">${formatDurationSeconds(row.totalSeconds)}</td><td style="text-align:right">${row.jobCount}</td><td style="text-align:right">${row.sessionCount}</td></tr>`,
+      )
+      .join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Daily Time Report</title>
+<style>
+@page{size:A4;margin:14mm 16mm}
+*{box-sizing:border-box}html,body{margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a}
+.brand{display:flex;justify-content:space-between;align-items:center;background:#000;border-bottom:3px solid #0B7EB9;padding:20px 22px;margin:0 0 22px;gap:16px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.brand img{height:76px;width:auto;object-fit:contain;display:block}
+.brand .meta{font-size:11px;color:#cbd5e1;text-align:right;line-height:1.6}
+.brand .meta strong{display:block;color:#fff;font-size:14px;margin-bottom:2px;letter-spacing:.2px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
+.kpi{padding:14px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc}
+.kpi .l{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.kpi .v{font-size:22px;font-weight:700;margin-top:4px}
+h2{margin:24px 0 10px;font-size:16px}
+.sub{margin:0 0 18px;color:#64748b;font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:10px;background:#f1f5f9;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#475569;border-bottom:1px solid #e2e8f0}
+td{padding:10px;border-bottom:1px solid #f1f5f9}
+@media print{.no-print{display:none}}
+.btn{position:fixed;top:20px;right:20px;background:#0B7EB9;color:#fff;border:0;padding:10px 18px;border-radius:8px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(11,126,185,.4)}
+</style></head><body>
+<button class="btn no-print" onclick="window.print()">Save as PDF</button>
+<div class="brand"><img src="${logoUrl}" alt="Vivid OPS"><div class="meta"><strong>Daily Time Report</strong>Generated ${new Date().toLocaleString()}<br>Period: ${periodLabel}<br>Timezone: ${dailyReport?.timezone ?? REPORT_TZ}</div></div>
+<p class="sub">Worker filter: ${workerName} · Range: ${dailyRange.from} to ${dailyRange.to}${search ? ` · search="${search.replaceAll('"', "&quot;")}"` : ""}</p>
+<div class="grid">
+  <div class="kpi"><div class="l">Total hours</div><div class="v">${formatDurationSeconds(dailySummary.totalSeconds)}</div></div>
+  <div class="kpi"><div class="l">Workers</div><div class="v">${dailySummary.uniqueWorkers}</div></div>
+  <div class="kpi"><div class="l">Days with logs</div><div class="v">${dailySummary.uniqueDays}</div></div>
+  <div class="kpi"><div class="l">Sessions</div><div class="v">${dailySummary.totalSessions}</div></div>
+</div>
+<h2>Per-worker totals</h2>
+<table>
+<thead><tr><th>Worker</th><th>Role</th><th style="text-align:right">Days</th><th style="text-align:right">Hours</th><th style="text-align:right">Sessions</th></tr></thead>
+<tbody>${summaryRows || `<tr><td colspan="5" style="padding:14px;color:#64748b">No worker totals.</td></tr>`}</tbody>
+</table>
+<h2>Daily breakdown</h2>
+<table>
+<thead><tr><th>Date</th><th>Worker</th><th>Role</th><th style="text-align:right">Hours</th><th style="text-align:right">Jobs</th><th style="text-align:right">Sessions</th></tr></thead>
+<tbody>${detailRows || `<tr><td colspan="6" style="padding:14px;color:#64748b">No daily rows found.</td></tr>`}</tbody>
+</table>
+<script>
+  (async () => {
+    const imgs = Array.from(document.images || []);
+    await Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise((r) => { img.onload = img.onerror = () => r(); })));
+    if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch {} }
+    setTimeout(() => window.print(), 50);
+  })();
+</script>
+</body></html>`;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
   };
 
   return (
@@ -725,6 +962,11 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
           <motion.button whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={() => void exportActivePDF()} className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-sm font-medium shadow-lg shadow-primary/30">
             <Download size={14} /> Export PDF
           </motion.button>
+          {activeTab === "daily" && (
+            <motion.button whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={exportDailyCSV} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:border-primary text-gray-700 hover:text-primary rounded-xl text-sm font-medium">
+              <Download size={14} /> Export CSV
+            </motion.button>
+          )}
 
           <AnimatePresence>
             {isFilterableTab && filterOpen && (
@@ -740,7 +982,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                       <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Search</label>
                       <div className="relative mt-1">
                         <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={activeTab === "time" ? "User or project…" : "User name…"} className="w-full pl-8 pr-3 py-2 text-xs border border-gray-200 rounded-lg !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary" />
+                        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={activeTab === "time" ? "User or project…" : activeTab === "daily" ? "Worker name…" : "User name…"} className="w-full pl-8 pr-3 py-2 text-xs border border-gray-200 rounded-lg !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary" />
                       </div>
                     </div>
 
@@ -759,6 +1001,22 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                       <div>
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider flex justify-between"><span>Min performance score</span><span className="text-primary font-bold">{minScore}</span></label>
                         <input type="range" min={0} max={100} step={5} value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} className="w-full mt-2 accent-primary" />
+                      </div>
+                    )}
+
+                    {activeTab === "daily" && (
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Worker</label>
+                        <select
+                          value={dailyUserFilter}
+                          onChange={(e) => setDailyUserFilter(e.target.value)}
+                          className="w-full mt-1.5 px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:border-primary"
+                        >
+                          <option value="all">All workers</option>
+                          {dailyWorkers.map((worker) => (
+                            <option key={worker.id} value={worker.id}>{worker.name}</option>
+                          ))}
+                        </select>
                       </div>
                     )}
 
@@ -1002,6 +1260,157 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                   </tbody>
                 </table>
                 <Pagination page={timeP.page} totalPages={timeP.totalPages} total={timeP.total} pageSize={timeP.pageSize} onChange={timeP.setPage} label="entries" />
+                </div>
+              )}
+
+              {activeTab === "daily" && canViewDailyReport && (
+                <div className="space-y-5">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                        <CalendarDays size={16} className="text-primary" /> Daily worker time
+                      </h3>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        Hours logged per calendar day ({dailyReport?.timezone ?? REPORT_TZ}) · {dailyRange.from} to {dailyRange.to}
+                      </p>
+                    </div>
+                    <select
+                      value={dailyUserFilter}
+                      onChange={(e) => setDailyUserFilter(e.target.value)}
+                      className="px-3 py-2 text-xs border border-gray-200 rounded-xl bg-white text-gray-900 focus:outline-none focus:border-primary min-w-[180px]"
+                    >
+                      <option value="all">All workers</option>
+                      {dailyWorkers.map((worker) => (
+                        <option key={worker.id} value={worker.id}>{worker.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {[
+                      { label: "Total hours", value: formatDurationSeconds(dailySummary.totalSeconds), icon: Clock, color: "amber" },
+                      { label: "Workers", value: dailySummary.uniqueWorkers, icon: Users, color: "primary" },
+                      { label: "Days with logs", value: dailySummary.uniqueDays, icon: CalendarDays, color: "emerald" },
+                      { label: "Sessions", value: dailySummary.totalSessions, icon: TrendingUp, color: "red" },
+                    ].map((k, i) => {
+                      const Icon = k.icon;
+                      return (
+                        <motion.div key={k.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
+                          <div className={`w-8 h-8 rounded-lg bg-${k.color}-50 text-${k.color}-600 flex items-center justify-center mb-2`}><Icon size={14} /></div>
+                          <div className="text-xl font-bold text-gray-900">{k.value}</div>
+                          <div className="text-[11px] text-gray-500">{k.label}</div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+
+                  {dailyUserFilter !== "all" && dailyChartRows.length > 0 && (
+                    <div className="rounded-xl border border-gray-100 p-5 bg-white">
+                      <h4 className="font-bold text-gray-900 mb-4">Daily hours trend</h4>
+                      <div className="space-y-3">
+                        {dailyChartRows.map((row) => {
+                          const widthPct = dailyChartMaxSeconds > 0
+                            ? Math.max(4, Math.round((row.totalSeconds / dailyChartMaxSeconds) * 100))
+                            : 0;
+                          return (
+                            <div key={row.date} className="grid grid-cols-[120px_1fr_80px] items-center gap-3">
+                              <span className="text-xs text-gray-600">{formatDisplayDate(row.date)}</span>
+                              <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-primary rounded-full" style={{ width: `${widthPct}%` }} />
+                              </div>
+                              <span className="text-xs font-semibold text-gray-900 text-right tabular-nums">
+                                {formatDurationSeconds(row.totalSeconds)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {(dailyReport?.userTotals ?? []).length > 0 && dailyUserFilter === "all" && (
+                    <div className="rounded-xl border border-gray-100 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80">
+                        <h4 className="text-sm font-bold text-gray-900">Per-worker totals</h4>
+                      </div>
+                      <table className="w-full">
+                        <thead>
+                          <tr>
+                            {["Worker", "Role", "Days", "Hours", "Jobs", "Sessions"].map((h) => (
+                              <th key={h} className="text-left px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(dailyReport?.userTotals ?? [])
+                            .filter((total) => !search.trim() || total.userName.toLowerCase().includes(search.toLowerCase()))
+                            .map((total) => {
+                              const badge = ROLE_BADGE[USER_ROLE_LABEL[total.userRole] as UserRoleLabel] ?? ROLE_BADGE.User;
+                              const Icon = badge.icon;
+                              return (
+                                <tr key={total.userId} className="border-t border-gray-50 hover:bg-gray-50/60">
+                                  <td className="px-4 py-3.5 text-sm font-medium text-gray-900">{total.userName}</td>
+                                  <td className="px-4 py-3.5">
+                                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] font-semibold ${badge.bg} ${badge.color}`}>
+                                      <Icon size={10} /> {USER_ROLE_LABEL[total.userRole] ?? total.userRole}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3.5 text-sm text-gray-700 tabular-nums">{total.daysWorked}</td>
+                                  <td className="px-4 py-3.5 text-sm font-semibold text-gray-900 tabular-nums">{formatDurationSeconds(total.totalSeconds)}</td>
+                                  <td className="px-4 py-3.5 text-sm text-gray-700 tabular-nums">{total.jobCount}</td>
+                                  <td className="px-4 py-3.5 text-sm text-gray-700 tabular-nums">{total.sessionCount}</td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  <div className="rounded-xl border border-gray-100 overflow-hidden">
+                    <table className="w-full">
+                      <thead>
+                        <tr>
+                          {["Date", "Worker", "Role", "Hours", "Jobs", "Sessions"].map((h) => (
+                            <th key={h} className="text-left px-4 pt-3 pb-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider bg-gray-50/80">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dailyLoading && (
+                          <tr>
+                            <td colSpan={6} className="py-10 text-center text-sm text-gray-400">Loading daily time report…</td>
+                          </tr>
+                        )}
+                        {!dailyLoading && filteredDailyRows.length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="py-10 text-center text-sm text-gray-400">
+                              No time logged for this period. Start a timer and press Stop to create logs.
+                            </td>
+                          </tr>
+                        )}
+                        {!dailyLoading && dailyP.pageItems.map((row, i) => {
+                          const badge = ROLE_BADGE[USER_ROLE_LABEL[row.userRole] as UserRoleLabel] ?? ROLE_BADGE.User;
+                          const Icon = badge.icon;
+                          return (
+                            <motion.tr key={`${row.userId}-${row.date}`} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }} className="border-t border-gray-50 hover:bg-gray-50">
+                              <td className="px-4 py-3.5 text-sm text-gray-700 whitespace-nowrap">{formatDisplayDate(row.date)}</td>
+                              <td className="px-4 py-3.5 text-sm font-medium text-gray-900">{row.userName}</td>
+                              <td className="px-4 py-3.5">
+                                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] font-semibold ${badge.bg} ${badge.color}`}>
+                                  <Icon size={10} /> {USER_ROLE_LABEL[row.userRole] ?? row.userRole}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3.5 text-sm font-semibold text-gray-900 tabular-nums">{formatDurationSeconds(row.totalSeconds)}</td>
+                              <td className="px-4 py-3.5 text-sm text-gray-700 tabular-nums">{row.jobCount}</td>
+                              <td className="px-4 py-3.5 text-sm text-gray-700 tabular-nums">{row.sessionCount}</td>
+                            </motion.tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <Pagination page={dailyP.page} totalPages={dailyP.totalPages} total={dailyP.total} pageSize={dailyP.pageSize} onChange={dailyP.setPage} label="days" />
+                  </div>
                 </div>
               )}
             </motion.div>
