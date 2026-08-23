@@ -3,6 +3,7 @@ export type JobAttachmentUploadSpec = {
   fileCategory?: "job" | "completed" | "review";
   checklistItemId?: number;
   reviewNoteId?: string;
+  reworkId?: string;
 };
 
 type PresignResponse = {
@@ -58,6 +59,7 @@ function buildUploadBody(
   if (spec.fileCategory) body.fileCategory = spec.fileCategory;
   if (spec.checklistItemId != null) body.checklistItemId = spec.checklistItemId;
   if (spec.reviewNoteId) body.reviewNoteId = spec.reviewNoteId;
+  if (spec.reworkId) body.reworkId = spec.reworkId;
   if (suppressNotifications) body.suppressNotifications = "true";
   return body;
 }
@@ -74,6 +76,7 @@ async function uploadViaProxy(
     fd.append("checklistItemId", String(spec.checklistItemId));
   }
   if (spec.reviewNoteId) fd.append("reviewNoteId", spec.reviewNoteId);
+  if (spec.reworkId) fd.append("reworkId", spec.reworkId);
   if (suppressNotifications) fd.append("suppressNotifications", "true");
 
   const res = await fetch(`/api/jobs/${jobId}/attachments`, {

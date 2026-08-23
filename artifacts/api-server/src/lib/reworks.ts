@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
   jobReworks,
@@ -83,6 +83,38 @@ export async function createRework(opts: {
     .returning();
 
   return { rework };
+}
+
+export const ACTIVE_REWORK_STATUSES = ["open", "needs_correction", "awaiting_review"] as const;
+
+export async function findActiveReworkForCompletedUpload(opts: {
+  jobId: string;
+  userId: string;
+  checklistItemId?: number;
+}): Promise<string | null> {
+  const rows = await db
+    .select({ id: jobReworks.id, checklistItemId: jobReworks.checklistItemId, cycleNumber: jobReworks.cycleNumber })
+    .from(jobReworks)
+    .where(
+      and(
+        eq(jobReworks.jobId, opts.jobId),
+        eq(jobReworks.userId, opts.userId),
+        inArray(jobReworks.status, [...ACTIVE_REWORK_STATUSES]),
+      ),
+    )
+    .orderBy(desc(jobReworks.cycleNumber));
+
+  if (rows.length === 0) return null;
+
+  if (opts.checklistItemId != null && opts.checklistItemId > 0) {
+    const itemMatch = rows.find((r) => r.checklistItemId === opts.checklistItemId);
+    if (itemMatch) return itemMatch.id;
+  }
+
+  const jobLevel = rows.find((r) => r.checklistItemId == null);
+  if (jobLevel) return jobLevel.id;
+
+  return rows[0]?.id ?? null;
 }
 
 export async function markOpenReworksAwaitingReview(jobId: string, userId?: string | null) {

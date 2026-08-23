@@ -110,6 +110,7 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         fileSize: string | null;
         fileUrl: string;
         fileCategory: string | null;
+        reworkId: string | null;
         uploadedBy: { id: string; name: string; role: UserRow["role"] } | null;
         createdAt: Date;
       }>
@@ -134,6 +135,7 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         fileSize: row.attachment.fileSize,
         fileUrl: row.attachment.fileUrl,
         fileCategory: row.attachment.fileCategory,
+        reworkId: row.attachment.reworkId,
         uploadedBy: row.uploadedBy?.id ? row.uploadedBy : null,
         createdAt: row.attachment.createdAt,
       });

@@ -78,7 +78,7 @@ import { MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategori
 import { useQueryClient } from "@tanstack/react-query";
 import FileDropzone from "@/components/FileDropzone";
 import { CHECKLIST_FILE_ACCEPT, filterJobFiles, filterChecklistInstructionFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE, CHECKLIST_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
-import { isCompletedAttachment, isJobAttachment, isReworkAttachment, fileCategoryFromUploadTag } from "@/lib/attachmentCategories";
+import { isCompletedAttachment, isJobAttachment, isReworkAttachment, fileCategoryFromUploadTag, completedAttachmentStatusLabel } from "@/lib/attachmentCategories";
 import { useAuth } from "@/lib/auth";
 import UploadProgressPanel from "@/components/UploadProgressPanel";
 import JobNotesTab from "@/components/JobNotesTab";
@@ -99,6 +99,7 @@ type ChecklistFileApi = {
   fileSize: string | null;
   fileUrl: string;
   fileCategory?: string | null;
+  reworkId?: string | null;
   uploadedBy: { id: string; name: string; role: Role } | null;
   createdAt: string;
 };
@@ -1195,6 +1196,27 @@ export default function JobDetail({ role = "user", id }: Props) {
     return Math.max(...open);
   }, [reworks]);
 
+  const resolveActiveReworkIdForUpload = (checklistItemId?: number | null): string | null => {
+    const active = reworks.filter(
+      (r) => r.status === "open" || r.status === "needs_correction" || r.status === "awaiting_review",
+    );
+    if (active.length === 0) return null;
+
+    if (checklistItemId != null && checklistItemId > 0) {
+      const itemRework = active
+        .filter((r) => r.checklistItemId === checklistItemId)
+        .sort((a, b) => b.cycleNumber - a.cycleNumber)[0];
+      if (itemRework) return itemRework.id;
+    }
+
+    const jobRework = active
+      .filter((r) => r.checklistItemId == null)
+      .sort((a, b) => b.cycleNumber - a.cycleNumber)[0];
+    if (jobRework) return jobRework.id;
+
+    return active.sort((a, b) => b.cycleNumber - a.cycleNumber)[0]?.id ?? null;
+  };
+
   const displaySeconds = totalLoggedSeconds + seconds;
 
   const timeLogUserNameById = useMemo(() => {
@@ -1500,6 +1522,12 @@ export default function JobDetail({ role = "user", id }: Props) {
           }
           if (checklistItemId != null) {
             fd.append("checklistItemId", String(checklistItemId));
+          }
+          if (tag === "output") {
+            const activeReworkId = resolveActiveReworkIdForUpload(checklistItemId ?? null);
+            if (activeReworkId) {
+              fd.append("reworkId", activeReworkId);
+            }
           }
           try {
             await uploadFormDataWithProgress(
@@ -2480,12 +2508,25 @@ export default function JobDetail({ role = "user", id }: Props) {
                         const completedFiles = allFiles.filter(
                           (f) => isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy }),
                         );
-                        const renderFileRow = (f: ChecklistFileApi) => (
+                        const renderFileRow = (f: ChecklistFileApi) => {
+                          const meta = f.reworkId ? reworks.find((r) => r.id === f.reworkId) : undefined;
+                          const status = completedAttachmentStatusLabel(f, meta?.cycleNumber);
+                          const isCompletedRow = isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy });
+                          return (
                           <div key={f.id} className="flex items-start gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
                             <FileExtensionIcon fileName={f.fileName} size="sm" />
                             <div className="flex-1 min-w-0">
                               <div className="text-xs font-semibold text-gray-900 break-words whitespace-normal leading-snug">{f.fileName}</div>
-                              <div className="text-[10px] text-gray-500">{f.uploadedBy?.name ?? "—"}</div>
+                              <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                                <span className="text-[10px] text-gray-500">{f.uploadedBy?.name ?? "—"}</span>
+                                {isCompletedRow && (
+                                  <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
+                                    status.tone === "rework"
+                                      ? "bg-purple-50 text-purple-700 border-purple-100"
+                                      : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                                  }`}>{status.label}</span>
+                                )}
+                              </div>
                             </div>
                             <button
                               type="button"
@@ -2526,7 +2567,8 @@ export default function JobDetail({ role = "user", id }: Props) {
                               <Download size={14} />
                             </button>
                           </div>
-                        );
+                          );
+                        };
                         return (
                           <>
                             <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Checklist files (Word / PDF)</div>
@@ -2910,7 +2952,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                   <div className="px-6 py-4 border-b border-gray-100 bg-emerald-50/30 flex items-center justify-between">
                     <div>
                       <h3 className="font-bold text-gray-900">Completed Files</h3>
-                      <p className="text-[11px] text-gray-500 mt-0.5">Deliverables uploaded after task completion</p>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Deliverables uploaded after task completion. Rework fixes are labeled with their cycle number.</p>
                     </div>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 uppercase">{filteredOutputServer.length} Files</span>
                   </div>
@@ -2933,6 +2975,8 @@ export default function JobDetail({ role = "user", id }: Props) {
                           {filteredOutputServer.map((a) => {
                             const who = a.uploadedBy?.name ?? "—";
                             const when = a.createdAt ? new Date(a.createdAt).toLocaleString() : "—";
+                            const meta = a.reworkId ? reworkMetaById.get(a.reworkId) : undefined;
+                            const status = completedAttachmentStatusLabel(a, meta?.cycleNumber);
                             return (
                             <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-6 py-2.5 align-top">
@@ -2944,7 +2988,11 @@ export default function JobDetail({ role = "user", id }: Props) {
                             <td className="px-6 py-2.5 text-xs text-gray-600">{who}</td>
                             <td className="px-6 py-2.5 text-xs text-gray-600">{when}</td>
                             <td className="px-6 py-2.5">
-                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100">Submitted</span>
+                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
+                                status.tone === "rework"
+                                  ? "bg-purple-50 text-purple-700 border-purple-100"
+                                  : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                              }`}>{status.label}</span>
                             </td>
                             <td className="px-6 py-2.5 text-right">
                               <div className="flex items-center justify-end gap-2">

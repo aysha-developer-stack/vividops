@@ -27,6 +27,26 @@ export function isJobAttachment(a: {
   return !isCompletedAttachment(a);
 }
 
+export function isReworkCompletedAttachment(a: {
+  fileCategory?: string | null;
+  reworkId?: string | null;
+  uploadedBy?: { role?: string | null } | null;
+}): boolean {
+  return isCompletedAttachment(a) && Boolean(a.reworkId);
+}
+
+export function completedAttachmentStatusLabel(a: {
+  fileCategory?: string | null;
+  reworkId?: string | null;
+  uploadedBy?: { role?: string | null } | null;
+}, cycleNumber?: number | null): { label: string; tone: "submitted" | "rework" } {
+  if (isReworkCompletedAttachment(a)) {
+    const cycle = cycleNumber != null ? ` #${cycleNumber}` : "";
+    return { label: `Rework completed${cycle}`, tone: "rework" };
+  }
+  return { label: "Submitted", tone: "submitted" };
+}
+
 export function fileCategoryFromUploadTag(tag: "input" | "output"): AttachmentFileCategory {
   return tag === "output" ? "completed" : "job";
 }

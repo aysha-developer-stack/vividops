@@ -9,6 +9,7 @@ import {
   type ParsedAttachmentUpload,
 } from "../lib/job-attachment-upload";
 import { validateReworkAttachmentUpload } from "../lib/rework-attachment-upload";
+import { resolveCompletedUploadReworkId } from "../lib/completed-attachment-upload";
 import { db, jobs, users, jobAttachments, jobChecklistAttachments, jobMembers, type JobRow, type UserRow, sql } from "@workspace/db";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth";
@@ -57,6 +58,26 @@ const ensureChecklistAttachmentsSchema = async () => {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS job_checklist_attachments_user_idx ON job_checklist_attachments (user_id);`);
   checklistAttachmentsSchemaEnsured = true;
 };
+
+async function prepareAttachmentUpload(
+  actor: UserRow,
+  jobRow: JobRow,
+  body: Record<string, unknown>,
+): Promise<{ parsed: ParsedAttachmentUpload; error: { status: number; message: string } | null }> {
+  const parsed = parseAttachmentUploadBody(actor, jobRow, body);
+
+  const reworkError = await validateReworkAttachmentUpload(actor, jobRow, parsed);
+  if (reworkError) {
+    return { parsed, error: { status: 400, message: reworkError } };
+  }
+
+  const { reworkId, error: completedReworkError } = await resolveCompletedUploadReworkId(actor, jobRow, parsed);
+  if (completedReworkError) {
+    return { parsed, error: { status: 400, message: completedReworkError } };
+  }
+
+  return { parsed: { ...parsed, reworkId }, error: null };
+}
 
 async function loadJobForAttachmentUpload(jobId: string, actor: UserRow) {
   const [jobRow] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
@@ -125,13 +146,17 @@ async function finalizeUploadedAttachment(opts: {
       uploadedBy: actor.name,
     });
 
-    const fileTitle =
-      fileCategory === "completed"
+    const isReworkCompleted = fileCategory === "completed" && !!reworkId;
+    const fileTitle = isReworkCompleted
+      ? `Rework Fix Uploaded: ${jobRow.title}`
+      : fileCategory === "completed"
         ? `Completion File Uploaded: ${jobRow.title}`
         : fileCategory === "rework"
           ? `Rework Files Added: ${jobRow.title}`
           : `New Job File: ${jobRow.title}`;
-    const fileDesc = `${actor.name} uploaded a file for ${jobRow.title}: ${fileName}`;
+    const fileDesc = isReworkCompleted
+      ? `${actor.name} uploaded a corrected file for ${jobRow.title}: ${fileName}`
+      : `${actor.name} uploaded a file for ${jobRow.title}: ${fileName}`;
 
     await notifyJobManagers({
       jobId,
@@ -139,7 +164,7 @@ async function finalizeUploadedAttachment(opts: {
       actorId: actor.id,
       title: fileTitle,
       description: fileDesc,
-      type: "file",
+      type: isReworkCompleted ? "rework" : "file",
     });
 
     if (fileCategory === "rework") {
@@ -413,13 +438,12 @@ router.post("/jobs/:jobId/attachments/presign", requireAuth, async (req, res) =>
       return;
     }
     const { jobRow } = loaded;
-    const parsed = parseAttachmentUploadBody(actor, jobRow, body);
-
-    const reworkError = await validateReworkAttachmentUpload(actor, jobRow, parsed);
-    if (reworkError) {
-      res.status(400).json({ message: reworkError });
+    const prepared = await prepareAttachmentUpload(actor, jobRow, body);
+    if (prepared.error) {
+      res.status(prepared.error.status).json({ message: prepared.error.message });
       return;
     }
+    const parsed = prepared.parsed;
 
     const typeError = validateUploadFileName(fileName, {
       checklistInstruction:
@@ -482,13 +506,12 @@ router.post("/jobs/:jobId/attachments/register", requireAuth, async (req, res) =
       return;
     }
     const { jobRow } = loaded;
-    const parsed = parseAttachmentUploadBody(actor, jobRow, body);
-
-    const reworkError = await validateReworkAttachmentUpload(actor, jobRow, parsed);
-    if (reworkError) {
-      res.status(400).json({ message: reworkError });
+    const prepared = await prepareAttachmentUpload(actor, jobRow, body);
+    if (prepared.error) {
+      res.status(prepared.error.status).json({ message: prepared.error.message });
       return;
     }
+    const parsed = prepared.parsed;
 
     const typeError = validateUploadFileName(fileName, {
       checklistInstruction:
@@ -560,13 +583,12 @@ router.post(
         return;
       }
       const { jobRow } = loaded;
-      const parsed = parseAttachmentUploadBody(actor, jobRow, req.body as Record<string, unknown>);
-
-      const reworkError = await validateReworkAttachmentUpload(actor, jobRow, parsed);
-      if (reworkError) {
-        res.status(400).json({ message: reworkError });
+      const prepared = await prepareAttachmentUpload(actor, jobRow, req.body as Record<string, unknown>);
+      if (prepared.error) {
+        res.status(prepared.error.status).json({ message: prepared.error.message });
         return;
       }
+      const parsed = prepared.parsed;
 
       const typeError = validateUploadFileName(file.originalname, {
         checklistInstruction:
