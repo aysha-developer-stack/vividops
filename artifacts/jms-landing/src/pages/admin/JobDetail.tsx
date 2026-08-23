@@ -78,7 +78,7 @@ import { MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategori
 import { useQueryClient } from "@tanstack/react-query";
 import FileDropzone from "@/components/FileDropzone";
 import { CHECKLIST_FILE_ACCEPT, filterJobFiles, filterChecklistInstructionFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE, CHECKLIST_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
-import { isCompletedAttachment, isJobAttachment, isReworkAttachment, fileCategoryFromUploadTag, completedAttachmentStatusLabel } from "@/lib/attachmentCategories";
+import { isCompletedAttachment, isJobAttachment, isReworkAttachment, fileCategoryFromUploadTag, completedAttachmentStatusLabel, checklistItemHasCompletedUpload, jobLevelHasCompletedDeliverables } from "@/lib/attachmentCategories";
 import { useAuth } from "@/lib/auth";
 import UploadProgressPanel from "@/components/UploadProgressPanel";
 import JobNotesTab from "@/components/JobNotesTab";
@@ -110,13 +110,7 @@ function checklistItemHasInstructionFile(files: ChecklistFileApi[] | undefined):
   );
 }
 
-function checklistItemHasCompletedUpload(files: ChecklistFileApi[] | undefined): boolean {
-  return (files ?? []).some(
-    (f) => isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy }),
-  );
-}
-
-interface ChecklistItem { 
+interface ChecklistItem {
   id: number; 
   text: string; 
   done: boolean; 
@@ -1089,6 +1083,38 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   const completedCount = checklist.filter((c) => c.status === "completed").length;
   const checklistProgress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
+
+  const resolveActiveReworkIdForUpload = (checklistItemId?: number | null): string | null => {
+    const active = reworks.filter(
+      (r) => r.status === "open" || r.status === "needs_correction" || r.status === "awaiting_review",
+    );
+    if (active.length === 0) return null;
+
+    if (checklistItemId != null && checklistItemId > 0) {
+      const itemRework = active
+        .filter((r) => r.checklistItemId === checklistItemId)
+        .sort((a, b) => b.cycleNumber - a.cycleNumber)[0];
+      if (itemRework) return itemRework.id;
+    }
+
+    const jobRework = active
+      .filter((r) => r.checklistItemId == null)
+      .sort((a, b) => b.cycleNumber - a.cycleNumber)[0];
+    if (jobRework) return jobRework.id;
+
+    return active.sort((a, b) => b.cycleNumber - a.cycleNumber)[0]?.id ?? null;
+  };
+
+  const activeJobLevelReworkId = useMemo(() => {
+    const active = reworks.filter(
+      (r) =>
+        (r.status === "open" || r.status === "needs_correction" || r.status === "awaiting_review") &&
+        r.checklistItemId == null,
+    );
+    if (active.length === 0) return null;
+    return active.sort((a, b) => b.cycleNumber - a.cycleNumber)[0]?.id ?? null;
+  }, [reworks]);
+
   const jobLevelCompletedFiles = useMemo(
     () =>
       attachments.filter(
@@ -1096,15 +1122,32 @@ export default function JobDetail({ role = "user", id }: Props) {
       ),
     [attachments],
   );
-  const hasJobLevelCompletedFiles = jobLevelCompletedFiles.length > 0;
-  const allChecklistItemsHaveCompletedUploads = useMemo(
-    () => checklist.length > 0 && checklist.every((c) => checklistItemHasCompletedUpload(c.files)),
-    [checklist],
+  const hasJobLevelCompletedFiles = useMemo(
+    () => jobLevelHasCompletedDeliverables(attachments, { activeJobReworkId: activeJobLevelReworkId }),
+    [attachments, activeJobLevelReworkId],
   );
-  const canCompleteChecklistItem = (item: ChecklistItem) =>
-    checklistItemHasInstructionFile(item.files) &&
-    hasJobLevelCompletedFiles &&
-    checklistItemHasCompletedUpload(item.files);
+  const allChecklistItemsHaveCompletedUploads = useMemo(
+    () =>
+      checklist.length > 0 &&
+      checklist.every((c) => {
+        if (c.status === "completed") return true;
+        const activeReworkId =
+          c.status === "rework" ? resolveActiveReworkIdForUpload(c.id) : null;
+        return checklistItemHasCompletedUpload(c.files, {
+          activeReworkId: activeReworkId ?? undefined,
+        });
+      }),
+    [checklist, reworks],
+  );
+  const canCompleteChecklistItem = (item: ChecklistItem) => {
+    const activeReworkId =
+      item.status === "rework" ? resolveActiveReworkIdForUpload(item.id) : null;
+    return (
+      checklistItemHasInstructionFile(item.files) &&
+      jobLevelHasCompletedDeliverables(attachments, { activeJobReworkId: activeJobLevelReworkId }) &&
+      checklistItemHasCompletedUpload(item.files, { activeReworkId: activeReworkId ?? undefined })
+    );
+  };
   const readyToSubmitReview =
     (role === "user" || canUseJobTimer) &&
     job?.status === "in_progress" &&
@@ -1195,27 +1238,6 @@ export default function JobDetail({ role = "user", id }: Props) {
     if (open.length === 0) return null;
     return Math.max(...open);
   }, [reworks]);
-
-  const resolveActiveReworkIdForUpload = (checklistItemId?: number | null): string | null => {
-    const active = reworks.filter(
-      (r) => r.status === "open" || r.status === "needs_correction" || r.status === "awaiting_review",
-    );
-    if (active.length === 0) return null;
-
-    if (checklistItemId != null && checklistItemId > 0) {
-      const itemRework = active
-        .filter((r) => r.checklistItemId === checklistItemId)
-        .sort((a, b) => b.cycleNumber - a.cycleNumber)[0];
-      if (itemRework) return itemRework.id;
-    }
-
-    const jobRework = active
-      .filter((r) => r.checklistItemId == null)
-      .sort((a, b) => b.cycleNumber - a.cycleNumber)[0];
-    if (jobRework) return jobRework.id;
-
-    return active.sort((a, b) => b.cycleNumber - a.cycleNumber)[0]?.id ?? null;
-  };
 
   const displaySeconds = totalLoggedSeconds + seconds;
 
@@ -2630,13 +2652,25 @@ export default function JobDetail({ role = "user", id }: Props) {
                       {selectedChecklistItem.status !== "completed" && canUseJobTimer && (() => {
                         const canMarkComplete = canCompleteChecklistItem(selectedChecklistItem);
                         const hasChecklistFile = checklistItemHasInstructionFile(selectedChecklistItem.files);
-                        const hasCompletedChecklistUpload = checklistItemHasCompletedUpload(selectedChecklistItem.files);
+                        const itemActiveReworkId =
+                          selectedChecklistItem.status === "rework"
+                            ? resolveActiveReworkIdForUpload(selectedChecklistItem.id)
+                            : null;
+                        const requiresReworkUpload = selectedChecklistItem.status === "rework";
+                        const hasCompletedChecklistUpload = checklistItemHasCompletedUpload(
+                          selectedChecklistItem.files,
+                          { activeReworkId: itemActiveReworkId ?? undefined },
+                        );
                         return (
                           <>
                             <button 
                               onClick={async () => {
                                 if (!hasJobLevelCompletedFiles) {
-                                  alert("Please upload completed files in the Completed Files section above before marking checklist items complete.");
+                                  alert(
+                                    requiresReworkUpload && activeJobLevelReworkId
+                                      ? "Upload new completed files on the Files tab for this rework cycle before marking this task complete."
+                                      : "Please upload completed files in the Completed Files section above before marking checklist items complete.",
+                                  );
                                   scrollToCompletedFiles();
                                   return;
                                 }
@@ -2645,7 +2679,11 @@ export default function JobDetail({ role = "user", id }: Props) {
                                   return;
                                 }
                                 if (!hasCompletedChecklistUpload) {
-                                  alert("Please upload your completed Word/PDF checklist above before marking this item complete.");
+                                  alert(
+                                    requiresReworkUpload
+                                      ? "Upload a new completed checklist file for this rework cycle before marking this task complete."
+                                      : "Please upload your completed Word/PDF checklist above before marking this item complete.",
+                                  );
                                   return;
                                 }
                                 if (!job?.id) return;
@@ -2685,7 +2723,13 @@ export default function JobDetail({ role = "user", id }: Props) {
                             </button>
                             {!hasJobLevelCompletedFiles && (
                               <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                                Upload completed files in <button type="button" onClick={scrollToCompletedFiles} className="font-bold underline">Completed Files</button> above first, then return here to mark this task complete.
+                                {requiresReworkUpload && activeJobLevelReworkId
+                                  ? "Upload new completed files in "
+                                  : "Upload completed files in "}
+                                <button type="button" onClick={scrollToCompletedFiles} className="font-bold underline">Completed Files</button>
+                                {requiresReworkUpload && activeJobLevelReworkId
+                                  ? " for this rework cycle first."
+                                  : " above first, then return here to mark this task complete."}
                               </p>
                             )}
                             {hasJobLevelCompletedFiles && !hasChecklistFile && (
@@ -2695,7 +2739,13 @@ export default function JobDetail({ role = "user", id }: Props) {
                             )}
                             {hasJobLevelCompletedFiles && hasChecklistFile && !hasCompletedChecklistUpload && (
                               <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                                Upload your completed Word/PDF checklist in <span className="font-bold">Completed uploads</span> above before marking this task complete.
+                                {requiresReworkUpload
+                                  ? "Upload a new completed Word/PDF checklist in "
+                                  : "Upload your completed Word/PDF checklist in "}
+                                <span className="font-bold">Completed uploads</span>
+                                {requiresReworkUpload
+                                  ? " for this rework cycle before marking this task complete."
+                                  : " above before marking this task complete."}
                               </p>
                             )}
                           </>
@@ -2704,14 +2754,26 @@ export default function JobDetail({ role = "user", id }: Props) {
                       {selectedChecklistItem.status !== "completed" && canManageChecklistAsSupervisor && (() => {
                         const canMarkComplete = canCompleteChecklistItem(selectedChecklistItem);
                         const hasChecklistFile = checklistItemHasInstructionFile(selectedChecklistItem.files);
-                        const hasCompletedChecklistUpload = checklistItemHasCompletedUpload(selectedChecklistItem.files);
+                        const itemActiveReworkId =
+                          selectedChecklistItem.status === "rework"
+                            ? resolveActiveReworkIdForUpload(selectedChecklistItem.id)
+                            : null;
+                        const requiresReworkUpload = selectedChecklistItem.status === "rework";
+                        const hasCompletedChecklistUpload = checklistItemHasCompletedUpload(
+                          selectedChecklistItem.files,
+                          { activeReworkId: itemActiveReworkId ?? undefined },
+                        );
                         return (
                           <>
                             <button 
                               onClick={async () => {
                                 if (!canMarkComplete) {
                                   if (!hasJobLevelCompletedFiles) {
-                                    alert("Completed files must be uploaded before marking checklist items complete.");
+                                    alert(
+                                      requiresReworkUpload && activeJobLevelReworkId
+                                        ? "Upload new completed files on the Files tab for this rework cycle before marking this task complete."
+                                        : "Completed files must be uploaded before marking checklist items complete.",
+                                    );
                                     scrollToCompletedFiles();
                                     return;
                                   }
@@ -2719,7 +2781,11 @@ export default function JobDetail({ role = "user", id }: Props) {
                                     alert("Checklist file not uploaded. A Word/PDF checklist file is required before marking this item complete.");
                                     return;
                                   }
-                                  alert("Please upload the completed Word/PDF checklist before marking this item complete.");
+                                  alert(
+                                    requiresReworkUpload
+                                      ? "Upload a new completed checklist file for this rework cycle before marking this item complete."
+                                      : "Please upload the completed Word/PDF checklist before marking this item complete.",
+                                  );
                                   return;
                                 }
                                 const next = checklist.map((i) =>
@@ -2759,7 +2825,13 @@ export default function JobDetail({ role = "user", id }: Props) {
                             </button>
                             {!hasJobLevelCompletedFiles && (
                               <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                                Upload completed files in <button type="button" onClick={scrollToCompletedFiles} className="font-bold underline">Completed Files</button> above first, then return here to mark this task complete.
+                                {requiresReworkUpload && activeJobLevelReworkId
+                                  ? "Upload new completed files in "
+                                  : "Upload completed files in "}
+                                <button type="button" onClick={scrollToCompletedFiles} className="font-bold underline">Completed Files</button>
+                                {requiresReworkUpload && activeJobLevelReworkId
+                                  ? " for this rework cycle first."
+                                  : " above first, then return here to mark this task complete."}
                               </p>
                             )}
                             {hasJobLevelCompletedFiles && !hasChecklistFile && (
@@ -2769,7 +2841,13 @@ export default function JobDetail({ role = "user", id }: Props) {
                             )}
                             {hasJobLevelCompletedFiles && hasChecklistFile && !hasCompletedChecklistUpload && (
                               <p className="basis-full text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                                Upload your completed Word/PDF checklist in <span className="font-bold">Completed uploads</span> above before marking this task complete.
+                                {requiresReworkUpload
+                                  ? "Upload a new completed Word/PDF checklist in "
+                                  : "Upload your completed Word/PDF checklist in "}
+                                <span className="font-bold">Completed uploads</span>
+                                {requiresReworkUpload
+                                  ? " for this rework cycle before marking this task complete."
+                                  : " above before marking this task complete."}
                               </p>
                             )}
                           </>

@@ -18,6 +18,7 @@ import {
   markOpenReworksAwaitingReview,
   resolveJobReworks,
 } from "./reworks";
+import { validateReworkUploadsBeforeJobSubmit } from "./rework-completion-validation";
 import { finalizeReviewCheckForJob } from "./persist-review-check-session";
 import {
   shouldAutoStopWorkerTimersForJobStatus,
@@ -313,6 +314,16 @@ export async function assertWorkerChecklistReady(
   if (missingCompletedChecklist.length > 0) {
     return `Completed checklist not uploaded for ${missingCompletedChecklist.length} item(s). Upload Word/PDF completed checklists before submitting.`;
   }
+
+  const reworkSubmitError = await validateReworkUploadsBeforeJobSubmit(
+    job.id,
+    workerUserId,
+    requiredIds,
+  );
+  if (reworkSubmitError) {
+    return reworkSubmitError;
+  }
+
   const hasJobCompletedFiles = await jobHasCompletedDeliverables(job.id);
   if (!hasJobCompletedFiles) {
     return "Completed files not uploaded. Upload completed deliverables on the Files tab before submitting.";

@@ -17,7 +17,10 @@ import { jobHasCompletedDeliverables } from "../lib/job-review";
 import { logger } from "../lib/logger";
 import { createNotification, notifyJobManagers, previewText } from "../lib/notifications";
 import { ensureJobWriteSchema } from "../lib/schema-init";
-import { createRework, markOpenReworksAwaitingReview } from "../lib/reworks";
+import { createRework, findActiveReworkForCompletedUpload, markOpenReworksAwaitingReview } from "../lib/reworks";
+import {
+  validateReworkUploadsBeforeChecklistComplete,
+} from "../lib/rework-completion-validation";
 import { stopAllActiveTimersOnJob } from "../lib/persist-timer-session";
 import { jobStatusPatchFields, type ReviewableStatus } from "../lib/job-review";
 import {
@@ -247,6 +250,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
           uploaderId: jobAttachments.uploadedById,
           uploaderRole: users.role,
           fileCategory: jobAttachments.fileCategory,
+          reworkId: jobAttachments.reworkId,
         })
         .from(jobChecklistAttachments)
         .innerJoin(jobAttachments, eq(jobAttachments.id, jobChecklistAttachments.attachmentId))
@@ -258,6 +262,19 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
           ),
         );
 
+      const [existingState] = await db
+        .select({ status: jobChecklistState.status })
+        .from(jobChecklistState)
+        .where(
+          and(
+            eq(jobChecklistState.jobId, jobId),
+            eq(jobChecklistState.userId, targetUserId),
+            eq(jobChecklistState.itemId, itemId),
+          ),
+        )
+        .limit(1);
+      const currentItemStatus = existingState?.status ?? "pending";
+
       const hasChecklistFile = linked.some((r) => r.uploaderRole != null && r.uploaderRole !== "user");
 
       if (!hasChecklistFile) {
@@ -266,6 +283,27 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
             "Checklist file not uploaded. A Word/PDF checklist file is required before marking this item complete.",
         });
       }
+
+      const activeReworkId = await findActiveReworkForCompletedUpload({
+        jobId,
+        userId: targetUserId,
+        checklistItemId: itemId,
+      });
+      const requiresReworkUpload =
+        currentItemStatus === "rework" || activeReworkId != null;
+
+      if (requiresReworkUpload) {
+        const reworkUploadError = await validateReworkUploadsBeforeChecklistComplete({
+          jobId,
+          targetUserId,
+          itemId,
+          currentItemStatus,
+          linked,
+        });
+        if (reworkUploadError) {
+          return res.status(400).json({ error: reworkUploadError });
+        }
+      } else {
       const hasCompletedChecklistUpload = linked.some(
         (r) =>
           r.linkUserId === targetUserId &&
@@ -284,6 +322,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
           error:
             "Completed files not uploaded. Please upload your completed files on the Files tab before marking checklist items complete.",
         });
+      }
       }
     }
 

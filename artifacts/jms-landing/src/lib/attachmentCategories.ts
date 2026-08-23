@@ -47,6 +47,43 @@ export function completedAttachmentStatusLabel(a: {
   return { label: "Submitted", tone: "submitted" };
 }
 
+export function checklistItemHasCompletedUpload(
+  files:
+    | Array<{
+        fileCategory?: string | null;
+        reworkId?: string | null;
+        uploadedBy?: { role?: string | null } | null;
+      }>
+    | undefined,
+  opts?: { activeReworkId?: string | null },
+): boolean {
+  const completed = (files ?? []).filter((f) =>
+    isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy }),
+  );
+  if (opts?.activeReworkId) {
+    return completed.some((f) => f.reworkId === opts.activeReworkId);
+  }
+  return completed.length > 0;
+}
+
+export function jobLevelHasCompletedDeliverables(
+  attachments: Array<{
+    checklistItemId?: number | null;
+    fileCategory?: string | null;
+    reworkId?: string | null;
+    uploadedBy?: { role?: string | null } | null;
+  }>,
+  opts?: { activeJobReworkId?: string | null },
+): boolean {
+  const jobLevel = attachments.filter(
+    (a) => a.checklistItemId == null && isCompletedAttachment(a),
+  );
+  if (opts?.activeJobReworkId) {
+    return jobLevel.some((a) => a.reworkId === opts.activeJobReworkId);
+  }
+  return jobLevel.length > 0;
+}
+
 export function fileCategoryFromUploadTag(tag: "input" | "output"): AttachmentFileCategory {
   return tag === "output" ? "completed" : "job";
 }
