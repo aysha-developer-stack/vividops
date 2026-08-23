@@ -582,6 +582,8 @@ export default function JobDetail({ role = "user", id }: Props) {
     (role === "supervisor" && canUseJobTimer);
   const canManageChecklistAsSupervisor =
     role === "super-admin" || role === "admin" || (role === "supervisor" && !canUseJobTimer);
+  const canPickReworkOrigin =
+    currentUser?.role === "admin" || currentUser?.role === "super-admin";
 
   const openEditModal = () => {
     if (!job) return;
@@ -3604,12 +3606,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                   ? `The assigned worker will redo checklist item #${reworkTargetItem.id}.`
                   : "The assigned worker will be notified to redo the work."}
               </p>
-              {(role === "admin" || role === "super-admin") && (
+              {canPickReworkOrigin && (
                 <div className="mb-4">
                   <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Rework type *</label>
-                  <p className="text-[11px] text-gray-500 mb-2">
-                    Internal rework files appear in the Rework section. External rework files appear in Job Files. All job members are notified.
-                  </p>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
@@ -3687,9 +3686,9 @@ export default function JobDetail({ role = "user", id }: Props) {
               />
               <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Attach rework files (optional)</label>
               <p className="text-[11px] text-gray-500 mb-2">
-                {(role === "admin" || role === "super-admin") && reworkOrigin === "external"
+                {canPickReworkOrigin && reworkOrigin === "external"
                   ? "Files will be saved in Job Files with an External rework label."
-                  : (role === "admin" || role === "super-admin") && reworkOrigin === "internal"
+                  : canPickReworkOrigin && reworkOrigin === "internal"
                     ? "Files will be saved in the Rework section with an Internal rework label."
                     : "Images, videos, PDFs, Word, and any other file type. Shown to the worker in the Rework section on the Files tab."}
               </p>
@@ -3735,7 +3734,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                       alert("Rework reason is required.");
                       return;
                     }
-                    if ((role === "admin" || role === "super-admin") && !reworkOrigin) {
+                    if (canPickReworkOrigin && !reworkOrigin) {
                       alert("Select Internal Rework or External Rework before submitting.");
                       return;
                     }
@@ -3747,9 +3746,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                         severity: reworkSeverity,
                         comments: reworkComments,
                         dueAt: reworkDueAt,
-                        ...((role === "admin" || role === "super-admin") && reworkOrigin
-                          ? { reworkOrigin }
-                          : {}),
+                        ...(canPickReworkOrigin && reworkOrigin ? { reworkOrigin } : {}),
                       };
                       const res = reworkTargetItem
                         ? await fetch(`/api/jobs/${job.id}/checklist-state`, {
