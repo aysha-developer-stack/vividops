@@ -1,4 +1,4 @@
-import { db, userSettings, eq, and, gte, notifications, users, inArray, isNull, sql } from "@workspace/db";
+import { db, userSettings, eq, and, gte, notifications, users, inArray, isNull, sql, jobMembers } from "@workspace/db";
 import { logger } from "./logger";
 import { pushNotificationRealtime } from "./socket";
 import { sendWebPushNotification } from "./web-push";
@@ -56,6 +56,37 @@ export function previewText(text: string | null | undefined, max = 120): string 
   const value = (text ?? "").trim();
   if (!value) return "(cleared)";
   return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+/** Notify assignee, supervisor, and all job members (excluding the actor). */
+export async function notifyAllJobMembers(opts: {
+  jobId: string;
+  assigneeId?: string | null;
+  supervisorId?: string | null;
+  actorId: string;
+  title: string;
+  description: string;
+  type: NotificationType;
+}) {
+  const recipientIds = new Set<string>();
+  if (opts.assigneeId) recipientIds.add(opts.assigneeId);
+  if (opts.supervisorId) recipientIds.add(opts.supervisorId);
+  const members = await db
+    .select({ userId: jobMembers.userId })
+    .from(jobMembers)
+    .where(eq(jobMembers.jobId, opts.jobId));
+  for (const m of members) recipientIds.add(m.userId);
+  recipientIds.delete(opts.actorId);
+
+  for (const userId of recipientIds) {
+    await createNotification({
+      userId,
+      jobId: opts.jobId,
+      title: opts.title,
+      description: opts.description,
+      type: opts.type,
+    });
+  }
 }
 
 /** Notify all admins, super-admins, and the job supervisor (not the actor). */

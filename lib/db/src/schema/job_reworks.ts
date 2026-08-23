@@ -16,6 +16,8 @@ export const jobReworks = pgTable(
     comments: text("comments"),
     severity: text("severity").notNull().default("medium"),
     status: text("status").notNull().default("open"),
+    /** Admin/super-admin rework scope: internal (rework files) or external (job files). Null for supervisor rework. */
+    reworkOrigin: text("rework_origin"),
     dueAt: timestamp("due_at", { withTimezone: true }),
     assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),

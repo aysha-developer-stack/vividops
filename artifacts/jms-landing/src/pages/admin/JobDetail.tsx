@@ -78,7 +78,7 @@ import { MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategori
 import { useQueryClient } from "@tanstack/react-query";
 import FileDropzone from "@/components/FileDropzone";
 import { CHECKLIST_FILE_ACCEPT, filterJobFiles, filterChecklistInstructionFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE, CHECKLIST_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
-import { isCompletedAttachment, isJobAttachment, isReworkAttachment, fileCategoryFromUploadTag, completedAttachmentStatusLabel, checklistItemHasCompletedUpload, jobLevelHasCompletedDeliverables } from "@/lib/attachmentCategories";
+import { isCompletedAttachment, isJobAttachment, isReworkAttachment, fileCategoryFromUploadTag, completedAttachmentStatusLabel, checklistItemHasCompletedUpload, jobLevelHasCompletedDeliverables, reworkInstructionBadges, type ReworkOrigin } from "@/lib/attachmentCategories";
 import { useAuth } from "@/lib/auth";
 import UploadProgressPanel from "@/components/UploadProgressPanel";
 import JobNotesTab from "@/components/JobNotesTab";
@@ -175,6 +175,7 @@ type JobReworkApi = {
   comments: string | null;
   severity: "low" | "medium" | "high" | string;
   status: string;
+  reworkOrigin?: string | null;
   dueAt: string | null;
   assignedAt: string;
   completedAt: string | null;
@@ -182,6 +183,32 @@ type JobReworkApi = {
   user: { id: string; name: string; role: Role } | null;
   createdBy: { id: string; name: string; role: Role } | null;
 };
+
+function reworkBadgeToneClass(tone: "internal" | "external" | "new"): string {
+  if (tone === "internal") return "bg-indigo-50 text-indigo-700 border-indigo-100";
+  if (tone === "external") return "bg-sky-50 text-sky-700 border-sky-100";
+  return "bg-emerald-50 text-emerald-700 border-emerald-100";
+}
+
+function renderReworkInstructionBadges(
+  attachment: { reworkId?: string | null; fileCategory?: string | null },
+  rework?: JobReworkApi | undefined,
+) {
+  const badges = reworkInstructionBadges(attachment, rework);
+  if (badges.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {badges.map((b) => (
+        <span
+          key={b.label}
+          className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${reworkBadgeToneClass(b.tone)}`}
+        >
+          {b.label}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 const CLIQ_WEB_ROOT = "https://cliq.zoho.com.au";
 
@@ -467,6 +494,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [reworkComments, setReworkComments] = useState("");
   const [reworkDueAt, setReworkDueAt] = useState("");
   const [reworkPendingFiles, setReworkPendingFiles] = useState<File[]>([]);
+  const [reworkOrigin, setReworkOrigin] = useState<ReworkOrigin | null>(null);
   const [reworkSubmitting, setReworkSubmitting] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
@@ -1622,7 +1650,11 @@ export default function JobDetail({ role = "user", id }: Props) {
     if (Array.isArray(data)) setAttachments(data as AttachmentApi[]);
   };
 
-  const uploadReworkAttachmentFiles = async (files: File[], reworkId: string) => {
+  const uploadReworkAttachmentFiles = async (
+    files: File[],
+    reworkId: string,
+    origin: ReworkOrigin | null,
+  ) => {
     if (!job?.id || files.length === 0) return;
     const allowed = filterJobFiles(files);
     if (allowed.length === 0) {
@@ -1640,7 +1672,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       uploadProgress.setItemUploading(itemId);
       const fd = new FormData();
       fd.append("file", f);
-      fd.append("fileCategory", "rework");
+      fd.append("fileCategory", origin === "external" ? "job" : "rework");
       fd.append("reworkId", reworkId);
       try {
         await uploadFormDataWithProgress(
@@ -1905,6 +1937,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                     setReworkComments("");
                     setReworkDueAt("");
                     setReworkPendingFiles([]);
+                    setReworkOrigin(null);
                     setReworkOpen(true);
                   }}
                   className="flex items-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-semibold"
@@ -2863,6 +2896,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                             setReworkComments("");
                             setReworkDueAt("");
                             setReworkPendingFiles([]);
+                            setReworkOrigin(null);
                             setReworkOpen(true);
                           }}
                           className="flex-1 py-2.5 bg-purple-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-600/20 flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors"
@@ -2941,17 +2975,28 @@ export default function JobDetail({ role = "user", id }: Props) {
                         ) : filteredInput.map((a) => {
                           const who = a.uploadedBy?.name ?? "—";
                           const when = a.createdAt ? new Date(a.createdAt).toLocaleString() : "—";
+                          const meta = a.reworkId ? reworkMetaById.get(a.reworkId) : undefined;
+                          const reworkBadges = renderReworkInstructionBadges(a, meta);
                           return (
                           <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-6 py-2.5 align-top">
                               <div className="flex items-start gap-2 min-w-0">
                                 <FileExtensionIcon fileName={a.fileName} size="sm" className="mt-0.5" />
-                                <span className="text-sm font-medium text-gray-900 break-words whitespace-normal leading-snug min-w-0">{a.fileName}</span>
+                                <div className="min-w-0">
+                                  <span className="text-sm font-medium text-gray-900 break-words whitespace-normal leading-snug">{a.fileName}</span>
+                                  {reworkBadges && <div className="mt-1">{reworkBadges}</div>}
+                                </div>
                               </div>
                             </td>
                             <td className="px-6 py-2.5 text-xs text-gray-600">{who}</td>
                             <td className="px-6 py-2.5 text-xs text-gray-600">{when}</td>
-                            <td className="px-6 py-2.5 text-xs uppercase font-bold text-gray-400">{fileTypeLabel(a.fileName)}</td>
+                            <td className="px-6 py-2.5">
+                              {reworkBadges ? (
+                                <span className="text-[10px] text-gray-500">External</span>
+                              ) : (
+                                <span className="text-xs uppercase font-bold text-gray-400">{fileTypeLabel(a.fileName)}</span>
+                              )}
+                            </td>
                             <td className="px-6 py-2.5 text-right">
                               <div className="flex items-center justify-end gap-2">
                                 <button onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
@@ -2985,18 +3030,20 @@ export default function JobDetail({ role = "user", id }: Props) {
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider min-w-[280px]">File Name</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Uploaded By</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Rework Cycle</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Labels</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Upload Date</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
                         {filteredRework.length === 0 ? (
-                          <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-gray-400">No rework files yet. Attach files when marking a job for rework.</td></tr>
+                          <tr><td colSpan={6} className="px-6 py-10 text-center text-xs text-gray-400">No rework files yet. Attach files when marking a job for rework.</td></tr>
                         ) : (
                           filteredRework.map((a) => {
                             const meta = a.reworkId ? reworkMetaById.get(a.reworkId) : undefined;
                             const who = a.uploadedBy?.name ?? "—";
                             const when = a.createdAt ? new Date(a.createdAt).toLocaleString() : "—";
+                            const reworkBadges = renderReworkInstructionBadges(a, meta);
                             return (
                               <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
                                 <td className="px-6 py-2.5 align-top">
@@ -3008,6 +3055,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                                 <td className="px-6 py-2.5 text-xs text-gray-600">{who}</td>
                                 <td className="px-6 py-2.5 text-xs text-gray-600">
                                   {meta?.cycleNumber != null ? `Rework #${meta.cycleNumber}` : "—"}
+                                </td>
+                                <td className="px-6 py-2.5">
+                                  {reworkBadges}
                                 </td>
                                 <td className="px-6 py-2.5 text-xs text-gray-600">{when}</td>
                                 <td className="px-6 py-2.5 text-right">
@@ -3554,6 +3604,38 @@ export default function JobDetail({ role = "user", id }: Props) {
                   ? `The assigned worker will redo checklist item #${reworkTargetItem.id}.`
                   : "The assigned worker will be notified to redo the work."}
               </p>
+              {(role === "admin" || role === "super-admin") && (
+                <div className="mb-4">
+                  <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Rework type *</label>
+                  <p className="text-[11px] text-gray-500 mb-2">
+                    Internal rework files appear in the Rework section. External rework files appear in Job Files. All job members are notified.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setReworkOrigin("internal")}
+                      className={`py-2.5 px-3 rounded-xl text-xs font-bold border-2 transition-colors ${
+                        reworkOrigin === "internal"
+                          ? "border-indigo-500 bg-indigo-50 text-indigo-800"
+                          : "border-gray-200 bg-white text-gray-600 hover:border-indigo-200"
+                      }`}
+                    >
+                      Internal Rework
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReworkOrigin("external")}
+                      className={`py-2.5 px-3 rounded-xl text-xs font-bold border-2 transition-colors ${
+                        reworkOrigin === "external"
+                          ? "border-sky-500 bg-sky-50 text-sky-800"
+                          : "border-gray-200 bg-white text-gray-600 hover:border-sky-200"
+                      }`}
+                    >
+                      External Rework
+                    </button>
+                  </div>
+                </div>
+              )}
               <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Reason</label>
               <textarea
                 value={reworkReason}
@@ -3604,7 +3686,13 @@ export default function JobDetail({ role = "user", id }: Props) {
                 className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-primary mb-4"
               />
               <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Attach rework files (optional)</label>
-              <p className="text-[11px] text-gray-500 mb-2">Images, videos, PDFs, Word, and any other file type. Shown to the worker in the Rework section on the Files tab.</p>
+              <p className="text-[11px] text-gray-500 mb-2">
+                {(role === "admin" || role === "super-admin") && reworkOrigin === "external"
+                  ? "Files will be saved in Job Files with an External rework label."
+                  : (role === "admin" || role === "super-admin") && reworkOrigin === "internal"
+                    ? "Files will be saved in the Rework section with an Internal rework label."
+                    : "Images, videos, PDFs, Word, and any other file type. Shown to the worker in the Rework section on the Files tab."}
+              </p>
               <FileDropzone
                 accept={JOB_FILE_ACCEPT}
                 label="Drop rework instruction files or folders"
@@ -3631,6 +3719,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 <button
                   onClick={() => {
                     setReworkPendingFiles([]);
+                    setReworkOrigin(null);
                     setReworkOpen(false);
                   }}
                   className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200"
@@ -3646,6 +3735,10 @@ export default function JobDetail({ role = "user", id }: Props) {
                       alert("Rework reason is required.");
                       return;
                     }
+                    if ((role === "admin" || role === "super-admin") && !reworkOrigin) {
+                      alert("Select Internal Rework or External Rework before submitting.");
+                      return;
+                    }
                     setReworkSubmitting(true);
                     try {
                       const payload = {
@@ -3654,6 +3747,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                         severity: reworkSeverity,
                         comments: reworkComments,
                         dueAt: reworkDueAt,
+                        ...((role === "admin" || role === "super-admin") && reworkOrigin
+                          ? { reworkOrigin }
+                          : {}),
                       };
                       const res = reworkTargetItem
                         ? await fetch(`/api/jobs/${job.id}/checklist-state`, {
@@ -3683,7 +3779,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                         if (!reworkId) {
                           throw new Error("Rework was created but file attachments could not be linked.");
                         }
-                        await uploadReworkAttachmentFiles(reworkPendingFiles, reworkId);
+                        await uploadReworkAttachmentFiles(reworkPendingFiles, reworkId, reworkOrigin);
                       }
                       if (reworkTargetItem) {
                         const next = checklist.map((i) =>
@@ -3706,6 +3802,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                       setReworkComments("");
                       setReworkDueAt("");
                       setReworkPendingFiles([]);
+                      setReworkOrigin(null);
                       setReworkTargetItem(null);
                       setReworkOpen(false);
                     } catch (err) {

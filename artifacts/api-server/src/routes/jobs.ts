@@ -2384,6 +2384,7 @@ router.post("/jobs/:id/review", requireAuth, async (req, res) => {
     const hasPhotos = req.body?.hasPhotos === true;
     const dueAt = typeof req.body?.dueAt === "string" ? req.body.dueAt : null;
     const severity = typeof req.body?.severity === "string" ? req.body.severity : null;
+    const reworkOrigin = req.body?.reworkOrigin;
     const allowed: JobReviewAction[] = [
       "submit_for_supervisor",
       "supervisor_approve",
@@ -2412,6 +2413,7 @@ router.post("/jobs/:id/review", requireAuth, async (req, res) => {
       severity,
       canManage: canManageJob(actor, full.job),
       hasPhotos,
+      reworkOrigin: typeof reworkOrigin === "string" ? reworkOrigin : null,
     });
     if (!result.ok) {
       return res.status(result.status).json({ error: result.error });
@@ -2462,6 +2464,7 @@ router.get("/jobs/:id/reworks", requireAuth, async (req, res) => {
         comments: row.rework.comments,
         severity: row.rework.severity,
         status: row.rework.status,
+        reworkOrigin: row.rework.reworkOrigin,
         dueAt: row.rework.dueAt,
         assignedAt: row.rework.assignedAt,
         completedAt: row.rework.completedAt,

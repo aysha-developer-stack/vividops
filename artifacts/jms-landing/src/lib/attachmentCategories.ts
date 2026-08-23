@@ -84,6 +84,34 @@ export function jobLevelHasCompletedDeliverables(
   return jobLevel.length > 0;
 }
 
+export type ReworkOrigin = "internal" | "external";
+
+const ACTIVE_REWORK_UI_STATUSES = ["open", "needs_correction", "awaiting_review"] as const;
+
+export function reworkOriginDisplayLabel(origin: string | null | undefined): string | null {
+  if (origin === "internal") return "Internal rework";
+  if (origin === "external") return "External rework";
+  return null;
+}
+
+export function reworkInstructionBadges(
+  attachment: { reworkId?: string | null; fileCategory?: string | null },
+  rework?: { reworkOrigin?: string | null; status?: string } | null,
+): Array<{ label: string; tone: "internal" | "external" | "new" }> {
+  if (!attachment.reworkId || !rework) return [];
+  const badges: Array<{ label: string; tone: "internal" | "external" | "new" }> = [];
+  if (rework.reworkOrigin === "internal" && attachment.fileCategory === "rework") {
+    badges.push({ label: "Internal rework", tone: "internal" });
+  }
+  if (rework.reworkOrigin === "external" && attachment.fileCategory === "job") {
+    badges.push({ label: "External rework", tone: "external" });
+  }
+  if (rework.status && (ACTIVE_REWORK_UI_STATUSES as readonly string[]).includes(rework.status)) {
+    badges.push({ label: "New", tone: "new" });
+  }
+  return badges;
+}
+
 export function fileCategoryFromUploadTag(tag: "input" | "output"): AttachmentFileCategory {
   return tag === "output" ? "completed" : "job";
 }

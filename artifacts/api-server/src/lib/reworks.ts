@@ -7,6 +7,7 @@ import {
   type MistakeCategory,
   type UserRow,
 } from "@workspace/db";
+import type { ReworkOrigin } from "./rework-origin";
 
 type ErrorSeverity = "low" | "medium" | "high";
 
@@ -47,6 +48,7 @@ export async function createRework(opts: {
   severity?: string | null;
   source: string;
   title?: string | null;
+  reworkOrigin?: ReworkOrigin | null;
 }) {
   const userId = opts.userId ?? opts.job.assigneeId;
   if (!userId) {
@@ -77,6 +79,7 @@ export async function createRework(opts: {
       comments,
       severity,
       status: "open",
+      reworkOrigin: opts.reworkOrigin ?? null,
       dueAt,
       updatedAt: new Date(),
     })

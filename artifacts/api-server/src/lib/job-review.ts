@@ -12,7 +12,8 @@ import {
   type JobRow,
   type UserRow,
 } from "@workspace/db";
-import { createNotification, notifyJobManagers, previewText, type NotificationType } from "./notifications";
+import { createNotification, notifyJobManagers, notifyAllJobMembers, previewText, type NotificationType } from "./notifications";
+import { reworkOriginLabel, resolveReworkOriginForActor, type ReworkOrigin } from "./rework-origin";
 import {
   createRework,
   markOpenReworksAwaitingReview,
@@ -400,8 +401,9 @@ export async function notifyStatusTransition(opts: {
   nextStatus: ReviewableStatus;
   reason?: string | null;
   comments?: string | null;
+  reworkOrigin?: ReworkOrigin | null;
 }) {
-  const { actor, job, previousStatus, nextStatus, reason, comments } = opts;
+  const { actor, job, previousStatus, nextStatus, reason, comments, reworkOrigin } = opts;
   if (previousStatus === nextStatus) return;
 
   const commentSuffix = commentNotificationSuffix(comments);
@@ -482,23 +484,41 @@ export async function notifyStatusTransition(opts: {
   if (nextStatus === "rework") {
     const reasonText = reason?.trim() ? ` Reason: ${reason.trim()}` : "";
     const commentText = comments?.trim() ? ` Comments: ${comments.trim()}` : "";
-    if (job.assigneeId) {
-      await createNotification({
-        userId: job.assigneeId,
+    const originLabel = reworkOriginLabel(reworkOrigin ?? null);
+    const originPrefix = originLabel ? `${originLabel}: ` : "";
+    const notifyTitle = `${originPrefix}Rework Required: ${job.title}`;
+    const notifyDesc = (name: string) =>
+      `${name} marked ${job.title} for rework.${reasonText}${commentText}`;
+
+    if (reworkOrigin) {
+      await notifyAllJobMembers({
         jobId: job.id,
-        title: `Rework Required: ${job.title}`,
-        description: `${actor.name} sent ${job.title} back for rework.${reasonText}${commentText}`,
+        assigneeId: job.assigneeId,
+        supervisorId: job.supervisorId,
+        actorId: actor.id,
+        title: notifyTitle,
+        description: notifyDesc(actor.name),
+        type: "rework",
+      });
+    } else {
+      if (job.assigneeId) {
+        await createNotification({
+          userId: job.assigneeId,
+          jobId: job.id,
+          title: `Rework Required: ${job.title}`,
+          description: `${actor.name} sent ${job.title} back for rework.${reasonText}${commentText}`,
+          type: "rework",
+        });
+      }
+      await notifyJobManagers({
+        jobId: job.id,
+        supervisorId: job.supervisorId,
+        actorId: actor.id,
+        title: `Rework on ${job.title}`,
+        description: `${actor.name} marked ${job.title} for rework.${reasonText}${commentText}`,
         type: "rework",
       });
     }
-    await notifyJobManagers({
-      jobId: job.id,
-      supervisorId: job.supervisorId,
-      actorId: actor.id,
-      title: `Rework on ${job.title}`,
-      description: `${actor.name} marked ${job.title} for rework.${reasonText}${commentText}`,
-      type: "rework",
-    });
   }
 
   if (nextStatus === "on_hold") {
@@ -553,14 +573,16 @@ export async function applyJobReview(opts: {
   severity?: string | null;
   canManage: boolean;
   hasPhotos?: boolean;
+  reworkOrigin?: ReworkOrigin | null;
 }): Promise<
   | { ok: true; nextStatus: ReviewableStatus; completionNoteId: string | null; reworkId: string | null }
   | { ok: false; status: number; error: string }
 > {
-  const { actor, job, action, reason, category, comments, dueAt, severity, canManage, hasPhotos } = opts;
+  const { actor, job, action, reason, category, comments, dueAt, severity, canManage, hasPhotos, reworkOrigin: reworkOriginRaw } = opts;
   const isAssignee = job.assigneeId === actor.id;
   let nextStatus: ReviewableStatus;
   let createdReworkId: string | null = null;
+  let appliedReworkOrigin: ReworkOrigin | null = null;
 
   if (action === "submit_for_supervisor") {
     if (!isAssignee && !canManage) {
@@ -624,6 +646,11 @@ export async function applyJobReview(opts: {
     if (!reason?.trim()) {
       return { ok: false, status: 400, error: "Rework reason is required" };
     }
+    const { origin: reworkOrigin, error: originError } = resolveReworkOriginForActor(actor, reworkOriginRaw);
+    if (originError) {
+      return { ok: false, status: 400, error: originError };
+    }
+    appliedReworkOrigin = reworkOrigin;
     await stopAllActiveTimersOnJob(job.id);
     try {
       const { rework } = await createRework({
@@ -635,6 +662,7 @@ export async function applyJobReview(opts: {
         dueAt,
         severity,
         source: "job_rework",
+        reworkOrigin,
       });
       createdReworkId = rework.id;
       if (job.assigneeId) {
@@ -702,6 +730,7 @@ export async function applyJobReview(opts: {
     nextStatus,
     reason,
     comments: savedComment?.text ?? comments,
+    reworkOrigin: appliedReworkOrigin,
   });
 
   return { ok: true, nextStatus, completionNoteId: savedComment?.noteId ?? null, reworkId: createdReworkId };

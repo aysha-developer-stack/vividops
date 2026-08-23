@@ -15,9 +15,10 @@ import {
 import { requireAuth } from "../middlewares/requireAuth";
 import { jobHasCompletedDeliverables } from "../lib/job-review";
 import { logger } from "../lib/logger";
-import { createNotification, notifyJobManagers, previewText } from "../lib/notifications";
+import { createNotification, notifyAllJobMembers, notifyJobManagers, previewText } from "../lib/notifications";
 import { ensureJobWriteSchema } from "../lib/schema-init";
 import { createRework, findActiveReworkForCompletedUpload, markOpenReworksAwaitingReview } from "../lib/reworks";
+import { resolveReworkOriginForActor, reworkOriginLabel } from "../lib/rework-origin";
 import {
   validateReworkUploadsBeforeChecklistComplete,
 } from "../lib/rework-completion-validation";
@@ -380,6 +381,14 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         // keep default label
       }
 
+      const { origin: reworkOrigin, error: originError } = resolveReworkOriginForActor(
+        actor,
+        req.body?.reworkOrigin,
+      );
+      if (originError) {
+        return res.status(400).json({ error: originError });
+      }
+
       const { rework } = await createRework({
         actor,
         job,
@@ -392,14 +401,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         severity,
         source: "checklist_rework",
         title: `Rework: ${checklistItemLabel}`,
-      });
-
-      await createNotification({
-        userId: targetUserId,
-        jobId: jobId,
-        title: `Checklist Rework Required: ${job.title}`,
-        description: `Rework requested on Item #${itemId}. Reason: ${reworkReason || "No reason provided."}`,
-        type: "rework"
+        reworkOrigin,
       });
 
       const reworkDetail = [
@@ -409,16 +411,45 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         .filter(Boolean)
         .join(" ");
 
-      await notifyJobManagers({
-        jobId,
-        supervisorId: job.supervisorId,
-        actorId: actor.id,
-        title: `Rework on ${job.title}`,
-        description: `${actor.name} requested rework on ${job.title}. ${previewText(reworkDetail, 200)}`,
-        type: "rework",
-      });
+      const originLabel = reworkOriginLabel(rework.reworkOrigin);
+      const notifyTitle = originLabel
+        ? `${originLabel}: Checklist Rework — ${job.title}`
+        : `Checklist Rework Required: ${job.title}`;
 
-      return res.json({ reworkId: rework.id, cycleNumber: rework.cycleNumber });
+      if (rework.reworkOrigin) {
+        await notifyAllJobMembers({
+          jobId,
+          assigneeId: job.assigneeId,
+          supervisorId: job.supervisorId,
+          actorId: actor.id,
+          title: notifyTitle,
+          description: `${actor.name} requested rework on ${job.title} (Item #${itemId}). ${previewText(reworkDetail, 200)}`,
+          type: "rework",
+        });
+      } else {
+        await createNotification({
+          userId: targetUserId,
+          jobId: jobId,
+          title: `Checklist Rework Required: ${job.title}`,
+          description: `Rework requested on Item #${itemId}. Reason: ${reworkReason || "No reason provided."}`,
+          type: "rework",
+        });
+
+        await notifyJobManagers({
+          jobId,
+          supervisorId: job.supervisorId,
+          actorId: actor.id,
+          title: `Rework on ${job.title}`,
+          description: `${actor.name} requested rework on ${job.title}. ${previewText(reworkDetail, 200)}`,
+          type: "rework",
+        });
+      }
+
+      return res.json({
+        reworkId: rework.id,
+        cycleNumber: rework.cycleNumber,
+        reworkOrigin: rework.reworkOrigin,
+      });
     }
 
     if (ownChecklistWork && status === "completed") {
