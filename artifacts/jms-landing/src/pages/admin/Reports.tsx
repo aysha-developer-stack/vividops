@@ -512,7 +512,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
 
   const usersP = usePagination(filteredUsers, 50);
   const timeP = usePagination(filteredTime, 8);
-  const dailyP = usePagination(filteredDailyRows, 20);
+  const dailyP = usePagination(filteredDailyRows, 100);
 
   const platformJobStats = useMemo(() => {
     const jobs = (apiJobs ?? []).filter(isJobInPeriod);
