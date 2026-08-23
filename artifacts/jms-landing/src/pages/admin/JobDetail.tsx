@@ -3685,13 +3685,6 @@ export default function JobDetail({ role = "user", id }: Props) {
                 className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-primary mb-4"
               />
               <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Attach rework files (optional)</label>
-              <p className="text-[11px] text-gray-500 mb-2">
-                {canPickReworkOrigin && reworkOrigin === "external"
-                  ? "Files will be saved in Job Files with an External rework label."
-                  : canPickReworkOrigin && reworkOrigin === "internal"
-                    ? "Files will be saved in the Rework section with an Internal rework label."
-                    : "Images, videos, PDFs, Word, and any other file type. Shown to the worker in the Rework section on the Files tab."}
-              </p>
               <FileDropzone
                 accept={JOB_FILE_ACCEPT}
                 label="Drop rework instruction files or folders"
