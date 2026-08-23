@@ -170,8 +170,8 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const [dailyUserFilter, setDailyUserFilter] = useState("all");
   const [dailyReport, setDailyReport] = useState<DailyTimeReport | null>(null);
   const [dailyLoading, setDailyLoading] = useState(false);
-  const [dailyChartDateFrom, setDailyChartDateFrom] = useState("");
-  const [dailyChartDateTo, setDailyChartDateTo] = useState("");
+  const [dailyDateFrom, setDailyDateFrom] = useState("");
+  const [dailyDateTo, setDailyDateTo] = useState("");
 
   useEffect(() => {
     const placeholder =
@@ -209,6 +209,14 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     return { from: formatDatePkt(periodStartMs!), to };
   }, [periodAnchorMs, periodDays, periodStartMs]);
 
+  const effectiveDailyRange = useMemo(() => {
+    if (!dailyDateFrom && !dailyDateTo) return dailyRange;
+    return {
+      from: dailyDateFrom || dailyRange.from,
+      to: dailyDateTo || dailyRange.to,
+    };
+  }, [dailyRange, dailyDateFrom, dailyDateTo]);
+
   useEffect(() => {
     if (activeTab !== "daily" || !canViewDailyReport) return;
     let cancelled = false;
@@ -216,8 +224,8 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
       setDailyLoading(true);
       try {
         const params = new URLSearchParams({
-          from: dailyRange.from,
-          to: dailyRange.to,
+          from: effectiveDailyRange.from,
+          to: effectiveDailyRange.to,
         });
         if (dailyUserFilter !== "all") params.set("userId", dailyUserFilter);
         const res = await fetch(`/api/reports/daily-time?${params.toString()}`, {
@@ -233,12 +241,12 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
       }
     })();
     return () => { cancelled = true; };
-  }, [activeTab, canViewDailyReport, dailyRange.from, dailyRange.to, dailyUserFilter]);
+  }, [activeTab, canViewDailyReport, effectiveDailyRange.from, effectiveDailyRange.to, dailyUserFilter]);
 
   useEffect(() => {
-    setDailyChartDateFrom("");
-    setDailyChartDateTo("");
-  }, [dailyUserFilter, dailyRange.from, dailyRange.to]);
+    setDailyDateFrom("");
+    setDailyDateTo("");
+  }, [period]);
 
   const isJobInPeriod = (j: any) => {
     if (!periodStartMs) return true;
@@ -446,6 +454,8 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     setSearch(""); setUserRoleFilter("All");
     setMinScore(0);
     setDailyUserFilter("all");
+    setDailyDateFrom("");
+    setDailyDateTo("");
   };
 
   const isFilterableTab =
@@ -467,10 +477,13 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
       return base;
     }
     if (activeTab === "daily") {
-      return base + (dailyUserFilter !== "all" ? 1 : 0);
+      return base
+        + (dailyUserFilter !== "all" ? 1 : 0)
+        + (dailyDateFrom ? 1 : 0)
+        + (dailyDateTo ? 1 : 0);
     }
     return base;
-  }, [activeTab, isFilterableTab, search, userRoleFilter, minScore, dailyUserFilter]);
+  }, [activeTab, isFilterableTab, search, userRoleFilter, minScore, dailyUserFilter, dailyDateFrom, dailyDateTo]);
   const isSuperAdmin = role === "super-admin";
   const ROLE_FILTERS: ("All" | UserRoleLabel)[] = isSuperAdmin
     ? ["All", "Admin", "Supervisor", "User"]
@@ -509,11 +522,13 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
 
   const dailyChartRows = useMemo(() => {
     if (dailyUserFilter === "all") return [];
-    let rows = [...filteredDailyRows].sort((a, b) => a.date.localeCompare(b.date));
-    if (dailyChartDateFrom) rows = rows.filter((row) => row.date >= dailyChartDateFrom);
-    if (dailyChartDateTo) rows = rows.filter((row) => row.date <= dailyChartDateTo);
-    return rows;
-  }, [filteredDailyRows, dailyUserFilter, dailyChartDateFrom, dailyChartDateTo]);
+    return [...filteredDailyRows].sort((a, b) => a.date.localeCompare(b.date));
+  }, [filteredDailyRows, dailyUserFilter]);
+
+  const filteredDailyTotals = useMemo(() => {
+    return (dailyReport?.userTotals ?? [])
+      .filter((total) => !search.trim() || total.userName.toLowerCase().includes(search.toLowerCase()));
+  }, [dailyReport, search]);
 
   const dailyChartMaxSeconds = useMemo(
     () => dailyChartRows.reduce((max, row) => Math.max(max, row.totalSeconds), 0),
@@ -522,7 +537,8 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
 
   const usersP = usePagination(filteredUsers, 50);
   const timeP = usePagination(filteredTime, 8);
-  const dailyP = usePagination(filteredDailyRows, 100);
+  const dailyP = usePagination(filteredDailyRows, 30);
+  const dailyTotalsP = usePagination(filteredDailyTotals, 30);
   const dailyChartP = usePagination(dailyChartRows, 30);
 
   const platformJobStats = useMemo(() => {
@@ -868,7 +884,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `daily-time-${workerLabel}-${dailyRange.from}-to-${dailyRange.to}.csv`;
+    a.download = `daily-time-${workerLabel}-${effectiveDailyRange.from}-to-${effectiveDailyRange.to}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -920,7 +936,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 </style></head><body>
 <button class="btn no-print" onclick="window.print()">Save as PDF</button>
 <div class="brand"><img src="${logoUrl}" alt="Vivid OPS"><div class="meta"><strong>Daily Time Report</strong>Generated ${new Date().toLocaleString()}<br>Period: ${periodLabel}<br>Timezone: ${dailyReport?.timezone ?? REPORT_TZ}</div></div>
-<p class="sub">Worker filter: ${workerName} · Range: ${dailyRange.from} to ${dailyRange.to}${search ? ` · search="${search.replaceAll('"', "&quot;")}"` : ""}</p>
+<p class="sub">Worker filter: ${workerName} · Range: ${effectiveDailyRange.from} to ${effectiveDailyRange.to}${search ? ` · search="${search.replaceAll('"', "&quot;")}"` : ""}</p>
 <div class="grid">
   <div class="kpi"><div class="l">Total hours</div><div class="v">${formatDurationSeconds(dailySummary.totalSeconds)}</div></div>
   <div class="kpi"><div class="l">Workers</div><div class="v">${dailySummary.uniqueWorkers}</div></div>
@@ -1016,19 +1032,43 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                     )}
 
                     {activeTab === "daily" && (
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Worker</label>
-                        <select
-                          value={dailyUserFilter}
-                          onChange={(e) => setDailyUserFilter(e.target.value)}
-                          className="w-full mt-1.5 px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:border-primary"
-                        >
-                          <option value="all">All workers</option>
-                          {dailyWorkers.map((worker) => (
-                            <option key={worker.id} value={worker.id}>{worker.name}</option>
-                          ))}
-                        </select>
-                      </div>
+                      <>
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Worker</label>
+                          <select
+                            value={dailyUserFilter}
+                            onChange={(e) => setDailyUserFilter(e.target.value)}
+                            className="w-full mt-1.5 px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:border-primary"
+                          >
+                            <option value="all">All workers</option>
+                            {dailyWorkers.map((worker) => (
+                              <option key={worker.id} value={worker.id}>{worker.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Date from</label>
+                          <input
+                            type="date"
+                            value={dailyDateFrom}
+                            min={dailyRange.from}
+                            max={dailyDateTo || dailyRange.to}
+                            onChange={(e) => setDailyDateFrom(e.target.value)}
+                            className="w-full mt-1.5 px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:border-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Date to</label>
+                          <input
+                            type="date"
+                            value={dailyDateTo}
+                            min={dailyDateFrom || dailyRange.from}
+                            max={dailyRange.to}
+                            onChange={(e) => setDailyDateTo(e.target.value)}
+                            className="w-full mt-1.5 px-3 py-2 text-xs border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:border-primary"
+                          />
+                        </div>
+                      </>
                     )}
 
                   </div>
@@ -1276,25 +1316,57 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 
               {activeTab === "daily" && canViewDailyReport && (
                 <div className="space-y-5">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-4">
                     <div>
                       <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
                         <CalendarDays size={16} className="text-primary" /> Daily worker time
                       </h3>
                       <p className="text-[11px] text-gray-500 mt-0.5">
-                        Hours logged per calendar day ({dailyReport?.timezone ?? REPORT_TZ}) · {dailyRange.from} to {dailyRange.to}
+                        Hours logged per calendar day ({dailyReport?.timezone ?? REPORT_TZ}) · {effectiveDailyRange.from} to {effectiveDailyRange.to}
                       </p>
                     </div>
-                    <select
-                      value={dailyUserFilter}
-                      onChange={(e) => setDailyUserFilter(e.target.value)}
-                      className="px-3 py-2 text-xs border border-gray-200 rounded-xl bg-white text-gray-900 focus:outline-none focus:border-primary min-w-[180px]"
-                    >
-                      <option value="all">All workers</option>
-                      {dailyWorkers.map((worker) => (
-                        <option key={worker.id} value={worker.id}>{worker.name}</option>
-                      ))}
-                    </select>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">From</label>
+                      <input
+                        type="date"
+                        value={dailyDateFrom}
+                        min={dailyRange.from}
+                        max={dailyDateTo || dailyRange.to}
+                        onChange={(e) => setDailyDateFrom(e.target.value)}
+                        className="px-2.5 py-2 text-xs border border-gray-200 rounded-xl bg-white text-gray-900 focus:outline-none focus:border-primary"
+                      />
+                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">To</label>
+                      <input
+                        type="date"
+                        value={dailyDateTo}
+                        min={dailyDateFrom || dailyRange.from}
+                        max={dailyRange.to}
+                        onChange={(e) => setDailyDateTo(e.target.value)}
+                        className="px-2.5 py-2 text-xs border border-gray-200 rounded-xl bg-white text-gray-900 focus:outline-none focus:border-primary"
+                      />
+                      {(dailyDateFrom || dailyDateTo) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDailyDateFrom("");
+                            setDailyDateTo("");
+                          }}
+                          className="px-2.5 py-2 text-xs font-semibold text-gray-500 hover:text-gray-900"
+                        >
+                          Clear dates
+                        </button>
+                      )}
+                      <select
+                        value={dailyUserFilter}
+                        onChange={(e) => setDailyUserFilter(e.target.value)}
+                        className="px-3 py-2 text-xs border border-gray-200 rounded-xl bg-white text-gray-900 focus:outline-none focus:border-primary min-w-[180px]"
+                      >
+                        <option value="all">All workers</option>
+                        {dailyWorkers.map((worker) => (
+                          <option key={worker.id} value={worker.id}>{worker.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1317,42 +1389,8 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 
                   {dailyUserFilter !== "all" && (
                     <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
-                      <div className="p-5 border-b border-gray-100">
-                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                          <h4 className="font-bold text-gray-900">Daily hours trend</h4>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">From</label>
-                            <input
-                              type="date"
-                              value={dailyChartDateFrom}
-                              min={dailyRange.from}
-                              max={dailyChartDateTo || dailyRange.to}
-                              onChange={(e) => setDailyChartDateFrom(e.target.value)}
-                              className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:border-primary"
-                            />
-                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">To</label>
-                            <input
-                              type="date"
-                              value={dailyChartDateTo}
-                              min={dailyChartDateFrom || dailyRange.from}
-                              max={dailyRange.to}
-                              onChange={(e) => setDailyChartDateTo(e.target.value)}
-                              className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:border-primary"
-                            />
-                            {(dailyChartDateFrom || dailyChartDateTo) && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setDailyChartDateFrom("");
-                                  setDailyChartDateTo("");
-                                }}
-                                className="px-2.5 py-1.5 text-xs font-semibold text-gray-500 hover:text-gray-900"
-                              >
-                                Clear
-                              </button>
-                            )}
-                          </div>
-                        </div>
+                      <div className="px-5 py-4 border-b border-gray-100">
+                        <h4 className="font-bold text-gray-900">Daily hours trend</h4>
                       </div>
                       {dailyChartRows.length === 0 ? (
                         <div className="p-8 text-center text-sm text-gray-400">
@@ -1391,7 +1429,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                     </div>
                   )}
 
-                  {(dailyReport?.userTotals ?? []).length > 0 && dailyUserFilter === "all" && (
+                  {filteredDailyTotals.length > 0 && dailyUserFilter === "all" && (
                     <div className="rounded-xl border border-gray-100 overflow-hidden">
                       <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80">
                         <h4 className="text-sm font-bold text-gray-900">Per-worker totals</h4>
@@ -1405,9 +1443,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                           </tr>
                         </thead>
                         <tbody>
-                          {(dailyReport?.userTotals ?? [])
-                            .filter((total) => !search.trim() || total.userName.toLowerCase().includes(search.toLowerCase()))
-                            .map((total) => {
+                          {dailyTotalsP.pageItems.map((total) => {
                               const badge = ROLE_BADGE[USER_ROLE_LABEL[total.userRole] as UserRoleLabel] ?? ROLE_BADGE.User;
                               const Icon = badge.icon;
                               return (
@@ -1427,10 +1463,21 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                             })}
                         </tbody>
                       </table>
+                      <Pagination
+                        page={dailyTotalsP.page}
+                        totalPages={dailyTotalsP.totalPages}
+                        total={dailyTotalsP.total}
+                        pageSize={dailyTotalsP.pageSize}
+                        onChange={dailyTotalsP.setPage}
+                        label="workers"
+                      />
                     </div>
                   )}
 
                   <div className="rounded-xl border border-gray-100 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80">
+                      <h4 className="text-sm font-bold text-gray-900">Daily breakdown</h4>
+                    </div>
                     <table className="w-full">
                       <thead>
                         <tr>
@@ -1472,7 +1519,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                         })}
                       </tbody>
                     </table>
-                    <Pagination page={dailyP.page} totalPages={dailyP.totalPages} total={dailyP.total} pageSize={dailyP.pageSize} onChange={dailyP.setPage} label="days" />
+                    <Pagination page={dailyP.page} totalPages={dailyP.totalPages} total={dailyP.total} pageSize={dailyP.pageSize} onChange={dailyP.setPage} label="entries" />
                   </div>
                 </div>
               )}
