@@ -23,6 +23,8 @@ export const jobAttachments = pgTable(
     fileCategory: text("file_category").notNull().default("job"),
     /** Links review/completion photos to a job_notes completion entry */
     reviewNoteId: uuid("review_note_id"),
+    /** Links supervisor rework instruction files to a job_reworks row */
+    reworkId: uuid("rework_id"),
     uploadedById: uuid("uploaded_by_id")
       .notNull()
       .references(() => users.id),

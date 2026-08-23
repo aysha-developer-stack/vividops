@@ -543,12 +543,13 @@ export async function applyJobReview(opts: {
   canManage: boolean;
   hasPhotos?: boolean;
 }): Promise<
-  | { ok: true; nextStatus: ReviewableStatus; completionNoteId: string | null }
+  | { ok: true; nextStatus: ReviewableStatus; completionNoteId: string | null; reworkId: string | null }
   | { ok: false; status: number; error: string }
 > {
   const { actor, job, action, reason, category, comments, dueAt, severity, canManage, hasPhotos } = opts;
   const isAssignee = job.assigneeId === actor.id;
   let nextStatus: ReviewableStatus;
+  let createdReworkId: string | null = null;
 
   if (action === "submit_for_supervisor") {
     if (!isAssignee && !canManage) {
@@ -614,7 +615,7 @@ export async function applyJobReview(opts: {
     }
     await stopAllActiveTimersOnJob(job.id);
     try {
-      await createRework({
+      const { rework } = await createRework({
         actor,
         job,
         reason,
@@ -624,6 +625,7 @@ export async function applyJobReview(opts: {
         severity,
         source: "job_rework",
       });
+      createdReworkId = rework.id;
       if (job.assigneeId) {
         await reopenChecklistForRework(job, job.assigneeId, reason.trim());
       }
@@ -691,5 +693,5 @@ export async function applyJobReview(opts: {
     comments: savedComment?.text ?? comments,
   });
 
-  return { ok: true, nextStatus, completionNoteId: savedComment?.noteId ?? null };
+  return { ok: true, nextStatus, completionNoteId: savedComment?.noteId ?? null, reworkId: createdReworkId };
 }

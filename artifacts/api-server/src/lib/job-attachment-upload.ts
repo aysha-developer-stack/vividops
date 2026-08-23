@@ -1,7 +1,7 @@
 import type { JobRow, UserRow } from "@workspace/db";
 import { isFieldWorkerOnJob } from "./working-supervisor";
 
-export type AttachmentFileCategory = "job" | "completed" | "review";
+export type AttachmentFileCategory = "job" | "completed" | "review" | "rework";
 
 export type ParsedAttachmentUpload = {
   checklistItemId: number;
@@ -10,6 +10,7 @@ export type ParsedAttachmentUpload = {
   treatAsFieldWorker: boolean;
   fileCategory: AttachmentFileCategory;
   reviewNoteId: string | null;
+  reworkId: string | null;
   suppressNotifications: boolean;
 };
 
@@ -25,7 +26,9 @@ export function buildJobAttachmentFolder(jobRow: JobRow, fileCategory: Attachmen
       ? "completed-files"
       : fileCategory === "review"
         ? "review-photos"
-        : "job-files";
+        : fileCategory === "rework"
+          ? "rework-files"
+          : "job-files";
   return `jobs/${jobFolder}/${subfolder}`;
 }
 
@@ -57,20 +60,28 @@ export function parseAttachmentUploadBody(
   const treatAsFieldWorker = isFieldWorkerOnJob(actor, jobRow);
 
   const fileCategory: AttachmentFileCategory =
-    categoryRaw === "review"
-      ? "review"
-      : categoryRaw === "completed"
-        ? "completed"
-        : categoryRaw === "job"
-          ? "job"
-          : treatAsFieldWorker
-            ? "completed"
-            : "job";
+    categoryRaw === "rework"
+      ? "rework"
+      : categoryRaw === "review"
+        ? "review"
+        : categoryRaw === "completed"
+          ? "completed"
+          : categoryRaw === "job"
+            ? "job"
+            : treatAsFieldWorker
+              ? "completed"
+              : "job";
 
   const reviewNoteRaw = body.reviewNoteId;
   const reviewNoteId =
     typeof reviewNoteRaw === "string" && reviewNoteRaw.trim().length > 0
       ? reviewNoteRaw.trim()
+      : null;
+
+  const reworkIdRaw = body.reworkId;
+  const reworkId =
+    typeof reworkIdRaw === "string" && reworkIdRaw.trim().length > 0
+      ? reworkIdRaw.trim()
       : null;
 
   const suppressNotifications =
@@ -84,6 +95,7 @@ export function parseAttachmentUploadBody(
     treatAsFieldWorker,
     fileCategory,
     reviewNoteId,
+    reworkId,
     suppressNotifications,
   };
 }

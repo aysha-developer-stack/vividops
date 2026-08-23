@@ -339,7 +339,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         // keep default label
       }
 
-      await createRework({
+      const { rework } = await createRework({
         actor,
         job,
         userId: targetUserId,
@@ -376,6 +376,8 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         description: `${actor.name} requested rework on ${job.title}. ${previewText(reworkDetail, 200)}`,
         type: "rework",
       });
+
+      return res.json({ reworkId: rework.id, cycleNumber: rework.cycleNumber });
     }
 
     if (ownChecklistWork && status === "completed") {

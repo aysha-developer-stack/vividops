@@ -2419,7 +2419,7 @@ router.post("/jobs/:id/review", requireAuth, async (req, res) => {
 
     const after = await loadJob(id);
     const publicJob = await toPublicWithAssignees(after!);
-    return res.json({ ...publicJob, completionNoteId: result.completionNoteId });
+    return res.json({ ...publicJob, completionNoteId: result.completionNoteId, reworkId: result.reworkId });
   } catch (err) {
     logger.error({ err }, "Failed to review job");
     return res.status(500).json({ error: "Failed to review job" });
