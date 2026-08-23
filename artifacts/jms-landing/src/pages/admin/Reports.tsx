@@ -170,6 +170,8 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const [dailyUserFilter, setDailyUserFilter] = useState("all");
   const [dailyReport, setDailyReport] = useState<DailyTimeReport | null>(null);
   const [dailyLoading, setDailyLoading] = useState(false);
+  const [dailyChartDateFrom, setDailyChartDateFrom] = useState("");
+  const [dailyChartDateTo, setDailyChartDateTo] = useState("");
 
   useEffect(() => {
     const placeholder =
@@ -232,6 +234,11 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     })();
     return () => { cancelled = true; };
   }, [activeTab, canViewDailyReport, dailyRange.from, dailyRange.to, dailyUserFilter]);
+
+  useEffect(() => {
+    setDailyChartDateFrom("");
+    setDailyChartDateTo("");
+  }, [dailyUserFilter, dailyRange.from, dailyRange.to]);
 
   const isJobInPeriod = (j: any) => {
     if (!periodStartMs) return true;
@@ -502,8 +509,11 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
 
   const dailyChartRows = useMemo(() => {
     if (dailyUserFilter === "all") return [];
-    return [...filteredDailyRows].sort((a, b) => a.date.localeCompare(b.date));
-  }, [filteredDailyRows, dailyUserFilter]);
+    let rows = [...filteredDailyRows].sort((a, b) => a.date.localeCompare(b.date));
+    if (dailyChartDateFrom) rows = rows.filter((row) => row.date >= dailyChartDateFrom);
+    if (dailyChartDateTo) rows = rows.filter((row) => row.date <= dailyChartDateTo);
+    return rows;
+  }, [filteredDailyRows, dailyUserFilter, dailyChartDateFrom, dailyChartDateTo]);
 
   const dailyChartMaxSeconds = useMemo(
     () => dailyChartRows.reduce((max, row) => Math.max(max, row.totalSeconds), 0),
@@ -513,6 +523,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const usersP = usePagination(filteredUsers, 50);
   const timeP = usePagination(filteredTime, 8);
   const dailyP = usePagination(filteredDailyRows, 100);
+  const dailyChartP = usePagination(dailyChartRows, 30);
 
   const platformJobStats = useMemo(() => {
     const jobs = (apiJobs ?? []).filter(isJobInPeriod);
@@ -1304,27 +1315,79 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                     })}
                   </div>
 
-                  {dailyUserFilter !== "all" && dailyChartRows.length > 0 && (
-                    <div className="rounded-xl border border-gray-100 p-5 bg-white">
-                      <h4 className="font-bold text-gray-900 mb-4">Daily hours trend</h4>
-                      <div className="space-y-3">
-                        {dailyChartRows.map((row) => {
-                          const widthPct = dailyChartMaxSeconds > 0
-                            ? Math.max(4, Math.round((row.totalSeconds / dailyChartMaxSeconds) * 100))
-                            : 0;
-                          return (
-                            <div key={row.date} className="grid grid-cols-[120px_1fr_80px] items-center gap-3">
-                              <span className="text-xs text-gray-600">{formatDisplayDate(row.date)}</span>
-                              <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                                <div className="h-full bg-primary rounded-full" style={{ width: `${widthPct}%` }} />
-                              </div>
-                              <span className="text-xs font-semibold text-gray-900 text-right tabular-nums">
-                                {formatDurationSeconds(row.totalSeconds)}
-                              </span>
-                            </div>
-                          );
-                        })}
+                  {dailyUserFilter !== "all" && (
+                    <div className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+                      <div className="p-5 border-b border-gray-100">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                          <h4 className="font-bold text-gray-900">Daily hours trend</h4>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">From</label>
+                            <input
+                              type="date"
+                              value={dailyChartDateFrom}
+                              min={dailyRange.from}
+                              max={dailyChartDateTo || dailyRange.to}
+                              onChange={(e) => setDailyChartDateFrom(e.target.value)}
+                              className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:border-primary"
+                            />
+                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">To</label>
+                            <input
+                              type="date"
+                              value={dailyChartDateTo}
+                              min={dailyChartDateFrom || dailyRange.from}
+                              max={dailyRange.to}
+                              onChange={(e) => setDailyChartDateTo(e.target.value)}
+                              className="px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:border-primary"
+                            />
+                            {(dailyChartDateFrom || dailyChartDateTo) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDailyChartDateFrom("");
+                                  setDailyChartDateTo("");
+                                }}
+                                className="px-2.5 py-1.5 text-xs font-semibold text-gray-500 hover:text-gray-900"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
+                      {dailyChartRows.length === 0 ? (
+                        <div className="p-8 text-center text-sm text-gray-400">
+                          No daily hours for the selected date range.
+                        </div>
+                      ) : (
+                        <>
+                          <div className="p-5 space-y-3">
+                            {dailyChartP.pageItems.map((row) => {
+                              const widthPct = dailyChartMaxSeconds > 0
+                                ? Math.max(4, Math.round((row.totalSeconds / dailyChartMaxSeconds) * 100))
+                                : 0;
+                              return (
+                                <div key={`${row.userId}-${row.date}`} className="grid grid-cols-[120px_1fr_80px] items-center gap-3">
+                                  <span className="text-xs text-gray-600">{formatDisplayDate(row.date)}</span>
+                                  <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                                    <div className="h-full bg-primary rounded-full" style={{ width: `${widthPct}%` }} />
+                                  </div>
+                                  <span className="text-xs font-semibold text-gray-900 text-right tabular-nums">
+                                    {formatDurationSeconds(row.totalSeconds)}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <Pagination
+                            page={dailyChartP.page}
+                            totalPages={dailyChartP.totalPages}
+                            total={dailyChartP.total}
+                            pageSize={dailyChartP.pageSize}
+                            onChange={dailyChartP.setPage}
+                            label="days"
+                          />
+                        </>
+                      )}
                     </div>
                   )}
 
