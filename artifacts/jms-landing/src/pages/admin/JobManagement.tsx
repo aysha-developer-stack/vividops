@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from "react";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, MoreVertical, Edit2, Trash2, UserPlus, X,
@@ -1098,11 +1098,12 @@ export default function JobManagement(
                             </motion.button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem asChild>
-                              <Link href={`${basePath}/${j.id}`} className="flex items-center">
-                                <ExternalLink size={14} className="mr-2 text-gray-400" />
-                                View / Track
-                              </Link>
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onClick={() => setLocation(`${basePath}/${j.id}`)}
+                            >
+                              <ExternalLink size={14} className="mr-2 text-gray-400" />
+                              View / Track
                             </DropdownMenuItem>
                             {role !== "user" && (
                               <>
@@ -1170,11 +1171,12 @@ export default function JobManagement(
                                 )}
                                 {(role === "supervisor" || role === "admin" || role === "super-admin") &&
                                   j.status !== "Done" && (
-                                  <DropdownMenuItem asChild>
-                                    <Link href={`${basePath}/${j.id}`} className="flex items-center">
-                                      <RefreshCw size={14} className="mr-2 text-amber-500" />
-                                      Review / Rework
-                                    </Link>
+                                  <DropdownMenuItem
+                                    className="cursor-pointer"
+                                    onClick={() => setLocation(`${basePath}/${j.id}`)}
+                                  >
+                                    <RefreshCw size={14} className="mr-2 text-amber-500" />
+                                    Review / Rework
                                   </DropdownMenuItem>
                                 )}
                                 {(role === "admin" || role === "super-admin") &&
