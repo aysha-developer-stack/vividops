@@ -537,7 +537,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
 
   const usersP = usePagination(filteredUsers, 50);
   const timeP = usePagination(filteredTime, 8);
-  const dailyP = usePagination(filteredDailyRows, 30);
+  const dailyP = usePagination(filteredDailyRows, 100);
   const dailyTotalsP = usePagination(filteredDailyTotals, 30);
   const dailyChartP = usePagination(dailyChartRows, 30);
 
