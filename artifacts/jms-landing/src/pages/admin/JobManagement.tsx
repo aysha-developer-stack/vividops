@@ -2,8 +2,8 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus, Search, MoreVertical, Edit2, Trash2, UserPlus, X,
-  Calendar, ExternalLink, CheckCircle2, Download, Loader2, Clock, RefreshCw, Pause, Play,
+  Plus, Search, MoreVertical, Trash2, UserPlus, X,
+  Calendar, ExternalLink, CheckCircle2, Download, Loader2, Clock, Pause, Play,
 } from "lucide-react";
 import FileExtensionIcon from "@/components/FileExtensionIcon";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -1103,60 +1103,31 @@ export default function JobManagement(
                               onClick={() => setLocation(`${basePath}/${j.id}`)}
                             >
                               <ExternalLink size={14} className="mr-2 text-gray-400" />
-                              View / Track
+                              Open job
                             </DropdownMenuItem>
                             {role !== "user" && (
                               <>
-                                <DropdownMenuItem onClick={() => startEdit(j)}>
-                                  <Edit2 size={14} className="mr-2 text-gray-400" />
-                                  Edit
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => startReassign(j)}>
+                                <DropdownMenuItem className="cursor-pointer" onClick={() => startReassign(j)}>
                                   <UserPlus size={14} className="mr-2 text-gray-400" />
                                   Reassign
                                 </DropdownMenuItem>
-                                {(role === "supervisor") && j.status === "Awaiting Supervisor" && (
-                                  <DropdownMenuItem
-                                    onClick={async () => {
-                                      setOpenId(null);
-                                      try {
-                                        const res = await fetch(`/api/jobs/${j.id}/review`, {
-                                          method: "POST",
-                                          credentials: "include",
-                                          headers: { "Content-Type": "application/json" },
-                                          body: JSON.stringify({ action: "supervisor_approve" }),
-                                        });
-                                        if (!res.ok) {
-                                          const data = await res.json().catch(() => ({}));
-                                          throw new Error((data as any).error || "Failed to approve");
-                                        }
-                                        await invalidateJobs();
-                                      } catch (err) {
-                                        setError(err instanceof Error ? err.message : "Failed to approve");
-                                      }
-                                    }}
-                                  >
-                                    <CheckCircle2 size={14} className="mr-2 text-emerald-500" />
-                                    Approve for Admin
-                                  </DropdownMenuItem>
-                                )}
                                 {(role === "admin" || role === "super-admin") &&
                                   (j.status === "Awaiting Supervisor" || j.status === "In Progress") && (
-                                  <DropdownMenuItem onClick={() => markCompleted(j)}>
+                                  <DropdownMenuItem className="cursor-pointer" onClick={() => markCompleted(j)}>
                                     <CheckCircle2 size={14} className="mr-2 text-emerald-500" />
                                     Check & Complete
                                   </DropdownMenuItem>
                                 )}
                                 {(role === "admin" || role === "super-admin") &&
                                   j.status === "Awaiting Admin" && (
-                                  <DropdownMenuItem onClick={() => markCompleted(j)}>
-                                    <CheckCircle2 size={14} className="mr-2 text-gray-400" />
+                                  <DropdownMenuItem className="cursor-pointer" onClick={() => markCompleted(j)}>
+                                    <CheckCircle2 size={14} className="mr-2 text-emerald-500" />
                                     Complete Job
                                   </DropdownMenuItem>
                                 )}
                                 {(role === "supervisor" || role === "admin" || role === "super-admin") &&
                                   j.status === "On Hold" && (
-                                  <DropdownMenuItem onClick={() => resumeFromHold(j)}>
+                                  <DropdownMenuItem className="cursor-pointer" onClick={() => resumeFromHold(j)}>
                                     <Play size={14} className="mr-2 text-emerald-500" />
                                     Resume Job
                                   </DropdownMenuItem>
@@ -1164,30 +1135,9 @@ export default function JobManagement(
                                 {(role === "supervisor" || role === "admin" || role === "super-admin") &&
                                   j.status !== "Done" &&
                                   j.status !== "On Hold" && (
-                                  <DropdownMenuItem onClick={() => putOnHold(j)}>
+                                  <DropdownMenuItem className="cursor-pointer" onClick={() => putOnHold(j)}>
                                     <Pause size={14} className="mr-2 text-orange-500" />
                                     Put on Hold
-                                  </DropdownMenuItem>
-                                )}
-                                {(role === "supervisor" || role === "admin" || role === "super-admin") &&
-                                  j.status !== "Done" && (
-                                  <DropdownMenuItem
-                                    className="cursor-pointer"
-                                    onClick={() => setLocation(`${basePath}/${j.id}`)}
-                                  >
-                                    <RefreshCw size={14} className="mr-2 text-amber-500" />
-                                    Review / Rework
-                                  </DropdownMenuItem>
-                                )}
-                                {(role === "admin" || role === "super-admin") &&
-                                  j.status !== "Done" &&
-                                  j.status !== "Awaiting Supervisor" &&
-                                  j.status !== "In Progress" &&
-                                  j.status !== "Awaiting Admin" &&
-                                  j.status !== "On Hold" && (
-                                  <DropdownMenuItem onClick={() => markCompleted(j)}>
-                                    <CheckCircle2 size={14} className="mr-2 text-gray-400" />
-                                    Mark Completed
                                   </DropdownMenuItem>
                                 )}
                                 {(role === "admin" || role === "super-admin") && (
