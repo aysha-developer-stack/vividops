@@ -688,11 +688,11 @@ ${printButton}
 <table>
   <thead><tr><th>Metric</th><th>Value</th><th>Status</th></tr></thead>
   <tbody>
-    <tr><td>Hours logged</td><td>${formatDurationSeconds(u.hours)}</td><td>Timer work time</td></tr>
-    <tr><td>Average resolution time</td><td>${u.avg}</td><td>Job open → completed</td></tr>
+    <tr><td>Hours logged</td><td>${formatDurationSeconds(u.hours)}</td><td style="color:#64748b">—</td></tr>
+    <tr><td>Average resolution time</td><td>${u.avg}</td><td style="color:#64748b">—</td></tr>
     <tr><td>Rework cases</td><td>${u.rework}</td><td style="color:${u.rework > 3 ? "#dc2626" : u.rework > 0 ? "#d97706" : "#10b981"}">${u.rework > 3 ? "High" : u.rework > 0 ? "Moderate" : "Excellent"}</td></tr>
     <tr><td>Overdue jobs</td><td>${u.overdue}</td><td style="color:${u.overdue > 0 ? "#dc2626" : "#10b981"}">${u.overdue > 0 ? "Needs attention" : "On track"}</td></tr>
-    <tr><td>Performance score</td><td><span class="bar"><div></div></span>${u.score} / 100</td><td>${u.score >= 90 ? "Excellent" : u.score >= 80 ? "Good" : "Needs improvement"}</td></tr>
+    <tr><td>Performance score</td><td><span class="bar"><div></div></span>${u.score} / 100</td><td style="color:${u.score >= 90 ? "#10b981" : u.score >= 80 ? "#0B7EB9" : "#d97706"}">${u.score >= 90 ? "Excellent" : u.score >= 80 ? "Good" : "Needs improvement"}</td></tr>
   </tbody>
 </table>
 <h3>Notes</h3>
