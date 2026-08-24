@@ -1,6 +1,8 @@
 import type { JobRow, UserRow, ActiveTimerSessionRow } from "@workspace/db";
 
 export const TIMER_HEARTBEAT_LIVE_MS = 5 * 60 * 1000;
+/** If no heartbeat within this window, treat the segment as paused (sleep / lid closed). */
+export const TIMER_HEARTBEAT_GAP_PAUSE_MS = 90_000;
 
 export function timerSessionElapsedSeconds(
   session: Pick<ActiveTimerSessionRow, "accumulatedSeconds" | "segmentStartedAt">,
@@ -11,6 +13,24 @@ export function timerSessionElapsedSeconds(
   const segMs = session.segmentStartedAt.getTime();
   if (!Number.isFinite(segMs)) return base;
   return base + Math.max(0, Math.floor((nowMs - segMs) / 1000));
+}
+
+/** Billable seconds — only counts live segments up to the last heartbeat (+ grace). */
+export function timerSessionBillableSeconds(
+  session: Pick<
+    ActiveTimerSessionRow,
+    "accumulatedSeconds" | "segmentStartedAt" | "lastHeartbeatAt"
+  >,
+  nowMs = Date.now(),
+): number {
+  const base = Math.max(0, session.accumulatedSeconds ?? 0);
+  if (!session.segmentStartedAt) return base;
+  const segMs = session.segmentStartedAt.getTime();
+  if (!Number.isFinite(segMs)) return base;
+  const hbMs = session.lastHeartbeatAt?.getTime?.() ?? new Date(session.lastHeartbeatAt as Date).getTime();
+  const graceEndMs = Number.isFinite(hbMs) ? hbMs + TIMER_HEARTBEAT_GAP_PAUSE_MS : nowMs;
+  const effectiveEndMs = Math.min(nowMs, graceEndMs);
+  return base + Math.max(0, Math.floor((effectiveEndMs - segMs) / 1000));
 }
 
 export function isTimerSessionLive(

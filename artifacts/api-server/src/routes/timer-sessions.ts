@@ -20,6 +20,8 @@ import {
 } from "../lib/timer-sessions";
 import {
   stopTimerSessionAndSaveLog,
+  pauseTimerSessionAfterGap,
+  TIMER_HEARTBEAT_GAP_PAUSE_MS,
   workerMayStartTimerOnJobStatus,
 } from "../lib/persist-timer-session";
 import { flushReviewCheckSegment } from "../lib/persist-review-check-session";
@@ -333,6 +335,26 @@ router.post("/timer-sessions/heartbeat", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Timer is paused" });
     }
 
+    const now = new Date();
+    const gapMs = now.getTime() - session.lastHeartbeatAt.getTime();
+    if (gapMs > TIMER_HEARTBEAT_GAP_PAUSE_MS) {
+      const paused = await pauseTimerSessionAfterGap(session);
+      let job: Pick<JobRow, "jobNumber" | "title"> | null = null;
+      if (paused.jobId) {
+        const [j] = await db
+          .select({ jobNumber: jobs.jobNumber, title: jobs.title })
+          .from(jobs)
+          .where(eq(jobs.id, paused.jobId))
+          .limit(1);
+        job = j ?? null;
+      }
+      return res.json({
+        ...publicTimerSession(paused, job),
+        autoPaused: true,
+        reason: "sleep",
+      });
+    }
+
     if (session.jobId) {
       const [job] = await db
         .select({ status: jobs.status })
@@ -345,7 +367,6 @@ router.post("/timer-sessions/heartbeat", requireAuth, async (req, res) => {
       }
     }
 
-    const now = new Date();
     const [updated] = await db
       .update(activeTimerSessions)
       .set({ lastHeartbeatAt: now, updatedAt: now })

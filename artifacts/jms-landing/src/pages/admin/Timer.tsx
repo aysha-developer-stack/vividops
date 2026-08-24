@@ -13,7 +13,6 @@ import {
 } from "@/lib/timerNotifications";
 import {
   useGetTimeLogs,
-  useCreateTimeLog,
   useDeleteTimeLog,
   useListJobs,
   getGetJobQueryKey,
@@ -32,6 +31,7 @@ import {
   liveSessionElapsedSeconds,
   TIMER_HEARTBEAT_INTERVAL_MS,
 } from "@/lib/timerSessionApi";
+import { handleTimerHeartbeatSideEffects, useTimerAutoPauseOnHide } from "@/lib/useTimerAutoPauseOnHide";
 import { clearOtherJobTimerLocalStates, clearJobTimerState, writeJobTimerState } from "@/lib/jobTimerLocalState";
 
 interface Entry {
@@ -59,7 +59,6 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
   const { user: currentUser } = useAuth();
   const { data: apiLogs, isLoading: logsLoading } = useGetTimeLogs();
   const { data: apiJobs } = useListJobs();
-  const createLogMutation = useCreateTimeLog();
   const deleteLogMutation = useDeleteTimeLog();
 
   const [running, setRunning] = useState(false);
@@ -113,6 +112,30 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
   };
 
   const qc = useQueryClient();
+
+  const syncPausedFromServer = (session: { task: string; jobId: string | null; accumulatedSeconds: number; segmentStartedAt: string | null } | null) => {
+    setRunning(false);
+    if (!session) return;
+    const elapsed = liveSessionElapsedSeconds(session);
+    setSeconds(elapsed);
+    writeTimerState({
+      running: false,
+      startedAt: null,
+      accumulated: elapsed,
+      task: session.task,
+      jobId: session.jobId ?? "",
+    });
+    if (session.jobId) {
+      writeJobTimerState(session.jobId, {
+        running: false,
+        startedAt: null,
+        accumulated: elapsed,
+        task: session.task,
+      });
+    }
+  };
+
+  useTimerAutoPauseOnHide(running, syncPausedFromServer);
 
   const startTimer = async () => {
     const t = task.trim();
@@ -265,12 +288,28 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
 
   useEffect(() => {
     if (!running) return;
-    const id = window.setInterval(() => {
-      void heartbeatTimerSession().catch(() => {});
-    }, TIMER_HEARTBEAT_INTERVAL_MS);
-    void heartbeatTimerSession().catch(() => {});
+    const runHeartbeat = () => {
+      void heartbeatTimerSession()
+        .then((payload) => {
+          if (!payload) return;
+          return handleTimerHeartbeatSideEffects(payload, {
+            onAutoPaused: syncPausedFromServer,
+            onAutoStopped: (duration) => {
+              setRunning(false);
+              setSeconds(0);
+              writeTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
+              if (duration > 0) {
+                void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+              }
+            },
+          });
+        })
+        .catch(() => {});
+    };
+    const id = window.setInterval(runHeartbeat, TIMER_HEARTBEAT_INTERVAL_MS);
+    runHeartbeat();
     return () => window.clearInterval(id);
-  }, [running]);
+  }, [running, qc]);
 
   useEffect(() => {
     if (!running) {
@@ -314,13 +353,10 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
       });
     }, 1000);
     return () => { if (autoStopRef.current) clearInterval(autoStopRef.current); };
-  }, [showActivityPing, seconds, task, jobId, createLogMutation, role]);
+  }, [showActivityPing, seconds, task, jobId, role]);
 
   const stop = async () => {
-    const state = readTimerState();
-    const localDuration = computeElapsed(state);
-    const t = (state?.task ?? task).trim();
-    const jid = (state?.jobId ?? jobId) || null;
+    const jid = (readTimerState()?.jobId ?? jobId) || null;
 
     try {
       const result = await stopTimerSession();
@@ -330,39 +366,19 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
       writeTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
       if (jid) clearJobTimerState(jid);
 
-      if (result && result.duration > 0) {
-        await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
-        if (jid) {
-          await qc.invalidateQueries({ queryKey: getGetJobQueryKey(jid) });
-          await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-        }
-        return;
-      }
-
-      if (localDuration > 0 && t) {
-        await createLogMutation.mutateAsync({
-          data: { task: t, duration: localDuration, jobId: jid },
-        });
-      }
       await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
       if (jid) {
         await qc.invalidateQueries({ queryKey: getGetJobQueryKey(jid) });
         await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
       }
+      if (result && result.duration > 0) return;
     } catch (err) {
       console.error("Failed to save time log:", err);
       setRunning(false);
       setSeconds(0);
       setTask("");
       writeTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
-      if (localDuration > 0 && t) {
-        try {
-          await createLogMutation.mutateAsync({
-            data: { task: t, duration: localDuration, jobId: jid },
-          });
-        } catch {
-        }
-      }
+      if (jid) clearJobTimerState(jid);
     }
   };
 

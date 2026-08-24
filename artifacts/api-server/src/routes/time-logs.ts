@@ -7,6 +7,9 @@ import { requireAuth, requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { ensureJobWriteSchema } from "../lib/schema-init";
 import { publicTimeLog, resolveReworkCycleForTimeLog } from "../lib/time-log-cycles";
+import { workerMayStartTimerOnJobStatus } from "../lib/persist-timer-session";
+
+const MAX_MANUAL_LOG_SECONDS = 12 * 3600;
 
 const router: IRouter = Router();
 
@@ -54,6 +57,30 @@ router.post("/time-logs", requireAuth, async (req, res) => {
     const actor = req.session!.user;
     const body = parsed.data;
 
+    const duration = Math.min(
+      Math.max(0, Math.floor(body.duration)),
+      MAX_MANUAL_LOG_SECONDS,
+    );
+    if (duration <= 0) {
+      return res.status(400).json({ error: "Duration must be greater than zero" });
+    }
+
+    if (body.jobId) {
+      const [job] = await db
+        .select({ status: jobs.status })
+        .from(jobs)
+        .where(eq(jobs.id, body.jobId))
+        .limit(1);
+      if (!job) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+      if (!workerMayStartTimerOnJobStatus(job.status)) {
+        return res.status(400).json({
+          error: "Cannot log time on a job that is completed, cancelled, or awaiting review",
+        });
+      }
+    }
+
     const reworkCycleNumber =
       body.reworkCycleNumber !== undefined
         ? body.reworkCycleNumber
@@ -64,7 +91,7 @@ router.post("/time-logs", requireAuth, async (req, res) => {
       .values({
         id: randomUUID(),
         task: body.task,
-        duration: body.duration,
+        duration,
         jobId: body.jobId ?? null,
         userId: actor.id,
         reworkCycleNumber,

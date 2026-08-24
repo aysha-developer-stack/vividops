@@ -76,12 +76,14 @@ export async function stopTimerSession(): Promise<{ duration: number } | null> {
   return parseJson<{ duration: number }>(res);
 }
 
-export async function heartbeatTimerSession(): Promise<ActiveTimerSession | null> {
+export async function heartbeatTimerSession(): Promise<
+  (ActiveTimerSession & { autoPaused?: boolean; autoStopped?: boolean; duration?: number }) | null
+> {
   const res = await fetch("/api/timer-sessions/heartbeat", {
     method: "POST",
     credentials: "include",
   });
-  return parseJson<ActiveTimerSession>(res);
+  return parseJson<ActiveTimerSession & { autoPaused?: boolean; autoStopped?: boolean; duration?: number }>(res);
 }
 
 export const TIMER_HEARTBEAT_INTERVAL_MS = 60_000;

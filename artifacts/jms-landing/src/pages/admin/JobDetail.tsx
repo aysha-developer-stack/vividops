@@ -25,7 +25,6 @@ import {
   getGetJobQueryKey,
   getGetTimeLogsQueryKey,
   getListJobsQueryKey,
-  useCreateTimeLog,
   useGetTimeLogs,
   useListAssignableUsers,
   type Job as ApiJob,
@@ -53,7 +52,9 @@ import {
   stopTimerSession,
   heartbeatTimerSession,
   TIMER_HEARTBEAT_INTERVAL_MS,
+  type ActiveTimerSession,
 } from "@/lib/timerSessionApi";
+import { handleTimerHeartbeatSideEffects, useTimerAutoPauseOnHide } from "@/lib/useTimerAutoPauseOnHide";
 import {
   readJobTimerState,
   writeJobTimerState,
@@ -364,7 +365,6 @@ export default function JobDetail({ role = "user", id }: Props) {
   const { user: currentUser } = useAuth();
   const uploadProgress = useUploadProgress();
   const timeLogsQuery = useGetTimeLogs();
-  const createTimeLogMutation = useCreateTimeLog();
   const qc = useQueryClient();
   const job = jobQuery.data;
   const canUseJobTimer = useMemo(() => {
@@ -783,23 +783,10 @@ export default function JobDetail({ role = "user", id }: Props) {
 
     const g = readGlobalTimerState();
     if (g?.running) {
-      const elapsed = computeElapsed(g);
-      if (elapsed > 0) {
-        const jid = g.jobId?.trim() ? g.jobId : null;
-        const task =
-          g.task?.trim()
-            ? g.task.trim()
-            : jid
-              ? `Work (Job ${jid.slice(0, 8)}…)`
-              : null;
-        try {
-          if (task) {
-            await createTimeLogMutation.mutateAsync({
-              data: { task, duration: elapsed, jobId: jid },
-            });
-          }
-        } catch {
-        }
+      try {
+        await stopTimerSession();
+      } catch {
+        // ignore — local state cleared below
       }
       writeGlobalTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
     }
@@ -904,13 +891,45 @@ export default function JobDetail({ role = "user", id }: Props) {
   }, [canUseJobTimer, job?.id]);
 
   useEffect(() => {
-    if (!running || !canUseJobTimer) return;
-    const id = window.setInterval(() => {
-      void heartbeatTimerSession().catch(() => {});
-    }, TIMER_HEARTBEAT_INTERVAL_MS);
-    void heartbeatTimerSession().catch(() => {});
+    if (!running || !canUseJobTimer || !job?.id) return;
+    const syncPaused = (session: ActiveTimerSession | null) => {
+      setRunning(false);
+      if (!session) return;
+      const synced = jobTimerStateFromServerSession(session);
+      writeTimerState(job.id, synced);
+      setSeconds(computeJobTimerElapsed(synced));
+    };
+    const runHeartbeat = () => {
+      void heartbeatTimerSession()
+        .then((payload) => {
+          if (!payload) return;
+          return handleTimerHeartbeatSideEffects(payload, {
+            onAutoPaused: syncPaused,
+            onAutoStopped: () => {
+              setRunning(false);
+              clearJobTimerState(job.id);
+              setSeconds(0);
+              void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+            },
+          });
+        })
+        .catch(() => {});
+    };
+    const id = window.setInterval(runHeartbeat, TIMER_HEARTBEAT_INTERVAL_MS);
+    runHeartbeat();
     return () => window.clearInterval(id);
-  }, [running, canUseJobTimer]);
+  }, [running, canUseJobTimer, job?.id, qc]);
+
+  useTimerAutoPauseOnHide(running && canUseJobTimer, (session) => {
+    if (!job?.id || !session) {
+      setRunning(false);
+      return;
+    }
+    const synced = jobTimerStateFromServerSession(session);
+    writeTimerState(job.id, synced);
+    setRunning(false);
+    setSeconds(computeJobTimerElapsed(synced));
+  });
 
   useEffect(() => {
     if (!job?.id) return;
@@ -1775,39 +1794,20 @@ export default function JobDetail({ role = "user", id }: Props) {
     }
   };
 
-  const stopAndSaveTimeLog = async (task: string) => {
+  const stopAndSaveTimeLog = async (_task: string) => {
     if (!job?.id) return;
-    const localState = readTimerState(job.id);
-    const localDuration = computeElapsed(localState);
-    const storedTask = localState?.task?.trim() ?? "";
-    const t = task.trim() || storedTask || `Work (Job ${job.id.slice(0, 8)}…)`;
 
     setRunning(false);
     setSeconds(0);
     setShowActivityPing(false);
 
     try {
-      const result = await stopTimerSession();
-      if (result && result.duration > 0) {
-        clearJobTimerState(job.id);
-        await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
-        return;
-      }
-      if (localDuration > 0) {
-        await createTimeLogMutation.mutateAsync({ data: { task: t, duration: localDuration, jobId: job.id } });
-      }
-      clearJobTimerState(job.id);
-      await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+      await stopTimerSession();
     } catch {
-      if (localDuration > 0) {
-        try {
-          await createTimeLogMutation.mutateAsync({ data: { task: t, duration: localDuration, jobId: job.id } });
-          await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
-        } catch {
-        }
-      }
-      clearJobTimerState(job.id);
+      // Server may have already stopped the session on status change.
     }
+    clearJobTimerState(job.id);
+    await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
   };
 
   return (

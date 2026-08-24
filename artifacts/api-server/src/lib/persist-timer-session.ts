@@ -3,11 +3,16 @@ import { and, eq } from "drizzle-orm";
 import {
   activeTimerSessions,
   db,
+  jobs,
   timeLogs,
   type ActiveTimerSessionRow,
+  type JobRow,
 } from "@workspace/db";
 import { resolveReworkCycleForTimeLog } from "./time-log-cycles";
-import { timerSessionElapsedSeconds } from "./timer-sessions";
+import {
+  timerSessionBillableSeconds,
+  TIMER_HEARTBEAT_GAP_PAUSE_MS,
+} from "./timer-sessions";
 import { logger } from "./logger";
 
 /** Safety cap — prevents runaway sessions if auto-stop is missed (24h). */
@@ -37,12 +42,43 @@ export function formatTimerDuration(seconds: number): string {
   return `${total}s`;
 }
 
+function capDurationForClosedJob(
+  session: ActiveTimerSessionRow,
+  job: Pick<JobRow, "status" | "completedAt">,
+  duration: number,
+): number {
+  if (workerMayStartTimerOnJobStatus(job.status)) return duration;
+
+  if (job.completedAt) {
+    const completedMs = job.completedAt.getTime();
+    const lastHbMs = session.lastHeartbeatAt.getTime();
+    if (lastHbMs > completedMs + 60_000) {
+      return Math.min(duration, Math.max(0, session.accumulatedSeconds ?? 0));
+    }
+    const atCompletion = timerSessionBillableSeconds(session, completedMs);
+    return Math.min(duration, atCompletion);
+  }
+
+  return duration;
+}
+
 /** Save elapsed time from a session to time_logs and remove the active session row. */
 export async function stopTimerSessionAndSaveLog(
   session: ActiveTimerSessionRow,
   workerUserId: string,
 ): Promise<number> {
-  const rawDuration = timerSessionElapsedSeconds(session);
+  let rawDuration = timerSessionBillableSeconds(session);
+  if (session.jobId) {
+    const [job] = await db
+      .select({ status: jobs.status, completedAt: jobs.completedAt })
+      .from(jobs)
+      .where(eq(jobs.id, session.jobId))
+      .limit(1);
+    if (job) {
+      rawDuration = capDurationForClosedJob(session, job, rawDuration);
+    }
+  }
+
   const duration = Math.min(Math.max(0, rawDuration), MAX_TIMER_SEGMENT_SECONDS);
   if (rawDuration > MAX_TIMER_SEGMENT_SECONDS) {
     logger.warn(
@@ -84,6 +120,37 @@ export async function stopAllActiveTimersOnJob(jobId: string): Promise<number> {
   }
   return saved;
 }
+
+/** Pause a running segment after sleep/offline — accumulate billable time only. */
+export async function pauseTimerSessionAfterGap(
+  session: ActiveTimerSessionRow,
+): Promise<ActiveTimerSessionRow> {
+  const now = new Date();
+  const billable = timerSessionBillableSeconds(session, now.getTime());
+  const [updated] = await db
+    .update(activeTimerSessions)
+    .set({
+      accumulatedSeconds: billable,
+      segmentStartedAt: null,
+      lastHeartbeatAt: now,
+      updatedAt: now,
+    })
+    .where(eq(activeTimerSessions.id, session.id))
+    .returning();
+  logger.info(
+    {
+      sessionId: session.id,
+      jobId: session.jobId,
+      userId: session.userId,
+      gapMs: now.getTime() - session.lastHeartbeatAt.getTime(),
+      billable,
+    },
+    "Auto-paused timer after heartbeat gap (sleep/offline)",
+  );
+  return updated;
+}
+
+export { TIMER_HEARTBEAT_GAP_PAUSE_MS };
 
 /**
  * When a worker is removed from a job, stop their server-side timer on that job
