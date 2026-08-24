@@ -54,7 +54,7 @@ import {
   TIMER_HEARTBEAT_INTERVAL_MS,
   type ActiveTimerSession,
 } from "@/lib/timerSessionApi";
-import { handleTimerHeartbeatSideEffects, useTimerAutoPauseOnHide } from "@/lib/useTimerAutoPauseOnHide";
+import { handleTimerHeartbeatSideEffects, useTimerHeartbeatOnVisible } from "@/lib/timerHeartbeatEffects";
 import {
   readJobTimerState,
   writeJobTimerState,
@@ -920,15 +920,26 @@ export default function JobDetail({ role = "user", id }: Props) {
     return () => window.clearInterval(id);
   }, [running, canUseJobTimer, job?.id, qc]);
 
-  useTimerAutoPauseOnHide(running && canUseJobTimer, (session) => {
-    if (!job?.id || !session) {
-      setRunning(false);
-      return;
-    }
-    const synced = jobTimerStateFromServerSession(session);
-    writeTimerState(job.id, synced);
-    setRunning(false);
-    setSeconds(computeJobTimerElapsed(synced));
+  useTimerHeartbeatOnVisible(running && canUseJobTimer, (payload) => {
+    void handleTimerHeartbeatSideEffects(payload, {
+      onAutoPaused: (session) => {
+        if (!job?.id) {
+          setRunning(false);
+          return;
+        }
+        const synced = jobTimerStateFromServerSession(session);
+        writeTimerState(job.id, synced);
+        setRunning(false);
+        setSeconds(computeJobTimerElapsed(synced));
+      },
+      onAutoStopped: () => {
+        if (!job?.id) return;
+        setRunning(false);
+        clearJobTimerState(job.id);
+        setSeconds(0);
+        void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+      },
+    });
   });
 
   useEffect(() => {

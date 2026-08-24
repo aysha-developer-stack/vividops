@@ -31,7 +31,7 @@ import {
   liveSessionElapsedSeconds,
   TIMER_HEARTBEAT_INTERVAL_MS,
 } from "@/lib/timerSessionApi";
-import { handleTimerHeartbeatSideEffects, useTimerAutoPauseOnHide } from "@/lib/useTimerAutoPauseOnHide";
+import { handleTimerHeartbeatSideEffects, useTimerHeartbeatOnVisible } from "@/lib/timerHeartbeatEffects";
 import { clearOtherJobTimerLocalStates, clearJobTimerState, writeJobTimerState } from "@/lib/jobTimerLocalState";
 
 interface Entry {
@@ -135,7 +135,19 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     }
   };
 
-  useTimerAutoPauseOnHide(running, syncPausedFromServer);
+  useTimerHeartbeatOnVisible(running, (payload) => {
+    void handleTimerHeartbeatSideEffects(payload, {
+      onAutoPaused: syncPausedFromServer,
+      onAutoStopped: (duration) => {
+        setRunning(false);
+        setSeconds(0);
+        writeTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
+        if (duration > 0) {
+          void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+        }
+      },
+    });
+  });
 
   const startTimer = async () => {
     const t = task.trim();
