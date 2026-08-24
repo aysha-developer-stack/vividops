@@ -1349,7 +1349,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     });
   }, [jobTimeLogs, timeLogUserNameById]);
 
-  const jobLogsP = usePagination(jobLogRows, 6);
+  const jobLogsP = usePagination(jobLogRows, 20);
 
   useEffect(() => {
     if (!job?.id || tab !== "communication") return;
