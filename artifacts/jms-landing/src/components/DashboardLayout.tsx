@@ -7,6 +7,7 @@ import {
 import logoImg from "@assets/vv_1778503190047.png";
 import { useAuth, useLogout, purgeAuthState } from "@/lib/auth";
 import { useGlobalTimerHeartbeat } from "@/lib/useGlobalTimerHeartbeat";
+import ActiveTimerBanner from "@/components/ActiveTimerBanner";
 import { getNotifStyle, sortNotificationsByPriority } from "@/lib/notifications";
 import { getNotificationPath } from "@/lib/notificationNavigation";
 import { ROLES, Role } from "@/lib/roles";
@@ -619,8 +620,11 @@ export default function DashboardLayout({
           </div>
         </header>
 
-        {/* Mobile search — same state as top bar */}
-        <div className="md:hidden sticky top-20 z-10 px-4 py-2 bg-white border-b border-gray-100">
+        <div className="sticky top-20 z-10">
+          <ActiveTimerBanner role={role} />
+
+          {/* Mobile search — same state as top bar */}
+          <div className="md:hidden px-4 py-2 bg-white border-b border-gray-100">
           <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-200 focus-within:border-primary transition-all">
             <Search size={16} className="text-gray-400 shrink-0" />
             <input
@@ -633,6 +637,7 @@ export default function DashboardLayout({
               placeholder={searchPlaceholderText}
               className="bg-transparent text-sm flex-1 focus:outline-none text-gray-900 placeholder:text-gray-400 disabled:cursor-default disabled:opacity-60"
             />
+          </div>
           </div>
         </div>
 
