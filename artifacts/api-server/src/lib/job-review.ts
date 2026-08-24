@@ -21,6 +21,7 @@ import {
 } from "./reworks";
 import { validateReworkUploadsBeforeJobSubmit } from "./rework-completion-validation";
 import { finalizeReviewCheckForJob } from "./persist-review-check-session";
+import { announceCliqJobStatusChange } from "./cliq-job-status";
 import {
   shouldAutoStopWorkerTimersForJobStatus,
   stopAllActiveTimersOnJob,
@@ -426,6 +427,13 @@ export async function notifyStatusTransition(opts: {
       description: `${actor.name} finished work on ${job.title}. Please review and approve or send for rework.${commentSuffix}`,
       type: "checklist",
     });
+    void announceCliqJobStatusChange({
+      job,
+      actor,
+      event: "awaiting_supervisor",
+      previousStatus,
+      comments,
+    });
   }
 
   if (nextStatus === "awaiting_admin") {
@@ -451,6 +459,13 @@ export async function notifyStatusTransition(opts: {
         type: "updated",
       });
     }
+    void announceCliqJobStatusChange({
+      job,
+      actor,
+      event: "awaiting_admin",
+      previousStatus,
+      comments,
+    });
   }
 
   if (nextStatus === "completed") {
@@ -462,15 +477,17 @@ export async function notifyStatusTransition(opts: {
         ? `${job.title} was checked and completed by ${actor.name} (covering supervisor review).`
         : `${job.title} has been marked completed by ${actor.name}.`
     ) + commentSuffix;
-    if (job.assigneeId) {
-      await createNotification({
-        userId: job.assigneeId,
-        jobId: job.id,
-        title: coveredSupervisor ? `Checked & Completed: ${job.title}` : `Job Completed: ${job.title}`,
-        description: completeMsg,
-        type: "completed",
-      });
-    }
+    const completeTitle = coveredSupervisor ? `Checked & Completed: ${job.title}` : `Job Completed: ${job.title}`;
+
+    await notifyAllJobMembers({
+      jobId: job.id,
+      assigneeId: job.assigneeId,
+      supervisorId: job.supervisorId,
+      actorId: actor.id,
+      title: completeTitle,
+      description: completeMsg,
+      type: "completed",
+    });
     await notifyJobManagers({
       jobId: job.id,
       supervisorId: job.supervisorId,
@@ -478,6 +495,13 @@ export async function notifyStatusTransition(opts: {
       title: coveredSupervisor ? `Cover Check Completed: ${job.title}` : `Job Completed: ${job.title}`,
       description: completeMsg,
       type: "completed",
+    });
+    void announceCliqJobStatusChange({
+      job,
+      actor,
+      event: "completed",
+      previousStatus,
+      comments,
     });
   }
 
@@ -519,6 +543,15 @@ export async function notifyStatusTransition(opts: {
         type: "rework",
       });
     }
+    void announceCliqJobStatusChange({
+      job,
+      actor,
+      event: "rework",
+      previousStatus,
+      reason,
+      comments,
+      reworkOrigin: reworkOrigin ?? null,
+    });
   }
 
   if (nextStatus === "on_hold") {

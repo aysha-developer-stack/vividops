@@ -16,6 +16,7 @@ import { requireAuth } from "../middlewares/requireAuth";
 import { jobHasCompletedDeliverables } from "../lib/job-review";
 import { logger } from "../lib/logger";
 import { createNotification, notifyAllJobMembers, notifyJobManagers, previewText } from "../lib/notifications";
+import { announceCliqJobStatusChange } from "../lib/cliq-job-status";
 import { ensureJobWriteSchema } from "../lib/schema-init";
 import { createRework, findActiveReworkForCompletedUpload, markOpenReworksAwaitingReview } from "../lib/reworks";
 import { resolveReworkOriginForActor, reworkOriginLabel } from "../lib/rework-origin";
@@ -444,6 +445,17 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
           type: "rework",
         });
       }
+
+      void announceCliqJobStatusChange({
+        job,
+        actor,
+        event: "rework",
+        previousStatus: job.status,
+        reason: reworkReason,
+        comments,
+        reworkOrigin: rework.reworkOrigin,
+        checklistItemId: itemId,
+      });
 
       return res.json({
         reworkId: rework.id,

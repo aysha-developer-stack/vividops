@@ -209,6 +209,31 @@ async function postTextToJobChannel(
   throw new Error(`Cliq activity message failed: ${errors.join(" | ")}`);
 }
 
+/** Post a system announcement to the job Cliq channel (best-effort). */
+export async function postCliqJobAnnouncement(job: JobRow, text: string): Promise<void> {
+  const channel = await loadJobCliqChannel(job.id);
+  if (!channel) {
+    logger.info({ jobId: job.id }, "[CLIQ-STATUS] No Cliq channel record — skipping announcement");
+    return;
+  }
+  if (channel.status !== "active") {
+    logger.info(
+      { jobId: job.id, status: channel.status },
+      "[CLIQ-STATUS] Cliq channel not active — skipping announcement",
+    );
+    return;
+  }
+
+  const token = await getZohoCliqAccessToken();
+  let channelId = channel.channelId;
+  if (!channelId) {
+    channelId = await resolveChannelId(token, channel.channelName);
+  }
+
+  await postTextToJobChannel({ ...channel, channelId }, job, text);
+  logger.info({ jobId: job.id, text }, "[CLIQ-STATUS] Posted job status message");
+}
+
 /** Post a custom "X added Y · time" line to the job Cliq channel (best-effort). */
 export async function announceCliqMemberActivity(options: {
   job: JobRow;
