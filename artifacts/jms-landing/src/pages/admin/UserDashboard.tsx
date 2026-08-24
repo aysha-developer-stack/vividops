@@ -27,6 +27,18 @@ import {
 import { useAuth } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  fetchMyActiveTimerSession,
+  startTimerSession,
+  stopTimerSession,
+  liveSessionElapsedSeconds,
+  type ActiveTimerSession,
+} from "@/lib/timerSessionApi";
+import {
+  writeJobTimerState,
+  clearJobTimerState,
+  jobTimerStateFromServerSession,
+} from "@/lib/jobTimerLocalState";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -55,6 +67,7 @@ export default function UserDashboard() {
 
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [serverSession, setServerSession] = useState<ActiveTimerSession | null>(null);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [taskDialogJobId, setTaskDialogJobId] = useState<string | null>(null);
   const [taskDialogValue, setTaskDialogValue] = useState("");
@@ -168,32 +181,42 @@ export default function UserDashboard() {
     assignedJobs.find(j => j.id === activeJobId) || assignedJobs[0]
   , [assignedJobs, activeJobId]);
 
-  const activeTimer = useMemo(() => {
-    for (const j of assignedJobs) {
-      const s = readJobTimerState(j.id);
-      if (s?.running) {
-        return { kind: "job" as const, jobId: j.id, elapsed: computeElapsed(s), running: true, task: s.task };
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const session = await fetchMyActiveTimerSession();
+      if (cancelled) return;
+      setServerSession(session);
+      if (session?.jobId) {
+        writeJobTimerState(session.jobId, jobTimerStateFromServerSession(session));
+        setActiveJobId((prev) => prev ?? session.jobId);
       }
-    }
+    };
+    void load();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [tick]);
 
-    const g = readGlobalTimerState();
-    if (g?.running) {
-      const jid = g.jobId || null;
-      return { kind: "global" as const, jobId: jid, task: g.task, elapsed: computeElapsed(g), running: true };
-    }
-
-    if (activeJobId) {
-      const s = readJobTimerState(activeJobId);
-      if (s) return { kind: "job" as const, jobId: activeJobId, elapsed: computeElapsed(s), running: s.running, task: s.task };
-    }
-
-    if (g) {
-      const jid = g.jobId || null;
-      return { kind: "global" as const, jobId: jid, task: g.task, elapsed: computeElapsed(g), running: g.running };
-    }
-
-    return null;
-  }, [assignedJobs, activeJobId, tick]);
+  const activeTimer = useMemo(() => {
+    if (!serverSession?.jobId) return null;
+    const running = !!serverSession.segmentStartedAt;
+    const elapsed = running
+      ? liveSessionElapsedSeconds(serverSession)
+      : Math.max(0, serverSession.accumulatedSeconds ?? 0);
+    return {
+      kind: "job" as const,
+      jobId: serverSession.jobId,
+      elapsed,
+      running,
+      task: serverSession.task,
+    };
+  }, [serverSession, tick]);
 
   const activeTimerLabel = useMemo(() => {
     if (!activeTimer) return activeJob?.title ?? "Select a job to start";
@@ -282,57 +305,19 @@ export default function UserDashboard() {
 
   const fmt = (s: number) => `${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
-  const stopAllRunningTimersAndSave = async (nextJobId: string) => {
-    const runningJobTimers: Array<{ jobId: string; elapsed: number }> = [];
-    for (let i = 0; i < localStorage.length; i++) {
+  const stopAllRunningTimersAndSave = async (_nextJobId: string) => {
+    try {
+      await stopTimerSession();
+    } catch {
+      // No active server session.
+    }
+    for (let i = 0; i < localStorage.length; i += 1) {
       const key = localStorage.key(i);
       if (!key || !key.startsWith("job_timer_v1:")) continue;
-      const jid = key.slice("job_timer_v1:".length);
-      if (!jid || jid === nextJobId) continue;
-      const state = readJobTimerState(jid);
-      if (!state?.running) continue;
-      const elapsed = computeElapsed(state);
-      if (elapsed > 0) runningJobTimers.push({ jobId: jid, elapsed });
+      clearJobTimerState(key.slice("job_timer_v1:".length));
     }
-
-    const g = readGlobalTimerState();
-    if (g?.running) {
-      const elapsed = computeElapsed(g);
-      if (elapsed > 0) {
-        const jid = g.jobId?.trim() ? g.jobId : null;
-        const jobTitle = jid ? assignedJobs.find((j) => j.id === jid)?.title ?? `Job ${jid.slice(0, 8)}…` : null;
-        const task = g.task?.trim() ? g.task.trim() : jobTitle ? `Work (${jobTitle})` : null;
-        try {
-          if (task) {
-            await fetch("/api/time-logs", {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ task, duration: elapsed, jobId: jid || null }),
-            });
-          }
-        } catch {
-        }
-      }
-      writeGlobalTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
-    }
-
-    for (const jt of runningJobTimers) {
-      const storedTask = readJobTimerState(jt.jobId)?.task?.trim() ?? "";
-      const jobTitle = assignedJobs.find((j) => j.id === jt.jobId)?.title ?? `Job ${jt.jobId.slice(0, 8)}…`;
-      const task = storedTask || `Work (${jobTitle})`;
-      try {
-        await fetch("/api/time-logs", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ task, duration: jt.elapsed, jobId: jt.jobId }),
-        });
-      } catch {
-      }
-      writeJobTimerState(jt.jobId, { running: false, startedAt: null, accumulated: 0, task: "" });
-    }
-
+    writeGlobalTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
+    setServerSession(null);
     await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
   };
 
@@ -358,55 +343,48 @@ export default function UserDashboard() {
 
   const startFromDashboard = async (jobId: string) => {
     const prev = readJobTimerState(jobId);
-    const existingTask = prev?.task?.trim() ?? "";
+    const existingTask = prev?.task?.trim() ?? serverSession?.task?.trim() ?? "";
     const nextTask = existingTask || (await requestTaskForJob(jobId))?.trim() || "";
     if (!nextTask) return;
-    await stopAllRunningTimersAndSave(jobId);
+
+    const serverMine = await fetchMyActiveTimerSession();
+    if (serverMine?.jobId === jobId && serverMine.segmentStartedAt) {
+      setActiveJobId(jobId);
+      setServerSession(serverMine);
+      setTick((v) => v + 1);
+      return;
+    }
+
+    if (serverMine?.jobId && serverMine.jobId !== jobId) {
+      await stopAllRunningTimersAndSave(jobId);
+    }
+
+    const session = await startTimerSession({ jobId, task: nextTask });
+    if (!session) return;
+
+    writeJobTimerState(jobId, jobTimerStateFromServerSession(session));
     setActiveJobId(jobId);
-    const state = readJobTimerState(jobId) ?? { running: false, startedAt: null, accumulated: 0, task: "" };
-    const elapsed = computeElapsed(state);
-    writeJobTimerState(jobId, { running: true, startedAt: Date.now(), accumulated: elapsed, task: nextTask });
+    setServerSession(session);
     setTick((v) => v + 1);
+    await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
   };
 
   const stopActiveTimerRef = useRef<() => Promise<void>>(async () => {});
 
   const stopActiveTimerAndSave = async () => {
     if (!activeTimer) return;
-    const duration =
-      activeTimer.kind === "job"
-        ? computeElapsed(readJobTimerState(activeTimer.jobId))
-        : computeElapsed(readGlobalTimerState());
 
-    const jobId = activeTimer.kind === "job" ? activeTimer.jobId : (activeTimer.jobId ?? null);
-    const task =
-      activeTimer.kind === "job"
-        ? (readJobTimerState(activeTimer.jobId)?.task?.trim() || `Work (${activeTimerLabel})`)
-        : activeTimer.task?.trim()
-          ? activeTimer.task.trim()
-          : "";
-
-    if (duration > 0) {
-      try {
-        if (task) {
-          await fetch("/api/time-logs", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ task, duration, jobId }),
-          });
-        }
-        await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
-      } catch {
-      }
+    const jobId = activeTimer.jobId;
+    try {
+      await stopTimerSession();
+    } catch {
+      // Session may already be stopped.
     }
-
-    if (activeTimer.kind === "job") {
-      writeJobTimerState(activeTimer.jobId, { running: false, startedAt: null, accumulated: 0, task: "" });
-    } else {
-      writeGlobalTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
-    }
+    if (jobId) clearJobTimerState(jobId);
+    writeGlobalTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: "" });
+    setServerSession(null);
     setTick((v) => v + 1);
+    await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
   };
 
   stopActiveTimerRef.current = stopActiveTimerAndSave;

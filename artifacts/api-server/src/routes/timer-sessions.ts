@@ -173,10 +173,7 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
     const actor = req.session!.user;
     const jobId = typeof req.body?.jobId === "string" ? req.body.jobId.trim() : "";
     const task = typeof req.body?.task === "string" ? req.body.task.trim() : "";
-    const accumulatedSeconds =
-      typeof req.body?.accumulatedSeconds === "number" && req.body.accumulatedSeconds >= 0
-        ? Math.floor(req.body.accumulatedSeconds)
-        : 0;
+    // Client-supplied accumulatedSeconds is ignored — only the server session row is authoritative.
 
     if (!task) return res.status(400).json({ error: "Task is required" });
     if (!jobId) return res.status(400).json({ error: "Job is required" });
@@ -235,7 +232,7 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
           .update(activeTimerSessions)
           .set({
             task,
-            accumulatedSeconds: accumulatedSeconds > 0 ? accumulatedSeconds : existing.accumulatedSeconds,
+            accumulatedSeconds: Math.max(0, existing.accumulatedSeconds ?? 0),
             segmentStartedAt: now,
             lastHeartbeatAt: now,
             updatedAt: now,
@@ -259,7 +256,7 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
         userId: actor.id,
         jobId,
         task,
-        accumulatedSeconds,
+        accumulatedSeconds: 0,
         segmentStartedAt: now,
         lastHeartbeatAt: now,
         updatedAt: now,
@@ -269,7 +266,7 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
         set: {
           jobId,
           task,
-          accumulatedSeconds,
+          accumulatedSeconds: 0,
           segmentStartedAt: now,
           lastHeartbeatAt: now,
           updatedAt: now,

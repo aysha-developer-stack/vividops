@@ -77,10 +77,7 @@ export function jobTimerStateFromServerSession(session: ActiveTimerSession): Job
 export async function syncJobTimerFromServer(jobId: string): Promise<JobTimerLocalState | null> {
   const mine = await fetchMyActiveTimerSession();
   if (!mine || mine.jobId !== jobId) {
-    const local = readJobTimerState(jobId);
-    if (local?.running) {
-      clearJobTimerState(jobId);
-    }
+    clearJobTimerState(jobId);
     return readJobTimerState(jobId);
   }
 

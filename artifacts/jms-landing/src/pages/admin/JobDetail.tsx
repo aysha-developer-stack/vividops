@@ -52,7 +52,6 @@ import {
   stopTimerSession,
   heartbeatTimerSession,
   fetchMyActiveTimerSession,
-  liveSessionElapsedSeconds,
   TIMER_HEARTBEAT_INTERVAL_MS,
   type ActiveTimerSession,
 } from "@/lib/timerSessionApi";
@@ -845,15 +844,9 @@ export default function JobDetail({ role = "user", id }: Props) {
     const nextTask = existingTask || (await requestTask())?.trim() || "";
     if (!nextTask) return;
 
-    let accumulatedSeconds = computeElapsed(state);
-    if (serverMine?.jobId === job.id) {
-      accumulatedSeconds = liveSessionElapsedSeconds(serverMine);
-    }
-
     const session = await startTimerSession({
       jobId: job.id,
       task: nextTask,
-      accumulatedSeconds,
     });
     if (!session) return;
 

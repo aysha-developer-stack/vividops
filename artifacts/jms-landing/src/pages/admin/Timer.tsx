@@ -179,15 +179,9 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
 
     await stopOtherRunningTimersAndSave();
 
-    let accumulatedSeconds = computeElapsed(readTimerState());
-    if (serverMine?.jobId === jobId) {
-      accumulatedSeconds = liveSessionElapsedSeconds(serverMine);
-    }
-
     const session = await startTimerSession({
       jobId,
       task: t,
-      accumulatedSeconds,
     });
 
     if (!session) {
