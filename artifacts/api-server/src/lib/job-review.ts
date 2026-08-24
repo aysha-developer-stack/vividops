@@ -496,13 +496,15 @@ export async function notifyStatusTransition(opts: {
       description: completeMsg,
       type: "completed",
     });
-    void announceCliqJobStatusChange({
-      job,
-      actor,
-      event: "completed",
-      previousStatus,
-      comments,
-    });
+    if (actor.role === "admin" || actor.role === "super-admin") {
+      void announceCliqJobStatusChange({
+        job,
+        actor,
+        event: "completed",
+        previousStatus,
+        comments,
+      });
+    }
   }
 
   if (nextStatus === "rework") {

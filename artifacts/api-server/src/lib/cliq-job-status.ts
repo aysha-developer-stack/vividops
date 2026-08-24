@@ -38,10 +38,12 @@ export function buildCliqJobStatusText(opts: {
   const commentText = trimDetail(comments);
 
   if (event === "completed") {
+    // Cliq "completed" is admin final approval only — not worker submit or supervisor review.
+    if (actor.role !== "admin" && actor.role !== "super-admin") return null;
+
     const coveredSupervisor =
-      (actor.role === "admin" || actor.role === "super-admin") &&
-      (previousStatus === "awaiting_supervisor" || previousStatus === "in_progress");
-    const action = coveredSupervisor ? "checked and completed" : "marked completed";
+      previousStatus === "awaiting_supervisor" || previousStatus === "in_progress";
+    const action = coveredSupervisor ? "checked and completed" : "approved and completed";
     return `✅ ${label} ${action} by ${actorName} · ${time}`;
   }
 
