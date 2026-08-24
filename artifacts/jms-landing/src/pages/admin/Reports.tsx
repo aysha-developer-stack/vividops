@@ -1379,9 +1379,6 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                       <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
                         <CalendarDays size={16} className="text-primary" /> Daily worker time
                       </h3>
-                      <p className="text-[11px] text-gray-500 mt-0.5">
-                        Hours logged per calendar day ({dailyReport?.timezone ?? REPORT_TZ}) · {effectiveDailyRange.from} to {effectiveDailyRange.to}
-                      </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">From</label>
