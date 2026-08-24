@@ -3,10 +3,18 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Download, FileText, Users, AlertTriangle, Clock, TrendingUp,
   ChevronRight, Filter, Shield, UserCog, User as UserIcon, Crown,
-  X, Check, Search, CheckCircle2, CalendarDays,
+  X, Check, Search, CheckCircle2, CalendarDays, Eye,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { Role } from "@/lib/roles";
 import { isJobOverdueByDueDate, formatDurationSeconds } from "@/lib/jobMappers";
 import { useDashboardSearch } from "@/lib/pageSearch";
@@ -172,6 +180,8 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const [dailyLoading, setDailyLoading] = useState(false);
   const [dailyDateFrom, setDailyDateFrom] = useState("");
   const [dailyDateTo, setDailyDateTo] = useState("");
+  const [userReportPreview, setUserReportPreview] = useState<{ user: UserPerf; html: string } | null>(null);
+  const [userReportPreviewLoading, setUserReportPreviewLoading] = useState(false);
 
   useEffect(() => {
     const placeholder =
@@ -614,18 +624,31 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     return w;
   };
 
-  const exportUserPDF = async (u: UserPerf) => {
+  const buildUserReportHtml = async (u: UserPerf, opts?: { autoPrint?: boolean }) => {
     const periodLabel = period === "All" ? "All time" : `Last ${period}`;
     const rate = u.jobs > 0 ? Math.round((u.completed / u.jobs) * 100) : 0;
-    const w = openPrintWindow();
-    if (!w) return;
-
     const logoUrl = await resolveLogoDataUrl();
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${u.name} Performance Report</title>
+    const printScript = opts?.autoPrint
+      ? `<script>
+  (async () => {
+    const imgs = Array.from(document.images || []);
+    await Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise((r) => { img.onload = img.onerror = () => r(); })));
+    if (document.fonts && document.fonts.ready) {
+      try { await document.fonts.ready; } catch {}
+    }
+    setTimeout(() => window.print(), 50);
+  })();
+</script>`
+      : "";
+    const printButton = opts?.autoPrint
+      ? `<button class="btn no-print" onclick="window.print()">Save as PDF</button>`
+      : "";
+
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${u.name} Performance Report</title>
 <style>
 @page{size:A4;margin:14mm 16mm}
 *{box-sizing:border-box}html,body{margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;padding:16px}
 .brand{display:flex;justify-content:space-between;align-items:center;background:#000;border-bottom:3px solid #0B7EB9;padding:20px 22px;margin:0 0 22px;gap:16px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .brand img{height:76px;width:auto;object-fit:contain;display:block}
 .brand .meta{font-size:11px;color:#cbd5e1;text-align:right;line-height:1.6}
@@ -648,7 +671,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 @media print{.no-print{display:none}}
 .btn{position:fixed;top:20px;right:20px;background:#0B7EB9;color:#fff;border:0;padding:10px 18px;border-radius:8px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(11,126,185,.4)}
 </style></head><body>
-<button class="btn no-print" onclick="window.print()">Save as PDF</button>
+${printButton}
 <div class="brand"><img src="${logoUrl}" alt="Vivid OPS"><div class="meta"><strong>${u.name} Performance Report</strong>Generated ${new Date().toLocaleString()}<br>Period: ${periodLabel}</div></div>
 <div class="user">
   <div class="avatar">${u.name.split(" ").map((s) => s[0]).join("")}</div>
@@ -665,27 +688,44 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 <table>
   <thead><tr><th>Metric</th><th>Value</th><th>Status</th></tr></thead>
   <tbody>
-    <tr><td>Hours logged</td><td>${formatDurationSeconds(u.hours)}</td><td>—</td></tr>
-    <tr><td>Average resolution time</td><td>${u.avg}</td><td>—</td></tr>
+    <tr><td>Hours logged</td><td>${formatDurationSeconds(u.hours)}</td><td>Timer work time</td></tr>
+    <tr><td>Average resolution time</td><td>${u.avg}</td><td>Job open → completed</td></tr>
     <tr><td>Rework cases</td><td>${u.rework}</td><td style="color:${u.rework > 3 ? "#dc2626" : u.rework > 0 ? "#d97706" : "#10b981"}">${u.rework > 3 ? "High" : u.rework > 0 ? "Moderate" : "Excellent"}</td></tr>
     <tr><td>Overdue jobs</td><td>${u.overdue}</td><td style="color:${u.overdue > 0 ? "#dc2626" : "#10b981"}">${u.overdue > 0 ? "Needs attention" : "On track"}</td></tr>
     <tr><td>Performance score</td><td><span class="bar"><div></div></span>${u.score} / 100</td><td>${u.score >= 90 ? "Excellent" : u.score >= 80 ? "Good" : "Needs improvement"}</td></tr>
   </tbody>
 </table>
 <h3>Notes</h3>
-<p style="font-size:12px;color:#475569;line-height:1.6">This report covers ${u.name}'s activity during the selected period (${periodLabel}). Score is calculated from completion rate, on-time delivery, rework frequency, and supervisor sign-off. For a deeper drill-down, refer to the System Monitoring and Job Overview modules.</p>
+<p style="font-size:12px;color:#475569;line-height:1.6">This report covers ${u.name}'s activity during the selected period (${periodLabel}). <strong>Hours logged</strong> is timer work time. <strong>Average resolution time</strong> is calendar time from job created to completed (not timer hours). Score is calculated from completion rate, on-time delivery, rework frequency, and supervisor sign-off.</p>
 <div class="foot">Vivid OPS · Confidential · Generated for internal use only</div>
-<script>
-  (async () => {
-    const imgs = Array.from(document.images || []);
-    await Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise((r) => { img.onload = img.onerror = () => r(); })));
-    if (document.fonts && document.fonts.ready) {
-      try { await document.fonts.ready; } catch {}
-    }
-    setTimeout(() => window.print(), 50);
-  })();
-</script>
+${printScript}
 </body></html>`;
+  };
+
+  const previewUserReport = async (u: UserPerf) => {
+    setUserReportPreviewLoading(true);
+    try {
+      const html = await buildUserReportHtml(u);
+      setUserReportPreview({ user: u, html });
+    } finally {
+      setUserReportPreviewLoading(false);
+    }
+  };
+
+  const exportUserPDF = async (u: UserPerf) => {
+    const w = openPrintWindow();
+    if (!w) return;
+    const html = await buildUserReportHtml(u, { autoPrint: true });
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  };
+
+  const printPreviewedUserReport = async () => {
+    if (!userReportPreview) return;
+    const w = openPrintWindow();
+    if (!w) return;
+    const html = await buildUserReportHtml(userReportPreview.user, { autoPrint: true });
     w.document.open();
     w.document.write(html);
     w.document.close();
@@ -1274,9 +1314,27 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                               </td>
                               <td className="px-3 py-3.5 text-sm text-gray-700 whitespace-nowrap">{u.avg}</td>
                               <td className="px-3 py-3.5">
-                                <motion.button whileHover={{ y: -1, scale: 1.04 }} whileTap={{ scale: 0.94 }} onClick={() => exportUserPDF(u)} title={`Export ${u.name}'s report as PDF`} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-primary/10 hover:bg-primary hover:text-white text-primary rounded-lg text-[11px] font-semibold transition-colors whitespace-nowrap">
-                                  <Download size={11} /> PDF
-                                </motion.button>
+                                <div className="flex items-center gap-1.5">
+                                  <motion.button
+                                    whileHover={{ y: -1, scale: 1.04 }}
+                                    whileTap={{ scale: 0.94 }}
+                                    onClick={() => void previewUserReport(u)}
+                                    disabled={userReportPreviewLoading}
+                                    title={`Preview ${u.name}'s report`}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-[11px] font-semibold transition-colors whitespace-nowrap disabled:opacity-50"
+                                  >
+                                    <Eye size={11} /> Preview
+                                  </motion.button>
+                                  <motion.button
+                                    whileHover={{ y: -1, scale: 1.04 }}
+                                    whileTap={{ scale: 0.94 }}
+                                    onClick={() => void exportUserPDF(u)}
+                                    title={`Download ${u.name}'s report as PDF`}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-primary/10 hover:bg-primary hover:text-white text-primary rounded-lg text-[11px] font-semibold transition-colors whitespace-nowrap"
+                                  >
+                                    <Download size={11} /> PDF
+                                  </motion.button>
+                                </div>
                               </td>
                             </motion.tr>
                           );
@@ -1527,6 +1585,42 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
           </AnimatePresence>
         </div>
       </div>
+
+      <Dialog open={!!userReportPreview} onOpenChange={(open) => { if (!open) setUserReportPreview(null); }}>
+        <DialogContent className="max-w-5xl w-[95vw] h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 py-4 border-b border-gray-100 shrink-0">
+            <DialogTitle>{userReportPreview ? `${userReportPreview.user.name} — Performance Report` : "Performance report preview"}</DialogTitle>
+            <DialogDescription>
+              Review the report before saving or printing as PDF.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 bg-gray-100">
+            {userReportPreview && (
+              <iframe
+                title={userReportPreview ? `${userReportPreview.user.name} report preview` : "Report preview"}
+                srcDoc={userReportPreview.html}
+                className="w-full h-full border-0 bg-white"
+              />
+            )}
+          </div>
+          <DialogFooter className="px-6 py-4 border-t border-gray-100 shrink-0 gap-2 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => setUserReportPreview(null)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={() => void printPreviewedUserReport()}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-xl"
+            >
+              <Download size={14} /> Save as PDF
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </DashboardLayout>
   );
