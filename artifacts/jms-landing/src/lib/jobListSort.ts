@@ -1,4 +1,4 @@
-export type JobListSortMode = "activity" | "jobNumber";
+export type JobListSortMode = "recent" | "jobNumber";
 
 export type JobSortFields = {
   number: string;
@@ -33,12 +33,12 @@ const API_STATUS_PRIORITY: Record<string, number> = {
 };
 
 export const JOB_LIST_SORT_LABELS: Record<JobListSortMode, string> = {
-  activity: "Most active",
+  recent: "Recently",
   jobNumber: "Job number",
 };
 
 export const JOB_LIST_SORT_HINTS: Record<JobListSortMode, string> = {
-  activity: "Working jobs first, then most recently updated",
+  recent: "Newest created jobs first",
   jobNumber: "Sort by job number (lowest first)",
 };
 
@@ -47,11 +47,13 @@ export const JOB_LIST_SORT_STORAGE_KEY = "jms_job_list_sort_v1";
 export function readStoredJobListSort(): JobListSortMode {
   try {
     const raw = localStorage.getItem(JOB_LIST_SORT_STORAGE_KEY);
-    if (raw === "activity" || raw === "jobNumber") return raw;
+    if (raw === "recent" || raw === "jobNumber") return raw;
+    // Previous default was "activity" — treat as recently created.
+    if (raw === "activity") return "recent";
   } catch {
     // ignore
   }
-  return "activity";
+  return "recent";
 }
 
 export function storeJobListSort(mode: JobListSortMode): void {
@@ -91,6 +93,14 @@ function latestActivityMs(fields: JobSortFields): number {
   );
 }
 
+export function compareJobsByRecent(a: JobSortFields, b: JobSortFields): number {
+  const createdDiff = timestampMs(b.createdAt) - timestampMs(a.createdAt);
+  if (createdDiff !== 0) return createdDiff;
+  const numDiff = parseJobNumberSortKey(b.number) - parseJobNumberSortKey(a.number);
+  if (numDiff !== 0) return numDiff;
+  return b.number.localeCompare(a.number);
+}
+
 export function compareJobsByActivity(a: JobSortFields, b: JobSortFields): number {
   const unreadA = a.unreadCount ?? 0;
   const unreadB = b.unreadCount ?? 0;
@@ -124,6 +134,7 @@ export function sortJobs<T>(
   mode: JobListSortMode,
   getFields: (job: T) => JobSortFields,
 ): T[] {
-  const compare = mode === "jobNumber" ? compareJobsByJobNumber : compareJobsByActivity;
+  const compare =
+    mode === "jobNumber" ? compareJobsByJobNumber : compareJobsByRecent;
   return [...jobs].sort((left, right) => compare(getFields(left), getFields(right)));
 }
