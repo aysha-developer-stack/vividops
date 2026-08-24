@@ -84,25 +84,30 @@ async function loadSessionForUser(userId: string) {
   return row ?? null;
 }
 
+async function listOwnActiveSessions(userId: string, nowMs: number) {
+  const session = await loadSessionForUser(userId);
+  if (!session) return [];
+  let job: Pick<JobRow, "jobNumber" | "title"> | null = null;
+  if (session.jobId) {
+    const [j] = await db
+      .select({ jobNumber: jobs.jobNumber, title: jobs.title })
+      .from(jobs)
+      .where(eq(jobs.id, session.jobId))
+      .limit(1);
+    job = j ?? null;
+  }
+  return [publicTimerSession(session, job, nowMs)];
+}
+
 router.get("/timer-sessions/active", requireAuth, async (req, res) => {
   try {
     await ensureSchema();
     const actor = req.session!.user;
     const nowMs = Date.now();
+    const scope = req.query.scope === "team" ? "team" : "mine";
 
-    if (!canListTeamTimerSessions(actor)) {
-      const session = await loadSessionForUser(actor.id);
-      if (!session) return res.json([]);
-      let job: Pick<JobRow, "jobNumber" | "title"> | null = null;
-      if (session.jobId) {
-        const [j] = await db
-          .select({ jobNumber: jobs.jobNumber, title: jobs.title })
-          .from(jobs)
-          .where(eq(jobs.id, session.jobId))
-          .limit(1);
-        job = j ?? null;
-      }
-      return res.json([publicTimerSession(session, job, nowMs)]);
+    if (scope === "mine" || !canListTeamTimerSessions(actor)) {
+      return res.json(await listOwnActiveSessions(actor.id, nowMs));
     }
 
     let visibleUserIds: string[] | null = null;

@@ -32,8 +32,16 @@ async function parseJson<T>(res: Response): Promise<T | null> {
   }
 }
 
+/** Active timer sessions for the signed-in user only (Timer page + job detail sync). */
+export async function fetchMyActiveTimerSession(): Promise<ActiveTimerSession | null> {
+  const res = await fetch("/api/timer-sessions/active?scope=mine", { credentials: "include" });
+  const data = await parseJson<ActiveTimerSession[]>(res);
+  return Array.isArray(data) && data.length > 0 ? data[0] : null;
+}
+
+/** Team worker timers for monitoring dashboards (supervisor/admin). */
 export async function fetchActiveTimerSessions(): Promise<ActiveTimerSession[]> {
-  const res = await fetch("/api/timer-sessions/active", { credentials: "include" });
+  const res = await fetch("/api/timer-sessions/active?scope=team", { credentials: "include" });
   const data = await parseJson<ActiveTimerSession[]>(res);
   return Array.isArray(data) ? data : [];
 }

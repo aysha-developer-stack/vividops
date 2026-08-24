@@ -1,5 +1,5 @@
 import {
-  fetchActiveTimerSessions,
+  fetchMyActiveTimerSession,
   liveSessionElapsedSeconds,
   type ActiveTimerSession,
 } from "@/lib/timerSessionApi";
@@ -73,11 +73,10 @@ export function jobTimerStateFromServerSession(session: ActiveTimerSession): Job
   };
 }
 
-/** Prefer the server active timer session over stale browser localStorage. */
+/** Prefer the signed-in user's server active timer session over stale browser localStorage. */
 export async function syncJobTimerFromServer(jobId: string): Promise<JobTimerLocalState | null> {
-  const sessions = await fetchActiveTimerSessions();
-  const mine = sessions.find((s) => s.jobId === jobId);
-  if (!mine) {
+  const mine = await fetchMyActiveTimerSession();
+  if (!mine || mine.jobId !== jobId) {
     const local = readJobTimerState(jobId);
     if (local?.running) {
       clearJobTimerState(jobId);

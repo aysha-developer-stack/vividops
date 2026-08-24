@@ -28,7 +28,7 @@ import {
   pauseTimerSession,
   stopTimerSession,
   heartbeatTimerSession,
-  fetchActiveTimerSessions,
+  fetchMyActiveTimerSession,
   liveSessionElapsedSeconds,
   TIMER_HEARTBEAT_INTERVAL_MS,
 } from "@/lib/timerSessionApi";
@@ -190,9 +190,8 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const sessions = await fetchActiveTimerSessions();
+      const mine = await fetchMyActiveTimerSession();
       if (cancelled) return;
-      const mine = sessions[0];
       if (mine?.jobId) {
         writeTimerState({
           running: !!mine.segmentStartedAt,
