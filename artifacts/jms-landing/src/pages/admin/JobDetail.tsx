@@ -51,6 +51,8 @@ import {
   pauseTimerSession,
   stopTimerSession,
   heartbeatTimerSession,
+  fetchMyActiveTimerSession,
+  liveSessionElapsedSeconds,
   TIMER_HEARTBEAT_INTERVAL_MS,
   type ActiveTimerSession,
 } from "@/lib/timerSessionApi";
@@ -827,16 +829,31 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   const startTimer = async () => {
     if (!job?.id) return;
+
+    const serverMine = await fetchMyActiveTimerSession();
+    if (serverMine?.jobId === job.id && serverMine.segmentStartedAt) {
+      const synced = jobTimerStateFromServerSession(serverMine);
+      writeTimerState(job.id, synced);
+      setRunning(true);
+      setSeconds(computeJobTimerElapsed(synced));
+      return;
+    }
+
     await stopOtherRunningTimersAndSave();
     const state = readTimerState(job.id) ?? { running: false, startedAt: null, accumulated: 0, task: "" };
     const existingTask = state.task?.trim() ?? "";
     const nextTask = existingTask || (await requestTask())?.trim() || "";
     if (!nextTask) return;
 
+    let accumulatedSeconds = computeElapsed(state);
+    if (serverMine?.jobId === job.id) {
+      accumulatedSeconds = liveSessionElapsedSeconds(serverMine);
+    }
+
     const session = await startTimerSession({
       jobId: job.id,
       task: nextTask,
-      accumulatedSeconds: state.running ? 0 : computeElapsed(state),
+      accumulatedSeconds,
     });
     if (!session) return;
 
@@ -878,15 +895,22 @@ export default function JobDetail({ role = "user", id }: Props) {
     if (!job?.id) return;
 
     let cancelled = false;
-    void (async () => {
+    const resync = async () => {
       const synced = await syncJobTimerFromServer(job.id);
       if (cancelled) return;
       setSeconds(computeJobTimerElapsed(synced));
       setRunning(!!synced?.running);
-    })();
+    };
+
+    void resync();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void resync();
+    };
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [canUseJobTimer, job?.id]);
 

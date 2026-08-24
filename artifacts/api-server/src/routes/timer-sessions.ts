@@ -215,8 +215,22 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
 
     const existing = await loadSessionForUser(actor.id);
     if (existing) {
-      if (existing.jobId === jobId && !existing.segmentStartedAt) {
+      if (existing.jobId === jobId) {
         const now = new Date();
+        if (existing.segmentStartedAt) {
+          const [updated] = await db
+            .update(activeTimerSessions)
+            .set({
+              task,
+              lastHeartbeatAt: now,
+              updatedAt: now,
+            })
+            .where(eq(activeTimerSessions.id, existing.id))
+            .returning();
+          return res.json(
+            publicTimerSession(updated, { jobNumber: job.jobNumber, title: job.title }),
+          );
+        }
         const [updated] = await db
           .update(activeTimerSessions)
           .set({

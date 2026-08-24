@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import logoImg from "@assets/vv_1778503190047.png";
 import { useAuth, useLogout, purgeAuthState } from "@/lib/auth";
+import { useGlobalTimerHeartbeat } from "@/lib/useGlobalTimerHeartbeat";
 import { getNotifStyle, sortNotificationsByPriority } from "@/lib/notifications";
 import { getNotificationPath } from "@/lib/notificationNavigation";
 import { ROLES, Role } from "@/lib/roles";
@@ -58,6 +59,7 @@ export default function DashboardLayout({
   const searchPlaceholderText = headerSearch?.placeholder ?? "Search anything…";
   const searchEnabled = Boolean(headerSearch);
   const { user } = useAuth();
+  useGlobalTimerHeartbeat(!!user);
   const userRole = (user?.role as Role) || "user";
   const role = roleProp || userRole;
   const config = ROLES[role];

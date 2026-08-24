@@ -32,7 +32,7 @@ import {
   TIMER_HEARTBEAT_INTERVAL_MS,
 } from "@/lib/timerSessionApi";
 import { handleTimerHeartbeatSideEffects, useTimerHeartbeatOnVisible } from "@/lib/timerHeartbeatEffects";
-import { clearOtherJobTimerLocalStates, clearJobTimerState, writeJobTimerState } from "@/lib/jobTimerLocalState";
+import { clearOtherJobTimerLocalStates, clearJobTimerState, writeJobTimerState, jobTimerStateFromServerSession } from "@/lib/jobTimerLocalState";
 
 interface Entry {
   id: string;
@@ -160,12 +160,34 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
       return;
     }
 
+    const serverMine = await fetchMyActiveTimerSession();
+    if (serverMine?.jobId === jobId && serverMine.segmentStartedAt) {
+      const elapsed = liveSessionElapsedSeconds(serverMine);
+      writeTimerState({
+        running: true,
+        startedAt: serverMine.segmentStartedAt ? Date.parse(serverMine.segmentStartedAt) : null,
+        accumulated: serverMine.accumulatedSeconds,
+        task: serverMine.task,
+        jobId,
+      });
+      writeJobTimerState(jobId, jobTimerStateFromServerSession(serverMine));
+      setRunning(true);
+      setSeconds(elapsed);
+      setStartError(null);
+      return;
+    }
+
     await stopOtherRunningTimersAndSave();
+
+    let accumulatedSeconds = computeElapsed(readTimerState());
+    if (serverMine?.jobId === jobId) {
+      accumulatedSeconds = liveSessionElapsedSeconds(serverMine);
+    }
 
     const session = await startTimerSession({
       jobId,
       task: t,
-      accumulatedSeconds: computeElapsed(readTimerState()),
+      accumulatedSeconds,
     });
 
     if (!session) {
