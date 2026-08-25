@@ -12,6 +12,44 @@ function cleanSpaces(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+/** Shorter job-type labels for Cliq channel names (50-char limit). Job title in OPS is unchanged. */
+export function cliqChannelJobTitle(title: string): string {
+  const t = cleanSpaces(title);
+  if (!t) return "Job";
+  const lower = t.toLowerCase();
+  if (lower === "engineering") return "Eng";
+  if (lower === "arch" || lower === "architectural plan" || lower.startsWith("arch ")) {
+    return "Architecture";
+  }
+  return t;
+}
+
+function truncateCliqChannelName(value: string, max: number): string {
+  if (value.length <= max) return value;
+  const cut = value.slice(0, max).trimEnd();
+  const lastSpace = cut.lastIndexOf(" ");
+  if (lastSpace >= Math.floor(max * 0.5)) {
+    return cut.slice(0, lastSpace).trimEnd();
+  }
+  return cut;
+}
+
+function fitCliqChannelName(prefix: string, address: string, max: number): string {
+  if (!address) {
+    return truncateCliqChannelName(prefix, max);
+  }
+  const full = `${prefix} - ${address}`;
+  if (full.length <= max) return full;
+  if (prefix.length >= max) {
+    return truncateCliqChannelName(prefix, max);
+  }
+  const room = max - prefix.length - 3;
+  if (room <= 0) {
+    return truncateCliqChannelName(prefix, max);
+  }
+  return `${prefix} - ${truncateCliqChannelName(address, room)}`;
+}
+
 export function extractCliqJobNumber(job: CliqChannelJobInput): string {
   const fromNumberField = job.number?.replace(/^JOB-/i, "").trim();
   const raw =
@@ -24,28 +62,11 @@ export function extractCliqJobNumber(job: CliqChannelJobInput): string {
 
 export function computeCliqChannelName(job: CliqChannelJobInput): string {
   const number = extractCliqJobNumber(job);
-  const title = cleanSpaces(job.title || "Job");
+  const title = cliqChannelJobTitle(job.title || "Job");
   const address = cleanSpaces(job.address || "");
 
-  let name = `${number}-${title}`;
-  if (address) {
-    name += ` - ${address}`;
-  }
-
-  if (name.length <= CLIQ_CHANNEL_NAME_MAX) {
-    return name;
-  }
-
   const prefix = `${number}-${title}`;
-  if (prefix.length >= CLIQ_CHANNEL_NAME_MAX) {
-    return prefix.slice(0, CLIQ_CHANNEL_NAME_MAX);
-  }
-  if (!address) {
-    return prefix.slice(0, CLIQ_CHANNEL_NAME_MAX);
-  }
-
-  const suffix = ` - ${address}`;
-  return (prefix + suffix).slice(0, CLIQ_CHANNEL_NAME_MAX);
+  return fitCliqChannelName(prefix, address, CLIQ_CHANNEL_NAME_MAX);
 }
 
 export function buildFallbackCliqChannelName(
