@@ -139,6 +139,7 @@ const STATUS_CONFIG: Record<UiStatus, { color: string; bg: string }> = {
   "In Progress": { color: "text-primary", bg: "bg-primary/10 border-primary/20" },
   "Awaiting Supervisor": { color: "text-sky-700", bg: "bg-sky-50 border-sky-200" },
   "Awaiting Admin": { color: "text-indigo-700", bg: "bg-indigo-50 border-indigo-200" },
+  "Awaiting Super Admin": { color: "text-violet-700", bg: "bg-violet-50 border-violet-200" },
   "Done": { color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200" },
   "On Hold": { color: "text-orange-700", bg: "bg-orange-50 border-orange-200" },
   "Overdue": { color: "text-red-700", bg: "bg-red-50 border-red-200" },
@@ -897,6 +898,7 @@ export default function JobManagement(
     "In Progress": jobs.filter((j) => j.status === "In Progress").length,
     "Awaiting Supervisor": jobs.filter((j) => j.status === "Awaiting Supervisor").length,
     "Awaiting Admin": jobs.filter((j) => j.status === "Awaiting Admin").length,
+    "Awaiting Super Admin": jobs.filter((j) => j.status === "Awaiting Super Admin").length,
     "Done": jobs.filter((j) => j.status === "Done").length,
     "On Hold": jobs.filter((j) => j.status === "On Hold").length,
     "Overdue": jobs.filter((j) => j.status === "Overdue").length,
@@ -939,7 +941,7 @@ export default function JobManagement(
 
       {/* Status pills */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-9 gap-2 md:gap-3 mb-6">
-        {(["All", "Not Started", "In Progress", "On Hold", "Awaiting Supervisor", "Awaiting Admin", "Done", "Overdue", "Rework"] as const).map((s, i) => (
+        {(["All", "Not Started", "In Progress", "On Hold", "Awaiting Supervisor", "Awaiting Admin", "Awaiting Super Admin", "Done", "Overdue", "Rework"] as const).map((s, i) => (
           <motion.button
             key={s}
             initial={{ opacity: 0, y: 10 }}
@@ -1111,15 +1113,13 @@ export default function JobManagement(
                                   <UserPlus size={14} className="mr-2 text-gray-400" />
                                   Reassign
                                 </DropdownMenuItem>
-                                {(role === "admin" || role === "super-admin") &&
-                                  (j.status === "Awaiting Supervisor" || j.status === "In Progress") && (
+                                {role === "admin" && j.status === "Awaiting Admin" && (
                                   <DropdownMenuItem className="cursor-pointer" onClick={() => markCompleted(j)}>
                                     <CheckCircle2 size={14} className="mr-2 text-emerald-500" />
-                                    Check & Complete
+                                    Send to Super Admin
                                   </DropdownMenuItem>
                                 )}
-                                {(role === "admin" || role === "super-admin") &&
-                                  j.status === "Awaiting Admin" && (
+                                {role === "super-admin" && j.status === "Awaiting Super Admin" && (
                                   <DropdownMenuItem className="cursor-pointer" onClick={() => markCompleted(j)}>
                                     <CheckCircle2 size={14} className="mr-2 text-emerald-500" />
                                     Complete Job

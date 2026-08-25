@@ -5,6 +5,7 @@ export type UiStatus =
   | "In Progress"
   | "Awaiting Supervisor"
   | "Awaiting Admin"
+  | "Awaiting Super Admin"
   | "Done"
   | "On Hold"
   | "Overdue"
@@ -16,6 +17,7 @@ const STATUS_API_TO_UI: Record<string, UiStatus> = {
   in_progress: "In Progress",
   awaiting_supervisor: "Awaiting Supervisor",
   awaiting_admin: "Awaiting Admin",
+  awaiting_super_admin: "Awaiting Super Admin",
   completed: "Done",
   cancelled: "Not Started",
   rework: "Rework",
@@ -33,6 +35,7 @@ export const STATUS_UI_TO_API: Record<Exclude<UiStatus, "Overdue">, string> = {
   "In Progress": "in_progress",
   "Awaiting Supervisor": "awaiting_supervisor",
   "Awaiting Admin": "awaiting_admin",
+  "Awaiting Super Admin": "awaiting_super_admin",
   Done: "completed",
   "On Hold": "on_hold",
   Rework: "rework",

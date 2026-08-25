@@ -375,7 +375,8 @@ export default function JobDetail({ role = "user", id }: Props) {
       job.status === "cancelled" ||
       job.status === "on_hold" ||
       job.status === "awaiting_supervisor" ||
-      job.status === "awaiting_admin"
+      job.status === "awaiting_admin" ||
+      job.status === "awaiting_super_admin"
     ) {
       return false;
     }
@@ -866,7 +867,8 @@ export default function JobDetail({ role = "user", id }: Props) {
       job.status === "cancelled" ||
       job.status === "on_hold" ||
       job.status === "awaiting_supervisor" ||
-      job.status === "awaiting_admin";
+      job.status === "awaiting_admin" ||
+      job.status === "awaiting_super_admin";
     if (!autoStop) return;
 
     setRunning(false);
@@ -1302,6 +1304,14 @@ export default function JobDetail({ role = "user", id }: Props) {
     return jobTimeLogs.reduce((acc, l) => acc + (typeof l.duration === "number" ? l.duration : 0), 0);
   }, [jobTimeLogs]);
 
+  const myLoggedSeconds = useMemo(() => {
+    const uid = currentUser?.id;
+    if (!uid) return 0;
+    return jobTimeLogs
+      .filter((l) => l.userId === uid)
+      .reduce((acc, l) => acc + (typeof l.duration === "number" ? l.duration : 0), 0);
+  }, [jobTimeLogs, currentUser?.id]);
+
   const timeBreakdown = useMemo(
     () => buildTimeLogCycleBreakdown(jobTimeLogs),
     [jobTimeLogs],
@@ -1317,6 +1327,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   }, [reworks]);
 
   const displaySeconds = totalLoggedSeconds + seconds;
+  const activeTimerTask = job?.id ? (readTimerState(job.id)?.task?.trim() ?? "") : "";
 
   const timeLogUserNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -1997,17 +2008,24 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <CheckCircle2 size={12} /> Approve for Admin
                   </motion.button>
                 )}
-                {(role === "admin" || role === "super-admin") && job?.status !== "rework" && (
+                {(role === "admin" && job?.status === "awaiting_admin") && (
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => setApproveOpen(true)}
                     className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
                   >
-                    <CheckCircle2 size={12} />
-                    {job?.status === "awaiting_supervisor" || job?.status === "in_progress"
-                      ? "Check & Complete"
-                      : "Complete Job"}
+                    <CheckCircle2 size={12} /> Send to Super Admin
+                  </motion.button>
+                )}
+                {(role === "super-admin" && job?.status === "awaiting_super_admin") && (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setApproveOpen(true)}
+                    className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
+                  >
+                    <CheckCircle2 size={12} /> Complete Job
                   </motion.button>
                 )}
               </>
@@ -2056,7 +2074,7 @@ export default function JobDetail({ role = "user", id }: Props) {
             {running && displaySeconds > totalLoggedSeconds && (
               <div className="text-[10px] text-sky-600 font-medium mt-0.5">Includes active timer</div>
             )}
-            {timeBreakdown.length > 1 && (
+            {timeBreakdown.length > 1 && !canUseJobTimer && (
               <div className="mt-1.5 space-y-0.5">
                 {timeBreakdown.map((row) => (
                   <div key={String(row.key)} className="text-[11px] text-gray-500">
@@ -2262,25 +2280,40 @@ export default function JobDetail({ role = "user", id }: Props) {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="relative bg-gradient-to-br from-primary via-sky-700 to-primary rounded-2xl p-6 mb-6 overflow-hidden shadow-xl shadow-primary/20"
+          className="relative isolate z-10 bg-gradient-to-br from-primary via-sky-700 to-primary rounded-2xl p-6 mb-6 overflow-hidden shadow-xl shadow-primary/20 min-h-[8.5rem]"
         >
           <motion.div
-            className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-white/10 blur-2xl"
+            className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-white/10 blur-2xl pointer-events-none"
             animate={{ scale: running ? [1, 1.3, 1] : 1, opacity: running ? [0.3, 0.6, 0.3] : 0.3 }}
             transition={{ duration: 2, repeat: Infinity }}
           />
-          <div className="relative z-10 flex items-center justify-between flex-wrap gap-4">
-            <div>
+          <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 mb-2">
-                <div className={`w-2 h-2 rounded-full ${running ? "bg-emerald-300 animate-pulse" : "bg-white/40"}`} />
+                <div className={`w-2 h-2 rounded-full shrink-0 ${running ? "bg-emerald-300 animate-pulse" : "bg-white/40"}`} />
                 <span className="text-xs font-bold text-white/80 uppercase tracking-wider">
                   {running ? "Tracking time" : "Ready to work"}
                   {activeReworkCycle != null ? ` · ${reworkCycleLabel(activeReworkCycle)}` : ""}
                 </span>
               </div>
-              <div className="font-mono text-4xl md:text-5xl font-bold text-white tabular-nums">{formatTime(displaySeconds)}</div>
+              <div className="font-mono text-4xl md:text-5xl font-bold text-white tabular-nums leading-none">
+                {formatTime(seconds)}
+              </div>
+              <div className="mt-2 space-y-0.5 text-xs text-white/75">
+                {activeTimerTask ? (
+                  <div className="truncate">
+                    Task: <span className="font-semibold text-white/90">{activeTimerTask}</span>
+                  </div>
+                ) : null}
+                {myLoggedSeconds > 0 ? (
+                  <div>
+                    Your logged time:{" "}
+                    <span className="font-semibold text-white/90 tabular-nums">{formatTime(myLoggedSeconds)}</span>
+                  </div>
+                ) : null}
+              </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 shrink-0">
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -3846,8 +3879,8 @@ export default function JobDetail({ role = "user", id }: Props) {
                   <h3 className="text-lg font-bold text-gray-900">
                     {role === "supervisor"
                       ? "Approve for Admin Review"
-                      : job?.status === "awaiting_supervisor" || job?.status === "in_progress"
-                        ? "Check & Complete Job"
+                      : role === "admin"
+                        ? "Send to Super Admin"
                         : "Complete Job"}
                   </h3>
                 </div>
@@ -3857,20 +3890,28 @@ export default function JobDetail({ role = "user", id }: Props) {
                 <div className="py-6 text-center">
                   <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3"><CheckCircle2 size={28} /></div>
                   <div className="text-base font-bold text-gray-900">
-                    {role === "supervisor" ? "Sent to admin for completion" : "Job checked and completed"}
+                    {role === "supervisor"
+                      ? "Sent to admin for completion"
+                      : role === "admin"
+                        ? "Sent to super admin for final completion"
+                        : "Job completed"}
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
-                    {role === "supervisor" ? "Admins have been notified." : "Worker and supervisor have been notified."}
+                    {role === "supervisor"
+                      ? "Admins have been notified."
+                      : role === "admin"
+                        ? "Super admins have been notified."
+                        : "Worker and supervisor have been notified."}
                   </div>
                 </div>
               ) : (
                 <>
                   <p className="text-sm text-gray-600 mb-4">
                     {role === "supervisor"
-                      ? "Confirm the deliverables look good. The job will move to admin/super-admin for final completion."
-                      : job?.status === "awaiting_supervisor" || job?.status === "in_progress"
-                        ? "Supervisor review is still pending. As admin/super-admin you can check this job now and mark it complete without waiting for supervisor approval. Use Mark for Rework if changes are needed."
-                        : "Confirm that the deliverables, checklist and time logs all look good. The job will be marked Completed and the worker notified."}
+                      ? "Confirm the deliverables look good. The job will move to admin for review — super admin completes it after admin approval."
+                      : role === "admin"
+                        ? "Confirm that the deliverables, checklist, and time logs look good. The job will be sent to super admin for final completion."
+                        : "Confirm that everything looks good. The job will be marked Completed and the worker notified."}
                   </p>
                   <div className="space-y-2 mb-5 text-xs">
                     <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> Checklist reviewed ({checklist.filter((c) => c.status === "completed").length}/{checklist.length} done)</div>
@@ -3888,17 +3929,21 @@ export default function JobDetail({ role = "user", id }: Props) {
                         comment:
                           role === "supervisor"
                             ? "Supervisor review comment"
-                            : role === "admin" || role === "super-admin"
-                              ? "Completion comment"
-                              : "Comment",
+                            : role === "admin"
+                              ? "Admin review comment"
+                              : "Completion comment",
                         commentPlaceholder:
                           role === "supervisor"
                             ? "Summarize your review, quality notes, or instructions for admin…"
-                            : "Summarize your check, quality notes, or handover details for the worker and team…",
+                            : role === "admin"
+                              ? "Summarize your check and any notes for super admin…"
+                              : "Summarize your final check, quality notes, or handover details…",
                         photos:
                           role === "supervisor"
                             ? "Review photos (optional)"
-                            : "Completion photos (optional)",
+                            : role === "admin"
+                              ? "Review photos (optional)"
+                              : "Completion photos (optional)",
                       }}
                     />
                   </div>
@@ -3946,9 +3991,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                           <CheckCircle2 size={14} />{" "}
                           {role === "supervisor"
                             ? "Approve"
-                            : job?.status === "awaiting_supervisor" || job?.status === "in_progress"
-                              ? "Check & Complete"
-                              : "Complete"}
+                            : role === "admin"
+                              ? "Send to Super Admin"
+                              : "Complete Job"}
                         </>
                       )}
                     </button>

@@ -17,6 +17,7 @@ export const jobStatusEnum = pgEnum("job_status", [
   "in_progress",
   "awaiting_supervisor",
   "awaiting_admin",
+  "awaiting_super_admin",
   "completed",
   "cancelled",
   "rework",

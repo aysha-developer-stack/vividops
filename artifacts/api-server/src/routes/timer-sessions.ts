@@ -186,7 +186,9 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
     if (!workerMayStartTimerOnJobStatus(job.status)) {
       return res.status(400).json({
         error:
-          job.status === "awaiting_supervisor" || job.status === "awaiting_admin"
+          job.status === "awaiting_supervisor" ||
+          job.status === "awaiting_admin" ||
+          job.status === "awaiting_super_admin"
             ? "Job is awaiting review — timer cannot run until rework is needed"
             : "This job is not in a state where work time can be tracked",
       });

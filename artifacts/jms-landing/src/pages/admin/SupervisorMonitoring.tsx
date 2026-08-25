@@ -125,7 +125,10 @@ function supervisorHasCheckedJob(
   }
 
   // Supervisor approved → awaiting admin (even if checkedBy was cleared later)
-  if (job.status === "awaiting_admin" && job.supervisor?.id === supervisorId) {
+  if (
+    (job.status === "awaiting_admin" || job.status === "awaiting_super_admin") &&
+    job.supervisor?.id === supervisorId
+  ) {
     const at = job.checkedAt ?? job.updatedAt ?? reviewStats.latestAt;
     if (at) return { checkedAt: at, reviewCheckSeconds: reviewStats.totalSeconds };
   }

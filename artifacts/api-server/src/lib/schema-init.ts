@@ -69,7 +69,7 @@ export async function ensureJobWriteSchema() {
     `);
 
     // Review pipeline statuses (safe if already present)
-    for (const value of ["awaiting_supervisor", "awaiting_admin", "rework", "on_hold"] as const) {
+    for (const value of ["awaiting_supervisor", "awaiting_admin", "awaiting_super_admin", "rework", "on_hold"] as const) {
       try {
         await db.execute(sql.raw(`ALTER TYPE job_status ADD VALUE IF NOT EXISTS '${value}'`));
       } catch (err) {

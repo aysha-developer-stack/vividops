@@ -13,6 +13,7 @@ export const JobStatus = {
   in_progress: "in_progress",
   awaiting_supervisor: "awaiting_supervisor",
   awaiting_admin: "awaiting_admin",
+  awaiting_super_admin: "awaiting_super_admin",
   completed: "completed",
   cancelled: "cancelled",
   rework: "rework",

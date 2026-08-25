@@ -60,6 +60,7 @@ const STATUS_CFG: Record<UiStatus, { color: string; icon: any; bar: string }> = 
   "In Progress": { color: "bg-primary/10 text-primary border-primary/30", icon: Briefcase, bar: "bg-primary" },
   "Awaiting Supervisor": { color: "bg-sky-50 text-sky-700 border-sky-200", icon: Clock, bar: "bg-sky-400" },
   "Awaiting Admin": { color: "bg-indigo-50 text-indigo-700 border-indigo-200", icon: Clock, bar: "bg-indigo-400" },
+  "Awaiting Super Admin": { color: "bg-violet-50 text-violet-700 border-violet-200", icon: Clock, bar: "bg-violet-400" },
   "Done": { color: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: CheckCircle2, bar: "bg-emerald-400" },
   "On Hold": { color: "bg-orange-50 text-orange-700 border-orange-200", icon: Pause, bar: "bg-orange-400" },
   "Overdue": { color: "bg-red-50 text-red-700 border-red-200", icon: AlertCircle, bar: "bg-red-500" },
@@ -73,6 +74,7 @@ const FILTERS: ("All" | UiStatus)[] = [
   "On Hold",
   "Awaiting Supervisor",
   "Awaiting Admin",
+  "Awaiting Super Admin",
   "Done",
   "Overdue",
   "Rework",
@@ -108,7 +110,7 @@ export default function MyJobs() {
     <DashboardLayout title="My Jobs" role="user" headerSearch={headerSearch}>
       {/* Stats summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
-        {(["Not Started", "In Progress", "On Hold", "Awaiting Supervisor", "Awaiting Admin", "Done", "Overdue", "Rework"] as UiStatus[]).map((s, i) => {
+        {(["Not Started", "In Progress", "On Hold", "Awaiting Supervisor", "Awaiting Admin", "Awaiting Super Admin", "Done", "Overdue", "Rework"] as UiStatus[]).map((s, i) => {
           const count = jobs.filter((j) => j.status === s).length;
           const cfg = STATUS_CFG[s];
           const Icon = cfg.icon;

@@ -7,7 +7,8 @@ export type CliqJobStatusEvent =
   | "completed"
   | "rework"
   | "awaiting_supervisor"
-  | "awaiting_admin";
+  | "awaiting_admin"
+  | "awaiting_super_admin";
 
 function jobLabel(job: JobRow): string {
   const num = job.jobNumber?.trim();
@@ -38,13 +39,10 @@ export function buildCliqJobStatusText(opts: {
   const commentText = trimDetail(comments);
 
   if (event === "completed") {
-    // Cliq "completed" is admin final approval only — not worker submit or supervisor review.
-    if (actor.role !== "admin" && actor.role !== "super-admin") return null;
+    // Cliq "completed" is super-admin final approval only.
+    if (actor.role !== "super-admin") return null;
 
-    const coveredSupervisor =
-      previousStatus === "awaiting_supervisor" || previousStatus === "in_progress";
-    const action = coveredSupervisor ? "checked and completed" : "approved and completed";
-    return `✅ ${label} ${action} by ${actorName} · ${time}`;
+    return `✅ ${label} approved and completed by ${actorName} · ${time}`;
   }
 
   if (event === "awaiting_supervisor") {
@@ -54,8 +52,12 @@ export function buildCliqJobStatusText(opts: {
   if (event === "awaiting_admin") {
     const bySupervisor = actor.role === "supervisor";
     return bySupervisor
-      ? `✔️ ${label} approved by supervisor ${actorName} — awaiting admin completion · ${time}`
-      : `✔️ ${label} forwarded for admin completion by ${actorName} · ${time}`;
+      ? `✔️ ${label} approved by supervisor ${actorName} — awaiting admin review · ${time}`
+      : `✔️ ${label} forwarded for admin review by ${actorName} · ${time}`;
+  }
+
+  if (event === "awaiting_super_admin") {
+    return `✔️ ${label} reviewed by admin ${actorName} — awaiting super admin completion · ${time}`;
   }
 
   if (event === "rework") {

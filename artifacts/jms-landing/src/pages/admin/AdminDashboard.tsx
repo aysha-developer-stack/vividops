@@ -17,6 +17,7 @@ const STATUS_BADGE: Record<UiStatus, string> = {
   "In Progress": "bg-sky-50 text-sky-700",
   "Awaiting Supervisor": "bg-amber-50 text-amber-700",
   "Awaiting Admin": "bg-violet-50 text-violet-700",
+  "Awaiting Super Admin": "bg-fuchsia-50 text-fuchsia-700",
   Done: "bg-emerald-50 text-emerald-700",
   "On Hold": "bg-orange-50 text-orange-700",
   Overdue: "bg-red-50 text-red-700",

@@ -16,7 +16,7 @@ import { requireAuth } from "../middlewares/requireAuth";
 import { io } from "../lib/socket";
 import { addToQueue } from "../lib/queue";
 import { logger } from "../lib/logger";
-import { createNotification, notifyJobManagers } from "../lib/notifications";
+import { createNotification, notifyJobManagers, notifyAdminsOnly } from "../lib/notifications";
 
 const router: IRouter = Router();
 
@@ -158,7 +158,12 @@ async function finalizeUploadedAttachment(opts: {
       ? `${actor.name} uploaded a corrected file for ${jobRow.title}: ${fileName}`
       : `${actor.name} uploaded a file for ${jobRow.title}: ${fileName}`;
 
-    await notifyJobManagers({
+    const notifyTarget =
+      fileCategory === "completed" && (actor.role === "user" || actor.role === "supervisor")
+        ? notifyAdminsOnly
+        : notifyJobManagers;
+
+    await notifyTarget({
       jobId,
       supervisorId: jobRow.supervisorId,
       actorId: actor.id,

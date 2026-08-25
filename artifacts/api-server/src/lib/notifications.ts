@@ -89,6 +89,54 @@ export async function notifyAllJobMembers(opts: {
   }
 }
 
+/** Notify admins only (excludes super-admin). */
+export async function notifyAdminsOnly(opts: {
+  jobId: string;
+  actorId: string;
+  title: string;
+  description: string;
+  type: NotificationType;
+}) {
+  const admins = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.role, "admin"));
+  for (const admin of admins) {
+    if (admin.id === opts.actorId) continue;
+    await createNotification({
+      userId: admin.id,
+      jobId: opts.jobId,
+      title: opts.title,
+      description: opts.description,
+      type: opts.type,
+    });
+  }
+}
+
+/** Notify super-admins only. */
+export async function notifySuperAdminsOnly(opts: {
+  jobId: string;
+  actorId: string;
+  title: string;
+  description: string;
+  type: NotificationType;
+}) {
+  const superAdmins = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.role, "super-admin"));
+  for (const row of superAdmins) {
+    if (row.id === opts.actorId) continue;
+    await createNotification({
+      userId: row.id,
+      jobId: opts.jobId,
+      title: opts.title,
+      description: opts.description,
+      type: opts.type,
+    });
+  }
+}
+
 /** Notify all admins, super-admins, and the job supervisor (not the actor). */
 export async function notifyJobManagers(opts: {
   jobId: string;

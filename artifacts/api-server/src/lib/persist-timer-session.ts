@@ -22,6 +22,7 @@ export function shouldAutoStopWorkerTimersForJobStatus(status: string): boolean 
   return (
     status === "awaiting_supervisor" ||
     status === "awaiting_admin" ||
+    status === "awaiting_super_admin" ||
     status === "completed" ||
     status === "cancelled" ||
     status === "on_hold"
