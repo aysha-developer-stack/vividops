@@ -85,6 +85,7 @@ async function start(): Promise<void> {
     try {
     const { db, jobs, users, jobMembers, timeLogs, posts, userSettings, and, eq, inArray, sql, gte, lt } = await import("@workspace/db");
     const { calendarDaysOverdue } = await import("./lib/job-due-date");
+    const { jobDisplayNumber } = await import("./lib/serialize");
 
     const cliqWebhookUrl = process.env.ZOHO_CLIQ_WEBHOOK_URL;
 
@@ -155,7 +156,8 @@ async function start(): Promise<void> {
         for (const j of overdueJobs) {
           const due = j.dueDate ? new Date(j.dueDate) : new Date();
           const daysOverdue = calendarDaysOverdue(due);
-          const title = `Job Overdue: JOB-${j.serial}`;
+          const jobLabel = jobDisplayNumber(j);
+          const title = `Job Overdue: ${jobLabel}`;
           const description = `Job ${j.title} for ${j.client} is overdue by ${daysOverdue} day(s).`;
 
           const recipients = await loadJobRecipientIds(j.id, j.assigneeId, j.supervisorId);
@@ -190,20 +192,21 @@ async function start(): Promise<void> {
         for (const j of upcomingJobs) {
           const due = new Date(j.dueDate!);
           const diffDays = Math.ceil((due.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          const jobLabel = jobDisplayNumber(j);
           
           let title = "";
           let description = "";
           const recipients = await loadJobRecipientIds(j.id, j.assigneeId, j.supervisorId);
 
           if (diffDays === 3) {
-            title = `Job Due in 3 Days: JOB-${j.serial}`;
+            title = `Job Due in 3 Days: ${jobLabel}`;
             description = `Job ${j.title} is due on ${due.toLocaleDateString()}.`;
           } else if (diffDays === 1) {
-            title = `Job Due Tomorrow: JOB-${j.serial}`;
+            title = `Job Due Tomorrow: ${jobLabel}`;
             description = `Job ${j.title} is due tomorrow (${due.toLocaleDateString()}).`;
             for (const a of adminIds) recipients.add(a);
           } else if (diffDays === 0) {
-            title = `Job Due Today: JOB-${j.serial}`;
+            title = `Job Due Today: ${jobLabel}`;
             description = `Job ${j.title} is due today!`;
             for (const a of adminIds) recipients.add(a);
           }

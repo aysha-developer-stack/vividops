@@ -10,7 +10,7 @@ import {
   JOB_LINKED_NOTIFICATION_TYPES,
   type NotificationType,
 } from "../lib/notifications";
-import { fixLegacyJobMessageNotificationTitle } from "../lib/serialize";
+import { fixLegacyJobNotificationTitle } from "../lib/serialize";
 
 const router = Router();
 
@@ -97,7 +97,7 @@ router.get("/notifications", requireAuth, async (req, res) => {
     res.json(
       rows.map(({ notification, job }) => ({
         ...notification,
-        title: fixLegacyJobMessageNotificationTitle(notification.title, job),
+        title: fixLegacyJobNotificationTitle(notification.title, job),
       })),
     );
   } catch (err) {
