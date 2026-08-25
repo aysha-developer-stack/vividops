@@ -3915,7 +3915,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                   </p>
                   <div className="space-y-2 mb-5 text-xs">
                     <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> Checklist reviewed ({checklist.filter((c) => c.status === "completed").length}/{checklist.length} done)</div>
-                    <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> {attachments.filter((a) => (a.uploadedBy?.role ?? "supervisor") === "user").length} completed file(s) submitted</div>
+                    <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> {attachments.filter((a) => isCompletedAttachment(a)).length} completed file(s) submitted</div>
                     <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> Time logs verified</div>
                   </div>
                   <div className="mb-5">
