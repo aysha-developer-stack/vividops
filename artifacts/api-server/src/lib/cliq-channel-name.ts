@@ -19,8 +19,13 @@ export function cliqChannelJobTitle(title: string): string {
   if (!t) return "Job";
   const lower = t.toLowerCase();
   if (lower === "engineering") return "Eng";
-  if (lower === "arch" || lower === "architectural plan" || lower.startsWith("arch ")) {
-    return "Architecture";
+  if (
+    lower === "arch" ||
+    lower === "architecture" ||
+    lower === "architectural plan" ||
+    lower.startsWith("arch ")
+  ) {
+    return "Arch";
   }
   return t;
 }
@@ -98,7 +103,7 @@ export function cliqChannelNameLookupVariants(
   add(channelName);
   add(computeCliqChannelName(job));
   add(legacySlugifyCliqChannelName(job));
-  // Legacy display names before title abbreviations (Eng / Architecture).
+  // Legacy display names before title abbreviations (Eng / Arch).
   const rawTitle = cleanSpaces(job.title || "");
   if (rawTitle) {
     const number = extractCliqJobNumber(job);

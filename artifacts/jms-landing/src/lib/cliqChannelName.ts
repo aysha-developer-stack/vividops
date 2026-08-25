@@ -18,8 +18,13 @@ export function cliqChannelJobTitle(title: string): string {
   if (!t) return "Job";
   const lower = t.toLowerCase();
   if (lower === "engineering") return "Eng";
-  if (lower === "arch" || lower === "architectural plan" || lower.startsWith("arch ")) {
-    return "Architecture";
+  if (
+    lower === "arch" ||
+    lower === "architecture" ||
+    lower === "architectural plan" ||
+    lower.startsWith("arch ")
+  ) {
+    return "Arch";
   }
   return t;
 }
