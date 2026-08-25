@@ -145,7 +145,7 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
     return out;
   }, [files, search, kind]);
 
-  const p = usePagination(folders, 10);
+  const p = usePagination(folders, 100);
 
   return (
     <DashboardLayout title="Files Management" role={role} headerSearch={headerSearch}>
