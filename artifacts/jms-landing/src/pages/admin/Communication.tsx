@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageCircle, Hash, Search, Send, Paperclip, Smile,
   Phone, Video, MoreHorizontal, ExternalLink, Check,
-  Reply, Copy, Forward, Pencil, Trash2, X,
+  Reply, Copy, Forward, Pencil, Trash2, X, ArrowLeft,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useDashboardSearch } from "@/lib/pageSearch";
@@ -195,6 +195,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
   const [editingMessage, setEditingMessage] = useState<JobMessageUi | null>(null);
   const [forwardMessage, setForwardMessage] = useState<JobMessageUi | null>(null);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
+  const [mobileShowChat, setMobileShowChat] = useState(false);
   const composerInputRef = useRef<HTMLInputElement | null>(null);
 
   const canManageMessage = useCallback(
@@ -674,7 +675,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
         </motion.div>
 
         <div className="flex-1 min-h-0 bg-white rounded-2xl border border-gray-100 overflow-hidden grid grid-cols-1 md:grid-cols-[280px_1fr]">
-          <div className="border-r border-gray-100 flex flex-col bg-gray-50/50 min-h-0">
+          <div className={`border-r border-gray-100 flex flex-col bg-gray-50/50 min-h-0 ${mobileShowChat ? "max-md:hidden" : "flex"}`}>
             <div className="p-4 border-b border-gray-100 space-y-3">
               <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 focus-within:border-primary transition-colors">
                 <Search size={14} className="text-gray-400" />
@@ -699,6 +700,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                           setEditingMessage(null);
                           setDraft("");
                           setActionMenuId(null);
+                          setMobileShowChat(true);
                         }}
                         className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${active ? "bg-primary text-white shadow-md shadow-primary/30" : "text-gray-700 hover:bg-white"}`}
                       >
@@ -731,13 +733,21 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
             </div>
           </div>
 
-          <div className="flex flex-col min-w-0 min-h-0">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className={`flex flex-col min-w-0 min-h-0 ${mobileShowChat ? "flex" : "max-md:hidden"} md:flex`}>
+            <div className="px-4 md:px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
-                <Hash size={16} className="text-gray-400 shrink-0" />
-                <span className="font-bold text-gray-900">{activeJob?.number ?? "Select a job"}</span>
+                <button
+                  type="button"
+                  onClick={() => setMobileShowChat(false)}
+                  className="md:hidden p-2 -ml-1 rounded-lg text-gray-600 hover:bg-gray-100 shrink-0"
+                  aria-label="Back to job list"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+                <Hash size={16} className="text-gray-400 shrink-0 hidden md:block" />
+                <span className="font-bold text-gray-900 truncate">{activeJob?.number ?? "Select a job"}</span>
                 {activeJob?.title && (
-                  <span className="text-xs text-gray-500 ml-2 hidden sm:inline truncate">· {activeJob.title}</span>
+                  <span className="text-xs text-gray-500 ml-1 sm:ml-2 truncate hidden sm:inline">· {activeJob.title}</span>
                 )}
               </div>
               <div className="flex items-center gap-1">
@@ -770,7 +780,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                       </div>
                       <div className={`relative ${m.isMe ? "self-end" : "self-start"}`}>
                         <div
-                          className={`absolute ${m.isMe ? "right-0" : "left-0"} -top-9 z-10 flex items-center gap-0.5 rounded-lg border border-gray-200 bg-white px-1 py-0.5 shadow-md opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity`}
+                          className={`absolute ${m.isMe ? "right-0" : "left-0"} -top-9 z-10 flex items-center gap-0.5 rounded-lg border border-gray-200 bg-white px-1 py-0.5 shadow-md opacity-100 pointer-events-auto md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto transition-opacity`}
                         >
                           <button
                             type="button"

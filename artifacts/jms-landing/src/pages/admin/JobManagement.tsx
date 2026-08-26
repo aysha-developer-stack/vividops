@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, MoreVertical, Trash2, UserPlus, X,
-  Calendar, ExternalLink, CheckCircle2, Download, Loader2, Clock, Pause, Play,
+  Calendar, ExternalLink, CheckCircle2, Download, Loader2, Clock, Pause, Play, ChevronRight,
 } from "lucide-react";
 import FileExtensionIcon from "@/components/FileExtensionIcon";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -1027,7 +1027,7 @@ export default function JobManagement(
           <div className="px-5 py-3 bg-red-50 border-b border-red-100 text-sm text-red-700">{error}</div>
         )}
 
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
@@ -1216,6 +1216,169 @@ export default function JobManagement(
           </table>
           {jobsQuery.isLoading && <div className="text-center py-12 text-sm text-gray-400">Loading jobs…</div>}
           {!jobsQuery.isLoading && filtered.length === 0 && <div className="text-center py-12 text-sm text-gray-400">No jobs found.</div>}
+        </div>
+
+        {/* Mobile card list — desktop table unchanged above */}
+        <div className="md:hidden divide-y divide-gray-100">
+          {jobsQuery.isLoading && <div className="text-center py-12 text-sm text-gray-400">Loading jobs…</div>}
+          {!jobsQuery.isLoading && filtered.length === 0 && (
+            <div className="text-center py-12 text-sm text-gray-400">No jobs found.</div>
+          )}
+          <AnimatePresence>
+            {!jobsQuery.isLoading &&
+              pageItems.map((j, i) => {
+                const sCfg = STATUS_CONFIG[j.status];
+                const pCfg = PRIORITY_CONFIG[j.priority];
+                return (
+                  <motion.div
+                    key={j.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: -12 }}
+                    transition={{ delay: i * 0.03 }}
+                    className="p-4 bg-white"
+                  >
+                    <div className="flex items-start gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setLocation(`${basePath}/${j.id}`)}
+                        className="flex-1 min-w-0 text-left"
+                      >
+                        <div className="font-semibold text-gray-900 text-sm">{j.title}</div>
+                        {j.address ? (
+                          <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{j.address}</div>
+                        ) : null}
+                        <div className="text-xs text-gray-500 mt-1">
+                          {j.number} · {j.client} · Created {j.created}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 mt-3">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-lg border text-[10px] font-semibold ${sCfg.bg} ${sCfg.color}`}>
+                            {j.status}
+                          </span>
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${pCfg.color}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${pCfg.dot}`} />
+                            {j.priority}
+                          </span>
+                          {j.status === "Awaiting Supervisor" && role !== "user" && (() => {
+                            const session = liveReviewByJobId.get(j.id);
+                            if (!session?.segmentStartedAt || !session.isLive) return null;
+                            return (
+                              <ReviewTimerBadge
+                                accumulatedSeconds={session.accumulatedSeconds}
+                                segmentStartedAt={session.segmentStartedAt}
+                              />
+                            );
+                          })()}
+                        </div>
+                        <div className="mt-3 space-y-1.5 text-xs text-gray-600">
+                          <div>
+                            <span className="font-semibold text-gray-500">Assignees: </span>
+                            {j.assignees.length === 0 ? "Unassigned" : j.assignees.map((a) => a.name).join(", ")}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-gray-500">Supervisor: </span>
+                            {j.supervisor ?? "—"}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-500 shrink-0">Progress:</span>
+                            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden max-w-[120px]">
+                              <div
+                                className={`h-full rounded-full ${j.status === "Done" ? "bg-emerald-500" : j.status === "Overdue" ? "bg-red-500" : j.status === "On Hold" ? "bg-orange-400" : "bg-primary"}`}
+                                style={{ width: `${j.progress}%` }}
+                              />
+                            </div>
+                            <span className="font-semibold">{j.progress}%</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Calendar size={12} className={j.status === "Overdue" ? "text-red-500" : "text-gray-400"} />
+                            {j.status === "Done" && j.completed ? (
+                              <span className="text-emerald-700 font-semibold">Done {j.completed}</span>
+                            ) : (
+                              <span className={j.status === "Overdue" ? "text-red-600 font-semibold" : ""}>
+                                {j.status === "Overdue" ? "Was due " : "Due "}{j.due}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                      <div className="flex flex-col items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setLocation(`${basePath}/${j.id}`)}
+                          className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-primary"
+                          aria-label="Open job"
+                        >
+                          <ChevronRight size={18} />
+                        </button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                              aria-label="Job actions"
+                            >
+                              <MoreVertical size={16} />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem className="cursor-pointer" onClick={() => setLocation(`${basePath}/${j.id}`)}>
+                              <ExternalLink size={14} className="mr-2 text-gray-400" />
+                              Open job
+                            </DropdownMenuItem>
+                            {role !== "user" && (
+                              <>
+                                {(j.status !== "Done" || role === "admin" || role === "super-admin") && (
+                                  <DropdownMenuItem className="cursor-pointer" onClick={() => startReassign(j)}>
+                                    <UserPlus size={14} className="mr-2 text-gray-400" />
+                                    Reassign
+                                  </DropdownMenuItem>
+                                )}
+                                {role === "admin" && j.status === "Awaiting Admin" && (
+                                  <DropdownMenuItem className="cursor-pointer" onClick={() => markCompleted(j)}>
+                                    <CheckCircle2 size={14} className="mr-2 text-emerald-500" />
+                                    Send to Super Admin
+                                  </DropdownMenuItem>
+                                )}
+                                {role === "super-admin" && j.status === "Awaiting Super Admin" && (
+                                  <DropdownMenuItem className="cursor-pointer" onClick={() => markCompleted(j)}>
+                                    <CheckCircle2 size={14} className="mr-2 text-emerald-500" />
+                                    Complete Job
+                                  </DropdownMenuItem>
+                                )}
+                                {(role === "supervisor" || role === "admin" || role === "super-admin") &&
+                                  j.status === "On Hold" && (
+                                  <DropdownMenuItem className="cursor-pointer" onClick={() => resumeFromHold(j)}>
+                                    <Play size={14} className="mr-2 text-emerald-500" />
+                                    Resume Job
+                                  </DropdownMenuItem>
+                                )}
+                                {(role === "supervisor" || role === "admin" || role === "super-admin") &&
+                                  j.status !== "Done" &&
+                                  j.status !== "On Hold" && (
+                                  <DropdownMenuItem className="cursor-pointer" onClick={() => putOnHold(j)}>
+                                    <Pause size={14} className="mr-2 text-orange-500" />
+                                    Put on Hold
+                                  </DropdownMenuItem>
+                                )}
+                                {(role === "admin" || role === "super-admin") && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => remove(j.id)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                                      <Trash2 size={14} className="mr-2" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+          </AnimatePresence>
         </div>
         <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onChange={setPage} label="jobs" />
       </motion.div>

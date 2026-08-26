@@ -1895,7 +1895,7 @@ export default function JobDetail({ role = "user", id }: Props) {
             <h2 className="text-2xl font-bold text-gray-900">{job?.title ?? (jobQuery.isLoading ? "Loading…" : "Job")}</h2>
             <div className="text-sm text-gray-500 mt-1">{job?.client ?? "—"}</div>
           </div>
-          <div className="flex gap-2 flex-wrap justify-end">
+          <div className="flex gap-2 flex-wrap justify-end max-md:flex-nowrap max-md:overflow-x-auto max-md:max-w-[calc(100vw-2rem)] max-md:pb-1 max-md:scrollbar-thin">
             {canEditOrReassignJob && (
               <motion.button
                 whileHover={{ scale: 1.05 }}
