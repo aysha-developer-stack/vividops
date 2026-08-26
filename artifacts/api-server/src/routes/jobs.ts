@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { CreateJobBody, UpdateJobBody } from "@workspace/api-zod";
 import { buildJobAssignees, jobDisplayNumber, publicJob } from "../lib/serialize";
 import { parseJobMeta, serializeJobMeta } from "../lib/jobMeta";
+import { canEditCompletedJob } from "../lib/job-edit-permissions";
 import { requireAuth, requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { getZohoCliqAccessToken } from "../lib/zoho";
@@ -2119,6 +2120,10 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   const isAssignee = full.job.assigneeId === actor.id;
   if (!isManager && !isAssignee) {
     return res.status(403).json({ error: "You cannot update this job" });
+  }
+
+  if (full.job.status === "completed" && !canEditCompletedJob(actor)) {
+    return res.status(403).json({ error: "Only admin or super-admin can edit a completed job" });
   }
 
   // Field-level access control: assignee-only edits are limited to status + progress.

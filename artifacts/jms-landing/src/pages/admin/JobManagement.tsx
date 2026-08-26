@@ -1109,10 +1109,12 @@ export default function JobManagement(
                             </DropdownMenuItem>
                             {role !== "user" && (
                               <>
-                                <DropdownMenuItem className="cursor-pointer" onClick={() => startReassign(j)}>
-                                  <UserPlus size={14} className="mr-2 text-gray-400" />
-                                  Reassign
-                                </DropdownMenuItem>
+                                {(j.status !== "Done" || role === "admin" || role === "super-admin") && (
+                                  <DropdownMenuItem className="cursor-pointer" onClick={() => startReassign(j)}>
+                                    <UserPlus size={14} className="mr-2 text-gray-400" />
+                                    Reassign
+                                  </DropdownMenuItem>
+                                )}
                                 {role === "admin" && j.status === "Awaiting Admin" && (
                                   <DropdownMenuItem className="cursor-pointer" onClick={() => markCompleted(j)}>
                                     <CheckCircle2 size={14} className="mr-2 text-emerald-500" />

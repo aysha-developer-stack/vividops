@@ -6,6 +6,7 @@ import { requireAuth } from "../middlewares/requireAuth";
 import { announceCliqMemberActivity } from "../lib/cliq-member-activity";
 import { logger } from "../lib/logger";
 import { createNotification, notifyJobManagers } from "../lib/notifications";
+import { canMutateCompletedJob } from "../lib/job-edit-permissions";
 
 const router: IRouter = Router();
 
@@ -91,6 +92,9 @@ router.post("/jobs/:jobId/members", requireAuth, async (req, res) => {
     const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
     if (!job) return res.status(404).json({ error: "Job not found" });
     if (!canManageJob(actor, job)) return res.status(403).json({ error: "Forbidden" });
+    if (!canMutateCompletedJob(actor, job)) {
+      return res.status(403).json({ error: "Only admin or super-admin can edit a completed job" });
+    }
 
     const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!u) return res.status(400).json({ error: "User not found" });
@@ -148,6 +152,9 @@ router.delete("/jobs/:jobId/members/:userId", requireAuth, async (req, res) => {
     const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
     if (!job) return res.status(404).json({ error: "Job not found" });
     if (!canManageJob(actor, job)) return res.status(403).json({ error: "Forbidden" });
+    if (!canMutateCompletedJob(actor, job)) {
+      return res.status(403).json({ error: "Only admin or super-admin can edit a completed job" });
+    }
 
     const [removedUser] = await db
       .select({ id: users.id, name: users.name })

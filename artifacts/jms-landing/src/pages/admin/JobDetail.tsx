@@ -572,6 +572,10 @@ export default function JobDetail({ role = "user", id }: Props) {
   const canEditJobNotes = role === "supervisor" || role === "admin" || role === "super-admin";
   const canManageJobHeader =
     role === "supervisor" || role === "admin" || role === "super-admin";
+  const canEditCompletedJob = role === "admin" || role === "super-admin";
+  const canEditOrReassignJob =
+    job?.status !== "cancelled" &&
+    (job?.status !== "completed" ? canManageJobHeader : canEditCompletedJob);
   const workers = useMemo(
     () => (assignablesQuery.data ?? []).filter((u) => u.role === "user"),
     [assignablesQuery.data],
@@ -1892,7 +1896,7 @@ export default function JobDetail({ role = "user", id }: Props) {
             <div className="text-sm text-gray-500 mt-1">{job?.client ?? "—"}</div>
           </div>
           <div className="flex gap-2 flex-wrap justify-end">
-            {canManageJobHeader && job?.status !== "completed" && job?.status !== "cancelled" && (
+            {canEditOrReassignJob && (
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -1902,7 +1906,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 <Edit2 size={12} /> Edit
               </motion.button>
             )}
-            {canManageJobHeader && job?.status !== "completed" && job?.status !== "cancelled" && (
+            {canEditOrReassignJob && (
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
