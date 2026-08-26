@@ -41,7 +41,7 @@ export const JOB_LIST_SORT_LABELS: Record<JobListSortMode, string> = {
 
 export const JOB_LIST_SORT_HINTS: Record<JobListSortMode, string> = {
   recent: "Newest created jobs first",
-  jobNumber: "Sort by job number (lowest first)",
+  jobNumber: "Sort by job number (highest first)",
 };
 
 export const JOB_LIST_SORT_STORAGE_KEY = "jms_job_list_sort_v1";
@@ -126,9 +126,9 @@ export function compareJobsByActivity(a: JobSortFields, b: JobSortFields): numbe
 }
 
 export function compareJobsByJobNumber(a: JobSortFields, b: JobSortFields): number {
-  const numDiff = parseJobNumberSortKey(a.number) - parseJobNumberSortKey(b.number);
+  const numDiff = parseJobNumberSortKey(b.number) - parseJobNumberSortKey(a.number);
   if (numDiff !== 0) return numDiff;
-  return a.number.localeCompare(b.number);
+  return b.number.localeCompare(a.number);
 }
 
 export function sortJobs<T>(
