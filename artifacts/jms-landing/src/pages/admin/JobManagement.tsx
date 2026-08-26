@@ -45,6 +45,11 @@ import {
   readStoredJobListSort,
   sortJobs,
 } from "@/lib/jobListSort";
+import {
+  fetchActiveReviewCheckSessions,
+  liveReviewCheckElapsedSeconds,
+  type ReviewCheckSession,
+} from "@/lib/reviewCheckSessionApi";
 
 import {
   DropdownMenu,
@@ -80,17 +85,25 @@ function formatReviewTime(seconds: number) {
   return `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-function ReviewTimerBadge({ startedAt }: { startedAt: string }) {
+function ReviewTimerBadge({
+  accumulatedSeconds,
+  segmentStartedAt,
+}: {
+  accumulatedSeconds: number;
+  segmentStartedAt: string;
+}) {
   const [elapsed, setElapsed] = useState(() =>
-    Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)),
+    liveReviewCheckElapsedSeconds({ accumulatedSeconds, segmentStartedAt }),
   );
 
   useEffect(() => {
-    const id = window.setInterval(() => {
-      setElapsed(Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)));
-    }, 1000);
+    const tick = () => {
+      setElapsed(liveReviewCheckElapsedSeconds({ accumulatedSeconds, segmentStartedAt }));
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
     return () => window.clearInterval(id);
-  }, [startedAt]);
+  }, [accumulatedSeconds, segmentStartedAt]);
 
   return (
     <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-mono font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded px-1.5 py-0.5">
@@ -297,10 +310,42 @@ export default function JobManagement(
     }
   };
 
+  const [liveReviewSessions, setLiveReviewSessions] = useState<ReviewCheckSession[]>([]);
+
   const jobs: UiJob[] = useMemo(
     () => (jobsQuery.data ?? []).map(mapJob),
     [jobsQuery.data],
   );
+  const liveReviewByJobId = useMemo(() => {
+    const map = new Map<string, ReviewCheckSession>();
+    for (const session of liveReviewSessions) {
+      if (!session.segmentStartedAt || !session.isLive) continue;
+      map.set(session.jobId, session);
+    }
+    return map;
+  }, [liveReviewSessions]);
+
+  useEffect(() => {
+    if (role === "user") {
+      setLiveReviewSessions([]);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const rows = await fetchActiveReviewCheckSessions();
+        if (!cancelled) setLiveReviewSessions(rows);
+      } catch {
+        if (!cancelled) setLiveReviewSessions([]);
+      }
+    };
+    void load();
+    const id = window.setInterval(load, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [role]);
   const assignables = assignablesQuery.data ?? [];
   const supervisors = useMemo(
     () => assignables.filter((u) => u.role === "supervisor"),
@@ -1057,9 +1102,16 @@ export default function JobManagement(
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-xs font-semibold ${sCfg.bg} ${sCfg.color}`}>
                             {j.status}
                           </span>
-                          {j.status === "Awaiting Supervisor" && j.reviewStartedAt && role !== "user" && (
-                            <ReviewTimerBadge startedAt={j.reviewStartedAt} />
-                          )}
+                          {j.status === "Awaiting Supervisor" && role !== "user" && (() => {
+                            const session = liveReviewByJobId.get(j.id);
+                            if (!session?.segmentStartedAt || !session.isLive) return null;
+                            return (
+                              <ReviewTimerBadge
+                                accumulatedSeconds={session.accumulatedSeconds}
+                                segmentStartedAt={session.segmentStartedAt}
+                              />
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="px-6 py-4">

@@ -155,6 +155,7 @@ export function jobStatusPatchFields(opts: {
 
   if (nextStatus === "awaiting_supervisor") {
     patch.completedAt = null;
+    patch.reviewStartedAt = null;
     return patch;
   }
 
