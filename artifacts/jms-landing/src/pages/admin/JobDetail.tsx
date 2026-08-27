@@ -8,6 +8,7 @@ import {
   Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock, ListChecks, Search, Eye, Trash2, StickyNote
 } from "lucide-react";
 import FileExtensionIcon from "@/components/FileExtensionIcon";
+import { Checkbox } from "@/components/ui/checkbox";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
@@ -75,7 +76,7 @@ import {
   REVIEW_CHECK_HEARTBEAT_INTERVAL_MS,
   type ReviewCheckSession,
 } from "@/lib/reviewCheckSessionApi";
-import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } from "@/lib/downloadFile";
+import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl, downloadJobAttachmentsZip, jobAddressZipFileName } from "@/lib/downloadFile";
 import { MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategories";
 import { useQueryClient } from "@tanstack/react-query";
 import FileDropzone from "@/components/FileDropzone";
@@ -524,6 +525,8 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [autoStopCountdown, setAutoStopCountdown] = useState(300);
   const [fileSubTab, setFileSubTab] = useState<"input" | "output" | "notes">("input");
   const [fileSearch, setFileSearch] = useState("");
+  const [selectedJobFileIds, setSelectedJobFileIds] = useState<string[]>([]);
+  const [jobFilesZipLoading, setJobFilesZipLoading] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<AttachmentApi | null>(null);
   const [notes, setNotes] = useState(INITIAL_NOTES);
   const [noteDraft, setNoteDraft] = useState("");
@@ -543,6 +546,10 @@ export default function JobDetail({ role = "user", id }: Props) {
   const uploadChecklistIdRef = useRef<number | null>(null);
   const PING_INTERVAL_S = TIMER_PING_INTERVAL_S;
   const AUTO_STOP_S = TIMER_AUTO_STOP_S;
+
+  useEffect(() => {
+    setSelectedJobFileIds([]);
+  }, [job?.id]);
 
   const loadReworks = async () => {
     if (!job?.id) {
@@ -1500,6 +1507,21 @@ export default function JobDetail({ role = "user", id }: Props) {
       window.alert("Download failed. Please try again.");
     });
   };
+  const downloadSelectedJobFilesZip = (attachmentIds: string[]) => {
+    if (!job?.id || attachmentIds.length === 0) return;
+    setJobFilesZipLoading(true);
+    void downloadJobAttachmentsZip(
+      job.id,
+      jobAddressZipFileName({ address: job.address, number: job.number, title: job.title }),
+      attachmentIds,
+    )
+      .catch(() => {
+        window.alert("Download failed. Please try again.");
+      })
+      .finally(() => {
+        setJobFilesZipLoading(false);
+      });
+  };
   const deleteAttachment = async (attachment: AttachmentApi) => {
     if (!job?.id) return;
     if (attachment.uploadedById !== currentUser?.id) {
@@ -2437,6 +2459,22 @@ export default function JobDetail({ role = "user", id }: Props) {
           const filteredRework = reworkFiles.filter((a) => a.fileName.toLowerCase().includes(q));
           const filteredOutputServer = outputFiles.filter((a) => a.fileName.toLowerCase().includes(q));
           const reworkMetaById = new Map(reworks.map((r) => [r.id, r]));
+          const inputFileIds = filteredInput.map((a) => a.id);
+          const allInputSelected =
+            filteredInput.length > 0 && filteredInput.every((a) => selectedJobFileIds.includes(a.id));
+          const selectedInputCount = filteredInput.filter((a) => selectedJobFileIds.includes(a.id)).length;
+          const toggleSelectAllInput = () => {
+            if (allInputSelected) {
+              setSelectedJobFileIds((prev) => prev.filter((id) => !inputFileIds.includes(id)));
+              return;
+            }
+            setSelectedJobFileIds((prev) => [...new Set([...prev, ...inputFileIds])]);
+          };
+          const toggleSelectInput = (id: string) => {
+            setSelectedJobFileIds((prev) =>
+              prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+            );
+          };
 
           const canUploadInput = role === "super-admin" || role === "admin";
           const canUploadOutput = canUploadCompletedFiles;
@@ -3018,17 +3056,43 @@ export default function JobDetail({ role = "user", id }: Props) {
               <div className="grid grid-cols-1 gap-6">
                 {/* Job Files Section (Input) */}
                 <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-                  <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+                  <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
                       <h3 className="font-bold text-gray-900">Job Files</h3>
                       <p className="text-[11px] text-gray-500 mt-0.5">Files uploaded when the job was assigned</p>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary uppercase">{filteredInput.length} Files</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary uppercase">{filteredInput.length} Files</span>
+                      {filteredInput.length > 0 && (
+                        <button
+                          type="button"
+                          disabled={selectedInputCount === 0 || jobFilesZipLoading}
+                          onClick={() =>
+                            downloadSelectedJobFilesZip(
+                              filteredInput.filter((a) => selectedJobFileIds.includes(a.id)).map((a) => a.id),
+                            )
+                          }
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-bold shadow-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {jobFilesZipLoading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                          Download ZIP{selectedInputCount > 0 ? ` (${selectedInputCount})` : ""}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="border-b border-gray-50">
+                          <th className="px-4 py-3 w-10">
+                            {filteredInput.length > 0 && (
+                              <Checkbox
+                                checked={allInputSelected}
+                                onCheckedChange={() => toggleSelectAllInput()}
+                                aria-label="Select all job files"
+                              />
+                            )}
+                          </th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider min-w-[280px]">File Name</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Uploaded By</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Upload Date</th>
@@ -3038,7 +3102,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                       </thead>
                       <tbody className="divide-y divide-gray-50">
                         {filteredInput.length === 0 ? (
-                          <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-gray-400">No job files found</td></tr>
+                          <tr><td colSpan={6} className="px-6 py-10 text-center text-xs text-gray-400">No job files found</td></tr>
                         ) : filteredInput.map((a) => {
                           const who = a.uploadedBy?.name ?? "—";
                           const when = a.createdAt ? new Date(a.createdAt).toLocaleString() : "—";
@@ -3046,6 +3110,13 @@ export default function JobDetail({ role = "user", id }: Props) {
                           const reworkBadges = renderReworkInstructionBadges(a, meta);
                           return (
                           <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-4 py-2.5 align-top">
+                              <Checkbox
+                                checked={selectedJobFileIds.includes(a.id)}
+                                onCheckedChange={() => toggleSelectInput(a.id)}
+                                aria-label={`Select ${a.fileName}`}
+                              />
+                            </td>
                             <td className="px-6 py-2.5 align-top">
                               <div className="flex items-start gap-2 min-w-0">
                                 <FileExtensionIcon fileName={a.fileName} size="sm" className="mt-0.5" />

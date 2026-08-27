@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, eq, desc, inArray, sql as dsql } from "drizzle-orm";
+import { createZipArchive, type ArchiverError } from "../lib/attachment-zip";
 import { upload, uploadToSupabase, supabase, buildStorageObjectKey, createDirectUploadUrl, getPublicUrlForKey, storageObjectExists } from "../lib/storage";
 import { validateUploadFileName } from "../lib/upload-file-types";
 import {
@@ -221,6 +222,43 @@ async function finalizeUploadedAttachment(opts: {
   return attachment;
 }
 
+function sanitizeZipBaseName(raw: string, fallback: string): string {
+  const cleaned = raw.replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, " ").trim().slice(0, 120);
+  return cleaned || fallback;
+}
+
+function jobAddressZipBaseName(jobRow: JobRow): string {
+  const fallback =
+    jobRow.jobNumber?.trim() ||
+    (jobRow.serial != null ? `JOB-${jobRow.serial}` : jobRow.title?.trim() || "job-files");
+  return sanitizeZipBaseName(jobRow.address?.trim() || fallback, fallback);
+}
+
+function isJobWorkFile(att: {
+  fileCategory: string | null;
+  reworkId: string | null;
+  uploadedByRole?: string | null;
+}, checklistItemId: number | null): boolean {
+  if (checklistItemId != null) return false;
+  if (att.fileCategory === "rework" || att.fileCategory === "review") return false;
+  if (att.fileCategory === "completed") return false;
+  if (att.fileCategory === "job") return true;
+  return att.uploadedByRole !== "user";
+}
+
+function uniqueZipEntryName(used: Map<string, number>, fileName: string): string {
+  const raw = (fileName || "file").split(/[/\\]/).pop() || "file";
+  const safe = raw.replace(/[\r\n"]+/g, "_").trim() || "file";
+  const count = used.get(safe) ?? 0;
+  used.set(safe, count + 1);
+  if (count === 0) return safe;
+  const dot = safe.lastIndexOf(".");
+  if (dot > 0) {
+    return `${safe.slice(0, dot)} (${count})${safe.slice(dot)}`;
+  }
+  return `${safe} (${count})`;
+}
+
 async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
   if (actor.role === "supervisor") {
@@ -281,7 +319,107 @@ router.get("/jobs/:jobId/attachments", requireAuth, async (req, res) => {
   }
 });
 
-// Endpoint to upload an attachment to a job
+router.get("/jobs/:jobId/attachments/download-zip", requireAuth, async (req, res) => {
+  try {
+    await ensureAttachmentsSchema();
+    await ensureChecklistAttachmentsSchema();
+    const jobId = Array.isArray(req.params.jobId) ? req.params.jobId[0] : req.params.jobId;
+    const actor = req.session!.user;
+
+    const [jobRow] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    if (!jobRow) {
+      res.status(404).json({ message: "Job not found" });
+      return;
+    }
+    if (!(await canViewJob(actor, jobRow))) {
+      res.status(403).json({ message: "Forbidden" });
+      return;
+    }
+
+    const requestedIds =
+      typeof req.query.attachmentIds === "string"
+        ? req.query.attachmentIds.split(",").map((id) => id.trim()).filter(Boolean)
+        : [];
+
+    const rows = await db
+      .select({
+        attachment: jobAttachments,
+        uploadedByRole: users.role,
+        checklistItemId: jobChecklistAttachments.itemId,
+      })
+      .from(jobAttachments)
+      .leftJoin(users, eq(users.id, jobAttachments.uploadedById))
+      .leftJoin(jobChecklistAttachments, eq(jobChecklistAttachments.attachmentId, jobAttachments.id))
+      .where(eq(jobAttachments.jobId, jobId))
+      .orderBy(desc(jobAttachments.createdAt));
+
+    let candidates = rows.filter((r) =>
+      isJobWorkFile(
+        {
+          fileCategory: r.attachment.fileCategory,
+          reworkId: (r.attachment as { reworkId?: string | null }).reworkId ?? null,
+          uploadedByRole: r.uploadedByRole,
+        },
+        r.checklistItemId ?? null,
+      ),
+    );
+
+    if (requestedIds.length > 0) {
+      const idSet = new Set(requestedIds);
+      candidates = candidates.filter((r) => idSet.has(r.attachment.id));
+    }
+
+    if (candidates.length === 0) {
+      res.status(404).json({ message: "No job files to download" });
+      return;
+    }
+
+    const zipBase = jobAddressZipBaseName(jobRow);
+    const encodedName = encodeURIComponent(`${zipBase}.zip`).replace(/['()]/g, escape);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${zipBase}.zip"; filename*=UTF-8''${encodedName}`,
+    );
+    res.setHeader("Cache-Control", "private, no-store");
+
+    const archive = createZipArchive();
+    archive.on("error", (err: ArchiverError) => {
+      logger.error({ err, jobId }, "Failed to build attachment zip");
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Failed to build zip" });
+      } else {
+        res.end();
+      }
+    });
+    archive.pipe(res);
+
+    const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "vivid-ops-files";
+    const usedNames = new Map<string, number>();
+    for (const row of candidates) {
+      const attachment = row.attachment;
+      const { data, error } = await supabase.storage.from(bucketName).download(attachment.fileKey);
+      if (error || !data) {
+        logger.warn({ jobId, attachmentId: attachment.id, error }, "Skipping missing file in zip");
+        continue;
+      }
+      const buffer = Buffer.from(await data.arrayBuffer());
+      archive.append(buffer, { name: uniqueZipEntryName(usedNames, attachment.fileName) });
+    }
+
+    await archive.finalize();
+    return;
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : typeof err === "string" ? err : "Internal server error";
+    logger.error({ err, message }, "Failed to download attachment zip");
+    if (!res.headersSent) {
+      res.status(500).json({ message });
+    }
+    return;
+  }
+});
+
 router.get("/jobs/:jobId/attachments/:attachmentId/view", requireAuth, async (req, res) => {
   try {
     await ensureAttachmentsSchema();

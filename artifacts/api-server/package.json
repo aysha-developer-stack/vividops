@@ -15,6 +15,7 @@
     "@supabase/supabase-js": "^2.106.1",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
+    "archiver": "^8.0.0",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.76.8",
     "cookie-parser": "^1.4.7",
@@ -32,6 +33,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@types/archiver": "^8.0.0",
     "@types/bcryptjs": "^3.0.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
