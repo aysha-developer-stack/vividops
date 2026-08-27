@@ -1045,14 +1045,6 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                     <button onClick={() => setFilterOpen(false)} className="p-1 hover:bg-gray-100 rounded-md text-gray-400"><X size={14} /></button>
                   </div>
                   <div className="p-4 space-y-4 max-h-[420px] overflow-y-auto">
-                    <div>
-                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Search</label>
-                      <div className="relative mt-1">
-                        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={activeTab === "time" ? "User or project…" : activeTab === "daily" ? "Worker name…" : "User name…"} className="w-full pl-8 pr-3 py-2 text-xs border border-gray-200 rounded-lg !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary" />
-                      </div>
-                    </div>
-
                     {activeTab === "users" && (
                       <div>
                         <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Role</label>

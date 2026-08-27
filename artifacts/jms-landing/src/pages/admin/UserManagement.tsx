@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus, Search, MoreVertical, Edit2, Trash2, Power, Shield,
+  Plus, MoreVertical, Edit2, Trash2, Power, Shield,
   Crown, UserCog, User as UserIcon, X, Check, Mail, KeyRound,
   Copy, CheckCircle2, AlertTriangle, Loader2, RefreshCw,
 } from "lucide-react";
@@ -263,16 +263,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
         {/* Toolbar */}
         <div className="p-5 border-b border-gray-100 flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 flex-1 max-w-md focus-within:border-primary transition-colors">
-              <Search size={16} className="text-gray-400" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search users by name or email…"
-                className="bg-transparent !text-[#111827] !placeholder:text-gray-400 text-sm flex-1 focus:outline-none"
-              />
-            </div>
+          <div className="flex items-center gap-3">
             <div className="flex gap-1 bg-gray-100 p-1 rounded-xl flex-wrap">
               {FILTER_TABS.map((r) => (
                 <motion.button

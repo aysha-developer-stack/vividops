@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  AlertTriangle, Plus, Search, X, CheckCircle2, Filter, ChevronRight, Users, Trash2,
+  AlertTriangle, Plus, X, CheckCircle2, Filter, ChevronRight, Users, Trash2,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useDashboardSearch } from "@/lib/pageSearch";
@@ -390,15 +390,6 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
 
       <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 flex-1 min-w-[200px] bg-gray-50 rounded-xl px-3 py-2">
-            <Search size={14} className="text-gray-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search user, type, job…"
-              className="bg-transparent text-sm flex-1 focus:outline-none text-gray-900 placeholder:text-gray-400"
-            />
-          </div>
           {!isWorker && (
             <select
               value={userFilter}

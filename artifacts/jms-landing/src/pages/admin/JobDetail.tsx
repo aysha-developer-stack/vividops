@@ -5,7 +5,7 @@ import {
   ArrowLeft, MapPin, Calendar, User, Briefcase, CheckCircle2, Circle,
   Play, Pause, Square, Upload, FileText, Download, MessageCircle, Send,
   RefreshCw, AlertTriangle, Clock, Users, X, Edit2, Loader2,
-  Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock, ListChecks, Search, Eye, Trash2, StickyNote
+  Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock, ListChecks, Eye, Trash2, StickyNote
 } from "lucide-react";
 import FileExtensionIcon from "@/components/FileExtensionIcon";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -83,6 +83,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import FileDropzone from "@/components/FileDropzone";
 import { CHECKLIST_FILE_ACCEPT, filterJobFiles, filterChecklistInstructionFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE, CHECKLIST_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
 import { isCompletedAttachment, isJobAttachment, isReworkAttachment, fileCategoryFromUploadTag, completedAttachmentStatusLabel, checklistItemHasCompletedUpload, jobLevelHasCompletedDeliverables, reworkInstructionBadges, type ReworkOrigin } from "@/lib/attachmentCategories";
+import { useDashboardSearch } from "@/lib/pageSearch";
 import { useAuth } from "@/lib/auth";
 import UploadProgressPanel from "@/components/UploadProgressPanel";
 import JobNotesTab from "@/components/JobNotesTab";
@@ -527,7 +528,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [showStartTimerReminder, setShowStartTimerReminder] = useState(false);
   const [autoStopCountdown, setAutoStopCountdown] = useState(300);
   const [fileSubTab, setFileSubTab] = useState<"input" | "output" | "notes">("input");
-  const [fileSearch, setFileSearch] = useState("");
+  const { search: fileSearch, setSearch: setFileSearch, headerSearch: filesHeaderSearch } = useDashboardSearch("Search files…");
   const [selectedJobFileIds, setSelectedJobFileIds] = useState<string[]>([]);
   const [jobFilesZipLoading, setJobFilesZipLoading] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<AttachmentApi | null>(null);
@@ -549,6 +550,10 @@ export default function JobDetail({ role = "user", id }: Props) {
   const uploadChecklistIdRef = useRef<number | null>(null);
   const PING_INTERVAL_S = TIMER_PING_INTERVAL_S;
   const AUTO_STOP_S = TIMER_AUTO_STOP_S;
+
+  useEffect(() => {
+    if (tab !== "files") setFileSearch("");
+  }, [tab, setFileSearch]);
 
   useEffect(() => {
     setSelectedJobFileIds([]);
@@ -1901,7 +1906,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   };
 
   return (
-    <DashboardLayout title="Job Details" role={role}>
+    <DashboardLayout title="Job Details" role={role} headerSearch={tab === "files" ? filesHeaderSearch : undefined}>
       <input ref={inputPickerRef} type="file" multiple accept={JOB_FILE_ACCEPT} className="hidden" onChange={onPickerChange("input")} />
       <input ref={outputPickerRef} type="file" multiple accept={JOB_FILE_ACCEPT} className="hidden" onChange={onPickerChange("output")} />
       {/* Back link */}
@@ -3043,18 +3048,8 @@ export default function JobDetail({ role = "user", id }: Props) {
 
           return (
             <motion.div key="fl" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-6">
-              {/* Search and Global Actions */}
-              <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-gray-100">
-                <div className="relative w-full sm:w-96">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                  <input 
-                    type="text" 
-                    placeholder="Search files..." 
-                    value={fileSearch}
-                    onChange={(e) => setFileSearch(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
+              {/* File upload actions */}
+              <div className="flex flex-col sm:flex-row gap-4 items-center justify-end bg-white p-4 rounded-2xl border border-gray-100">
                 <div className="flex gap-2 w-full sm:w-auto">
                   {canUploadOutput && (
                     <button onClick={() => handleUpload("output")} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-600/20 hover:bg-emerald-700">

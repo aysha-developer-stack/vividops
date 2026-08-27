@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Activity, Users, Briefcase, AlertTriangle, CheckCircle2, Clock,
-  Wifi, Server, Database, HardDrive, TrendingUp, TrendingDown, Eye, Search,
+  Wifi, Server, Database, HardDrive, TrendingUp, TrendingDown, Eye,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useDashboardSearch } from "@/lib/pageSearch";
@@ -414,10 +414,6 @@ export default function SystemMonitoring({ role = "super-admin" as Role }: { rol
             <p className="text-[11px] text-gray-500 mt-0.5">Who's active right now and what they're doing</p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
-              <Search size={14} className="text-gray-400" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search users…" className="bg-transparent !text-gray-900 !placeholder:text-gray-400 text-sm focus:outline-none w-40" />
-            </div>
             <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
               {(["All", "Active", "On Job", "Idle"] as const).map((f) => (
                 <button

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  MessageCircle, Hash, Search, Send, Paperclip, Smile,
+  MessageCircle, Hash, Send, Paperclip, Smile,
   Phone, Video, MoreHorizontal, ExternalLink, Check,
   Reply, Copy, Forward, Pencil, Trash2, X, ArrowLeft,
 } from "lucide-react";
@@ -604,11 +604,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
 
         <div className="flex-1 min-h-0 bg-white rounded-2xl border border-gray-100 overflow-hidden grid grid-cols-1 md:grid-cols-[280px_1fr]">
           <div className={`border-r border-gray-100 flex flex-col bg-gray-50/50 min-h-0 ${mobileShowChat ? "max-md:hidden" : "flex"}`}>
-            <div className="p-4 border-b border-gray-100 space-y-3">
-              <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 focus-within:border-primary transition-colors">
-                <Search size={14} className="text-gray-400" />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" className="bg-transparent text-sm flex-1 focus:outline-none text-gray-900 placeholder-gray-400" />
-              </div>
+            <div className="p-4 border-b border-gray-100">
               <JobListSortControl value={sortMode} onChange={setSortMode} variant="sidebar" />
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-5">

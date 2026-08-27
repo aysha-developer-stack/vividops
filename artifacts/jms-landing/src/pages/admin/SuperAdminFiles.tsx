@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, Download, Eye, Folder, Search, Trash2, ExternalLink } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Eye, Folder, Trash2, ExternalLink } from "lucide-react";
 import FileExtensionIcon from "@/components/FileExtensionIcon";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useDashboardSearch } from "@/lib/pageSearch";
@@ -149,16 +149,7 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
 
   return (
     <DashboardLayout title="Files Management" role={role} headerSearch={headerSearch}>
-      <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-5 flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
-        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 flex-1 max-w-xl focus-within:border-primary transition-colors">
-          <Search size={16} className="text-gray-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by file, job, or uploader…"
-            className="bg-transparent text-sm flex-1 focus:outline-none"
-          />
-        </div>
+      <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-5 flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-end">
         <div className="flex gap-2">
           {(["all", "job", "completed"] as const).map((k) => (
             <button

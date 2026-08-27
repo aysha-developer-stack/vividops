@@ -2,7 +2,7 @@ import { useMemo, useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Play, BookOpen, Award, Clock, CheckCircle2,
-  Search, GraduationCap, Megaphone, Image as ImageIcon, Video, Send,
+  GraduationCap, Megaphone, Image as ImageIcon, Video, Send,
   Users as UsersIcon, X, Pin, MoreVertical, ThumbsUp, MessageSquare,
   Paperclip, Calendar, Images, Film, Download, Eye,
   Trash2,
@@ -134,9 +134,9 @@ export default function Training({ role = "super-admin" as Role }: { role?: Role
           transition={{ duration: 0.2 }}
         >
           {tab === "updates" && <DailyUpdates canPost={canPost} search={search} />}
-          {tab === "photos" && <PhotoGallery canPost={canPost} search={search} setSearch={setSearch} />}
-          {tab === "videos" && <VideoLibrary canPost={canPost} search={search} setSearch={setSearch} />}
-          {tab === "courses" && <CoursesView search={search} setSearch={setSearch} />}
+          {tab === "photos" && <PhotoGallery canPost={canPost} search={search} />}
+          {tab === "videos" && <VideoLibrary canPost={canPost} search={search} />}
+          {tab === "courses" && <CoursesView search={search} />}
         </motion.div>
       </AnimatePresence>
     </DashboardLayout>
@@ -1085,11 +1085,9 @@ interface PhotoItem {
 function PhotoGallery({
   canPost,
   search,
-  setSearch,
 }: {
   canPost: boolean;
   search: string;
-  setSearch: (value: string) => void;
 }) {
   const { data: apiPosts, isLoading } = useGetPosts();
   const createPostMutation = useCreatePost();
@@ -1160,13 +1158,10 @@ function PhotoGallery({
   return (
     <>
       <GalleryToolbar
-        search={search}
-        setSearch={setSearch}
         filter={album}
         setFilter={setAlbum}
         options={albums}
         layoutId="photoFilter"
-        placeholder="Search photos…"
         canPost={canPost}
         uploadLabel="Upload photos"
         uploadIcon={ImageIcon}
@@ -1272,11 +1267,9 @@ interface VideoItem {
 function VideoLibrary({
   canPost,
   search,
-  setSearch,
 }: {
   canPost: boolean;
   search: string;
-  setSearch: (value: string) => void;
 }) {
   const { data: apiPosts, isLoading } = useGetPosts();
   const createPostMutation = useCreatePost();
@@ -1352,13 +1345,10 @@ function VideoLibrary({
   return (
     <>
       <GalleryToolbar
-        search={search}
-        setSearch={setSearch}
         filter={cat}
         setFilter={setCat}
         options={categories}
         layoutId="videoFilter"
-        placeholder="Search videos…"
         canPost={canPost}
         uploadLabel="Upload video"
         uploadIcon={Video}
@@ -1483,16 +1473,13 @@ function VideoPlayer({ video, onClose }: { video: VideoItem; onClose: () => void
 /* -------------------------- Shared gallery toolbar -------------------------- */
 
 function GalleryToolbar({
-  search, setSearch, filter, setFilter, options, layoutId, placeholder,
+  filter, setFilter, options, layoutId,
   canPost, uploadLabel, uploadIcon: UploadIcon, accept, multiple, onUploadFiles,
 }: {
-  search: string;
-  setSearch: (s: string) => void;
   filter: string;
   setFilter: (s: string) => void;
   options: string[];
   layoutId: string;
-  placeholder: string;
   canPost: boolean;
   uploadLabel: string;
   uploadIcon: any;
@@ -1502,11 +1489,7 @@ function GalleryToolbar({
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   return (
-    <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between mb-5">
-      <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 max-w-md flex-1 focus-within:border-primary transition-colors">
-        <Search size={16} className="text-gray-400" />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={placeholder} className="bg-transparent text-sm text-gray-900 flex-1 focus:outline-none" />
-      </div>
+    <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-end mb-5">
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto">
           {options.map((c) => (
@@ -1549,10 +1532,8 @@ function GalleryToolbar({
 
 function CoursesView({
   search,
-  setSearch,
 }: {
   search: string;
-  setSearch: (value: string) => void;
 }) {
   const { data: apiPosts, isLoading } = useGetPosts();
   const [filter, setFilter] = useState("All");
@@ -1644,11 +1625,7 @@ function CoursesView({
       </div>
 
       {/* Toolbar */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between mb-6">
-        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 max-w-md flex-1 focus-within:border-primary transition-colors">
-          <Search size={16} className="text-gray-400" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search courses…" className="bg-transparent text-sm text-gray-900 flex-1 focus:outline-none" />
-        </div>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-end mb-6">
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto">
           {CATEGORIES.map((c) => (
             <motion.button key={c} whileTap={{ scale: 0.96 }} onClick={() => setFilter(c)} className={`relative px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${filter === c ? "text-white" : "text-gray-600 hover:text-gray-900"}`}>

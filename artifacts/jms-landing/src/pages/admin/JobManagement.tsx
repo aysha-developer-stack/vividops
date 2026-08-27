@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus, Search, MoreVertical, Trash2, UserPlus, X,
+  Plus, MoreVertical, Trash2, UserPlus, X,
   Calendar, ExternalLink, CheckCircle2, Download, Loader2, Clock, Pause, Play, ChevronRight,
 } from "lucide-react";
 import FileExtensionIcon from "@/components/FileExtensionIcon";
@@ -79,6 +79,7 @@ interface UiJob {
   progress: number;
   reviewStartedAt?: string | null;
   updatedAt: string;
+  lastMessageAt?: string | null;
 }
 
 function formatReviewTime(seconds: number) {
@@ -144,6 +145,7 @@ function mapJob(j: ApiJob): UiJob {
     progress: j.progress,
     reviewStartedAt: j.reviewStartedAt ?? null,
     updatedAt: j.updatedAt,
+    lastMessageAt: (j as ApiJob & { lastMessageAt?: string | null }).lastMessageAt ?? null,
   };
 }
 
@@ -665,6 +667,7 @@ export default function JobManagement(
       status: j.status,
       createdAt: j.createdAt,
       updatedAt: j.updatedAt,
+      lastMessageAt: j.lastMessageAt,
       reviewStartedAt: j.reviewStartedAt,
     }));
   }, [jobs, filter, assignmentFilter, searchQuery, sortMode]);
@@ -1005,10 +1008,6 @@ export default function JobManagement(
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
         <div className="p-5 border-b border-gray-100 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
           <div className="flex flex-col sm:flex-row gap-3 flex-1">
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 flex-1 max-w-md focus-within:border-primary transition-colors">
-              <Search size={16} className="text-gray-400" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by title, client, job number, address, assignee, or supervisor…" className="bg-transparent !text-gray-900 !placeholder:text-gray-400 text-sm flex-1 focus:outline-none" />
-            </div>
             <JobListSortControl value={sortMode} onChange={setSortMode} variant="toolbar" />
           </div>
           {role !== "user" && (

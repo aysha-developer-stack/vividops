@@ -1,4 +1,4 @@
-export type JobListSortMode = "recent" | "jobNumber";
+export type JobListSortMode = "recent" | "recentlyUpdated" | "jobNumber";
 
 export type JobSortFields = {
   number: string;
@@ -36,11 +36,13 @@ const API_STATUS_PRIORITY: Record<string, number> = {
 
 export const JOB_LIST_SORT_LABELS: Record<JobListSortMode, string> = {
   recent: "Recently",
+  recentlyUpdated: "Recently updated",
   jobNumber: "Job number",
 };
 
 export const JOB_LIST_SORT_HINTS: Record<JobListSortMode, string> = {
   recent: "Newest created jobs first",
+  recentlyUpdated: "Latest job activity first (edits, files, messages)",
   jobNumber: "Sort by job number (highest first)",
 };
 
@@ -49,7 +51,7 @@ export const JOB_LIST_SORT_STORAGE_KEY = "jms_job_list_sort_v1";
 export function readStoredJobListSort(): JobListSortMode {
   try {
     const raw = localStorage.getItem(JOB_LIST_SORT_STORAGE_KEY);
-    if (raw === "recent" || raw === "jobNumber") return raw;
+    if (raw === "recent" || raw === "jobNumber" || raw === "recentlyUpdated") return raw;
     // Previous default was "activity" — treat as recently created.
     if (raw === "activity") return "recent";
   } catch {
@@ -86,13 +88,22 @@ function timestampMs(iso: string | null | undefined): number {
   return Number.isFinite(t) ? t : 0;
 }
 
-/** Latest touch: message, edit, or creation — used for recency within a status tier. */
+/** Latest touch: message, edit, review start, or creation. */
 function latestActivityMs(fields: JobSortFields): number {
   return Math.max(
     timestampMs(fields.lastMessageAt),
     timestampMs(fields.updatedAt),
+    timestampMs(fields.reviewStartedAt),
     timestampMs(fields.createdAt),
   );
+}
+
+export function compareJobsByRecentlyUpdated(a: JobSortFields, b: JobSortFields): number {
+  const activityDiff = latestActivityMs(b) - latestActivityMs(a);
+  if (activityDiff !== 0) return activityDiff;
+  const numDiff = parseJobNumberSortKey(b.number) - parseJobNumberSortKey(a.number);
+  if (numDiff !== 0) return numDiff;
+  return b.number.localeCompare(a.number);
 }
 
 export function compareJobsByRecent(a: JobSortFields, b: JobSortFields): number {
@@ -137,6 +148,10 @@ export function sortJobs<T>(
   getFields: (job: T) => JobSortFields,
 ): T[] {
   const compare =
-    mode === "jobNumber" ? compareJobsByJobNumber : compareJobsByRecent;
+    mode === "jobNumber"
+      ? compareJobsByJobNumber
+      : mode === "recentlyUpdated"
+        ? compareJobsByRecentlyUpdated
+        : compareJobsByRecent;
   return [...jobs].sort((left, right) => compare(getFields(left), getFields(right)));
 }

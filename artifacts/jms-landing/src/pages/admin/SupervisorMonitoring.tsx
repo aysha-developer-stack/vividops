@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Search, Activity, Briefcase, Clock, AlertCircle, CheckCircle2,
+  Activity, Briefcase, Clock, AlertCircle, CheckCircle2,
   TrendingUp, TrendingDown, Eye, X, Users, ClipboardCheck,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -178,8 +178,17 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
   });
   const { data: apiJobs, isLoading: jobsLoading } = useListJobs();
   const { data: apiTimeLogs, isLoading: logsLoading } = useGetTimeLogs();
-  const { search, setSearch, headerSearch } = useDashboardSearch("Search users or jobs…");
+  const { search, setSearch, setPlaceholder, headerSearch } = useDashboardSearch("Search users or jobs…");
   const [selected, setSelected] = useState<SupervisorCard | null>(null);
+
+  useEffect(() => {
+    if (role === "admin" || role === "super-admin") {
+      setPlaceholder("Search supervisors…");
+    } else {
+      setPlaceholder("Search users or jobs…");
+    }
+    setSearch("");
+  }, [role, setPlaceholder, setSearch]);
 
   const jobBase =
     role === "super-admin" ? "/super-admin/jobs"
@@ -374,18 +383,6 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
           );
         })}
       </div>
-
-      {(role === "admin" || role === "super-admin") && (
-        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 max-w-md mb-6 focus-within:border-primary transition-colors">
-          <Search size={16} className="text-gray-400" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search supervisors…"
-            className="bg-transparent !text-gray-900 !placeholder:text-gray-400 text-sm flex-1 focus:outline-none"
-          />
-        </div>
-      )}
 
       {filtered.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center text-sm text-gray-400">

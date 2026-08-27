@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { Search, Activity } from "lucide-react";
+import { Activity } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useDashboardSearch } from "@/lib/pageSearch";
 import LiveSupervisorReviewPanel from "@/components/LiveSupervisorReviewPanel";
@@ -296,16 +296,6 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
             Supervisor oversight
           </Link>
         )}
-      </div>
-
-      <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 max-w-md mb-5 focus-within:border-primary transition-colors">
-        <Search size={16} className="text-gray-400" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search team members…"
-          className="bg-transparent text-gray-900 placeholder:text-gray-400 text-sm flex-1 focus:outline-none"
-        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Search, Calendar, ChevronRight, Briefcase,
+  Calendar, ChevronRight, Briefcase,
   CheckCircle2, Clock, AlertTriangle, MapPin, 
   Folder, ListChecks, FileText, Upload, Download, Eye
 } from "lucide-react";
@@ -102,17 +102,6 @@ export default function FilesChecklists() {
           >
             <Folder size={14} /> All Files
           </button>
-        </div>
-
-        <div className="relative w-full md:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-          <input 
-            type="text" 
-            placeholder="Search by job or client..." 
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
         </div>
       </div>
 

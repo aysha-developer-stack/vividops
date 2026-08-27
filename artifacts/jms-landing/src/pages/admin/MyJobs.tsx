@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Search, Calendar, ChevronRight, Briefcase,
+  Calendar, ChevronRight, Briefcase,
   CheckCircle2, Clock, AlertCircle, MapPin, AlertTriangle, Pause,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -137,11 +137,7 @@ export default function MyJobs() {
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between mb-5">
-        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2.5 max-w-md flex-1 focus-within:border-primary transition-colors">
-          <Search size={16} className="text-gray-400" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by job, client…" className="bg-transparent text-sm flex-1 focus:outline-none" />
-        </div>
+      <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-end mb-5">
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto">
           {FILTERS.map((f) => (
             <motion.button
