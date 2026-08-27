@@ -122,6 +122,19 @@ export async function stopAllActiveTimersOnJob(jobId: string): Promise<number> {
   return saved;
 }
 
+/** Stop timers without writing a time log (e.g. admin assigned rework — worker starts fresh). */
+export async function clearAllActiveTimersOnJob(jobId: string): Promise<number> {
+  const sessions = await db
+    .select()
+    .from(activeTimerSessions)
+    .where(eq(activeTimerSessions.jobId, jobId));
+
+  for (const session of sessions) {
+    await db.delete(activeTimerSessions).where(eq(activeTimerSessions.id, session.id));
+  }
+  return sessions.length;
+}
+
 /** Pause a running segment after sleep/offline — accumulate billable time only. */
 export async function pauseTimerSessionAfterGap(
   session: ActiveTimerSessionRow,

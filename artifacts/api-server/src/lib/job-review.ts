@@ -25,6 +25,7 @@ import { announceCliqJobStatusChange } from "./cliq-job-status";
 import {
   shouldAutoStopWorkerTimersForJobStatus,
   stopAllActiveTimersOnJob,
+  clearAllActiveTimersOnJob,
 } from "./persist-timer-session";
 import { resolveReworkUserId } from "./working-supervisor";
 
@@ -741,7 +742,7 @@ export async function applyJobReview(opts: {
       return { ok: false, status: 400, error: originError };
     }
     appliedReworkOrigin = reworkOrigin;
-    await stopAllActiveTimersOnJob(job.id);
+    await clearAllActiveTimersOnJob(job.id);
     try {
       const { rework } = await createRework({
         actor,

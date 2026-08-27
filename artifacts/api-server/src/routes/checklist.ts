@@ -23,7 +23,7 @@ import { resolveReworkOriginForActor, reworkOriginLabel } from "../lib/rework-or
 import {
   validateReworkUploadsBeforeChecklistComplete,
 } from "../lib/rework-completion-validation";
-import { stopAllActiveTimersOnJob } from "../lib/persist-timer-session";
+import { stopAllActiveTimersOnJob, clearAllActiveTimersOnJob } from "../lib/persist-timer-session";
 import { jobStatusPatchFields, type ReviewableStatus } from "../lib/job-review";
 import {
   isOwnChecklistWork,
@@ -349,7 +349,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       });
 
     if (status === "rework") {
-      await stopAllActiveTimersOnJob(jobId);
+      await clearAllActiveTimersOnJob(jobId);
 
       const rows = await db
         .select({ itemId: jobChecklistState.itemId, status: jobChecklistState.status })

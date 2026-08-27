@@ -896,6 +896,25 @@ export default function JobDetail({ role = "user", id }: Props) {
     })();
   }, [job?.id, job?.status, qc]);
 
+  // When admin/supervisor assigns rework, server clears active timers — resync so local UI does not keep counting.
+  useEffect(() => {
+    if (!canUseJobTimer || !job?.id || job.status !== "rework") return;
+    let cancelled = false;
+    void (async () => {
+      const synced = await syncJobTimerFromServer(job.id);
+      if (cancelled) return;
+      setRunning(!!synced?.running);
+      setSeconds(computeJobTimerElapsed(synced));
+      if (!synced?.running) {
+        setShowActivityPing(false);
+      }
+      await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canUseJobTimer, job?.id, job?.status, qc]);
+
   useEffect(() => {
     if (!canUseJobTimer) return;
     if (!job?.id) return;
