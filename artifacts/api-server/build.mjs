@@ -64,6 +64,7 @@ async function buildAll() {
       "lightningcss",
       "pg",
       "drizzle-orm",
+      "archiver",
       "oracledb",
       "mongodb-client-encryption",
       "nodemailer",

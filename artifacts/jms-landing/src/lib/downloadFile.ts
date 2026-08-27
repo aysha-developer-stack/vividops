@@ -3,9 +3,20 @@ export async function downloadNamedFile(url: string, fileName: string): Promise<
   const safeName = (fileName || "download").replace(/[/\\?%*:|"<>]/g, "_").trim() || "download";
   const res = await fetch(url, { credentials: "include" });
   if (!res.ok) {
-    throw new Error(`Download failed (${res.status})`);
+    let detail = `Download failed (${res.status})`;
+    try {
+      const data = (await res.json()) as { message?: string; error?: string };
+      const msg = data.message || data.error;
+      if (msg) detail = msg;
+    } catch {
+      // ignore non-json error bodies
+    }
+    throw new Error(detail);
   }
   const blob = await res.blob();
+  if (blob.size === 0) {
+    throw new Error("Download failed (empty file)");
+  }
   const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = objectUrl;

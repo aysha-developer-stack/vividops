@@ -353,24 +353,57 @@ router.get("/jobs/:jobId/attachments/download-zip", requireAuth, async (req, res
       .where(eq(jobAttachments.jobId, jobId))
       .orderBy(desc(jobAttachments.createdAt));
 
-    let candidates = rows.filter((r) =>
-      isJobWorkFile(
-        {
-          fileCategory: r.attachment.fileCategory,
-          reworkId: (r.attachment as { reworkId?: string | null }).reworkId ?? null,
-          uploadedByRole: r.uploadedByRole,
-        },
-        r.checklistItemId ?? null,
-      ),
-    );
+    const seenAttachmentIds = new Set<string>();
+    const uniqueRows = rows.filter((row) => {
+      const id = row.attachment.id;
+      if (seenAttachmentIds.has(id)) return false;
+      seenAttachmentIds.add(id);
+      return true;
+    });
 
+    let candidates = uniqueRows;
     if (requestedIds.length > 0) {
       const idSet = new Set(requestedIds);
-      candidates = candidates.filter((r) => idSet.has(r.attachment.id));
+      candidates = uniqueRows.filter(
+        (r) => idSet.has(r.attachment.id) && r.checklistItemId == null,
+      );
+    } else {
+      candidates = uniqueRows.filter((r) =>
+        isJobWorkFile(
+          {
+            fileCategory: r.attachment.fileCategory,
+            reworkId: (r.attachment as { reworkId?: string | null }).reworkId ?? null,
+            uploadedByRole: r.uploadedByRole,
+          },
+          r.checklistItemId ?? null,
+        ),
+      );
     }
 
     if (candidates.length === 0) {
       res.status(404).json({ message: "No job files to download" });
+      return;
+    }
+
+    const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "vivid-ops-files";
+    const usedNames = new Map<string, number>();
+    const zipEntries: Array<{ name: string; buffer: Buffer }> = [];
+
+    for (const row of candidates) {
+      const attachment = row.attachment;
+      const { data, error } = await supabase.storage.from(bucketName).download(attachment.fileKey);
+      if (error || !data) {
+        logger.warn({ jobId, attachmentId: attachment.id, error }, "Skipping missing file in zip");
+        continue;
+      }
+      zipEntries.push({
+        name: uniqueZipEntryName(usedNames, attachment.fileName),
+        buffer: Buffer.from(await data.arrayBuffer()),
+      });
+    }
+
+    if (zipEntries.length === 0) {
+      res.status(404).json({ message: "Could not load selected files from storage" });
       return;
     }
 
@@ -394,17 +427,8 @@ router.get("/jobs/:jobId/attachments/download-zip", requireAuth, async (req, res
     });
     archive.pipe(res);
 
-    const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "vivid-ops-files";
-    const usedNames = new Map<string, number>();
-    for (const row of candidates) {
-      const attachment = row.attachment;
-      const { data, error } = await supabase.storage.from(bucketName).download(attachment.fileKey);
-      if (error || !data) {
-        logger.warn({ jobId, attachmentId: attachment.id, error }, "Skipping missing file in zip");
-        continue;
-      }
-      const buffer = Buffer.from(await data.arrayBuffer());
-      archive.append(buffer, { name: uniqueZipEntryName(usedNames, attachment.fileName) });
+    for (const entry of zipEntries) {
+      archive.append(entry.buffer, { name: entry.name });
     }
 
     await archive.finalize();
