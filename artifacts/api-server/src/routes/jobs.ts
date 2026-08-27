@@ -31,6 +31,11 @@ import {
   markJobCommunicationRead,
 } from "../lib/job-communication-read";
 import {
+  enrichStoredMessageText,
+  formatInboundCliqMessageText,
+  inboundCliqHasAttachment,
+} from "../lib/cliq-message-attachments";
+import {
   ensureAllSchemas,
   ensureJobMessageSyncSchema,
   ensureJobWriteSchema,
@@ -1657,14 +1662,26 @@ function parseIncomingCliqMessage(payload: unknown): IncomingCliqMessage | null 
     obj.data?.channelName,
     obj.data?.channel_name,
   );
-  const text = pickString(
-    obj.text,
-    obj.message,
-    obj.message_text,
-    obj.data?.message,
-    obj.data?.text,
-    obj.message?.text,
-  );
+  const messageObj =
+    obj.message && typeof obj.message === "object" ? (obj.message as Record<string, unknown>) : null;
+  const messageContent =
+    messageObj?.content && typeof messageObj.content === "object"
+      ? (messageObj.content as Record<string, unknown>)
+      : null;
+
+  const text =
+    pickString(
+      obj.text,
+      typeof obj.message === "string" ? obj.message : "",
+      obj.message_text,
+      obj.data?.message,
+      obj.data?.text,
+      messageObj?.text,
+      messageContent?.comment,
+      messageContent?.text,
+    ) ||
+    (inboundCliqHasAttachment(payload) ? "Shared a file" : "");
+
   const senderEmail = pickString(
     obj.senderEmail,
     obj.sender_email,
@@ -1673,13 +1690,20 @@ function parseIncomingCliqMessage(payload: unknown): IncomingCliqMessage | null 
     obj.user?.email_id,
     obj.sender?.email,
     obj.sender?.email_id,
+    messageObj?.sender?.email,
+    (messageObj?.sender as Record<string, unknown> | undefined)?.email_id,
   ).toLowerCase();
   const senderName = pickString(
     obj.senderName,
     obj.sender_name,
     obj.user?.name,
+    obj.user?.first_name && obj.user?.last_name
+      ? `${obj.user.first_name} ${obj.user.last_name}`
+      : "",
     obj.sender?.name,
     obj.name,
+    messageObj?.sender?.name,
+    (messageObj?.sender as Record<string, unknown> | undefined)?.first_name,
   );
   const externalMessageId = pickString(
     obj.externalMessageId,
@@ -1687,11 +1711,12 @@ function parseIncomingCliqMessage(payload: unknown): IncomingCliqMessage | null 
     obj.messageId,
     obj.message_id,
     obj.data?.message_id,
-    obj.message?.id,
-    obj.message?.message_id,
+    messageObj?.id,
+    messageObj?.message_id,
   );
 
-  if (!channelName || !text || !senderEmail || !senderName) return null;
+  if (!channelName || !senderEmail || !senderName) return null;
+  if (!text && !inboundCliqHasAttachment(payload)) return null;
   return {
     channelId: channelId || null,
     channelName,
@@ -2502,6 +2527,34 @@ router.delete("/jobs/:id", creatorRole, async (req, res) => {
   }
 });
 
+router.get("/cliq/files/:fileId/view", requireAuth, async (req, res) => {
+  try {
+    const fileId = String(req.params.fileId ?? "").trim();
+    if (!fileId) return res.status(400).json({ error: "File id is required" });
+
+    const token = await getZohoCliqAccessToken();
+    const upstream = await fetch(`${cliqApiRoot()}/files/${encodeURIComponent(fileId)}`, {
+      headers: { Authorization: `Zoho-oauthtoken ${token}` },
+    });
+    if (!upstream.ok) {
+      const body = await upstream.text().catch(() => "");
+      logger.warn({ fileId, status: upstream.status, body: body.slice(0, 200) }, "Cliq file fetch failed");
+      return res.status(upstream.status === 404 ? 404 : 502).json({ error: "Cliq file not available" });
+    }
+
+    const contentType = upstream.headers.get("content-type") || "application/octet-stream";
+    const disposition = req.query.disposition === "attachment" ? "attachment" : "inline";
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Disposition", `${disposition}; filename="cliq-file"`);
+    res.setHeader("Cache-Control", "private, max-age=300");
+    return res.send(buffer);
+  } catch (err) {
+    logger.error({ err }, "Failed to proxy Cliq file");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.post("/zoho/cliq/messages/incoming", async (req, res) => {
   try {
     logger.info({ body: req.body, headers: req.headers }, "[CLIQ-SYNC] Incoming request received");
@@ -2557,7 +2610,10 @@ router.post("/zoho/cliq/messages/incoming", async (req, res) => {
 
     logger.info({ user: actor.email, job: full.job.serial }, "[CLIQ-SYNC] Syncing message from Zoho Cliq");
 
-    const normalizedText = normalizeMirroredCliqText(full.job, message.text);
+    const normalizedText = normalizeMirroredCliqText(
+      full.job,
+      formatInboundCliqMessageText(message.text, message.rawPayload),
+    );
     const recent = await findRecentJobMessage(full.job.id, actor.id, normalizedText);
     if (recent) {
       return res.json({ ok: true, duplicate: true, id: recent.id });
@@ -2644,7 +2700,8 @@ router.get("/jobs/:id/messages", requireAuth, async (req, res) => {
         u.id AS user_id,
         u.name AS user_name,
         COALESCE(jms.source, 'app') AS source,
-        COALESCE(jms.delivery_status, 'local_only') AS delivery_status
+        COALESCE(jms.delivery_status, 'local_only') AS delivery_status,
+        jms.payload AS sync_payload
       FROM job_messages jm
       JOIN users u ON u.id = jm.user_id
       LEFT JOIN job_message_sync jms ON jms.job_message_id = jm.id
@@ -2660,12 +2717,13 @@ router.get("/jobs/:id/messages", requireAuth, async (req, res) => {
       user_name: string;
       source: MessageSource;
       delivery_status: MessageDeliveryState;
+      sync_payload: unknown;
     }>;
 
     return res.json(
       items.map((m) => ({
         id: m.id,
-        text: m.text,
+        text: enrichStoredMessageText(m.text, m.sync_payload),
         createdAt: m.created_at,
         isMe: m.user_id === actor.id,
         source: m.source,

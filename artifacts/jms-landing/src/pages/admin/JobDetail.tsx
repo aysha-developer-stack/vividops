@@ -39,6 +39,7 @@ import {
 } from "@/lib/cliqChannelName";
 import { parseJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
 import { LinkifiedText } from "@/lib/linkifyText";
+import { renderMessageBody } from "@/lib/jobMessageRender";
 import {
   postTimerNotification,
   TIMER_AUTO_STOP_S,
@@ -3438,7 +3439,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                             <span className="text-xs font-bold text-gray-900">{m.user}</span>
                             <span className="text-[10px] text-gray-400">{m.time}</span>
                           </div>
-                          <div className="text-sm text-gray-700 break-words">{m.text}</div>
+                          <div className="text-sm text-gray-700 break-words">
+                            {renderMessageBody(m.text, { isMe: m.isMe, variant: "activity" })}
+                          </div>
                         </div>
                       </motion.div>
                     ))}

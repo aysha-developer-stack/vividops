@@ -11,6 +11,8 @@ import type { Role } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
 import { collectFilesFromDataTransfer, collectFilesFromList } from "@/lib/collectDroppedFiles";
 import JobListSortControl from "@/components/JobListSortControl";
+import { jobAttachmentPreviewUrl } from "@/lib/downloadFile";
+import { renderMessageBody } from "@/lib/jobMessageRender";
 import {
   type JobListSortMode,
   readStoredJobListSort,
@@ -56,7 +58,6 @@ type JobAttachmentApi = {
 };
 
 const QUICK_EMOJIS = ["😀", "👍", "🎉", "✅", "🔥", "🙂", "🙏", "😄"];
-const IMAGE_FILE_RE = /\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?.*)?$/i;
 const CLIQ_WEB_ROOT = "https://cliq.zoho.com.au";
 
 function cliqChatUrl(chatId: string | null | undefined): string | null {
@@ -83,48 +84,6 @@ function formatMsgTime(iso: string) {
   }
 }
 
-function parseAttachmentMessage(text: string) {
-  const [titleLine, ...rest] = text.split("\n");
-  const fileNameMatch = /^Shared attachment:\s*(.+)$/i.exec(titleLine.trim());
-  const url = rest.join("\n").trim();
-  if (!fileNameMatch || !/^https?:\/\/\S+$/.test(url)) {
-    return null;
-  }
-
-  const fileName = fileNameMatch[1].trim();
-  return {
-    fileName,
-    url,
-    isImage: IMAGE_FILE_RE.test(fileName) || IMAGE_FILE_RE.test(url),
-  };
-}
-
-function renderMessageText(text: string) {
-  const splitRegex = /(https?:\/\/[^\s]+)/g;
-  const urlRegex = /^https?:\/\/[^\s]+$/;
-  const lines = text.split("\n");
-  return lines.map((line, lineIndex) => (
-    <span key={`${lineIndex}-${line}`} className="block whitespace-pre-wrap break-words">
-      {line.split(splitRegex).map((part, partIndex) => {
-        if (urlRegex.test(part)) {
-          return (
-            <a
-              key={`${lineIndex}-${partIndex}-${part}`}
-              href={part}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline underline-offset-2"
-            >
-              {part}
-            </a>
-          );
-        }
-        return <span key={`${lineIndex}-${partIndex}-${part}`}>{part}</span>;
-      })}
-    </span>
-  ));
-}
-
 function formatReplyQuote(message: JobMessageUi): string {
   const preview = message.text.split("\n")[0]?.trim() || message.text.trim();
   const clipped = preview.length > 120 ? `${preview.slice(0, 120)}…` : preview;
@@ -135,40 +94,6 @@ function buildOutgoingText(draft: string, replyTo: JobMessageUi | null): string 
   const body = draft.trim();
   if (!replyTo) return body;
   return `${formatReplyQuote(replyTo)}\n\n${body}`;
-}
-
-function renderMessageBody(text: string, isMe: boolean) {
-  const attachment = parseAttachmentMessage(text);
-  if (!attachment) {
-    return renderMessageText(text);
-  }
-
-  const mediaBorder = isMe ? "border-white/20" : "border-gray-200";
-
-  if (attachment.isImage) {
-    return (
-      <div className="space-y-2">
-        <div className="text-xs font-semibold opacity-90">{attachment.fileName}</div>
-        <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="block">
-          <img
-            src={attachment.url}
-            alt={attachment.fileName}
-            className={`block max-h-72 w-auto max-w-full rounded-xl border ${mediaBorder} object-cover bg-white/10`}
-            loading="lazy"
-          />
-        </a>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <div className="text-xs font-semibold opacity-90">{attachment.fileName}</div>
-      <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 break-all">
-        Open attachment
-      </a>
-    </div>
-  );
 }
 
 export default function Communication({ role = "super-admin" as Role }: { role?: Role } = {}) {
@@ -607,8 +532,11 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
       throw new Error(text || `Upload failed (${res.status})`);
     }
     const created = await res.json() as JobAttachmentApi;
-    if (created?.fileName && created?.fileUrl) {
-      await send(`Shared attachment: ${created.fileName}\n${created.fileUrl}`, { preserveDraft: true });
+    if (created?.fileName && created?.id) {
+      await send(
+        `Shared attachment: ${created.fileName}\n${jobAttachmentPreviewUrl(activeJobId, created.id)}`,
+        { preserveDraft: true },
+      );
     }
   };
 
@@ -852,7 +780,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                           whileHover={{ scale: 1.01 }}
                           className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${m.isMe ? "bg-primary text-white rounded-br-sm" : "bg-gray-100 text-gray-800 rounded-bl-sm"}`}
                         >
-                          {renderMessageBody(m.text, m.isMe)}
+                          {renderMessageBody(m.text, { isMe: m.isMe })}
                         </motion.div>
                       </div>
                     </div>
