@@ -26,6 +26,7 @@ import {
   shouldAutoStopWorkerTimersForJobStatus,
   stopAllActiveTimersOnJob,
 } from "./persist-timer-session";
+import { resolveReworkUserId } from "./working-supervisor";
 
 const COMPLETION_NOTE_LABELS: Record<JobReviewAction, string | null> = {
   submit_for_supervisor: "Worker submission",
@@ -576,9 +577,10 @@ export async function notifyStatusTransition(opts: {
         type: "rework",
       });
     } else {
-      if (job.assigneeId) {
+      const reworkUserId = resolveReworkUserId(job);
+      if (reworkUserId) {
         await createNotification({
-          userId: job.assigneeId,
+          userId: reworkUserId,
           jobId: job.id,
           title: `Rework Required: ${job.title}`,
           description: `${actor.name} sent ${job.title} back for rework.${reasonText}${commentText}`,
@@ -753,8 +755,9 @@ export async function applyJobReview(opts: {
         reworkOrigin,
       });
       createdReworkId = rework.id;
-      if (job.assigneeId) {
-        await reopenChecklistForRework(job, job.assigneeId, reason.trim());
+      const reworkUserId = resolveReworkUserId(job);
+      if (reworkUserId) {
+        await reopenChecklistForRework(job, reworkUserId, reason.trim());
       }
     } catch (err) {
       return {

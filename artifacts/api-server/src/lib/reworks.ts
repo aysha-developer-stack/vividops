@@ -8,6 +8,7 @@ import {
   type UserRow,
 } from "@workspace/db";
 import type { ReworkOrigin } from "./rework-origin";
+import { resolveReworkUserId } from "./working-supervisor";
 
 type ErrorSeverity = "low" | "medium" | "high";
 
@@ -50,9 +51,9 @@ export async function createRework(opts: {
   title?: string | null;
   reworkOrigin?: ReworkOrigin | null;
 }) {
-  const userId = opts.userId ?? opts.job.assigneeId;
+  const userId = resolveReworkUserId(opts.job, opts.userId);
   if (!userId) {
-    throw new Error("Cannot create rework without an assigned user.");
+    throw new Error("Cannot create rework without an assigned worker or supervisor.");
   }
 
   const reason = opts.reason.trim();

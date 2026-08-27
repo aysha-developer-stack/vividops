@@ -21,6 +21,14 @@ export function resolveChecklistTargetUserId(
   return job.assigneeId ?? actor.id;
 }
 
+/** Field worker or supervising supervisor who should receive and complete rework. */
+export function resolveReworkUserId(job: JobRow, userId?: string | null): string | null {
+  if (userId) return userId;
+  if (job.assigneeId) return job.assigneeId;
+  if (job.supervisorId) return job.supervisorId;
+  return null;
+}
+
 /** Worker completing their own checklist (user or supervising supervisor). */
 export function isOwnChecklistWork(actor: UserRow, job: JobRow, targetUserId: string): boolean {
   if (actor.role === "user") return targetUserId === actor.id;
