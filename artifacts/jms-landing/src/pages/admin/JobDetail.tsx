@@ -393,7 +393,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       return true;
     }
     return false;
-  }, [role, job?.id, job?.status, job?.supervisor?.id, currentUser?.id]);
+  }, [role, job?.id, job?.status, job?.supervisor?.id, job?.assignee?.id, currentUser?.id]);
   const checklistWorkerUserId = useMemo(() => {
     if (role === "user") return null;
     if (canUseJobTimer && role === "supervisor") return currentUser?.id ?? null;
@@ -672,6 +672,8 @@ export default function JobDetail({ role = "user", id }: Props) {
     ((role === "supervisor" && job.supervisor?.id === currentUser?.id) ||
       role === "admin" ||
       role === "super-admin");
+  // Only one blue timer banner at a time — review check and field-work never stack.
+  const showFieldWorkTimer = canUseJobTimer && !canShowReviewCheck;
   const reviewCheckRunning =
     !!reviewCheckSession &&
     !!reviewCheckSession.segmentStartedAt &&
@@ -2127,7 +2129,7 @@ export default function JobDetail({ role = "user", id }: Props) {
             {running && displaySeconds > totalLoggedSeconds && (
               <div className="text-[10px] text-sky-600 font-medium mt-0.5">Includes active timer</div>
             )}
-            {timeBreakdown.length > 1 && !canUseJobTimer && (
+            {timeBreakdown.length > 1 && !showFieldWorkTimer && !canShowReviewCheck && (
               <div className="mt-1.5 space-y-0.5">
                 {timeBreakdown.map((row) => (
                   <div key={String(row.key)} className="text-[11px] text-gray-500">
@@ -2255,24 +2257,25 @@ export default function JobDetail({ role = "user", id }: Props) {
         </motion.div>
       )}
 
-      {/* Supervisor review check timer */}
-      {canShowReviewCheck && (
+      {/* Job timer banner — review check OR field work, never both */}
+      {canShowReviewCheck ? (
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          key={`review-check-${job?.id}`}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="relative bg-gradient-to-br from-sky-600 via-indigo-600 to-sky-700 rounded-2xl p-6 mb-6 overflow-hidden shadow-xl shadow-sky-600/20"
+          transition={{ delay: 0.1 }}
+          className="relative mb-6 rounded-2xl bg-gradient-to-br from-sky-600 via-indigo-600 to-sky-700 p-6 overflow-hidden shadow-xl shadow-sky-600/20 min-h-[8.5rem]"
         >
           <motion.div
-            className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-white/10 blur-2xl"
+            className="pointer-events-none absolute -top-10 -right-10 h-48 w-48 rounded-full bg-white/10 blur-2xl"
             animate={{ scale: reviewCheckRunning ? [1, 1.2, 1] : 1, opacity: reviewCheckRunning ? [0.3, 0.5, 0.3] : 0.3 }}
             transition={{ duration: 2, repeat: Infinity }}
           />
-          <div className="relative z-10 flex items-center justify-between flex-wrap gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className={`w-2 h-2 rounded-full ${reviewCheckRunning ? "bg-amber-300 animate-pulse" : "bg-white/40"}`} />
-                <span className="text-xs font-bold text-white/80 uppercase tracking-wider">
+          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="mb-2 flex items-center gap-2">
+                <div className={`h-2 w-2 shrink-0 rounded-full ${reviewCheckRunning ? "bg-amber-300 animate-pulse" : "bg-white/40"}`} />
+                <span className="text-xs font-bold uppercase tracking-wider text-white/80">
                   {reviewCheckRunning
                     ? "Checking in progress"
                     : reviewCheckSavedSeconds > 0
@@ -2282,10 +2285,10 @@ export default function JobDetail({ role = "user", id }: Props) {
                         : "Awaiting supervisor check"}
                 </span>
               </div>
-              <div className="font-mono text-4xl md:text-5xl font-bold text-white tabular-nums">
+              <div className="font-mono text-4xl font-bold tabular-nums leading-none text-white md:text-5xl">
                 {formatTime(reviewCheckDisplaySeconds)}
               </div>
-              <p className="text-xs text-white/70 mt-2">
+              <p className="mt-2 text-xs text-white/70">
                 {role === "supervisor"
                   ? reviewCheckRunning
                     ? "Admins are notified and can monitor this check live."
@@ -2296,7 +2299,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                   : ""}
               </p>
             </div>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex shrink-0 flex-wrap gap-2">
               {role === "supervisor" && (
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -2305,7 +2308,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                     if (reviewCheckRunning) void pauseReviewCheck();
                     else void startReviewCheck();
                   }}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-white text-indigo-700 rounded-xl text-sm font-bold shadow-lg"
+                  className="flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-indigo-700 shadow-lg"
                 >
                   {reviewCheckRunning ? (
                     <>
@@ -2318,55 +2321,55 @@ export default function JobDetail({ role = "user", id }: Props) {
                   )}
                 </motion.button>
               )}
-              <div className="flex items-center gap-2 px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white text-sm font-semibold">
+              <div className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white">
                 <Clock size={16} />
                 {reviewCheckRunning ? "Live" : reviewCheckSavedSeconds > 0 ? "Paused" : "Not started"}
               </div>
             </div>
           </div>
         </motion.div>
-      )}
-
-      {/* Start Work / Timer card (field worker or supervising supervisor on this job) */}
-      {canUseJobTimer && (
+      ) : showFieldWorkTimer ? (
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          key={`field-work-${job?.id}`}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="relative isolate z-10 bg-gradient-to-br from-primary via-sky-700 to-primary rounded-2xl p-6 mb-6 overflow-hidden shadow-xl shadow-primary/20 min-h-[8.5rem]"
+          transition={{ delay: 0.1 }}
+          className="relative mb-6 rounded-2xl bg-gradient-to-br from-primary via-sky-700 to-primary p-6 overflow-hidden shadow-xl shadow-primary/20 min-h-[8.5rem]"
         >
           <motion.div
-            className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-white/10 blur-2xl pointer-events-none"
+            className="pointer-events-none absolute -top-10 -right-10 h-48 w-48 rounded-full bg-white/10 blur-2xl"
             animate={{ scale: running ? [1, 1.3, 1] : 1, opacity: running ? [0.3, 0.6, 0.3] : 0.3 }}
             transition={{ duration: 2, repeat: Infinity }}
           />
-          <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-2">
-                <div className={`w-2 h-2 rounded-full shrink-0 ${running ? "bg-emerald-300 animate-pulse" : "bg-white/40"}`} />
-                <span className="text-xs font-bold text-white/80 uppercase tracking-wider">
+              <div className="mb-2 flex items-center gap-2">
+                <div className={`h-2 w-2 shrink-0 rounded-full ${running ? "bg-emerald-300 animate-pulse" : "bg-white/40"}`} />
+                <span className="text-xs font-bold uppercase tracking-wider text-white/80">
                   {running ? "Tracking time" : "Ready to work"}
                   {activeReworkCycle != null ? ` · ${reworkCycleLabel(activeReworkCycle)}` : ""}
                 </span>
               </div>
-              <div className="font-mono text-4xl md:text-5xl font-bold text-white tabular-nums leading-none">
+              <div className="font-mono text-4xl font-bold tabular-nums leading-none text-white md:text-5xl">
                 {formatTime(seconds)}
               </div>
-              <div className="mt-2 space-y-0.5 text-xs text-white/75">
-                {activeTimerTask ? (
-                  <div className="truncate">
-                    Task: <span className="font-semibold text-white/90">{activeTimerTask}</span>
-                  </div>
-                ) : null}
-                {myLoggedSeconds > 0 ? (
-                  <div>
-                    Your logged time:{" "}
-                    <span className="font-semibold text-white/90 tabular-nums">{formatTime(myLoggedSeconds)}</span>
-                  </div>
-                ) : null}
-              </div>
+              {(activeTimerTask || myLoggedSeconds > 0) && (
+                <div className="mt-2 space-y-1 text-xs text-white/75">
+                  {activeTimerTask ? (
+                    <div className="truncate">
+                      Task: <span className="font-semibold text-white/90">{activeTimerTask}</span>
+                    </div>
+                  ) : null}
+                  {myLoggedSeconds > 0 ? (
+                    <div>
+                      Your logged time:{" "}
+                      <span className="font-semibold tabular-nums text-white/90">{formatTime(myLoggedSeconds)}</span>
+                    </div>
+                  ) : null}
+                </div>
+              )}
             </div>
-            <div className="flex gap-2 shrink-0">
+            <div className="flex shrink-0 gap-2">
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -2376,7 +2379,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                   else void startTimer();
                 }}
                 disabled={job?.status === "completed"}
-                className="flex items-center gap-2 px-5 py-2.5 bg-white text-primary rounded-xl text-sm font-bold shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-primary shadow-lg disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {running ? <><Pause size={14} /> Pause</> : <><Play size={14} fill="currentColor" /> Start Work</>}
               </motion.button>
@@ -2387,7 +2390,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => { void stopAndSaveTimeLog("Manually stopped"); }}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-white/10 border border-white/20 text-white rounded-xl text-sm font-semibold hover:bg-white/20"
+                  className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white hover:bg-white/20"
                 >
                   <Square size={12} /> Stop
                 </motion.button>
@@ -2395,7 +2398,7 @@ export default function JobDetail({ role = "user", id }: Props) {
             </div>
           </div>
         </motion.div>
-      )}
+      ) : null}
 
       {readyToSubmitReview && (
         <motion.div
