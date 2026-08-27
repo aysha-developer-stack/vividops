@@ -1584,10 +1584,6 @@ export default function JobDetail({ role = "user", id }: Props) {
     if (tag === "input") inputPickerRef.current?.click();
     else outputPickerRef.current?.click();
   };
-  const handleChecklistUpload = (checklistId: number) => {
-    uploadChecklistIdRef.current = checklistId;
-    outputPickerRef.current?.click();
-  };
   const refreshChecklistFiles = async () => {
     if (!job?.id) return;
     try {
@@ -2647,31 +2643,21 @@ export default function JobDetail({ role = "user", id }: Props) {
                         </div>
                         <p className="text-xs text-purple-900 mb-2">{selectedItemRework?.reason ?? selectedChecklistItem.reworkReason ?? "Please review the requirements and resubmit."}</p>
                         {selectedItemRework && (
-                          <div className="space-y-1 mb-3 text-[11px] text-purple-900/80">
+                          <div className="space-y-1 text-[11px] text-purple-900/80">
                             <div><span className="font-bold">Error type:</span> {formatMistakeCategory(selectedItemRework.category)}</div>
                             <div><span className="font-bold">Severity:</span> {selectedItemRework.severity}</div>
                             {selectedItemRework.comments && <div><span className="font-bold">Instructions:</span> {selectedItemRework.comments}</div>}
                             {selectedItemRework.dueAt && <div><span className="font-bold">Due:</span> {new Date(selectedItemRework.dueAt).toLocaleString()}</div>}
                           </div>
                         )}
-                        <button 
-                          onClick={() => handleChecklistUpload(selectedChecklistItem.id)}
-                          className="w-full py-2 bg-purple-600 text-white text-[10px] font-bold rounded-lg shadow-md shadow-purple-600/20 flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors mb-2"
-                        >
-                          <Upload size={12} /> Or browse rework file
-                        </button>
-                        <FileDropzone
-                          compact
-                          multiple
-                          allowFolders
-                          accept={JOB_FILE_ACCEPT}
-                          label="Drop rework files or folders"
-                          hint="Multiple files and folders supported"
-                          onFiles={async (files) => {
-                            uploadChecklistIdRef.current = selectedChecklistItem.id;
-                            await uploadPickedFiles(files, "output", selectedChecklistItem.id);
-                          }}
-                        />
+                        <p className="mt-3 text-[11px] text-purple-800/90 border-t border-purple-100 pt-2">
+                          Upload corrected deliverables on the{" "}
+                          <button type="button" onClick={() => setTab("files")} className="font-bold underline hover:text-purple-950">
+                            Files
+                          </button>{" "}
+                          tab (<span className="font-semibold">Browse Completed</span>), then add the updated Word/PDF checklist in{" "}
+                          <span className="font-semibold">Completed uploads</span> below.
+                        </p>
                       </div>
                     )}
 
