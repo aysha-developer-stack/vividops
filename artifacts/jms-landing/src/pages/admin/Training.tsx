@@ -39,7 +39,6 @@ interface UpdatePost {
   body: string;
   attachments: Attachment[];
   postedAt: string;
-  audience: string;
   reactions: number;
   comments: number;
   reacted?: boolean;
@@ -200,16 +199,12 @@ function DailyUpdates({ canPost, search }: { canPost: boolean; search: string })
     setMetaByPostId(next);
   }, [apiPosts]);
 
-  const weekStats = useMemo(() => {
-    const now = Date.now();
-    const weekMs = 7 * 24 * 60 * 60 * 1000;
+  const totalStats = useMemo(() => {
     let updatesPosted = 0;
     let reactions = 0;
     let comments = 0;
 
     for (const p of apiPosts ?? []) {
-      const created = new Date(p.createdAt).getTime();
-      if (Number.isNaN(created) || now - created > weekMs) continue;
       updatesPosted += 1;
       const meta = metaByPostId[p.id];
       reactions += meta?.likeCount ?? Number((p as any)?.likeCount ?? 0);
@@ -384,7 +379,6 @@ function DailyUpdates({ canPost, search }: { canPost: boolean; search: string })
                 body: post.body,
                 attachments,
                 postedAt: new Date(post.createdAt).toLocaleString(),
-                audience: "All users",
                 reactions: meta.likeCount,
                 comments: meta.commentCount,
                 reacted: meta.liked,
@@ -434,11 +428,10 @@ function DailyUpdates({ canPost, search }: { canPost: boolean; search: string })
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <div className="text-sm font-bold text-gray-900 mb-3">This week</div>
-          <Stat label="Updates posted" value={weekStats.updatesPosted} />
-          <Stat label="Reactions" value={weekStats.reactions} />
-          <Stat label="Comments" value={weekStats.comments} />
-          <Stat label="Audience reach" value="All users" subtle />
+          <div className="text-sm font-bold text-gray-900 mb-3">Total</div>
+          <Stat label="Updates posted" value={totalStats.updatesPosted} />
+          <Stat label="Reactions" value={totalStats.reactions} />
+          <Stat label="Comments" value={totalStats.comments} />
         </div>
       </div>
 
@@ -764,10 +757,6 @@ function Composer({ onPost }: { onPost: (body: string, attachments: DraftAttachm
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-[11px] text-gray-500 bg-white border border-gray-200 rounded-full px-2.5 py-1">
-            <UsersIcon size={12} />
-            Sent to all users
-          </div>
           <motion.button
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.97 }}
@@ -912,11 +901,6 @@ function PostCard({
         <p className="text-sm text-gray-700 leading-relaxed mt-3 whitespace-pre-line">
           {post.body}
         </p>
-
-        <div className="mt-3 inline-flex items-center gap-1.5 text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-2.5 py-1">
-          <UsersIcon size={12} />
-          Sent to {post.audience}
-        </div>
       </div>
 
       {post.attachments.length > 0 && (
