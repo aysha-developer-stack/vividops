@@ -383,10 +383,12 @@ export default function JobDetail({ role = "user", id }: Props) {
       return false;
     }
     if (role === "user") return true;
+    // Supervising supervisor uses review-check timer; field-work timer only when no assignee.
     if (
       role === "supervisor" &&
       currentUser?.id &&
-      job.supervisor?.id === currentUser.id
+      job.supervisor?.id === currentUser.id &&
+      !job.assignee?.id
     ) {
       return true;
     }
@@ -1137,6 +1139,11 @@ export default function JobDetail({ role = "user", id }: Props) {
       setShowStartTimerReminder(false);
       return;
     }
+    // Do not nag when another worker is already timing this job.
+    if (job.assignee?.id && job.assignee.id !== currentUser?.id) {
+      setShowStartTimerReminder(false);
+      return;
+    }
 
     const tick = () => {
       setShowStartTimerReminder(true);
@@ -1149,7 +1156,7 @@ export default function JobDetail({ role = "user", id }: Props) {
 
     const intervalId = window.setInterval(tick, TIMER_START_REMINDER_INTERVAL_S * 1000);
     return () => window.clearInterval(intervalId);
-  }, [canUseJobTimer, job?.id, job?.number, running, seconds]);
+  }, [canUseJobTimer, job?.id, job?.number, job?.assignee?.id, currentUser?.id, running, seconds]);
 
   // Auto-stop countdown when popup is open
   useEffect(() => {

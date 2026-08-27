@@ -1,8 +1,12 @@
 import type { JobRow, UserRow } from "@workspace/db";
 
-/** Supervisor assigned to this job who may also perform field work on it. */
+/** Supervisor assigned to this job who may also perform field work on it (when no assignee). */
 export function isWorkingSupervisor(actor: UserRow, job: JobRow): boolean {
-  return actor.role === "supervisor" && job.supervisorId === actor.id;
+  return (
+    actor.role === "supervisor" &&
+    job.supervisorId === actor.id &&
+    !job.assigneeId
+  );
 }
 
 /** User or supervising supervisor doing hands-on work (timer, checklist, files). */
