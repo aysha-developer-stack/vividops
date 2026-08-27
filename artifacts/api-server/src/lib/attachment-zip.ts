@@ -1,14 +1,7 @@
-import { createRequire } from "node:module";
-import type { Archiver, ArchiverError } from "archiver";
-
-const require = createRequire(import.meta.url);
-const createArchive = require("archiver") as (
-  format: "zip",
-  options?: { zlib?: { level?: number } },
-) => Archiver;
+import { ZipArchive, type Archiver, type ArchiverError } from "archiver";
 
 export function createZipArchive(): Archiver {
-  return createArchive("zip", { zlib: { level: 5 } });
+  return new ZipArchive({ zlib: { level: 5 } });
 }
 
 export type { ArchiverError };
