@@ -2209,8 +2209,13 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     if (!isManager) {
       return res.status(403).json({ error: "Only supervisor, admin, or super-admin can put a job on hold" });
     }
-    if (previousStatus === "completed" || previousStatus === "cancelled" || previousStatus === "on_hold") {
+    if (previousStatus === "cancelled" || previousStatus === "on_hold") {
       return res.status(400).json({ error: "This job cannot be put on hold" });
+    }
+    if (previousStatus === "completed") {
+      if (actor.role !== "admin" && actor.role !== "super-admin") {
+        return res.status(403).json({ error: "Only admin or super-admin can put a completed job on hold" });
+      }
     }
   }
   if (previousStatus === "on_hold" && nextStatus !== undefined && nextStatus !== "on_hold") {
@@ -2244,6 +2249,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
         nextStatus,
         previousStatus,
         currentProgress: body.progress ?? full.job.progress,
+        currentCompletedAt: full.job.completedAt,
       }),
     );
   }
@@ -2419,6 +2425,7 @@ router.post("/jobs/:id/review", requireAuth, async (req, res) => {
       "submit_for_supervisor",
       "supervisor_approve",
       "admin_complete",
+      "admin_finalize",
       "rework",
       "resume_from_hold",
     ];

@@ -514,6 +514,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesSaveError, setNotesSaveError] = useState<string | null>(null);
   const [approveOpen, setApproveOpen] = useState(false);
+  const [approveMode, setApproveMode] = useState<"escalate" | "finalize">("escalate");
   const [approveComment, setApproveComment] = useState("");
   const [approvePhotos, setApprovePhotos] = useState<File[]>([]);
   const [approveSubmitting, setApproveSubmitting] = useState(false);
@@ -605,6 +606,16 @@ export default function JobDetail({ role = "user", id }: Props) {
     role === "super-admin" || role === "admin" || (role === "supervisor" && !canUseJobTimer);
   const canPickReworkOrigin =
     currentUser?.role === "admin" || currentUser?.role === "super-admin";
+  const canPutJobOnHold =
+    (role === "supervisor" || role === "admin" || role === "super-admin") &&
+    job?.status !== "cancelled" &&
+    job?.status !== "on_hold" &&
+    (job?.status !== "completed" || role === "admin" || role === "super-admin");
+
+  const openApproveModal = (mode: "escalate" | "finalize") => {
+    setApproveMode(mode);
+    setApproveOpen(true);
+  };
 
   const openEditModal = () => {
     if (!job) return;
@@ -1968,7 +1979,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 <Users size={12} /> Reassign
               </motion.button>
             )}
-            {(role === "supervisor" || role === "admin" || role === "super-admin") && job?.status !== "completed" && job?.status !== "cancelled" && (
+            {canPutJobOnHold && (
               <>
                 {job?.status === "on_hold" ? (
                   <motion.button
@@ -2058,27 +2069,37 @@ export default function JobDetail({ role = "user", id }: Props) {
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => setApproveOpen(true)}
+                    onClick={() => openApproveModal("escalate")}
                     className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
                   >
                     <CheckCircle2 size={12} /> Approve for Admin
                   </motion.button>
                 )}
                 {(role === "admin" && job?.status === "awaiting_admin") && (
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setApproveOpen(true)}
-                    className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
-                  >
-                    <CheckCircle2 size={12} /> Send to Super Admin
-                  </motion.button>
+                  <>
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => openApproveModal("escalate")}
+                      className="flex items-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-600/30"
+                    >
+                      <CheckCircle2 size={12} /> Send to Super Admin
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => openApproveModal("finalize")}
+                      className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
+                    >
+                      <CheckCircle2 size={12} /> Complete Job
+                    </motion.button>
+                  </>
                 )}
                 {(role === "super-admin" && job?.status === "awaiting_super_admin") && (
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => setApproveOpen(true)}
+                    onClick={() => openApproveModal("finalize")}
                     className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
                   >
                     <CheckCircle2 size={12} /> Complete Job
@@ -2207,7 +2228,7 @@ export default function JobDetail({ role = "user", id }: Props) {
         {job?.status === "on_hold" && (
           <div className="mt-4 flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
             <Pause size={14} className="text-orange-600 shrink-0" />
-            <span>This job is <span className="font-semibold">on hold</span>. Work and checklist updates are paused until a supervisor or admin resumes it.</span>
+            <span>This job is <span className="font-semibold">on hold</span>. Work is paused until a supervisor, admin, or super admin resumes it to its previous status.</span>
           </div>
         )}
 
@@ -3967,9 +3988,11 @@ export default function JobDetail({ role = "user", id }: Props) {
                   <h3 className="text-lg font-bold text-gray-900">
                     {role === "supervisor"
                       ? "Approve for Admin Review"
-                      : role === "admin"
-                        ? "Send to Super Admin"
-                        : "Complete Job"}
+                      : role === "admin" && approveMode === "finalize"
+                        ? "Complete Job"
+                        : role === "admin"
+                          ? "Send to Super Admin"
+                          : "Complete Job"}
                   </h3>
                 </div>
                 <button onClick={() => setApproveOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
@@ -3980,26 +4003,32 @@ export default function JobDetail({ role = "user", id }: Props) {
                   <div className="text-base font-bold text-gray-900">
                     {role === "supervisor"
                       ? "Sent to admin for completion"
-                      : role === "admin"
-                        ? "Sent to super admin for final completion"
-                        : "Job completed"}
+                      : role === "admin" && approveMode === "finalize"
+                        ? "Job completed"
+                        : role === "admin"
+                          ? "Sent to super admin for final completion"
+                          : "Job completed"}
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
                     {role === "supervisor"
                       ? "Admins have been notified."
-                      : role === "admin"
-                        ? "Super admins have been notified."
-                        : "Worker and supervisor have been notified."}
+                      : role === "admin" && approveMode === "finalize"
+                        ? "Worker and supervisor have been notified."
+                        : role === "admin"
+                          ? "Super admins have been notified."
+                          : "Worker and supervisor have been notified."}
                   </div>
                 </div>
               ) : (
                 <>
                   <p className="text-sm text-gray-600 mb-4">
                     {role === "supervisor"
-                      ? "Confirm the deliverables look good. The job will move to admin for review — super admin completes it after admin approval."
-                      : role === "admin"
-                        ? "Confirm that the deliverables, checklist, and time logs look good. The job will be sent to super admin for final completion."
-                        : "Confirm that everything looks good. The job will be marked Completed and the worker notified."}
+                      ? "Confirm the deliverables look good. The job will move to admin for review."
+                      : role === "admin" && approveMode === "finalize"
+                        ? "Confirm that everything looks good. The job will be marked Completed and the worker notified."
+                        : role === "admin"
+                          ? "Confirm that the deliverables, checklist, and time logs look good. The job will be sent to super admin for final completion."
+                          : "Confirm that everything looks good. The job will be marked Completed and the worker notified."}
                   </p>
                   <div className="space-y-2 mb-5 text-xs">
                     <div className="flex items-center gap-2 text-gray-700"><CheckCircle2 size={14} className="text-emerald-500" /> Checklist reviewed ({checklist.filter((c) => c.status === "completed").length}/{checklist.length} done)</div>
@@ -4024,7 +4053,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                           role === "supervisor"
                             ? "Summarize your review, quality notes, or instructions for admin…"
                             : role === "admin"
-                              ? "Summarize your check and any notes for super admin…"
+                              ? approveMode === "finalize"
+                                ? "Summarize your final check, quality notes, or handover details…"
+                                : "Summarize your check and any notes for super admin…"
                               : "Summarize your final check, quality notes, or handover details…",
                         photos:
                           role === "supervisor"
@@ -4044,7 +4075,13 @@ export default function JobDetail({ role = "user", id }: Props) {
                         setApproveSubmitting(true);
                         try {
                           const action =
-                            role === "supervisor" ? "supervisor_approve" : "admin_complete";
+                            role === "supervisor"
+                              ? "supervisor_approve"
+                              : role === "admin" && approveMode === "finalize"
+                                ? "admin_finalize"
+                                : role === "super-admin" && approveMode === "finalize"
+                                  ? "admin_finalize"
+                                  : "admin_complete";
                           await submitJobReviewWithPhotos({
                             jobId: job.id,
                             action,
@@ -4080,7 +4117,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                           {role === "supervisor"
                             ? "Approve"
                             : role === "admin"
-                              ? "Send to Super Admin"
+                              ? approveMode === "finalize"
+                                ? "Complete Job"
+                                : "Send to Super Admin"
                               : "Complete Job"}
                         </>
                       )}

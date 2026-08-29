@@ -33,6 +33,7 @@ const COMPLETION_NOTE_LABELS: Record<JobReviewAction, string | null> = {
   submit_for_supervisor: "Worker submission",
   supervisor_approve: "Supervisor review",
   admin_complete: "Admin completion",
+  admin_finalize: "Admin final completion",
   rework: null,
   resume_from_hold: null,
 };
@@ -88,6 +89,7 @@ export type JobReviewAction =
   | "submit_for_supervisor"
   | "supervisor_approve"
   | "admin_complete"
+  | "admin_finalize"
   | "rework"
   | "resume_from_hold";
 
@@ -109,6 +111,7 @@ const RESUMABLE_STATUSES = new Set<ReviewableStatus>([
   "awaiting_admin",
   "awaiting_super_admin",
   "rework",
+  "completed",
 ]);
 
 export function resolveResumeStatus(job: Pick<JobRow, "heldFromStatus" | "progress">): ReviewableStatus {
@@ -121,9 +124,10 @@ export function jobStatusPatchFields(opts: {
   nextStatus: ReviewableStatus;
   previousStatus?: string;
   currentProgress?: number;
+  currentCompletedAt?: Date | null;
   checker?: { id: string; name: string; role: string } | null;
 }) {
-  const { nextStatus, previousStatus, currentProgress = 0, checker } = opts;
+  const { nextStatus, previousStatus, currentProgress = 0, currentCompletedAt, checker } = opts;
   const now = new Date();
   const patch: {
     status: ReviewableStatus;
@@ -148,7 +152,8 @@ export function jobStatusPatchFields(opts: {
   };
 
   if (nextStatus === "completed") {
-    patch.completedAt = now;
+    patch.completedAt =
+      previousStatus === "on_hold" && currentCompletedAt ? currentCompletedAt : now;
     patch.reviewStartedAt = null;
     patch.progress = 100;
     applyChecker();
@@ -186,7 +191,9 @@ export function jobStatusPatchFields(opts: {
   }
 
   if (nextStatus === "on_hold") {
-    patch.completedAt = null;
+    if (previousStatus !== "completed") {
+      patch.completedAt = null;
+    }
     if (previousStatus && previousStatus !== "on_hold") {
       patch.heldFromStatus = previousStatus;
     }
@@ -547,7 +554,7 @@ export async function notifyStatusTransition(opts: {
       description: completeMsg,
       type: "completed",
     });
-    if (actor.role === "super-admin") {
+    if (actor.role === "super-admin" || actor.role === "admin") {
       void announceCliqJobStatusChange({
         job,
         actor,
@@ -726,6 +733,21 @@ export async function applyJobReview(opts: {
     } else {
       return { ok: false, status: 403, error: "Only admin or super-admin can complete the job" };
     }
+  } else if (action === "admin_finalize") {
+    if (actor.role !== "admin" && actor.role !== "super-admin") {
+      return { ok: false, status: 403, error: "Only admin or super-admin can finalize the job" };
+    }
+    if (job.status === "rework") {
+      return { ok: false, status: 400, error: "The worker must complete and resubmit the rework before completion" };
+    }
+    if (job.status === "cancelled") {
+      return { ok: false, status: 400, error: "Cancelled jobs cannot be completed" };
+    }
+    if (job.status !== "awaiting_admin" && job.status !== "awaiting_super_admin") {
+      return { ok: false, status: 400, error: "Job must be awaiting admin or super admin review before final completion" };
+    }
+    await resolveJobReworks(job.id);
+    nextStatus = "completed";
   } else if (action === "rework") {
     const canRework =
       actor.role === "admin" ||
@@ -801,6 +823,7 @@ export async function applyJobReview(opts: {
         nextStatus,
         previousStatus,
         currentProgress: job.progress,
+        currentCompletedAt: job.completedAt,
         checker: shouldRecordChecker
           ? { id: actor.id, name: actor.name, role: actor.role }
           : null,

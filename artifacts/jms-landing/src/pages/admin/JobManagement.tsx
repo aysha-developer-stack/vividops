@@ -687,13 +687,9 @@ export default function JobManagement(
     }
   };
 
-  const markCompleted = async (j: UiJob) => {
+  const markReviewAction = async (j: UiJob, action: string) => {
     setOpenId(null);
     try {
-      const action =
-        role === "supervisor"
-          ? "supervisor_approve"
-          : "admin_complete";
       const res = await fetch(`/api/jobs/${j.id}/review`, {
         method: "POST",
         credentials: "include",
@@ -706,7 +702,7 @@ export default function JobManagement(
       }
       await invalidateJobs();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to mark job completed");
+      setError(err instanceof Error ? err.message : "Failed to update job status");
     }
   };
 
@@ -1167,13 +1163,19 @@ export default function JobManagement(
                                   </DropdownMenuItem>
                                 )}
                                 {role === "admin" && j.status === "Awaiting Admin" && (
-                                  <DropdownMenuItem className="cursor-pointer" onClick={() => markCompleted(j)}>
-                                    <CheckCircle2 size={14} className="mr-2 text-emerald-500" />
-                                    Send to Super Admin
-                                  </DropdownMenuItem>
+                                  <>
+                                    <DropdownMenuItem className="cursor-pointer" onClick={() => markReviewAction(j, "admin_complete")}>
+                                      <CheckCircle2 size={14} className="mr-2 text-indigo-500" />
+                                      Send to Super Admin
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem className="cursor-pointer" onClick={() => markReviewAction(j, "admin_finalize")}>
+                                      <CheckCircle2 size={14} className="mr-2 text-emerald-500" />
+                                      Complete Job
+                                    </DropdownMenuItem>
+                                  </>
                                 )}
                                 {role === "super-admin" && j.status === "Awaiting Super Admin" && (
-                                  <DropdownMenuItem className="cursor-pointer" onClick={() => markCompleted(j)}>
+                                  <DropdownMenuItem className="cursor-pointer" onClick={() => markReviewAction(j, "admin_finalize")}>
                                     <CheckCircle2 size={14} className="mr-2 text-emerald-500" />
                                     Complete Job
                                   </DropdownMenuItem>
@@ -1186,8 +1188,8 @@ export default function JobManagement(
                                   </DropdownMenuItem>
                                 )}
                                 {(role === "supervisor" || role === "admin" || role === "super-admin") &&
-                                  j.status !== "Done" &&
-                                  j.status !== "On Hold" && (
+                                  j.status !== "On Hold" &&
+                                  (j.status !== "Done" || role === "admin" || role === "super-admin") && (
                                   <DropdownMenuItem className="cursor-pointer" onClick={() => putOnHold(j)}>
                                     <Pause size={14} className="mr-2 text-orange-500" />
                                     Put on Hold
@@ -1333,13 +1335,19 @@ export default function JobManagement(
                                   </DropdownMenuItem>
                                 )}
                                 {role === "admin" && j.status === "Awaiting Admin" && (
-                                  <DropdownMenuItem className="cursor-pointer" onClick={() => markCompleted(j)}>
-                                    <CheckCircle2 size={14} className="mr-2 text-emerald-500" />
-                                    Send to Super Admin
-                                  </DropdownMenuItem>
+                                  <>
+                                    <DropdownMenuItem className="cursor-pointer" onClick={() => markReviewAction(j, "admin_complete")}>
+                                      <CheckCircle2 size={14} className="mr-2 text-indigo-500" />
+                                      Send to Super Admin
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem className="cursor-pointer" onClick={() => markReviewAction(j, "admin_finalize")}>
+                                      <CheckCircle2 size={14} className="mr-2 text-emerald-500" />
+                                      Complete Job
+                                    </DropdownMenuItem>
+                                  </>
                                 )}
                                 {role === "super-admin" && j.status === "Awaiting Super Admin" && (
-                                  <DropdownMenuItem className="cursor-pointer" onClick={() => markCompleted(j)}>
+                                  <DropdownMenuItem className="cursor-pointer" onClick={() => markReviewAction(j, "admin_finalize")}>
                                     <CheckCircle2 size={14} className="mr-2 text-emerald-500" />
                                     Complete Job
                                   </DropdownMenuItem>
@@ -1352,8 +1360,8 @@ export default function JobManagement(
                                   </DropdownMenuItem>
                                 )}
                                 {(role === "supervisor" || role === "admin" || role === "super-admin") &&
-                                  j.status !== "Done" &&
-                                  j.status !== "On Hold" && (
+                                  j.status !== "On Hold" &&
+                                  (j.status !== "Done" || role === "admin" || role === "super-admin") && (
                                   <DropdownMenuItem className="cursor-pointer" onClick={() => putOnHold(j)}>
                                     <Pause size={14} className="mr-2 text-orange-500" />
                                     Put on Hold

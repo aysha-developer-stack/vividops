@@ -40,7 +40,8 @@ export async function uploadReviewPhotos(
 export type JobReviewAction =
   | "submit_for_supervisor"
   | "supervisor_approve"
-  | "admin_complete";
+  | "admin_complete"
+  | "admin_finalize";
 
 export async function submitJobReviewWithPhotos(opts: {
   jobId: string;
