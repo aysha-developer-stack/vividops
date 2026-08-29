@@ -825,7 +825,9 @@ router.delete("/jobs/:jobId/attachments/:attachmentId", requireAuth, async (req,
       res.status(404).json({ message: "Attachment not found" });
       return;
     }
-    if (attachment.uploadedById !== actor.id) {
+    const isUploader = attachment.uploadedById === actor.id;
+    const isAdminOrSuperAdmin = actor.role === "admin" || actor.role === "super-admin";
+    if (!isUploader && !isAdminOrSuperAdmin) {
       res.status(403).json({ message: "You can only delete files you uploaded" });
       return;
     }

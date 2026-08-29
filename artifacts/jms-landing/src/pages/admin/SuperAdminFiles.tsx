@@ -298,10 +298,22 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
                                     <Download size={14} />
                                   </button>
                                   <button
-                                    onClick={() => {
-                                      const ok = window.confirm(`Delete ${f.name}?`);
+                                    onClick={async () => {
+                                      const ok = window.confirm(`Delete ${f.name}? This cannot be undone.`);
                                       if (!ok) return;
-                                      setDeletedIds((prev) => (prev.includes(f.id) ? prev : [...prev, f.id]));
+                                      try {
+                                        const res = await fetch(`/api/jobs/${f.jobId}/attachments/${f.id}`, {
+                                          method: "DELETE",
+                                          credentials: "include",
+                                        });
+                                        if (!res.ok) {
+                                          const data = (await res.json().catch(() => ({}))) as { message?: string };
+                                          throw new Error(data.message || "Failed to delete file");
+                                        }
+                                        setDeletedIds((prev) => (prev.includes(f.id) ? prev : [...prev, f.id]));
+                                      } catch (err) {
+                                        window.alert(err instanceof Error ? err.message : "Failed to delete file");
+                                      }
                                     }}
                                     className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                     title="Delete"

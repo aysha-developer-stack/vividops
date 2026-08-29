@@ -611,6 +611,8 @@ export default function JobDetail({ role = "user", id }: Props) {
     job?.status !== "cancelled" &&
     job?.status !== "on_hold" &&
     (job?.status !== "completed" || role === "admin" || role === "super-admin");
+  const canDeleteAttachment = (attachment: { uploadedById?: string | null }) =>
+    attachment.uploadedById === currentUser?.id || role === "admin" || role === "super-admin";
 
   const openApproveModal = (mode: "escalate" | "finalize") => {
     setApproveMode(mode);
@@ -1569,7 +1571,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   };
   const deleteAttachment = async (attachment: AttachmentApi) => {
     if (!job?.id) return;
-    if (attachment.uploadedById !== currentUser?.id) {
+    if (!canDeleteAttachment(attachment)) {
       window.alert("You can only delete files you uploaded.");
       return;
     }
@@ -1584,6 +1586,7 @@ export default function JobDetail({ role = "user", id }: Props) {
         throw new Error(data.message || "Failed to delete file");
       }
       setAttachments((prev) => prev.filter((a) => a.id !== attachment.id));
+      await refreshChecklistFiles();
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Failed to delete file");
     }
@@ -2629,6 +2632,27 @@ export default function JobDetail({ role = "user", id }: Props) {
                                 >
                                   <Download size={12} />
                                 </button>
+                                {canDeleteAttachment({ uploadedById: f.uploadedBy?.id }) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void deleteAttachment({
+                                      id: f.id,
+                                      jobId: job?.id ?? "",
+                                      fileName: f.fileName,
+                                      fileKey: "",
+                                      fileUrl: f.fileUrl,
+                                      fileType: f.fileType,
+                                      fileSize: f.fileSize,
+                                      uploadedById: f.uploadedBy?.id ?? "",
+                                      createdAt: f.createdAt,
+                                      uploadedBy: f.uploadedBy,
+                                    })}
+                                    className="p-1 text-gray-400 hover:text-red-600 rounded"
+                                    title="Delete"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -2768,6 +2792,27 @@ export default function JobDetail({ role = "user", id }: Props) {
                             >
                               <Download size={14} />
                             </button>
+                            {canDeleteAttachment({ uploadedById: f.uploadedBy?.id }) && (
+                              <button
+                                type="button"
+                                onClick={() => void deleteAttachment({
+                                  id: f.id,
+                                  jobId: job?.id ?? "",
+                                  fileName: f.fileName,
+                                  fileKey: "",
+                                  fileUrl: f.fileUrl,
+                                  fileType: f.fileType,
+                                  fileSize: f.fileSize,
+                                  uploadedById: f.uploadedBy?.id ?? "",
+                                  createdAt: f.createdAt,
+                                  uploadedBy: f.uploadedBy,
+                                })}
+                                className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg"
+                                title="Delete"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                           </div>
                           );
                         };
@@ -3171,7 +3216,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                               <div className="flex items-center justify-end gap-2">
                                 <button onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
                                 <button onClick={() => downloadAttachment(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
-                                {a.uploadedById === currentUser?.id && (
+                                {canDeleteAttachment(a) && (
                                   <button onClick={() => void deleteAttachment(a)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
                                 )}
                               </div>
@@ -3234,6 +3279,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                                   <div className="flex items-center justify-end gap-2">
                                     <button onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
                                     <button onClick={() => downloadAttachment(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
+                                    {canDeleteAttachment(a) && (
+                                      <button onClick={() => void deleteAttachment(a)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
@@ -3296,7 +3344,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                               <div className="flex items-center justify-end gap-2">
                                 <button onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
                                 <button onClick={() => downloadAttachment(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
-                                {a.uploadedById === currentUser?.id && (
+                                {canDeleteAttachment(a) && (
                                   <button onClick={() => void deleteAttachment(a)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
                                 )}
                               </div>
