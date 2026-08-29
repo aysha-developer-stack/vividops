@@ -1,16 +1,15 @@
+import {
+  isStorageSizeLimitError,
+  uploadJobAttachmentWithProgress,
+  type JobAttachmentUploadFields,
+} from "./uploadJobAttachmentWithProgress";
+
 export type JobAttachmentUploadSpec = {
   file: File;
   fileCategory?: "job" | "completed" | "review";
   checklistItemId?: number;
   reviewNoteId?: string;
   reworkId?: string;
-};
-
-type PresignResponse = {
-  signedUrl: string;
-  token: string;
-  key: string;
-  fileUrl: string;
 };
 
 /** Direct browser → Supabase uploads; Railway only handles small JSON presign/register calls. */
@@ -47,21 +46,17 @@ async function runWithConcurrency<T>(
   if (firstError) throw firstError;
 }
 
-function buildUploadBody(
+function specToFields(
   spec: JobAttachmentUploadSpec,
   suppressNotifications: boolean,
-): Record<string, unknown> {
-  const body: Record<string, unknown> = {
-    fileName: spec.file.name,
-    fileType: spec.file.type || "application/octet-stream",
-    fileSize: spec.file.size,
+): JobAttachmentUploadFields {
+  return {
+    fileCategory: spec.fileCategory,
+    checklistItemId: spec.checklistItemId,
+    reviewNoteId: spec.reviewNoteId,
+    reworkId: spec.reworkId,
+    suppressNotifications,
   };
-  if (spec.fileCategory) body.fileCategory = spec.fileCategory;
-  if (spec.checklistItemId != null) body.checklistItemId = spec.checklistItemId;
-  if (spec.reviewNoteId) body.reviewNoteId = spec.reviewNoteId;
-  if (spec.reworkId) body.reworkId = spec.reworkId;
-  if (suppressNotifications) body.suppressNotifications = "true";
-  return body;
 }
 
 async function uploadViaProxy(
@@ -95,45 +90,12 @@ async function uploadDirect(
   spec: JobAttachmentUploadSpec,
   suppressNotifications: boolean,
 ): Promise<void> {
-  const body = buildUploadBody(spec, suppressNotifications);
-
-  const presignRes = await fetch(`/api/jobs/${jobId}/attachments/presign`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!presignRes.ok) {
-    const text = await presignRes.text();
-    throw new Error(text || `Presign failed (${presignRes.status})`);
-  }
-
-  const presign = (await presignRes.json()) as PresignResponse;
-  const contentType = spec.file.type || "application/octet-stream";
-
-  const putRes = await fetch(presign.signedUrl, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: spec.file,
-  });
-  if (!putRes.ok) {
-    const text = await putRes.text().catch(() => "");
-    throw new Error(text || `Direct storage upload failed (${putRes.status})`);
-  }
-
-  const registerRes = await fetch(`/api/jobs/${jobId}/attachments/register`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      ...body,
-      key: presign.key,
-    }),
-  });
-  if (!registerRes.ok) {
-    const text = await registerRes.text();
-    throw new Error(text || `Register failed (${registerRes.status})`);
-  }
+  await uploadJobAttachmentWithProgress(
+    jobId,
+    spec.file,
+    specToFields(spec, suppressNotifications),
+    () => {},
+  );
 }
 
 async function uploadOne(
@@ -143,7 +105,11 @@ async function uploadOne(
 ): Promise<void> {
   try {
     await uploadDirect(jobId, spec, suppressNotifications);
-  } catch {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (isStorageSizeLimitError(message)) {
+      throw err;
+    }
     await uploadViaProxy(jobId, spec, suppressNotifications);
   }
 }

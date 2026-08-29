@@ -65,6 +65,17 @@ function normalizePrefix(prefix: string) {
     .join("/");
 }
 
+export function formatSupabaseUploadError(message: string): string {
+  if (/maximum allowed size|payload too large|413/i.test(message)) {
+    return (
+      "File exceeds your Supabase storage size limit (default is 50 MB). " +
+      "In Supabase Dashboard go to Storage → Settings and raise the global file size limit. " +
+      "Files over 50 MB require a Pro plan or higher."
+    );
+  }
+  return message;
+}
+
 export async function uploadToSupabase(file: Express.Multer.File, options?: { prefix?: string }) {
   if (!supabaseUrl || !supabaseServiceKey) {
     throw new Error("Supabase storage is not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)");
@@ -81,7 +92,11 @@ export async function uploadToSupabase(file: Express.Multer.File, options?: { pr
     });
 
   if (error) {
-    throw new Error(typeof (error as any)?.message === "string" ? (error as any).message : "Supabase upload failed");
+    const raw =
+      typeof (error as { message?: string }).message === "string"
+        ? (error as { message: string }).message
+        : "Supabase upload failed";
+    throw new Error(formatSupabaseUploadError(raw));
   }
 
   return {
@@ -128,6 +143,29 @@ export async function createDirectUploadUrl(storageKey: string) {
     token: data.token,
     path: data.path,
   };
+}
+
+export async function createSignedDownloadUrl(
+  storageKey: string,
+  options?: { fileName?: string; inline?: boolean; expiresInSeconds?: number },
+): Promise<string> {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error("Supabase storage is not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)");
+  }
+  const bucketName = getBucketName();
+  const expiresIn = options?.expiresInSeconds ?? 3600;
+  const signOptions =
+    options?.inline === true
+      ? {}
+      : { download: options?.fileName?.trim() || true };
+  const { data, error } = await supabase.storage
+    .from(bucketName)
+    .createSignedUrl(storageKey, expiresIn, signOptions);
+  if (error || !data?.signedUrl) {
+    const raw = typeof error?.message === "string" ? error.message : "Failed to create signed download URL";
+    throw new Error(raw);
+  }
+  return data.signedUrl;
 }
 
 export async function storageObjectExists(storageKey: string): Promise<boolean> {

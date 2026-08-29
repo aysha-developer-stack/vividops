@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq, desc, inArray, sql as dsql } from "drizzle-orm";
 import { createZipArchive, type ArchiverError } from "../lib/attachment-zip";
-import { upload, uploadToSupabase, supabase, buildStorageObjectKey, createDirectUploadUrl, getPublicUrlForKey, storageObjectExists } from "../lib/storage";
+import { upload, uploadToSupabase, supabase, buildStorageObjectKey, createDirectUploadUrl, getPublicUrlForKey, storageObjectExists, createSignedDownloadUrl } from "../lib/storage";
 import { validateUploadFileName } from "../lib/upload-file-types";
 import {
   buildJobAttachmentFolder,
@@ -385,6 +385,14 @@ router.get("/jobs/:jobId/attachments/download-zip", requireAuth, async (req, res
       return;
     }
 
+    if (candidates.length === 1) {
+      const attachment = candidates[0]!.attachment;
+      const rawName = (attachment.fileName || "file").split(/[/\\]/).pop() || "file";
+      const signedUrl = await createSignedDownloadUrl(attachment.fileKey, { fileName: rawName });
+      res.redirect(302, signedUrl);
+      return;
+    }
+
     const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "vivid-ops-files";
     const usedNames = new Map<string, number>();
     const zipEntries: Array<{ name: string; buffer: Buffer }> = [];
@@ -474,26 +482,17 @@ router.get("/jobs/:jobId/attachments/:attachmentId/view", requireAuth, async (re
       return;
     }
 
-    const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "vivid-ops-files";
-    const { data, error } = await supabase.storage.from(bucketName).download(attachment.fileKey);
-    if (error || !data) {
+    if (!attachment.fileKey) {
       res.status(404).json({ message: "File not found in storage" });
       return;
     }
 
-    const buffer = Buffer.from(await data.arrayBuffer());
     const rawName = (attachment.fileName || "file").split(/[/\\]/).pop() || "file";
-    const safeName = rawName.replace(/[\r\n"]+/g, "_").trim() || "file";
-    const encodedName = encodeURIComponent(safeName).replace(/['()]/g, escape);
-    const contentType = attachment.fileType || "application/octet-stream";
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Content-Length", String(buffer.length));
-    res.setHeader(
-      "Content-Disposition",
-      `${disposition}; filename="${safeName}"; filename*=UTF-8''${encodedName}`,
-    );
-    res.setHeader("Cache-Control", "private, no-store");
-    res.send(buffer);
+    const signedUrl = await createSignedDownloadUrl(attachment.fileKey, {
+      fileName: rawName,
+      inline: disposition === "inline",
+    });
+    res.redirect(302, signedUrl);
     return;
   } catch (err) {
     const message =

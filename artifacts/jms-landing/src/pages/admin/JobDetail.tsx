@@ -93,7 +93,7 @@ import JobFormModal from "@/components/JobFormModal";
 import JobMistakesTab from "@/components/JobMistakesTab";
 import { submitJobReviewWithPhotos } from "@/lib/reviewPhotoUpload";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
-import { uploadFormDataWithProgress } from "@/lib/uploadWithProgress";
+import { uploadJobAttachmentWithProgress } from "@/lib/uploadJobAttachmentWithProgress";
 
 interface Props { role?: Role; id?: string }
 
@@ -1751,25 +1751,19 @@ export default function JobDetail({ role = "user", id }: Props) {
           const f = toUpload[i];
           const itemId = itemIds[i];
           uploadProgress.setItemUploading(itemId);
-          const fd = new FormData();
-          fd.append("file", f);
-          fd.append("fileCategory", fileCategoryFromUploadTag(tag));
-          if (opts?.checklistWordPdfOnly) {
-            fd.append("uploadKind", "checklist-completed");
-          }
-          if (checklistItemId != null) {
-            fd.append("checklistItemId", String(checklistItemId));
-          }
-          if (tag === "output") {
-            const activeReworkId = resolveActiveReworkIdForUpload(checklistItemId ?? null);
-            if (activeReworkId) {
-              fd.append("reworkId", activeReworkId);
-            }
-          }
           try {
-            await uploadFormDataWithProgress(
-              `/api/jobs/${job.id}/attachments`,
-              fd,
+            await uploadJobAttachmentWithProgress(
+              job.id,
+              f,
+              {
+                fileCategory: fileCategoryFromUploadTag(tag),
+                checklistItemId: checklistItemId ?? undefined,
+                uploadKind: opts?.checklistWordPdfOnly ? "checklist-completed" : undefined,
+                reworkId:
+                  tag === "output"
+                    ? resolveActiveReworkIdForUpload(checklistItemId ?? null) ?? undefined
+                    : undefined,
+              },
               (percent) => uploadProgress.updateItemProgress(itemId, percent),
             );
             uploadProgress.completeItem(itemId);
@@ -1857,14 +1851,14 @@ export default function JobDetail({ role = "user", id }: Props) {
       const f = allowed[i];
       const itemId = itemIds[i];
       uploadProgress.setItemUploading(itemId);
-      const fd = new FormData();
-      fd.append("file", f);
-      fd.append("fileCategory", origin === "external" ? "job" : "rework");
-      fd.append("reworkId", reworkId);
       try {
-        await uploadFormDataWithProgress(
-          `/api/jobs/${job.id}/attachments`,
-          fd,
+        await uploadJobAttachmentWithProgress(
+          job.id,
+          f,
+          {
+            fileCategory: origin === "external" ? "job" : "rework",
+            reworkId,
+          },
           (percent) => uploadProgress.updateItemProgress(itemId, percent),
         );
         uploadProgress.completeItem(itemId);

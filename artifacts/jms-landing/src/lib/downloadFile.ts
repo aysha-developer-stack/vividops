@@ -1,31 +1,17 @@
-/** Download a file with an explicit local filename (not the storage/URL name). */
-export async function downloadNamedFile(url: string, fileName: string): Promise<void> {
-  const safeName = (fileName || "download").replace(/[/\\?%*:|"<>]/g, "_").trim() || "download";
-  const res = await fetch(url, { credentials: "include" });
-  if (!res.ok) {
-    let detail = `Download failed (${res.status})`;
-    try {
-      const data = (await res.json()) as { message?: string; error?: string };
-      const msg = data.message || data.error;
-      if (msg) detail = msg;
-    } catch {
-      // ignore non-json error bodies
-    }
-    throw new Error(detail);
-  }
-  const blob = await res.blob();
-  if (blob.size === 0) {
-    throw new Error("Download failed (empty file)");
-  }
-  const objectUrl = URL.createObjectURL(blob);
+/** Start a browser download without buffering the whole file in JavaScript memory. */
+export function triggerBrowserFileDownload(url: string): void {
   const a = document.createElement("a");
-  a.href = objectUrl;
-  a.download = safeName;
+  a.href = url;
   a.rel = "noopener";
+  a.target = "_blank";
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(objectUrl);
+}
+
+/** Download via same-origin API (redirects to Supabase CDN for large files). */
+export async function downloadNamedFile(url: string, _fileName: string): Promise<void> {
+  triggerBrowserFileDownload(url);
 }
 
 export function jobAttachmentDownloadUrl(jobId: string, attachmentId: string): string {
@@ -61,8 +47,8 @@ export function jobAttachmentsZipUrl(jobId: string, attachmentIds?: string[]): s
 
 export async function downloadJobAttachmentsZip(
   jobId: string,
-  zipFileName: string,
+  _zipFileName: string,
   attachmentIds?: string[],
 ): Promise<void> {
-  await downloadNamedFile(jobAttachmentsZipUrl(jobId, attachmentIds), zipFileName);
+  triggerBrowserFileDownload(jobAttachmentsZipUrl(jobId, attachmentIds));
 }

@@ -66,6 +66,13 @@ export const REVIEW_PHOTO_ACCEPT = "image/jpeg,image/png,image/gif,image/webp,im
 export const MAX_REVIEW_PHOTOS = 5;
 export const MAX_REVIEW_PHOTO_BYTES = 10 * 1024 * 1024;
 
+/** Must match multer limit in api-server storage.ts (200 MB). Supabase project limit must be >= this. */
+export const MAX_JOB_ATTACHMENT_BYTES = 200 * 1024 * 1024;
+
+export function formatJobAttachmentSizeLimit(): string {
+  return `${Math.round(MAX_JOB_ATTACHMENT_BYTES / (1024 * 1024))} MB`;
+}
+
 export const ARCHIVE_FILE_EXTENSIONS = [".zip", ".rar", ".7z"] as const;
 
 export function fileExtension(name: string): string {
@@ -111,7 +118,11 @@ export const REVIEW_PHOTO_REJECTED_MESSAGE =
   "Photos must be JPG, PNG, GIF, WebP, or HEIC and under 10MB each.";
 
 export function filterJobFiles(files: File[]): File[] {
-  return files.filter((f) => isJobFileAllowed(f.name));
+  return files.filter((f) => isJobFileAllowed(f.name) && f.size <= MAX_JOB_ATTACHMENT_BYTES);
+}
+
+export function jobFilesOverSizeLimit(files: File[]): File[] {
+  return files.filter((f) => isJobFileAllowed(f.name) && f.size > MAX_JOB_ATTACHMENT_BYTES);
 }
 
 export function filterChecklistInstructionFiles(files: File[]): File[] {
@@ -119,7 +130,10 @@ export function filterChecklistInstructionFiles(files: File[]): File[] {
 }
 
 export const JOB_FILE_REJECTED_MESSAGE =
-  "Could not add one or more files — invalid file name.";
+  "Could not add one or more files — invalid file name or file exceeds the 200 MB limit.";
+
+export const JOB_FILE_SUPABASE_SIZE_HINT =
+  "This file is larger than Supabase's default 50 MB storage limit. Ask your admin to raise the global file size limit under Supabase Dashboard → Storage → Settings (Pro plan required for files over 50 MB).";
 
 export const CHECKLIST_FILE_REJECTED_MESSAGE =
   "Checklist instruction files must be Word (.doc, .docx) or PDF only.";
