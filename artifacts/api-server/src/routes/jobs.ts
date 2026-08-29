@@ -26,6 +26,7 @@ import {
 } from "../lib/cliq-channel-name";
 import { listOpsCliqChannelAdminEmails } from "../lib/cliq-channel-admins";
 import { announceCliqMemberActivity } from "../lib/cliq-member-activity";
+import { notifyCliqChannelReady } from "../lib/cliq-channel-notifications";
 import {
   getCommunicationUnreadCounts,
   markJobCommunicationRead,
@@ -1157,6 +1158,14 @@ async function removeDuplicateCliqJobChannels(
   }
 }
 
+async function getJobCliqChannelStatus(jobId: string): Promise<string | null> {
+  const rows = await db.execute(sql`
+    SELECT status FROM job_cliq_channels WHERE job_id = ${jobId} LIMIT 1
+  `);
+  const row = (rows as { rows?: Array<{ status: string }> }).rows?.[0];
+  return row?.status ?? null;
+}
+
 async function finalizeExistingCliqJobChannel(
   token: string,
   job: JobRow,
@@ -1164,6 +1173,7 @@ async function finalizeExistingCliqJobChannel(
   fallbackChannelName: string,
   participantEmails: string[],
 ): Promise<void> {
+  const priorStatus = await getJobCliqChannelStatus(job.id);
   const expectedDisplayName = computeCliqChannelName(job);
   const channelId = existingChannel.channelId;
   const createdChannelName = existingChannel.channelName ?? fallbackChannelName;
@@ -1210,6 +1220,12 @@ async function finalizeExistingCliqJobChannel(
         updated_at = now()
     WHERE job_id = ${job.id}
   `);
+
+  if (priorStatus !== "active") {
+    void notifyCliqChannelReady(job, expectedDisplayName).catch((err) => {
+      logger.warn({ err, jobId: job.id }, "Failed to notify job members about Cliq channel");
+    });
+  }
 }
 
 async function syncCliqChannelDisplayName(

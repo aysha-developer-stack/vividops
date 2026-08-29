@@ -1,6 +1,6 @@
 import { 
   Briefcase, Edit3, AlertTriangle, Clock, RefreshCw, Bell, 
-  ListChecks, Folder, GraduationCap, BarChart3, CheckCircle2,
+  ListChecks, Folder, GraduationCap, BarChart3, CheckCircle2, MessageCircle,
   type LucideIcon 
 } from "lucide-react";
 import type { Role } from "./roles";
@@ -12,6 +12,7 @@ export type NotifType =
   | "timer"
   | "rework"
   | "job_message"
+  | "cliq_channel"
   | "checklist"
   | "file"
   | "training"
@@ -28,6 +29,7 @@ export const NOTIFICATION_PRIORITY: Record<string, number> = {
   timer: 4,
   updated: 5,
   job_message: 6,
+  cliq_channel: 6,
   checklist: 7,
   completed: 8,
   file: 9,
@@ -80,6 +82,7 @@ export const NOTIF_STYLE: Record<string, { icon: LucideIcon; color: string; labe
   timer: { icon: Clock, color: "bg-amber-50 text-amber-600", label: "Timer" },
   rework: { icon: RefreshCw, color: "bg-orange-50 text-orange-600", label: "Rework" },
   job_message: { icon: Bell, color: "bg-sky-50 text-sky-600", label: "Message" },
+  cliq_channel: { icon: MessageCircle, color: "bg-teal-50 text-teal-600", label: "Cliq Channel" },
   checklist: { icon: ListChecks, color: "bg-emerald-50 text-emerald-600", label: "Checklist" },
   completed: { icon: CheckCircle2, color: "bg-emerald-50 text-emerald-700", label: "Completed" },
   file: { icon: Folder, color: "bg-indigo-50 text-indigo-600", label: "File" },

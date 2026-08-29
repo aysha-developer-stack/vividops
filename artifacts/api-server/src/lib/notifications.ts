@@ -3,7 +3,7 @@ import { logger } from "./logger";
 import { pushNotificationRealtime } from "./socket";
 import { sendWebPushNotification } from "./web-push";
 
-export type NotificationType = "assigned" | "updated" | "overdue" | "timer" | "rework" | "job_message" | "checklist" | "file" | "training" | "progress" | "error" | "completed";
+export type NotificationType = "assigned" | "updated" | "overdue" | "timer" | "rework" | "job_message" | "cliq_channel" | "checklist" | "file" | "training" | "progress" | "error" | "completed";
 
 /** Notification types that refer to a job — hide/delete when the job no longer exists. */
 export const JOB_LINKED_NOTIFICATION_TYPES: NotificationType[] = [
@@ -13,6 +13,7 @@ export const JOB_LINKED_NOTIFICATION_TYPES: NotificationType[] = [
   "timer",
   "rework",
   "job_message",
+  "cliq_channel",
   "checklist",
   "file",
   "progress",
@@ -90,6 +91,40 @@ export async function notifyAllJobMembers(opts: {
       description: opts.description,
       type: opts.type,
     });
+  }
+}
+
+/** Like notifyAllJobMembers, but skips users who already received the same title (all time). */
+export async function notifyAllJobMembersOnce(opts: {
+  jobId: string;
+  assigneeId?: string | null;
+  supervisorId?: string | null;
+  actorId?: string;
+  title: string;
+  description: string;
+  type: NotificationType;
+}) {
+  const recipientIds = new Set<string>();
+  if (opts.assigneeId) recipientIds.add(opts.assigneeId);
+  if (opts.supervisorId) recipientIds.add(opts.supervisorId);
+  const members = await db
+    .select({ userId: jobMembers.userId })
+    .from(jobMembers)
+    .where(eq(jobMembers.jobId, opts.jobId));
+  for (const m of members) recipientIds.add(m.userId);
+  if (opts.actorId) recipientIds.delete(opts.actorId);
+
+  for (const userId of recipientIds) {
+    await createNotificationOnce(
+      {
+        userId,
+        jobId: opts.jobId,
+        title: opts.title,
+        description: opts.description,
+        type: opts.type,
+      },
+      new Date(0),
+    );
   }
 }
 

@@ -29,6 +29,7 @@ const FILTERS: Array<{ id: "all" | "unread" | NotifType; label: string }> = [
   { id: "overdue", label: "Overdue" },
   { id: "timer", label: "Timer" },
   { id: "job_message", label: "Messages" },
+  { id: "cliq_channel", label: "Cliq" },
   { id: "rework", label: "Rework" },
   { id: "checklist", label: "Checklist" },
   { id: "completed", label: "Completed" },
