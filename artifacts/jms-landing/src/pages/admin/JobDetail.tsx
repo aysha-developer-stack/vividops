@@ -623,6 +623,12 @@ export default function JobDetail({ role = "user", id }: Props) {
   const canDeleteAttachment = (attachment: { uploadedById?: string | null }) =>
     attachment.uploadedById === currentUser?.id || role === "admin" || role === "super-admin";
   const canEditRework = role === "supervisor" || role === "admin" || role === "super-admin";
+  const canMarkJobForRework =
+    job?.status !== "cancelled" &&
+    ((role === "admin" || role === "super-admin") ||
+      (role === "supervisor" && job?.status !== "completed" && job?.status !== "on_hold"));
+  const showActiveJobReviewActions =
+    job?.status !== "completed" && job?.status !== "cancelled" && job?.status !== "on_hold";
 
   const resetReworkForm = () => {
     setEditingRework(null);
@@ -2086,16 +2092,18 @@ export default function JobDetail({ role = "user", id }: Props) {
                 )}
               </>
             )}
-            {(role === "supervisor" || role === "admin" || role === "super-admin") && job?.status !== "completed" && job?.status !== "cancelled" && job?.status !== "on_hold" && (
+            {canMarkJobForRework && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => openCreateReworkModal()}
+                className="flex items-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-semibold"
+              >
+                <RefreshCw size={12} /> Mark for Rework
+              </motion.button>
+            )}
+            {showActiveJobReviewActions && (role === "supervisor" || role === "admin" || role === "super-admin") && (
               <>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => openCreateReworkModal()}
-                  className="flex items-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-semibold"
-                >
-                  <RefreshCw size={12} /> Mark for Rework
-                </motion.button>
                 {(role === "admin" || role === "super-admin") && (
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -3141,7 +3149,10 @@ export default function JobDetail({ role = "user", id }: Props) {
                           </>
                         );
                       })()}
-                      {selectedChecklistItem.status === "completed" && (role === "supervisor" || role === "admin" || role === "super-admin") && (
+                      {(((role === "admin" || role === "super-admin") &&
+                        (selectedChecklistItem.status === "completed" ||
+                          selectedChecklistItem.status === "in_progress")) ||
+                        (role === "supervisor" && selectedChecklistItem.status === "completed")) && (
                         <button 
                           onClick={() => openCreateReworkModal(selectedChecklistItem)}
                           className="flex-1 py-2.5 bg-purple-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-600/20 flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors"

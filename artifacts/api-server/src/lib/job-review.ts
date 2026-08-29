@@ -756,6 +756,9 @@ export async function applyJobReview(opts: {
     if (!canRework) {
       return { ok: false, status: 403, error: "Only supervisor, admin, or super-admin can mark this job for rework" };
     }
+    if (job.status === "cancelled") {
+      return { ok: false, status: 400, error: "Cancelled jobs cannot be sent for rework" };
+    }
     if (!reason?.trim()) {
       return { ok: false, status: 400, error: "Rework reason is required" };
     }

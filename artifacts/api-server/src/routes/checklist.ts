@@ -199,8 +199,13 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
 
     const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
     if (!job) return res.status(404).json({ error: "Job not found" });
-    if (job.status === "on_hold") {
+    const isAdminRework =
+      status === "rework" && (actor.role === "admin" || actor.role === "super-admin");
+    if (job.status === "on_hold" && !isAdminRework) {
       return res.status(400).json({ error: "Job is on hold — resume work before updating the checklist" });
+    }
+    if (job.status === "cancelled") {
+      return res.status(400).json({ error: "Cancelled jobs cannot be updated" });
     }
     if (!(await canViewJob(actor, job))) return res.status(403).json({ error: "Forbidden" });
 
