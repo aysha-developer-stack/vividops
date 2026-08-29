@@ -61,6 +61,8 @@ import {
   stopAllActiveTimersOnJob,
   shouldAutoStopWorkerTimersForJobStatus,
 } from "../lib/persist-timer-session";
+import { updateRework } from "../lib/reworks";
+import { isReworkOrigin, type ReworkOrigin } from "../lib/rework-origin";
 
 const router: IRouter = Router();
 
@@ -2513,6 +2515,89 @@ router.get("/jobs/:id/reworks", requireAuth, async (req, res) => {
   } catch (err) {
     logger.error({ err }, "Failed to load job reworks");
     return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+function serializeJobReworkRow(row: typeof jobReworks.$inferSelect) {
+  return {
+    id: row.id,
+    jobId: row.jobId,
+    userId: row.userId,
+    createdById: row.createdById,
+    checklistItemId: row.checklistItemId,
+    cycleNumber: row.cycleNumber,
+    reason: row.reason,
+    category: row.category,
+    comments: row.comments,
+    severity: row.severity,
+    status: row.status,
+    reworkOrigin: row.reworkOrigin,
+    dueAt: row.dueAt,
+    assignedAt: row.assignedAt,
+    completedAt: row.completedAt,
+    approvedAt: row.approvedAt,
+  };
+}
+
+router.patch("/jobs/:id/reworks/:reworkId", requireAuth, async (req, res) => {
+  try {
+    await ensureJobWriteSchema();
+    const jobId = req.params.id as string;
+    const reworkId = req.params.reworkId as string;
+    const actor = req.session!.user;
+    const full = await loadJob(jobId);
+    if (!full) return res.status(404).json({ error: "Job not found" });
+    if (!(await canViewJob(actor, full.job))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    if (!canManageJob(actor, full.job)) {
+      return res.status(403).json({ error: "Only supervisor, admin, or super-admin can edit rework" });
+    }
+
+    const reason = typeof req.body?.reason === "string" ? req.body.reason : "";
+    const category = typeof req.body?.category === "string" ? req.body.category : null;
+    const comments =
+      req.body?.comments === undefined
+        ? undefined
+        : typeof req.body.comments === "string"
+          ? req.body.comments
+          : null;
+    const dueAt =
+      req.body?.dueAt === undefined
+        ? undefined
+        : typeof req.body.dueAt === "string"
+          ? req.body.dueAt
+          : null;
+    const severity = typeof req.body?.severity === "string" ? req.body.severity : null;
+
+    let reworkOrigin: ReworkOrigin | null | undefined = undefined;
+    if (actor.role === "admin" || actor.role === "super-admin") {
+      if (req.body?.reworkOrigin === null) {
+        reworkOrigin = null;
+      } else if (req.body?.reworkOrigin !== undefined) {
+        if (!isReworkOrigin(req.body.reworkOrigin)) {
+          return res.status(400).json({ error: "Invalid rework type" });
+        }
+        reworkOrigin = req.body.reworkOrigin;
+      }
+    }
+
+    const { rework } = await updateRework({
+      reworkId,
+      jobId,
+      reason,
+      category,
+      comments,
+      dueAt,
+      severity,
+      reworkOrigin,
+    });
+
+    return res.json(serializeJobReworkRow(rework));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update rework";
+    logger.error({ err, message }, "Failed to update job rework");
+    return res.status(400).json({ error: message });
   }
 });
 

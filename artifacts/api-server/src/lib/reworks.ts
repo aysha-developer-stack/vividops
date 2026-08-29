@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
+  jobChecklistState,
   jobReworks,
   MISTAKE_CATEGORIES,
   type JobRow,
@@ -90,6 +91,71 @@ export async function createRework(opts: {
 }
 
 export const ACTIVE_REWORK_STATUSES = ["open", "needs_correction", "awaiting_review"] as const;
+
+export async function updateRework(opts: {
+  reworkId: string;
+  jobId: string;
+  reason: string;
+  category?: string | null;
+  comments?: string | null;
+  dueAt?: string | null;
+  severity?: string | null;
+  reworkOrigin?: ReworkOrigin | null;
+}) {
+  const [existing] = await db
+    .select()
+    .from(jobReworks)
+    .where(and(eq(jobReworks.id, opts.reworkId), eq(jobReworks.jobId, opts.jobId)))
+    .limit(1);
+  if (!existing) {
+    throw new Error("Rework not found.");
+  }
+  if (!(ACTIVE_REWORK_STATUSES as readonly string[]).includes(existing.status)) {
+    throw new Error("Only active rework can be edited.");
+  }
+
+  const reason = opts.reason.trim();
+  if (!reason) {
+    throw new Error("Rework reason is required.");
+  }
+
+  const category = isCategory(opts.category) ? opts.category : existing.category;
+  const severity = opts.severity != null ? normalizeSeverity(opts.severity) : existing.severity;
+  const comments =
+    opts.comments !== undefined ? (opts.comments?.trim() ? opts.comments.trim() : null) : existing.comments;
+  const dueAt = opts.dueAt !== undefined ? parseDueAt(opts.dueAt) : existing.dueAt;
+  const reworkOrigin =
+    opts.reworkOrigin !== undefined ? opts.reworkOrigin : existing.reworkOrigin;
+
+  const [rework] = await db
+    .update(jobReworks)
+    .set({
+      reason,
+      category,
+      comments,
+      severity,
+      dueAt,
+      reworkOrigin,
+      updatedAt: new Date(),
+    })
+    .where(eq(jobReworks.id, opts.reworkId))
+    .returning();
+
+  if (existing.checklistItemId != null) {
+    await db
+      .update(jobChecklistState)
+      .set({ reworkReason: reason, updatedAt: new Date() })
+      .where(
+        and(
+          eq(jobChecklistState.jobId, opts.jobId),
+          eq(jobChecklistState.userId, existing.userId),
+          eq(jobChecklistState.itemId, existing.checklistItemId),
+        ),
+      );
+  }
+
+  return { rework };
+}
 
 export async function findActiveReworkForCompletedUpload(opts: {
   jobId: string;

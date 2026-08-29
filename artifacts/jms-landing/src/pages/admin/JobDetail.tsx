@@ -189,6 +189,14 @@ type JobReworkApi = {
   createdBy: { id: string; name: string; role: Role } | null;
 };
 
+function toDatetimeLocalValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function reworkBadgeToneClass(tone: "internal" | "external" | "new"): string {
   if (tone === "internal") return "bg-indigo-50 text-indigo-700 border-indigo-100";
   if (tone === "external") return "bg-sky-50 text-sky-700 border-sky-100";
@@ -494,6 +502,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [running, setRunning] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [reworkOpen, setReworkOpen] = useState(false);
+  const [editingRework, setEditingRework] = useState<JobReworkApi | null>(null);
   const [reworkTargetItem, setReworkTargetItem] = useState<ChecklistItem | null>(null);
   const [reworkReason, setReworkReason] = useState("");
   const [reworkCategory, setReworkCategory] = useState("rework");
@@ -613,6 +622,46 @@ export default function JobDetail({ role = "user", id }: Props) {
     (job?.status !== "completed" || role === "admin" || role === "super-admin");
   const canDeleteAttachment = (attachment: { uploadedById?: string | null }) =>
     attachment.uploadedById === currentUser?.id || role === "admin" || role === "super-admin";
+  const canEditRework = role === "supervisor" || role === "admin" || role === "super-admin";
+
+  const resetReworkForm = () => {
+    setEditingRework(null);
+    setReworkTargetItem(null);
+    setReworkReason("");
+    setReworkCategory("rework");
+    setReworkSeverity("medium");
+    setReworkComments("");
+    setReworkDueAt("");
+    setReworkPendingFiles([]);
+    setReworkOrigin(null);
+  };
+
+  const openCreateReworkModal = (item?: ChecklistItem | null) => {
+    resetReworkForm();
+    if (item) setReworkTargetItem(item);
+    setReworkOpen(true);
+  };
+
+  const openEditReworkModal = (rw: JobReworkApi) => {
+    setEditingRework(rw);
+    setReworkTargetItem(
+      rw.checklistItemId != null
+        ? checklist.find((c) => c.id === rw.checklistItemId) ?? null
+        : null,
+    );
+    setReworkReason(rw.reason);
+    setReworkCategory(rw.category);
+    setReworkSeverity(
+      rw.severity === "low" || rw.severity === "high" ? rw.severity : "medium",
+    );
+    setReworkComments(rw.comments ?? "");
+    setReworkDueAt(toDatetimeLocalValue(rw.dueAt));
+    setReworkOrigin(
+      rw.reworkOrigin === "internal" || rw.reworkOrigin === "external" ? rw.reworkOrigin : null,
+    );
+    setReworkPendingFiles([]);
+    setReworkOpen(true);
+  };
 
   const openApproveModal = (mode: "escalate" | "finalize") => {
     setApproveMode(mode);
@@ -1348,7 +1397,9 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   const activeReworks = reworks.filter((r) => r.status === "open" || r.status === "awaiting_review" || r.status === "needs_correction");
   const selectedItemRework = selectedChecklistItem
-    ? activeReworks.find((r) => r.checklistItemId === selectedChecklistItem.id)
+    ? activeReworks
+        .filter((r) => r.checklistItemId === selectedChecklistItem.id)
+        .sort((a, b) => b.cycleNumber - a.cycleNumber)[0] ?? null
     : null;
 
   const jobTimeLogs = useMemo(() => {
@@ -2040,17 +2091,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => {
-                    setReworkTargetItem(null);
-                    setReworkReason("");
-                    setReworkCategory("rework");
-                    setReworkSeverity("medium");
-                    setReworkComments("");
-                    setReworkDueAt("");
-                    setReworkPendingFiles([]);
-                    setReworkOrigin(null);
-                    setReworkOpen(true);
-                  }}
+                  onClick={() => openCreateReworkModal()}
                   className="flex items-center gap-2 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-semibold"
                 >
                   <RefreshCw size={12} /> Mark for Rework
@@ -2267,7 +2308,18 @@ export default function JobDetail({ role = "user", id }: Props) {
               <div key={rw.id} className="rounded-xl bg-white border border-amber-100 p-3">
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <span className="text-xs font-bold text-gray-900">Rework #{rw.cycleNumber}{rw.checklistItemId ? ` · Item ${rw.checklistItemId}` : ""}</span>
-                  <span className="text-[10px] uppercase font-bold text-amber-700">{rw.status.replace("_", " ")}</span>
+                  <div className="flex items-center gap-2">
+                    {canEditRework && (
+                      <button
+                        type="button"
+                        onClick={() => openEditReworkModal(rw)}
+                        className="text-[10px] font-bold uppercase text-indigo-700 hover:text-indigo-900 flex items-center gap-1"
+                      >
+                        <Edit2 size={11} /> Edit
+                      </button>
+                    )}
+                    <span className="text-[10px] uppercase font-bold text-amber-700">{rw.status.replace("_", " ")}</span>
+                  </div>
                 </div>
                 <p className="text-xs text-gray-700">{rw.reason}</p>
                 {rw.comments && <p className="text-[11px] text-gray-500 mt-1">Instructions: {rw.comments}</p>}
@@ -2688,8 +2740,19 @@ export default function JobDetail({ role = "user", id }: Props) {
                   <div className="p-5 space-y-5">
                     {selectedChecklistItem.status === "rework" && (
                       <div className="p-3 rounded-xl bg-purple-50 border border-purple-100">
-                        <div className="flex items-center gap-2 text-purple-700 font-bold text-[10px] uppercase mb-1">
-                          <AlertTriangle size={12} /> Rework Reason
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-2 text-purple-700 font-bold text-[10px] uppercase">
+                            <AlertTriangle size={12} /> Rework Reason
+                          </div>
+                          {canEditRework && selectedItemRework && (
+                            <button
+                              type="button"
+                              onClick={() => openEditReworkModal(selectedItemRework)}
+                              className="text-[10px] font-bold uppercase text-indigo-700 hover:text-indigo-900 flex items-center gap-1"
+                            >
+                              <Edit2 size={11} /> Edit
+                            </button>
+                          )}
                         </div>
                         <p className="text-xs text-purple-900 mb-2">{selectedItemRework?.reason ?? selectedChecklistItem.reworkReason ?? "Please review the requirements and resubmit."}</p>
                         {selectedItemRework && (
@@ -3080,17 +3143,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                       })()}
                       {selectedChecklistItem.status === "completed" && (role === "supervisor" || role === "admin" || role === "super-admin") && (
                         <button 
-                          onClick={() => {
-                            setReworkTargetItem(selectedChecklistItem);
-                            setReworkReason("");
-                            setReworkCategory("rework");
-                            setReworkSeverity("medium");
-                            setReworkComments("");
-                            setReworkDueAt("");
-                            setReworkPendingFiles([]);
-                            setReworkOrigin(null);
-                            setReworkOpen(true);
-                          }}
+                          onClick={() => openCreateReworkModal(selectedChecklistItem)}
                           className="flex-1 py-2.5 bg-purple-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-600/20 flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors"
                         >
                           <RefreshCw size={14} /> Reject & Rework
@@ -3799,7 +3852,10 @@ export default function JobDetail({ role = "user", id }: Props) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setReworkOpen(false)}
+            onClick={() => {
+              resetReworkForm();
+              setReworkOpen(false);
+            }}
             className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
           >
             <motion.div
@@ -3815,14 +3871,22 @@ export default function JobDetail({ role = "user", id }: Props) {
                   <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
                     <AlertTriangle size={18} />
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900">Mark for Rework</h3>
+                  <h3 className="text-lg font-bold text-gray-900">{editingRework ? "Edit Rework" : "Mark for Rework"}</h3>
                 </div>
-                <button onClick={() => setReworkOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+                <button
+                  onClick={() => {
+                    resetReworkForm();
+                    setReworkOpen(false);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                ><X size={18} /></button>
               </div>
               <p className="text-sm text-gray-500 mb-4">
-                {reworkTargetItem
-                  ? `The assigned worker will redo checklist item #${reworkTargetItem.id}.`
-                  : "The assigned worker will be notified to redo the work."}
+                {editingRework
+                  ? "Update the rework instructions. Changes sync to the checklist and rework panel."
+                  : reworkTargetItem
+                    ? `The assigned worker will redo checklist item #${reworkTargetItem.id}.`
+                    : "The assigned worker will be notified to redo the work."}
               </p>
               {canPickReworkOrigin && (
                 <div className="mb-4">
@@ -3928,8 +3992,7 @@ export default function JobDetail({ role = "user", id }: Props) {
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    setReworkPendingFiles([]);
-                    setReworkOrigin(null);
+                    resetReworkForm();
                     setReworkOpen(false);
                   }}
                   className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200"
@@ -3945,7 +4008,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                       alert("Rework reason is required.");
                       return;
                     }
-                    if (canPickReworkOrigin && !reworkOrigin) {
+                    if (canPickReworkOrigin && !editingRework && !reworkOrigin) {
                       alert("Select Internal Rework or External Rework before submitting.");
                       return;
                     }
@@ -3956,72 +4019,101 @@ export default function JobDetail({ role = "user", id }: Props) {
                         category: reworkCategory,
                         severity: reworkSeverity,
                         comments: reworkComments,
-                        dueAt: reworkDueAt,
+                        dueAt: reworkDueAt || null,
                         ...(canPickReworkOrigin && reworkOrigin ? { reworkOrigin } : {}),
                       };
-                      const res = reworkTargetItem
-                        ? await fetch(`/api/jobs/${job.id}/checklist-state`, {
-                            method: "PATCH",
-                            credentials: "include",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              itemId: reworkTargetItem.id,
-                              status: "rework",
-                              reworkReason,
-                              userId: job.assignee?.id ?? undefined,
-                              ...payload,
-                            }),
-                          })
-                        : await fetch(`/api/jobs/${job.id}/review`, {
-                            method: "POST",
-                            credentials: "include",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ action: "rework", ...payload }),
-                          });
-                      const data = (await res.json().catch(() => ({}))) as { error?: string; reworkId?: string };
-                      if (!res.ok) {
-                        throw new Error(data.error || "Failed to mark for rework");
+                      let reworkId: string | null = editingRework?.id ?? null;
+
+                      if (editingRework) {
+                        const res = await fetch(`/api/jobs/${job.id}/reworks/${editingRework.id}`, {
+                          method: "PATCH",
+                          credentials: "include",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify(payload),
+                        });
+                        const data = (await res.json().catch(() => ({}))) as { error?: string; id?: string };
+                        if (!res.ok) {
+                          throw new Error(data.error || "Failed to update rework");
+                        }
+                      } else {
+                        const res = reworkTargetItem
+                          ? await fetch(`/api/jobs/${job.id}/checklist-state`, {
+                              method: "PATCH",
+                              credentials: "include",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                itemId: reworkTargetItem.id,
+                                status: "rework",
+                                reworkReason,
+                                userId: job.assignee?.id ?? undefined,
+                                ...payload,
+                              }),
+                            })
+                          : await fetch(`/api/jobs/${job.id}/review`, {
+                              method: "POST",
+                              credentials: "include",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ action: "rework", ...payload }),
+                            });
+                        const data = (await res.json().catch(() => ({}))) as { error?: string; reworkId?: string };
+                        if (!res.ok) {
+                          throw new Error(data.error || "Failed to mark for rework");
+                        }
+                        reworkId = typeof data.reworkId === "string" ? data.reworkId : null;
                       }
-                      const reworkId = typeof data.reworkId === "string" ? data.reworkId : null;
+
                       if (reworkPendingFiles.length > 0) {
                         if (!reworkId) {
-                          throw new Error("Rework was created but file attachments could not be linked.");
+                          throw new Error("Rework was saved but file attachments could not be linked.");
                         }
                         await uploadReworkAttachmentFiles(reworkPendingFiles, reworkId, reworkOrigin);
                       }
-                      if (reworkTargetItem) {
+
+                      if (editingRework?.checklistItemId != null) {
+                        const itemId = editingRework.checklistItemId;
+                        const next = checklist.map((i) =>
+                          i.id === itemId ? { ...i, reworkReason } : i,
+                        );
+                        setChecklist(next);
+                        if (selectedChecklistItem?.id === itemId) {
+                          setSelectedChecklistItem((prev) =>
+                            prev ? { ...prev, reworkReason } : prev,
+                          );
+                        }
+                        persistLocalChecklist(next, checklistUploads);
+                        await refreshChecklistFiles();
+                      } else if (!editingRework && reworkTargetItem) {
                         const next = checklist.map((i) =>
                           i.id === reworkTargetItem.id
                             ? { ...i, status: "rework" as const, done: false, reworkReason }
-                            : i
+                            : i,
                         );
                         setChecklist(next);
                         if (selectedChecklistItem?.id === reworkTargetItem.id) {
-                          setSelectedChecklistItem({ ...reworkTargetItem, status: "rework" as const, done: false, reworkReason });
+                          setSelectedChecklistItem({
+                            ...reworkTargetItem,
+                            status: "rework" as const,
+                            done: false,
+                            reworkReason,
+                          });
                         }
                         persistLocalChecklist(next, checklistUploads);
                       }
+
                       await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
                       await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
                       await loadReworks();
-                      setReworkReason("");
-                      setReworkCategory("rework");
-                      setReworkSeverity("medium");
-                      setReworkComments("");
-                      setReworkDueAt("");
-                      setReworkPendingFiles([]);
-                      setReworkOrigin(null);
-                      setReworkTargetItem(null);
+                      resetReworkForm();
                       setReworkOpen(false);
                     } catch (err) {
-                      alert(err instanceof Error ? err.message : "Failed to mark for rework");
+                      alert(err instanceof Error ? err.message : "Failed to save rework");
                     } finally {
                       setReworkSubmitting(false);
                     }
                   }}
                   className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-semibold hover:bg-amber-600 flex items-center justify-center gap-2 disabled:opacity-60"
                 >
-                  <RefreshCw size={14} /> {reworkSubmitting ? "Submitting…" : "Submit"}
+                  <RefreshCw size={14} /> {reworkSubmitting ? "Saving…" : editingRework ? "Save Changes" : "Submit"}
                 </button>
               </div>
             </motion.div>
