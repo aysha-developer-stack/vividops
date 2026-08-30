@@ -43,6 +43,9 @@ export const jobs = pgTable(
     supervisorId: uuid("supervisor_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    coordinatorId: uuid("coordinator_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdById: uuid("created_by_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -72,6 +75,7 @@ export const jobs = pgTable(
   (t) => [
     index("jobs_assignee_idx").on(t.assigneeId),
     index("jobs_supervisor_idx").on(t.supervisorId),
+    index("jobs_coordinator_idx").on(t.coordinatorId),
     index("jobs_status_idx").on(t.status),
   ],
 );

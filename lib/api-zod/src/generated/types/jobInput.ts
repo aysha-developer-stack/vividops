@@ -21,5 +21,7 @@ export interface JobInput {
   /** @nullable */
   supervisorId?: string | null;
   /** @nullable */
+  coordinatorId?: string | null;
+  /** @nullable */
   dueDate?: Date | null;
 }

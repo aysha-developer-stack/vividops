@@ -28,6 +28,9 @@ async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (actor.role === "supervisor") {
     return job.supervisorId === actor.id;
   }
+  if (actor.role === "coordinator") {
+    return job.coordinatorId === actor.id;
+  }
   if (job.assigneeId === actor.id) return true;
   await ensureSchema();
   const [row] = await db

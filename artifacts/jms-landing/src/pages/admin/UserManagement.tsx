@@ -31,18 +31,20 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 
-type UiRole = "Super Admin" | "Admin" | "Supervisor" | "User";
+type UiRole = "Super Admin" | "Admin" | "Supervisor" | "Coordinator" | "User";
 
 const ROLE_API_TO_UI: Record<ApiUserRole, UiRole> = {
   "super-admin": "Super Admin",
   admin: "Admin",
   supervisor: "Supervisor",
+  coordinator: "Coordinator",
   user: "User",
 };
 const ROLE_UI_TO_API: Record<UiRole, ApiUserRole> = {
   "Super Admin": "super-admin",
   Admin: "admin",
   Supervisor: "supervisor",
+  Coordinator: "coordinator",
   User: "user",
 };
 
@@ -50,6 +52,7 @@ const ROLE_CONFIG: Record<UiRole, { color: string; bg: string; icon: any }> = {
   "Super Admin": { color: "text-purple-700", bg: "bg-purple-50 border-purple-200", icon: Crown },
   Admin: { color: "text-red-700", bg: "bg-red-50 border-red-200", icon: Shield },
   Supervisor: { color: "text-amber-700", bg: "bg-amber-50 border-amber-200", icon: UserCog },
+  Coordinator: { color: "text-teal-700", bg: "bg-teal-50 border-teal-200", icon: UserCog },
   User: { color: "text-primary", bg: "bg-primary/10 border-primary/20", icon: UserIcon },
 };
 
@@ -101,8 +104,8 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
 
   const isSuperAdmin = role === "super-admin";
   const ROLES_TO_SHOW: UiRole[] = isSuperAdmin
-    ? ["Super Admin", "Admin", "Supervisor", "User"]
-    : ["Supervisor", "User"];
+    ? ["Super Admin", "Admin", "Supervisor", "Coordinator", "User"]
+    : ["Supervisor", "Coordinator", "User"];
   const FILTER_TABS = ["All", ...ROLES_TO_SHOW] as const;
 
   const users = usersQuery.data ?? [];
@@ -434,7 +437,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1.5">Assign Role</label>
-                  <div className={`grid ${ROLES_TO_SHOW.length === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"} gap-2`}>
+                  <div className={`grid ${ROLES_TO_SHOW.length >= 5 ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5" : ROLES_TO_SHOW.length === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"} gap-2`}>
                     {ROLES_TO_SHOW.map((r) => {
                       const cfg = ROLE_CONFIG[r];
                       const Icon = cfg.icon;

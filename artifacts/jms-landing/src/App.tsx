@@ -21,6 +21,7 @@ import Settings from "@/pages/admin/Settings";
 import AdminDashboard from "@/pages/admin/AdminDashboard";
 import SupervisorMonitoring from "@/pages/admin/SupervisorMonitoring";
 import SupervisorDashboard from "@/pages/admin/SupervisorDashboard";
+import CoordinatorDashboard from "@/pages/admin/CoordinatorDashboard";
 import UserMonitoring from "@/pages/admin/UserMonitoring";
 import UserDashboard from "@/pages/admin/UserDashboard";
 import FilesChecklists from "@/pages/admin/FilesChecklists";
@@ -65,6 +66,8 @@ function RequireSignedIn({ children }: { children: React.ReactNode }) {
         ? "admin"
         : path.startsWith("/supervisor")
           ? "supervisor"
+          : path.startsWith("/coordinator")
+            ? "coordinator"
           : path.startsWith("/user")
             ? "user"
             : null;
@@ -115,6 +118,7 @@ function RequireSignedIn({ children }: { children: React.ReactNode }) {
         currentPath.startsWith("/super-admin") ||
         currentPath.startsWith("/admin") ||
         currentPath.startsWith("/supervisor") ||
+        currentPath.startsWith("/coordinator") ||
         currentPath.startsWith("/user") ||
         currentPath === "/reset-password";
 
@@ -198,6 +202,17 @@ function AppRouter() {
         <Route path="/supervisor/notifications"><RequireSignedIn><Notifications role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/timer"><RequireSignedIn><Timer role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor"><RequireSignedIn><SupervisorDashboard /></RequireSignedIn></Route>
+
+        {/* Coordinator */}
+        <Route path="/coordinator/jobs/:id">{(params) => <RequireSignedIn><JobDetail id={params.id} role="coordinator" /></RequireSignedIn>}</Route>
+        <Route path="/coordinator/jobs"><RequireSignedIn><JobManagement role="coordinator" /></RequireSignedIn></Route>
+        <Route path="/coordinator/reports"><RequireSignedIn><Reports role="coordinator" /></RequireSignedIn></Route>
+        <Route path="/coordinator/mistakes"><RequireSignedIn><Mistakes role="coordinator" /></RequireSignedIn></Route>
+        <Route path="/coordinator/communication"><RequireSignedIn><Communication role="coordinator" /></RequireSignedIn></Route>
+        <Route path="/coordinator/settings"><RequireSignedIn><Settings role="coordinator" /></RequireSignedIn></Route>
+        <Route path="/coordinator/training"><RequireSignedIn><Training role="coordinator" /></RequireSignedIn></Route>
+        <Route path="/coordinator/notifications"><RequireSignedIn><Notifications role="coordinator" /></RequireSignedIn></Route>
+        <Route path="/coordinator"><RequireSignedIn><CoordinatorDashboard /></RequireSignedIn></Route>
         
         {/* User */}
         <Route path="/user/jobs/:id">{(params) => <RequireSignedIn><JobDetail id={params.id} role="user" /></RequireSignedIn>}</Route>

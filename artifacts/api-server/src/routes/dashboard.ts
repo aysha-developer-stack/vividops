@@ -344,4 +344,111 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
   }
 });
 
+router.get("/dashboard/coordinator", requireAuth, async (req, res) => {
+  try {
+    const actor = req.session!.user;
+    if (actor.role !== "coordinator") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const coordinatorId = actor.id;
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const coordinatedJobs = await db.select().from(jobs).where(eq(jobs.coordinatorId, coordinatorId));
+
+    const [statsResult] = await db
+      .select({
+        totalJobs: sql<number>`count(*)`,
+        activeJobs: sql<number>`count(*) filter (where ${jobs.status} = 'in_progress')`,
+        overdueJobs: sql<number>`count(*) filter (where ${jobs.status} not in ('completed', 'cancelled') and ${jobs.dueDate} is not null and (${jobs.dueDate})::date < CURRENT_DATE)`,
+        pendingReworkTasks: sql<number>`count(*) filter (where ${jobs.status} = 'rework')`,
+      })
+      .from(jobs)
+      .where(eq(jobs.coordinatorId, coordinatorId));
+
+    const activeJobsRows = await db
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.coordinatorId, coordinatorId), eq(jobs.status, "in_progress")))
+      .orderBy(desc(jobs.updatedAt))
+      .limit(5);
+
+    const activeJobPeopleIds = [
+      ...new Set(
+        activeJobsRows
+          .flatMap((job) => [job.assigneeId, job.supervisorId, job.coordinatorId])
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      ),
+    ];
+    const activeJobPeople =
+      activeJobPeopleIds.length > 0
+        ? await db
+            .select({ id: users.id, name: users.name, role: users.role })
+            .from(users)
+            .where(inArray(users.id, activeJobPeopleIds))
+        : [];
+    const activeJobPeopleById = new Map(activeJobPeople.map((u) => [u.id, u]));
+    const activeJobsList = activeJobsRows.map((job) =>
+      publicJob(
+        job,
+        job.assigneeId ? activeJobPeopleById.get(job.assigneeId) ?? null : null,
+        job.supervisorId ? activeJobPeopleById.get(job.supervisorId) ?? null : null,
+        [],
+        job.coordinatorId ? activeJobPeopleById.get(job.coordinatorId) ?? null : null,
+      ),
+    );
+
+    const overdueJobsList = await db
+      .select({
+        id: sql<string>`'JOB-' || ${jobs.serial}::text`,
+        title: jobs.title,
+        address: jobs.address,
+        dueDate: jobs.dueDate,
+        assigneeId: jobs.assigneeId,
+      })
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.coordinatorId, coordinatorId),
+          ne(jobs.status, "completed"),
+          ne(jobs.status, "cancelled"),
+          sql`${jobs.dueDate} is not null and (${jobs.dueDate})::date < CURRENT_DATE`,
+        ),
+      )
+      .orderBy(desc(jobs.dueDate))
+      .limit(4);
+
+    const overdueWithAssignees = await Promise.all(
+      overdueJobsList.map(async (j) => {
+        let assigneeName = "Unassigned";
+        if (j.assigneeId) {
+          const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, j.assigneeId));
+          if (u) assigneeName = u.name;
+        }
+        const due = j.dueDate ? new Date(j.dueDate) : new Date();
+        const diff = Math.max(0, Math.floor((Date.now() - due.getTime()) / (1000 * 60 * 60 * 24)));
+        return { id: j.id, title: j.title, address: j.address ?? null, days: diff, assignee: assigneeName };
+      }),
+    );
+
+    return res.json({
+      stats: {
+        activeJobs: Number(statsResult.activeJobs),
+        teamSize: coordinatedJobs.length,
+        totalJobs: Number(statsResult.totalJobs),
+        overdueJobs: Number(statsResult.overdueJobs),
+        pendingReworkTasks: Number(statsResult.pendingReworkTasks),
+        activeTimers: 0,
+      },
+      activeJobs: activeJobsList,
+      team: [],
+      overdue: overdueWithAssignees,
+    });
+  } catch (err) {
+    logger.error({ err }, "Failed to fetch coordinator dashboard");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;

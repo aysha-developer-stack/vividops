@@ -68,6 +68,7 @@ export async function notifyAllJobMembers(opts: {
   jobId: string;
   assigneeId?: string | null;
   supervisorId?: string | null;
+  coordinatorId?: string | null;
   actorId: string;
   title: string;
   description: string;
@@ -76,6 +77,7 @@ export async function notifyAllJobMembers(opts: {
   const recipientIds = new Set<string>();
   if (opts.assigneeId) recipientIds.add(opts.assigneeId);
   if (opts.supervisorId) recipientIds.add(opts.supervisorId);
+  if (opts.coordinatorId) recipientIds.add(opts.coordinatorId);
   const members = await db
     .select({ userId: jobMembers.userId })
     .from(jobMembers)
@@ -99,6 +101,7 @@ export async function notifyAllJobMembersOnce(opts: {
   jobId: string;
   assigneeId?: string | null;
   supervisorId?: string | null;
+  coordinatorId?: string | null;
   actorId?: string;
   title: string;
   description: string;
@@ -107,6 +110,7 @@ export async function notifyAllJobMembersOnce(opts: {
   const recipientIds = new Set<string>();
   if (opts.assigneeId) recipientIds.add(opts.assigneeId);
   if (opts.supervisorId) recipientIds.add(opts.supervisorId);
+  if (opts.coordinatorId) recipientIds.add(opts.coordinatorId);
   const members = await db
     .select({ userId: jobMembers.userId })
     .from(jobMembers)

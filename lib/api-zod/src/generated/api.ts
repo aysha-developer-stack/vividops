@@ -21,7 +21,7 @@ export const HealthCheckResponse = zod.object({
 export const LoginBody = zod.object({
   email: zod.string().email(),
   password: zod.string().min(1),
-  role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+  role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
 });
 
 export const LoginResponse = zod.object({
@@ -32,7 +32,7 @@ export const LoginResponse = zod.object({
     avatarUrl: zod.string().nullish(),
     phone: zod.string().nullish(),
     bio: zod.string().nullish(),
-    role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+    role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
     status: zod.enum(["active", "inactive"]),
     mustResetPassword: zod.boolean(),
     cliqChannelAdmin: zod.boolean(),
@@ -52,7 +52,7 @@ export const GetMeResponse = zod.object({
   avatarUrl: zod.string().nullish(),
   phone: zod.string().nullish(),
   bio: zod.string().nullish(),
-  role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+  role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
   cliqChannelAdmin: zod.boolean(),
@@ -203,7 +203,7 @@ export const UpdateProfileResponse = zod.object({
   avatarUrl: zod.string().nullish(),
   phone: zod.string().nullish(),
   bio: zod.string().nullish(),
-  role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+  role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
   cliqChannelAdmin: zod.boolean(),
@@ -230,7 +230,7 @@ export const ResetPasswordResponse = zod.object({
   avatarUrl: zod.string().nullish(),
   phone: zod.string().nullish(),
   bio: zod.string().nullish(),
-  role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+  role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
   cliqChannelAdmin: zod.boolean(),
@@ -245,7 +245,7 @@ export const ResetPasswordResponse = zod.object({
 export const ListAssignableUsersResponseItem = zod.object({
   id: zod.string().uuid(),
   name: zod.string(),
-  role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+  role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
 });
 export const ListAssignableUsersResponse = zod.array(
   ListAssignableUsersResponseItem,
@@ -261,7 +261,7 @@ export const ListUsersResponseItem = zod.object({
   avatarUrl: zod.string().nullish(),
   phone: zod.string().nullish(),
   bio: zod.string().nullish(),
-  role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+  role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
   cliqChannelAdmin: zod.boolean(),
@@ -280,7 +280,7 @@ export const CreateUserBody = zod.object({
   email: zod.string().email(),
   phone: zod.string().optional(),
   bio: zod.string().optional(),
-  role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+  role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
   delivery: zod.enum(["email-invite", "temp-password"]),
   cliqChannelAdmin: zod.boolean().optional(),
 });
@@ -299,7 +299,7 @@ export const GetUserResponse = zod.object({
   avatarUrl: zod.string().nullish(),
   phone: zod.string().nullish(),
   bio: zod.string().nullish(),
-  role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+  role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
   cliqChannelAdmin: zod.boolean(),
@@ -333,7 +333,7 @@ export const UpdateUserResponse = zod.object({
   avatarUrl: zod.string().nullish(),
   phone: zod.string().nullish(),
   bio: zod.string().nullish(),
-  role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+  role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
   status: zod.enum(["active", "inactive"]),
   mustResetPassword: zod.boolean(),
   cliqChannelAdmin: zod.boolean(),
@@ -374,7 +374,7 @@ export const ListJobsResponseItem = zod.object({
       zod.object({
         id: zod.string().uuid(),
         name: zod.string(),
-        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+        role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
       }),
       zod.null(),
     ])
@@ -384,7 +384,7 @@ export const ListJobsResponseItem = zod.object({
       zod.object({
         id: zod.string().uuid(),
         name: zod.string(),
-        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+        role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
       }),
     )
     .optional(),
@@ -393,7 +393,7 @@ export const ListJobsResponseItem = zod.object({
       zod.object({
         id: zod.string().uuid(),
         name: zod.string(),
-        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+        role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
       }),
       zod.null(),
     ])
@@ -429,6 +429,7 @@ export const CreateJobBody = zod.object({
   priority: zod.enum(["low", "medium", "high"]).optional(),
   assigneeId: zod.string().uuid().nullish(),
   supervisorId: zod.string().uuid().nullish(),
+  coordinatorId: zod.string().uuid().nullish(),
   dueDate: zod.coerce.date().nullish(),
   estimatedTime: zod.string().nullish(),
   startDate: zod.coerce.date().nullish(),
@@ -468,7 +469,7 @@ export const GetJobResponse = zod.object({
       zod.object({
         id: zod.string().uuid(),
         name: zod.string(),
-        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+        role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
       }),
       zod.null(),
     ])
@@ -478,7 +479,7 @@ export const GetJobResponse = zod.object({
       zod.object({
         id: zod.string().uuid(),
         name: zod.string(),
-        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+        role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
       }),
     )
     .optional(),
@@ -487,7 +488,7 @@ export const GetJobResponse = zod.object({
       zod.object({
         id: zod.string().uuid(),
         name: zod.string(),
-        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+        role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
       }),
       zod.null(),
     ])
@@ -531,6 +532,7 @@ export const UpdateJobBody = zod.object({
     .optional(),
   assigneeId: zod.string().uuid().nullish(),
   supervisorId: zod.string().uuid().nullish(),
+  coordinatorId: zod.string().uuid().nullish(),
   dueDate: zod.coerce.date().nullish(),
   estimatedTime: zod.string().nullish(),
   startDate: zod.coerce.date().nullish(),
@@ -568,7 +570,7 @@ export const UpdateJobResponse = zod.object({
       zod.object({
         id: zod.string().uuid(),
         name: zod.string(),
-        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+        role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
       }),
       zod.null(),
     ])
@@ -578,7 +580,7 @@ export const UpdateJobResponse = zod.object({
       zod.object({
         id: zod.string().uuid(),
         name: zod.string(),
-        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+        role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
       }),
     )
     .optional(),
@@ -587,7 +589,7 @@ export const UpdateJobResponse = zod.object({
       zod.object({
         id: zod.string().uuid(),
         name: zod.string(),
-        role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+        role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
       }),
       zod.null(),
     ])
@@ -631,7 +633,7 @@ export const ResendInviteResponse = zod.object({
     avatarUrl: zod.string().nullish(),
     phone: zod.string().nullish(),
     bio: zod.string().nullish(),
-    role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+    role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
     status: zod.enum(["active", "inactive"]),
     mustResetPassword: zod.boolean(),
     cliqChannelAdmin: zod.boolean(),
@@ -683,7 +685,7 @@ export const GetDashboardStatsResponse = zod.object({
           zod.object({
             id: zod.string().uuid(),
             name: zod.string(),
-            role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+            role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
           }),
           zod.null(),
         ])
@@ -693,7 +695,7 @@ export const GetDashboardStatsResponse = zod.object({
           zod.object({
             id: zod.string().uuid(),
             name: zod.string(),
-            role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+            role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
           }),
           zod.null(),
         ])
@@ -750,7 +752,7 @@ export const GetDashboardSupervisorResponse = zod.object({
           zod.object({
             id: zod.string().uuid(),
             name: zod.string(),
-            role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+            role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
           }),
           zod.null(),
         ])
@@ -760,7 +762,7 @@ export const GetDashboardSupervisorResponse = zod.object({
           zod.object({
             id: zod.string().uuid(),
             name: zod.string(),
-            role: zod.enum(["super-admin", "admin", "supervisor", "user"]),
+            role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]),
           }),
           zod.null(),
         ])

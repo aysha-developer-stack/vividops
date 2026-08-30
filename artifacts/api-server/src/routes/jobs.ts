@@ -69,6 +69,7 @@ const router: IRouter = Router();
 
 const assigneeAlias = alias(users, "assignee");
 const supervisorAlias = alias(users, "supervisor");
+const coordinatorAlias = alias(users, "coordinator");
 const reworkUserAlias = alias(users, "rework_user");
 const reworkCreatorAlias = alias(users, "rework_creator");
 
@@ -81,6 +82,7 @@ type JobWithRefs = {
   job: JobRow;
   assignee: Pick<UserRow, "id" | "name" | "role"> | null;
   supervisor: Pick<UserRow, "id" | "name" | "role"> | null;
+  coordinator: Pick<UserRow, "id" | "name" | "role"> | null;
 };
 
 type UserRef = Pick<UserRow, "id" | "name" | "role">;
@@ -132,12 +134,13 @@ async function loadLastMessageAtByJobIds(jobIds: string[]): Promise<Map<string, 
   return map;
 }
 
-function rowToPublic({ job, assignee, supervisor }: JobWithRefs, assignees: UserRef[]) {
+function rowToPublic({ job, assignee, supervisor, coordinator }: JobWithRefs, assignees: UserRef[]) {
   return publicJob(
     job,
     assignee ?? undefined,
     supervisor ?? undefined,
     buildJobAssignees(assignee, assignees),
+    coordinator ?? undefined,
   );
 }
 
@@ -208,10 +211,16 @@ function selectJoined() {
         name: supervisorAlias.name,
         role: supervisorAlias.role,
       },
+      coordinator: {
+        id: coordinatorAlias.id,
+        name: coordinatorAlias.name,
+        role: coordinatorAlias.role,
+      },
     })
     .from(jobs)
     .leftJoin(assigneeAlias, eq(assigneeAlias.id, jobs.assigneeId))
-    .leftJoin(supervisorAlias, eq(supervisorAlias.id, jobs.supervisorId));
+    .leftJoin(supervisorAlias, eq(supervisorAlias.id, jobs.supervisorId))
+    .leftJoin(coordinatorAlias, eq(coordinatorAlias.id, jobs.coordinatorId));
 }
 
 async function loadJob(id: string): Promise<JobWithRefs | null> {
@@ -222,6 +231,7 @@ async function loadJob(id: string): Promise<JobWithRefs | null> {
     job: row.job,
     assignee: row.assignee?.id ? row.assignee : null,
     supervisor: row.supervisor?.id ? row.supervisor : null,
+    coordinator: row.coordinator?.id ? row.coordinator : null,
   };
 }
 
@@ -245,6 +255,9 @@ async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (actor.role === "supervisor") {
     return job.supervisorId === actor.id;
   }
+  if (actor.role === "coordinator") {
+    return job.coordinatorId === actor.id;
+  }
   if (job.assigneeId === actor.id) return true;
   return isAdditionalJobMember(job.id, actor.id);
 }
@@ -255,6 +268,9 @@ async function canViewJobCommunication(actor: UserRow, job: JobRow): Promise<boo
   }
   if (actor.role === "supervisor") {
     return job.supervisorId === actor.id;
+  }
+  if (actor.role === "coordinator") {
+    return job.coordinatorId === actor.id;
   }
   if (job.assigneeId === actor.id) return true;
   return isAdditionalJobMember(job.id, actor.id);
@@ -397,6 +413,7 @@ async function notifyJobContentUpdated(
   const recipientIds = new Set<string>();
   if (after.assigneeId) recipientIds.add(after.assigneeId);
   if (after.supervisorId) recipientIds.add(after.supervisorId);
+  if (after.coordinatorId) recipientIds.add(after.coordinatorId);
   try {
     const membersByJob = await loadExtraMembersByJobIds([after.id]);
     for (const member of membersByJob.get(after.id) ?? []) {
@@ -753,6 +770,7 @@ async function listCliqChannelMemberEmails(job: JobRow): Promise<string[]> {
   const ids = new Set<string>();
   if (job.assigneeId) ids.add(job.assigneeId);
   if (job.supervisorId) ids.add(job.supervisorId);
+  if (job.coordinatorId) ids.add(job.coordinatorId);
   if (job.createdById) ids.add(job.createdById);
 
   await ensureJobMembersSchema();
@@ -1274,6 +1292,7 @@ async function listJobParticipantIds(job: JobRow): Promise<string[]> {
   const ids = new Set<string>();
   if (job.assigneeId) ids.add(job.assigneeId);
   if (job.supervisorId) ids.add(job.supervisorId);
+  if (job.coordinatorId) ids.add(job.coordinatorId);
   if (job.createdById) ids.add(job.createdById);
 
   await ensureJobMembersSchema();
@@ -1879,6 +1898,8 @@ router.get("/jobs", requireAuth, async (req, res) => {
     rows = await q.orderBy(desc(jobs.createdAt));
   } else if (actor.role === "supervisor") {
     rows = await q.where(eq(jobs.supervisorId, actor.id)).orderBy(desc(jobs.createdAt));
+  } else if (actor.role === "coordinator") {
+    rows = await q.where(eq(jobs.coordinatorId, actor.id)).orderBy(desc(jobs.createdAt));
   } else {
     await ensureJobMembersSchema();
     const memberRows = await db
@@ -1921,8 +1942,9 @@ router.get("/jobs", requireAuth, async (req, res) => {
     rows.map((r: any) => {
       const assignee = r.assignee?.id ? r.assignee : null;
       const supervisor = r.supervisor?.id ? r.supervisor : null;
+      const coordinator = r.coordinator?.id ? r.coordinator : null;
       const pub = rowToPublic(
-        { job: r.job, assignee, supervisor },
+        { job: r.job, assignee, supervisor, coordinator },
         membersByJob.get(r.job.id) ?? [],
       );
       if (!forCommunication) return pub;
@@ -1962,7 +1984,7 @@ router.post("/jobs", creatorRole, async (req, res) => {
     }
 
     // Validate referenced users exist and are active.
-    const refIds = [body.assigneeId, body.supervisorId].filter(
+    const refIds = [body.assigneeId, body.supervisorId, body.coordinatorId].filter(
       (x): x is string => typeof x === "string" && x.length > 0,
     );
     if (refIds.length > 0) {
@@ -1971,7 +1993,7 @@ router.post("/jobs", creatorRole, async (req, res) => {
         .from(users)
         .where(inArray(users.id, refIds));
       if (found.length !== new Set(refIds).size) {
-        return res.status(400).json({ error: "Assignee or supervisor not found" });
+        return res.status(400).json({ error: "Assignee, supervisor, or coordinator not found" });
       }
       if (found.some((u) => u.status !== "active")) {
         return res
@@ -1989,6 +2011,12 @@ router.post("/jobs", creatorRole, async (req, res) => {
         found.some((u) => u.id === body.supervisorId && u.role !== "supervisor")
       ) {
         return res.status(400).json({ error: "Supervisor must have supervisor role" });
+      }
+      if (
+        body.coordinatorId &&
+        found.some((u) => u.id === body.coordinatorId && u.role !== "coordinator")
+      ) {
+        return res.status(400).json({ error: "Coordinator must have coordinator role" });
       }
     }
 
@@ -2015,6 +2043,7 @@ router.post("/jobs", creatorRole, async (req, res) => {
       priority: body.priority ?? "medium",
       assigneeId: body.assigneeId ?? null,
       supervisorId,
+      coordinatorId: body.coordinatorId ?? null,
       createdById: actor.id,
       dueDate: body.dueDate ? new Date(body.dueDate) : null,
       estimatedTime: body.estimatedTime?.trim() ? body.estimatedTime.trim() : null,
@@ -2067,6 +2096,16 @@ router.post("/jobs", creatorRole, async (req, res) => {
         title: `New Job for Supervision: ${full.job.title}`,
         description: `A new job has been assigned to your team: ${full.job.title} for ${full.job.client}. Assigned to: ${full.assignee?.name ?? "Unassigned"}`,
         type: "assigned"
+      });
+    }
+    // Notify Coordinator (optional — informational only)
+    if (full.job.coordinatorId) {
+      await createNotification({
+        userId: full.job.coordinatorId,
+        jobId: full.job.id,
+        title: `Job coordination: ${full.job.title}`,
+        description: `You were added as coordinator on ${full.job.title} for ${full.job.client}. You can view updates; approval is handled by the supervisor.`,
+        type: "assigned",
       });
     }
 
@@ -2181,7 +2220,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   }
 
   // Validate referenced users if changing.
-  const refIds = [body.assigneeId, body.supervisorId].filter(
+  const refIds = [body.assigneeId, body.supervisorId, body.coordinatorId].filter(
     (x): x is string => typeof x === "string" && x.length > 0,
   );
   if (refIds.length > 0) {
@@ -2190,7 +2229,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
       .from(users)
       .where(inArray(users.id, refIds));
     if (found.length !== new Set(refIds).size) {
-      return res.status(400).json({ error: "Assignee or supervisor not found" });
+      return res.status(400).json({ error: "Assignee, supervisor, or coordinator not found" });
     }
     if (found.some((u) => u.status !== "active")) {
       return res
@@ -2208,6 +2247,12 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
       found.some((u) => u.id === body.supervisorId && u.role !== "supervisor")
     ) {
       return res.status(400).json({ error: "Supervisor must have supervisor role" });
+    }
+    if (
+      body.coordinatorId &&
+      found.some((u) => u.id === body.coordinatorId && u.role !== "coordinator")
+    ) {
+      return res.status(400).json({ error: "Coordinator must have coordinator role" });
     }
   }
 
@@ -2273,6 +2318,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   }
   if (body.assigneeId !== undefined) patch.assigneeId = body.assigneeId;
   if (body.supervisorId !== undefined) patch.supervisorId = body.supervisorId;
+  if (body.coordinatorId !== undefined) patch.coordinatorId = body.coordinatorId;
   if (body.dueDate !== undefined) {
     patch.dueDate = body.dueDate ? new Date(body.dueDate) : null;
   }
@@ -2301,6 +2347,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
 
   const oldAssigneeId = full.job.assigneeId;
   const oldSupervisorId = full.job.supervisorId;
+  const oldCoordinatorId = full.job.coordinatorId;
 
   await db.update(jobs).set(patch).where(eq(jobs.id, id));
   const after = await loadJob(id);
@@ -2409,6 +2456,18 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
           memberName: supervisorName,
           memberEmail: supervisorEmail,
           kind: "supervisor",
+        });
+      }
+    }
+
+    if (body.coordinatorId !== undefined && body.coordinatorId !== oldCoordinatorId) {
+      if (body.coordinatorId) {
+        await createNotification({
+          userId: body.coordinatorId,
+          jobId: after.job.id,
+          title: `Job coordination: ${after.job.title}`,
+          description: `You are now coordinator on ${after.job.title}. You can view updates; approval is handled by the supervisor.`,
+          type: "assigned",
         });
       }
     }

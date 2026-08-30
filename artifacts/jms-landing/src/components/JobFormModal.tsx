@@ -96,6 +96,10 @@ export default function JobFormModal({
     () => assignables.filter((u) => u.role === "supervisor"),
     [assignables],
   );
+  const coordinators = useMemo(
+    () => assignables.filter((u) => u.role === "coordinator"),
+    [assignables],
+  );
 
   const selectedWorkerIds = useMemo(
     () => Array.from(new Set([form.assigneeId, ...memberIds].filter((id): id is string => Boolean(id)))),
@@ -438,6 +442,7 @@ export default function JobFormModal({
       description: descriptionPayload,
       priority: PRIORITY_UI_TO_API[form.priority],
       supervisorId: effectiveSupervisorId || null,
+      coordinatorId: form.coordinatorId || null,
       assigneeId: primaryAssigneeId || null,
       dueDate: form.due ? new Date(form.due).toISOString() : null,
       estimatedTime: form.estimatedTime.trim() || null,
@@ -631,6 +636,21 @@ export default function JobFormModal({
                         ))}
                       </select>
                     )}
+                  </div>
+                  <div className="min-w-0">
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                      Coordinator <span className="font-normal text-gray-400">(optional)</span>
+                    </label>
+                    <select
+                      value={form.coordinatorId}
+                      onChange={(e) => setForm({ ...form, coordinatorId: e.target.value })}
+                      className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                    >
+                      <option value="">None</option>
+                      {coordinators.map((u) => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <div className="min-w-0">

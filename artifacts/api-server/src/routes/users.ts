@@ -38,7 +38,7 @@ router.get("/users/assignable", async (req, res) => {
     .where(eq(users.status, "active"))
     .orderBy(users.name);
   const assignable = rows.filter(
-    (u) => u.role === "user" || u.role === "supervisor",
+    (u) => u.role === "user" || u.role === "supervisor" || u.role === "coordinator",
   );
   return res.json(assignable);
 });
@@ -50,7 +50,7 @@ router.get("/users/assignable", async (req, res) => {
  */
 function assertCanManage(actor: UserRow, target: UserRow, res: Response): boolean {
   if (actor.role === "super-admin") return true;
-  if (actor.role === "admin" && (target.role === "supervisor" || target.role === "user")) {
+  if (actor.role === "admin" && (target.role === "supervisor" || target.role === "coordinator" || target.role === "user")) {
     return true;
   }
   res.status(403).json({ error: "You do not have permission to manage this user" });

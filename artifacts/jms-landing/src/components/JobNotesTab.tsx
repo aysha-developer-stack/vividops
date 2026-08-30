@@ -47,6 +47,8 @@ function roleLabel(role: Role | undefined): string {
       return "Admin";
     case "supervisor":
       return "Supervisor";
+    case "coordinator":
+      return "Coordinator";
     case "user":
       return "Worker";
     default:
@@ -64,8 +66,8 @@ type Props = {
 
 export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0 }: Props) {
   const isAdmin = role === "super-admin" || role === "admin";
-  const canSetInternal = isAdmin || role === "supervisor";
-  const canPin = isAdmin || role === "supervisor";
+  const canSetInternal = isAdmin || role === "supervisor" || role === "coordinator";
+  const canPin = isAdmin || role === "supervisor" || role === "coordinator";
 
   const [notes, setNotes] = useState<JobNoteApi[]>([]);
   const [loading, setLoading] = useState(true);

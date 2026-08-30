@@ -25,6 +25,8 @@ export interface JobUpdate {
   /** @nullable */
   supervisorId?: string | null;
   /** @nullable */
+  coordinatorId?: string | null;
+  /** @nullable */
   dueDate?: Date | null;
   /**
    * @minimum 0

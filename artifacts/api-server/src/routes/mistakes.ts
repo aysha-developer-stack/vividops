@@ -121,6 +121,31 @@ function toPublic(row: {
   };
 }
 
+async function coordinatorJobIds(coordinatorId: string): Promise<string[]> {
+  const rows = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.coordinatorId, coordinatorId));
+  return rows.map((r) => r.id);
+}
+
+async function coordinatorScope(coordinatorId: string): Promise<{ jobIds: string[]; teamUserIds: string[] }> {
+  const jobIds = await coordinatorJobIds(coordinatorId);
+  const teamUserIds = new Set<string>();
+  if (jobIds.length > 0) {
+    const coordinated = await db
+      .select({ assigneeId: jobs.assigneeId })
+      .from(jobs)
+      .where(inArray(jobs.id, jobIds));
+    for (const row of coordinated) {
+      if (row.assigneeId) teamUserIds.add(row.assigneeId);
+    }
+    const members = await db
+      .select({ userId: jobMembers.userId })
+      .from(jobMembers)
+      .where(inArray(jobMembers.jobId, jobIds));
+    for (const member of members) teamUserIds.add(member.userId);
+  }
+  return { jobIds, teamUserIds: [...teamUserIds] };
+}
+
 async function supervisorJobIds(supervisorId: string): Promise<string[]> {
   const rows = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.supervisorId, supervisorId));
   return rows.map((r) => r.id);
@@ -175,6 +200,23 @@ router.get("/mistakes/analytics", requireAuth, async (req, res) => {
     conditions.push(eq(errorReports.userId, actor.id));
   } else if (actor.role === "supervisor") {
     const { jobIds, teamUserIds } = await supervisorScope(actor.id);
+    if (jobIds.length === 0 && teamUserIds.length === 0) {
+      return res.json({
+        period,
+        from: from?.toISOString() ?? null,
+        to: to?.toISOString() ?? null,
+        byUser: [],
+        byCategory: [],
+        byMonth: [],
+        total: 0,
+        open: 0,
+        highSeverity: 0,
+        userProfile: null,
+      });
+    }
+    conditions.push(supervisorVisibility(jobIds, teamUserIds));
+  } else if (actor.role === "coordinator") {
+    const { jobIds, teamUserIds } = await coordinatorScope(actor.id);
     if (jobIds.length === 0 && teamUserIds.length === 0) {
       return res.json({
         period,
@@ -351,6 +393,17 @@ router.get("/mistakes", requireAuth, async (req, res) => {
 
   if (actor.role === "supervisor") {
     const { jobIds, teamUserIds } = await supervisorScope(actor.id);
+    if (jobIds.length === 0 && teamUserIds.length === 0) {
+      res.json([]);
+      return;
+    }
+    const rows = await q.where(and(supervisorVisibility(jobIds, teamUserIds), ...filters));
+    res.json(rows.map(toPublic));
+    return;
+  }
+
+  if (actor.role === "coordinator") {
+    const { jobIds, teamUserIds } = await coordinatorScope(actor.id);
     if (jobIds.length === 0 && teamUserIds.length === 0) {
       res.json([]);
       return;

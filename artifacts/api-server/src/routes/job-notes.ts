@@ -46,6 +46,7 @@ function isAdmin(actor: UserRow): boolean {
 async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (isAdmin(actor)) return true;
   if (actor.role === "supervisor") return job.supervisorId === actor.id;
+  if (actor.role === "coordinator") return job.coordinatorId === actor.id;
   if (job.assigneeId === actor.id) return true;
   const [row] = await db
     .select({ id: jobMembers.id })
@@ -55,18 +56,20 @@ async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   return !!row;
 }
 
-function canPinNotes(actor: UserRow, job: JobRow): boolean {
-  if (isAdmin(actor)) return true;
-  return actor.role === "supervisor" && job.supervisorId === actor.id;
-}
-
 function canModifyNote(actor: UserRow, noteUserId: string): boolean {
   if (isAdmin(actor)) return true;
   return noteUserId === actor.id;
 }
 
 function canSetInternalNote(actor: UserRow): boolean {
-  return isAdmin(actor) || actor.role === "supervisor";
+  return isAdmin(actor) || actor.role === "supervisor" || actor.role === "coordinator";
+}
+
+function canPinNotes(actor: UserRow, job: JobRow): boolean {
+  if (isAdmin(actor)) return true;
+  if (actor.role === "supervisor") return job.supervisorId === actor.id;
+  if (actor.role === "coordinator") return job.coordinatorId === actor.id;
+  return false;
 }
 
 function isJobNoteType(value: unknown): value is JobNoteType {
@@ -162,7 +165,7 @@ router.post("/jobs/:jobId/notes", requireAuth, async (req, res) => {
       return;
     }
 
-    const pinned = isAdmin(actor) && req.body?.pinned === true;
+    const pinned = req.body?.pinned === true && canPinNotes(actor, jobRow);
 
     const [created] = await db
       .insert(jobNotes)

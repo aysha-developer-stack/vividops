@@ -160,7 +160,7 @@ async function finalizeUploadedAttachment(opts: {
       : `${actor.name} uploaded a file for ${jobRow.title}: ${fileName}`;
 
     const notifyTarget =
-      fileCategory === "completed" && (actor.role === "user" || actor.role === "supervisor")
+      fileCategory === "completed" && (actor.role === "user" || actor.role === "supervisor" || actor.role === "coordinator")
         ? notifyAdminsOnly
         : notifyJobManagers;
 
@@ -263,6 +263,9 @@ async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
   if (actor.role === "supervisor") {
     return job.supervisorId === actor.id;
+  }
+  if (actor.role === "coordinator") {
+    return job.coordinatorId === actor.id;
   }
   if (job.assigneeId === actor.id) return true;
   await ensureJobMembersSchema();

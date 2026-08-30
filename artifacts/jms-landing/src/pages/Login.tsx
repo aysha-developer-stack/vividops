@@ -321,11 +321,17 @@ export default function Login() {
                     transition={{ delay: 0.22 }}
                   >
                     <label className="block text-sm font-medium text-gray-700 mb-2">Sign in as</label>
-                    <div className="grid grid-cols-4 gap-1.5 bg-gray-100 p-1 rounded-xl">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5 bg-gray-100 p-1 rounded-xl">
                       {(Object.keys(ROLES) as Role[]).map((r) => {
                         const cfg = ROLES[r];
                         const RIcon = cfg.icon;
                         const active = role === r;
+                        const shortLabel =
+                          r === "super-admin" ? "Super"
+                          : r === "admin" ? "Admin"
+                          : r === "supervisor" ? "Super."
+                          : r === "coordinator" ? "Coord."
+                          : "User";
                         return (
                           <motion.button
                             key={r}
@@ -344,7 +350,7 @@ export default function Login() {
                             <span className="relative flex flex-col items-center gap-1">
                               <RIcon size={14} />
                               <span className="leading-none whitespace-nowrap">
-                                {r === "super-admin" ? "Super" : r === "admin" ? "Admin" : r === "supervisor" ? "Super." : "User"}
+                                {shortLabel}
                               </span>
                             </span>
                           </motion.button>

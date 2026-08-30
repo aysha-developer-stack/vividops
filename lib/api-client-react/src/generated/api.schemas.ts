@@ -19,6 +19,7 @@ export const UserRole = {
   "super-admin": "super-admin",
   admin: "admin",
   supervisor: "supervisor",
+  coordinator: "coordinator",
   user: "user",
 } as const;
 
@@ -260,6 +261,7 @@ export interface Job {
   /** All workers assigned to this job (primary assignee plus additional members) */
   assignees?: JobUserRef[];
   supervisor?: JobUserRef | null;
+  coordinator?: JobUserRef | null;
   /** @nullable */
   dueDate?: string | null;
   /** @nullable */
@@ -304,6 +306,8 @@ export interface JobInput {
   /** @nullable */
   supervisorId?: string | null;
   /** @nullable */
+  coordinatorId?: string | null;
+  /** @nullable */
   dueDate?: string | null;
   /** @nullable */
   estimatedTime?: string | null;
@@ -337,6 +341,8 @@ export interface JobUpdate {
   assigneeId?: string | null;
   /** @nullable */
   supervisorId?: string | null;
+  /** @nullable */
+  coordinatorId?: string | null;
   /** @nullable */
   dueDate?: string | null;
   /** @nullable */

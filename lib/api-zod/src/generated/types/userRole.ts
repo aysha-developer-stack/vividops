@@ -12,5 +12,6 @@ export const UserRole = {
   "super-admin": "super-admin",
   admin: "admin",
   supervisor: "supervisor",
+  coordinator: "coordinator",
   user: "user",
 } as const;

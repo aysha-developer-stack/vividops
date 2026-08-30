@@ -62,6 +62,18 @@ export async function ensureJobWriteSchema() {
 
   try {
     await db.execute(sql`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS job_number text`);
+    try {
+      await db.execute(sql`ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'coordinator'`);
+    } catch (err) {
+      logger.warn({ err }, "user_role coordinator enum value may already exist");
+    }
+    await db.execute(sql`
+      ALTER TABLE jobs
+      ADD COLUMN IF NOT EXISTS coordinator_id uuid REFERENCES users(id) ON DELETE SET NULL
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS jobs_coordinator_idx ON jobs (coordinator_id)
+    `);
     await db.execute(sql`
       CREATE UNIQUE INDEX IF NOT EXISTS jobs_job_number_uniq_idx
       ON jobs (job_number)

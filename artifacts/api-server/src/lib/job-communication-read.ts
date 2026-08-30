@@ -26,6 +26,9 @@ function communicationJobsSubquery(actor: UserRow) {
   if (actor.role === "supervisor") {
     return sql`(SELECT id FROM jobs WHERE supervisor_id = ${actor.id})`;
   }
+  if (actor.role === "coordinator") {
+    return sql`(SELECT id FROM jobs WHERE coordinator_id = ${actor.id})`;
+  }
   return sql`(
     SELECT id FROM jobs WHERE assignee_id = ${actor.id}
     UNION

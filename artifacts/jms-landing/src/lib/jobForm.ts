@@ -30,6 +30,7 @@ export type JobFormState = {
   address: string;
   description: string;
   supervisorId: string;
+  coordinatorId: string;
   assigneeId: string;
   priority: UiPriority;
   estimatedTime: string;
@@ -49,6 +50,7 @@ export const EMPTY_JOB_FORM: JobFormState = {
   address: "",
   description: "",
   supervisorId: "",
+  coordinatorId: "",
   assigneeId: "",
   priority: "Medium",
   estimatedTime: "",
@@ -122,6 +124,7 @@ export function applyJobToForm(
       supervisorId:
         job.supervisor?.id ??
         (role === "supervisor" ? (currentUserId ?? "") : ""),
+      coordinatorId: job.coordinator?.id ?? "",
       assigneeId,
       priority: priorityToUi(job.priority),
       estimatedTime: job.estimatedTime ?? "",

@@ -32,6 +32,9 @@ async function canViewJob(actor: UserRow, job: typeof jobs.$inferSelect): Promis
   if (actor.role === "supervisor") {
     return job.supervisorId === actor.id;
   }
+  if (actor.role === "coordinator") {
+    return job.coordinatorId === actor.id;
+  }
   if (job.assigneeId === actor.id) return true;
   const [row] = await db
     .select({ id: jobMembers.id })
@@ -62,6 +65,7 @@ router.get("/jobs/:jobId/members", requireAuth, async (req, res) => {
     const memberIds = new Set<string>();
     if (job.assigneeId) memberIds.add(job.assigneeId);
     if (job.supervisorId) memberIds.add(job.supervisorId);
+    if (job.coordinatorId) memberIds.add(job.coordinatorId);
 
     const rows = await db.select().from(jobMembers).where(eq(jobMembers.jobId, jobId));
     for (const r of rows) memberIds.add(r.userId);

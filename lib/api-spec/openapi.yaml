@@ -564,7 +564,7 @@ components:
 
     UserRole:
       type: string
-      enum: [super-admin, admin, supervisor, user]
+      enum: [super-admin, admin, supervisor, coordinator, user]
 
     UserStatus:
       type: string
@@ -816,6 +816,11 @@ components:
           oneOf:
             - $ref: "#/components/schemas/JobUserRef"
             - type: "null"
+        coordinator:
+          oneOf:
+            - $ref: "#/components/schemas/JobUserRef"
+            - type: "null"
+          description: Optional job coordinator — view/notify only, does not block completion
         dueDate:
           type: ["string", "null"]
           format: date-time
@@ -870,6 +875,7 @@ components:
         priority: { $ref: "#/components/schemas/JobPriority" }
         assigneeId: { type: ["string", "null"], format: uuid }
         supervisorId: { type: ["string", "null"], format: uuid }
+        coordinatorId: { type: ["string", "null"], format: uuid }
         dueDate: { type: ["string", "null"], format: date-time }
         estimatedTime: { type: ["string", "null"] }
         startDate: { type: ["string", "null"], format: date-time }
@@ -890,6 +896,7 @@ components:
         status: { $ref: "#/components/schemas/JobStatus" }
         assigneeId: { type: ["string", "null"], format: uuid }
         supervisorId: { type: ["string", "null"], format: uuid }
+        coordinatorId: { type: ["string", "null"], format: uuid }
         dueDate: { type: ["string", "null"], format: date-time }
         estimatedTime: { type: ["string", "null"] }
         startDate: { type: ["string", "null"], format: date-time }

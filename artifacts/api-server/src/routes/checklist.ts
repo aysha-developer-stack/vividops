@@ -42,6 +42,9 @@ async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (actor.role === "supervisor") {
     return job.supervisorId === actor.id;
   }
+  if (actor.role === "coordinator") {
+    return job.coordinatorId === actor.id;
+  }
   if (job.assigneeId === actor.id) return true;
   const [row] = await db
     .select({ id: jobMembers.id })
@@ -427,6 +430,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
           jobId,
           assigneeId: job.assigneeId,
           supervisorId: job.supervisorId,
+          coordinatorId: job.coordinatorId,
           actorId: actor.id,
           title: notifyTitle,
           description: `${actor.name} requested rework on ${job.title} (Item #${itemId}). ${previewText(reworkDetail, 200)}`,

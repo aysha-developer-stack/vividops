@@ -365,6 +365,7 @@ function initialsOf(name: string): string {
 
 export default function JobDetail({ role = "user", id }: Props) {
   const routePath = role === "supervisor" ? "/supervisor/jobs/:id"
+    : role === "coordinator" ? "/coordinator/jobs/:id"
     : role === "admin" ? "/admin/jobs/:id"
     : role === "super-admin" ? "/super-admin/jobs/:id"
     : "/user/jobs/:id";
@@ -479,7 +480,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       return null;
     }
   })();
-  const defaultTab: TabId = tabFromQuery ?? (role === "supervisor" ? "overview" : "files");
+  const defaultTab: TabId = tabFromQuery ?? (role === "supervisor" || role === "coordinator" ? "overview" : "files");
   const [tab, setTab] = useState<TabId>(defaultTab);
   const completedFilesSectionRef = useRef<HTMLDivElement | null>(null);
 
@@ -610,7 +611,12 @@ export default function JobDetail({ role = "user", id }: Props) {
     role === "user" ||
     role === "super-admin" ||
     role === "admin" ||
+    role === "coordinator" ||
     (role === "supervisor" && canUseJobTimer);
+  const canUploadJobReferenceFiles =
+    role === "super-admin" ||
+    role === "admin" ||
+    role === "coordinator";
   const canManageChecklistAsSupervisor =
     role === "super-admin" || role === "admin" || (role === "supervisor" && !canUseJobTimer);
   const canPickReworkOrigin =
@@ -1451,6 +1457,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     };
     add(job?.assignee?.id, job?.assignee?.name);
     add(job?.supervisor?.id, job?.supervisor?.name);
+    add(job?.coordinator?.id, job?.coordinator?.name);
     for (const member of job?.assignees ?? []) {
       add(member?.id, member?.name);
     }
@@ -1459,7 +1466,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     }
     add(currentUser?.id, currentUser?.name);
     return map;
-  }, [job?.assignee, job?.supervisor, job?.assignees, assignablesQuery.data, currentUser?.id, currentUser?.name]);
+  }, [job?.assignee, job?.supervisor, job?.coordinator, job?.assignees, assignablesQuery.data, currentUser?.id, currentUser?.name]);
 
   const jobLogRows = useMemo(() => {
     return jobTimeLogs.map((l) => {
@@ -1979,6 +1986,8 @@ export default function JobDetail({ role = "user", id }: Props) {
         href={
           role === "supervisor"
             ? "/supervisor/jobs"
+            : role === "coordinator"
+            ? "/coordinator/jobs"
             : role === "admin"
             ? "/admin/jobs"
             : role === "super-admin"
@@ -2585,7 +2594,7 @@ export default function JobDetail({ role = "user", id }: Props) {
             );
           };
 
-          const canUploadInput = role === "super-admin" || role === "admin";
+          const canUploadInput = canUploadJobReferenceFiles;
           const canUploadOutput = canUploadCompletedFiles;
 
           const checklistSection = (
@@ -3459,11 +3468,13 @@ export default function JobDetail({ role = "user", id }: Props) {
           };
           const members = (jobMembers.length > 0 ? jobMembers : [
             job?.supervisor?.name ? { id: job.supervisor.id, name: job.supervisor.name, role: "supervisor" as Role } : null,
+            job?.coordinator?.name ? { id: job.coordinator.id, name: job.coordinator.name, role: "coordinator" as Role } : null,
             job?.assignee?.name ? { id: job.assignee.id, name: job.assignee.name, role: "user" as Role } : null,
           ].filter(Boolean) as Array<{ id: string; name: string; role: Role }>)
             .map((m) => {
               const r =
                 m.role === "supervisor" ? "Supervisor"
+                : m.role === "coordinator" ? "Coordinator"
                 : m.id === job?.assignee?.id ? "Assignee"
                 : "Worker";
               return {
@@ -3532,6 +3543,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                           <div className="text-[11px] text-gray-500">{w.role} · {w.status === "online" ? "Active in Cliq" : "Away"}</div>
                         </div>
                         {w.role === "Supervisor" && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Owner</span>}
+                        {w.role === "Coordinator" && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-teal-100 text-teal-700">Coordinator</span>}
                       </motion.div>
                     ))}
                   </div>
@@ -3583,7 +3595,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                   <ol className="space-y-3">
                     {[
                       "When a job is created, Vivid OPS auto-creates a dedicated private Cliq channel.",
-                      "Only assigned workers + the supervisor are added as members automatically.",
+                      "Assigned workers, the supervisor, and optional coordinator are added as members.",
                       "Conversation, files and @mentions live inside Zoho Cliq.",
                       "When the job is completed, the channel is archived (kept for audit).",
                     ].map((step, i) => (

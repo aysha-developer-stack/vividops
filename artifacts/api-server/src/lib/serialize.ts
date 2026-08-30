@@ -74,6 +74,7 @@ export function publicJob(
   assignee: RefUser,
   supervisor: RefUser,
   assignees: JobAssigneeRef[] = [],
+  coordinator: RefUser = null,
 ) {
   const now = new Date();
   const isOverdue = isJobOverdueByDueDate(job.dueDate, job.status, now);
@@ -95,6 +96,7 @@ export function publicJob(
     assignee: userRef(assignee),
     assignees,
     supervisor: userRef(supervisor),
+    coordinator: userRef(coordinator),
     dueDate: job.dueDate ? job.dueDate.toISOString() : null,
     estimatedTime: job.estimatedTime ?? null,
     startDate: job.startDate ? job.startDate.toISOString() : null,

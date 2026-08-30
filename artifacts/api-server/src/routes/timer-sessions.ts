@@ -49,6 +49,7 @@ async function isAdditionalJobMember(jobId: string, userId: string): Promise<boo
 async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (actor.role === "super-admin" || actor.role === "admin") return true;
   if (actor.role === "supervisor") return job.supervisorId === actor.id;
+  if (actor.role === "coordinator") return job.coordinatorId === actor.id;
   if (job.assigneeId === actor.id) return true;
   return isAdditionalJobMember(job.id, actor.id);
 }

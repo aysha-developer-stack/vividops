@@ -12,6 +12,7 @@ export async function notifyCliqChannelReady(job: JobRow, channelDisplayName: st
     jobId: job.id,
     assigneeId: job.assigneeId,
     supervisorId: job.supervisorId,
+    coordinatorId: job.coordinatorId,
     title,
     description,
     type: "cliq_channel",

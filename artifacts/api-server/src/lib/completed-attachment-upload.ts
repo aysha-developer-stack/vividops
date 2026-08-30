@@ -28,7 +28,7 @@ export async function resolveCompletedUploadReworkId(
     return { reworkId: rework.id, error: null };
   }
 
-  const shouldAutoLink = parsed.treatAsFieldWorker || actor.role === "user";
+  const shouldAutoLink = parsed.treatAsFieldWorker || actor.role === "user" || actor.role === "coordinator";
   if (!shouldAutoLink) {
     return { reworkId: null, error: null };
   }

@@ -1,10 +1,10 @@
 import {
   LayoutDashboard, Briefcase, Users, BarChart3, MessageCircle,
   Timer, GraduationCap, Settings, Crown, Shield, HardHat, User as UserIcon,
-  Activity, ClipboardList, Eye, FileText, AlertTriangle, Folder, CheckSquare, Bell, ListChecks,
+  Activity, ClipboardList, Eye, FileText, AlertTriangle, Folder, CheckSquare, Bell, ListChecks, UserCog,
 } from "lucide-react";
 
-export type Role = "super-admin" | "admin" | "supervisor" | "user";
+export type Role = "super-admin" | "admin" | "supervisor" | "coordinator" | "user";
 
 export interface NavItem {
   label: string;
@@ -77,6 +77,22 @@ export const ROLES: Record<Role, RoleConfig> = {
       { label: "Training", icon: GraduationCap, path: "/supervisor/training" },
       { label: "Notifications", icon: Bell, path: "/supervisor/notifications" },
       { label: "Settings", icon: Settings, path: "/supervisor/settings" },
+    ],
+  },
+  coordinator: {
+    label: "Coordinator",
+    portal: "Coordinator Portal",
+    icon: UserCog,
+    base: "/coordinator",
+    nav: [
+      { label: "Dashboard", icon: LayoutDashboard, path: "/coordinator" },
+      { label: "Jobs", icon: Briefcase, path: "/coordinator/jobs" },
+      { label: "Communication", icon: MessageCircle, path: "/coordinator/communication" },
+      { label: "Reports", icon: BarChart3, path: "/coordinator/reports" },
+      { label: "Mistakes", icon: AlertTriangle, path: "/coordinator/mistakes" },
+      { label: "Training", icon: GraduationCap, path: "/coordinator/training" },
+      { label: "Notifications", icon: Bell, path: "/coordinator/notifications" },
+      { label: "Settings", icon: Settings, path: "/coordinator/settings" },
     ],
   },
   user: {

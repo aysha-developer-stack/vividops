@@ -188,6 +188,7 @@ interface FormState {
   address: string;
   description: string;
   supervisorId: string;
+  coordinatorId: string;
   assigneeId: string;
   priority: UiPriority;
   estimatedTime: string;
@@ -207,6 +208,7 @@ const EMPTY_FORM: FormState = {
   address: "",
   description: "",
   supervisorId: "",
+  coordinatorId: "",
   assigneeId: "",
   priority: "Medium",
   estimatedTime: "",
@@ -271,6 +273,7 @@ function applyJobToForm(
       supervisorId:
         job.supervisor?.id ??
         (role === "supervisor" ? (currentUserId ?? "") : ""),
+      coordinatorId: (job as JobWithChecklist & { coordinator?: { id?: string } }).coordinator?.id ?? "",
       assigneeId,
       priority: priorityToUi(job.priority),
       estimatedTime: job.estimatedTime ?? "",
@@ -294,6 +297,7 @@ export default function JobManagement(
   const [, setLocation] = useLocation();
   const basePath =
     role === "supervisor" ? "/supervisor/jobs"
+    : role === "coordinator" ? "/coordinator/jobs"
     : role === "user" ? "/user/jobs"
     : role === "admin" ? "/admin/jobs"
     : "/super-admin/jobs";
@@ -351,6 +355,10 @@ export default function JobManagement(
   const assignables = assignablesQuery.data ?? [];
   const supervisors = useMemo(
     () => assignables.filter((u) => u.role === "supervisor"),
+    [assignables],
+  );
+  const coordinators = useMemo(
+    () => assignables.filter((u) => u.role === "coordinator"),
     [assignables],
   );
   const workers = useMemo(
@@ -787,6 +795,7 @@ export default function JobManagement(
       description: descriptionPayload,
       priority: PRIORITY_UI_TO_API[form.priority],
       supervisorId: effectiveSupervisorId || null,
+      coordinatorId: form.coordinatorId || null,
       assigneeId: primaryAssigneeId || null,
       dueDate: form.due ? new Date(form.due).toISOString() : null,
       estimatedTime: form.estimatedTime.trim() || null,
@@ -1006,7 +1015,7 @@ export default function JobManagement(
           <div className="flex flex-col sm:flex-row gap-3 flex-1">
             <JobListSortControl value={sortMode} onChange={setSortMode} variant="toolbar" />
           </div>
-          {role !== "user" && (
+          {role !== "user" && role !== "coordinator" && (
             <motion.button
               whileHover={{ scale: 1.04, y: -1 }}
               whileTap={{ scale: 0.97 }}
@@ -1154,7 +1163,7 @@ export default function JobManagement(
                               <ExternalLink size={14} className="mr-2 text-gray-400" />
                               Open job
                             </DropdownMenuItem>
-                            {role !== "user" && (
+                            {role !== "user" && role !== "coordinator" && (
                               <>
                                 {(j.status !== "Done" || role === "admin" || role === "super-admin") && (
                                   <DropdownMenuItem className="cursor-pointer" onClick={() => startReassign(j)}>
@@ -1326,7 +1335,7 @@ export default function JobManagement(
                               <ExternalLink size={14} className="mr-2 text-gray-400" />
                               Open job
                             </DropdownMenuItem>
-                            {role !== "user" && (
+                            {role !== "user" && role !== "coordinator" && (
                               <>
                                 {(j.status !== "Done" || role === "admin" || role === "super-admin") && (
                                   <DropdownMenuItem className="cursor-pointer" onClick={() => startReassign(j)}>
@@ -1465,6 +1474,19 @@ export default function JobManagement(
                           {supervisors.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                         </select>
                       )}
+                    </div>
+                    <div className="min-w-0">
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                        Coordinator <span className="font-normal text-gray-400">(optional)</span>
+                      </label>
+                      <select
+                        value={form.coordinatorId}
+                        onChange={(e) => setForm({ ...form, coordinatorId: e.target.value })}
+                        className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                      >
+                        <option value="">None</option>
+                        {coordinators.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
                     </div>
                   </div>
                   <div className="min-w-0">
