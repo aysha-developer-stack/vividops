@@ -118,7 +118,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
       return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
     });
   }, [users, filter, search]);
-  const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 8);
+  const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 30);
 
   if (isInitialLoading) {
     return (
