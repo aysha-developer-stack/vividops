@@ -321,7 +321,7 @@ export const UpdateUserBody = zod.object({
   avatarUrl: zod.string().nullish(),
   phone: zod.string().nullish(),
   bio: zod.string().nullish(),
-  role: zod.enum(["super-admin", "admin", "supervisor", "user"]).optional(),
+  role: zod.enum(["super-admin", "admin", "supervisor", "coordinator", "user"]).optional(),
   status: zod.enum(["active", "inactive"]).optional(),
   cliqChannelAdmin: zod.boolean().optional(),
 });

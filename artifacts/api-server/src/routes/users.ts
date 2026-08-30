@@ -95,7 +95,7 @@ router.get("/users", listUsersAllowed, async (req, res) => {
 
   let visible = rows;
   if (actor.role === "admin") {
-    visible = rows.filter((u) => u.role === "supervisor" || u.role === "user");
+    visible = rows.filter((u) => u.role === "supervisor" || u.role === "coordinator" || u.role === "user");
   } else if (actor.role === "supervisor") {
     const supervisedJobs = await db
       .select({ id: jobs.id, assigneeId: jobs.assigneeId })
@@ -137,7 +137,7 @@ router.post("/users", adminOnly, async (req, res) => {
   if (actor.role === "admin" && (role === "super-admin" || role === "admin")) {
     return res
       .status(403)
-      .json({ error: "Admins can only create supervisor or user accounts" });
+      .json({ error: "Admins can only create supervisor, coordinator, or user accounts" });
   }
 
   const normalizedEmail = email.toLowerCase();
@@ -216,8 +216,8 @@ router.patch("/users/:id", adminOnly, async (req, res) => {
   if (!target) return res.status(404).json({ error: "User not found" });
   if (!assertCanManage(actor, target, res)) return;
 
-  if (actor.role === "admin" && parsed.data.role && parsed.data.role !== "supervisor" && parsed.data.role !== "user") {
-    return res.status(403).json({ error: "Admins can only assign supervisor or user roles" });
+  if (actor.role === "admin" && parsed.data.role && parsed.data.role !== "supervisor" && parsed.data.role !== "coordinator" && parsed.data.role !== "user") {
+    return res.status(403).json({ error: "Admins can only assign supervisor, coordinator, or user roles" });
   }
 
   const effectiveRole = parsed.data.role ?? target.role;
