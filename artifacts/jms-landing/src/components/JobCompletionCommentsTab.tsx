@@ -3,7 +3,19 @@ import { motion } from "framer-motion";
 import { CheckCircle2 } from "lucide-react";
 import type { Role } from "@/lib/roles";
 import type { JobNoteApi } from "@/components/JobNotesTab";
-import { jobAttachmentPreviewUrl } from "@/lib/downloadFile";
+import {
+  downloadNamedFile,
+  jobAttachmentDownloadUrl,
+  jobAttachmentPreviewUrl,
+} from "@/lib/downloadFile";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type ReviewAttachment = {
   id: string;
@@ -21,6 +33,8 @@ function roleLabel(role: Role | undefined): string {
       return "Admin";
     case "supervisor":
       return "Supervisor";
+    case "coordinator":
+      return "Coordinator";
     case "user":
       return "Worker";
     default:
@@ -53,6 +67,7 @@ export default function JobCompletionCommentsTab({ jobId, refreshKey = 0 }: Prop
   const [reviewPhotos, setReviewPhotos] = useState<ReviewAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [previewPhoto, setPreviewPhoto] = useState<ReviewAttachment | null>(null);
 
   const photosByNoteId = useMemo(() => {
     const map = new Map<string, ReviewAttachment[]>();
@@ -119,84 +134,120 @@ export default function JobCompletionCommentsTab({ jobId, refreshKey = 0 }: Prop
     void loadNotes();
   }, [loadNotes, refreshKey]);
 
-  return (
-    <motion.div
-      key="completion"
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -12 }}
-      className="space-y-6"
-    >
-      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-        <div className="p-5 border-b border-gray-100">
-          <div className="flex items-center gap-2 mb-1">
-            <CheckCircle2 size={18} className="text-emerald-600" />
-            <h3 className="font-bold text-gray-900">Completion comments</h3>
-          </div>
-          <p className="text-xs text-gray-500">
-            Notes and photos added when work is submitted, approved, or completed — newest first.
-          </p>
-        </div>
+  const downloadPhoto = (photo: ReviewAttachment) => {
+    void downloadNamedFile(jobAttachmentDownloadUrl(jobId, photo.id), photo.fileName).catch(() => {
+      window.alert("Download failed. Please try again.");
+    });
+  };
 
-        <div className="p-5 space-y-4">
-          {loading ? (
-            <div className="py-10 text-center text-sm text-gray-400">Loading completion comments…</div>
-          ) : loadError ? (
-            <div className="py-10 text-center text-sm text-red-600">{loadError}</div>
-          ) : notes.length === 0 ? (
-            <div className="py-10 text-center text-sm text-gray-400">
-              No completion comments yet. They appear here when a worker submits, a supervisor approves, or an admin completes the job.
+  return (
+    <>
+      <motion.div
+        key="completion"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -12 }}
+        className="space-y-6"
+      >
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="p-5 border-b border-gray-100">
+            <div className="flex items-center gap-2 mb-1">
+              <CheckCircle2 size={18} className="text-emerald-600" />
+              <h3 className="font-bold text-gray-900">Completion comments</h3>
             </div>
-          ) : (
-            notes.map((note) => {
-              const photos = photosByNoteId.get(note.id) ?? [];
-              const body = stageBody(note.text);
-              return (
-                <div
-                  key={note.id}
-                  className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4"
-                >
-                  <div className="flex flex-wrap items-center gap-2 mb-2">
-                    <span className="text-sm font-bold text-gray-900">{note.author?.name ?? "Unknown"}</span>
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border bg-white text-gray-600 border-gray-200">
-                      {roleLabel(note.author?.role)}
-                    </span>
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border bg-emerald-100 text-emerald-800 border-emerald-200">
-                      {stageLabel(note.text)}
-                    </span>
-                  </div>
-                  {body && body !== "(Photos attached)" ? (
-                    <p className="text-sm text-gray-800 whitespace-pre-wrap">{body}</p>
-                  ) : photos.length > 0 ? (
-                    <p className="text-sm text-gray-500 italic">Photos attached</p>
-                  ) : null}
-                  {photos.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {photos.map((photo) => (
-                        <a
-                          key={photo.id}
-                          href={jobAttachmentPreviewUrl(jobId, photo.id)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block w-24 h-24 rounded-xl overflow-hidden border border-emerald-100 bg-white hover:ring-2 hover:ring-emerald-300 transition-all"
-                          title={photo.fileName}
-                        >
-                          <img
-                            src={jobAttachmentPreviewUrl(jobId, photo.id)}
-                            alt={photo.fileName}
-                            className="w-full h-full object-cover"
-                          />
-                        </a>
-                      ))}
+            <p className="text-xs text-gray-500">
+              Notes and photos added when work is submitted, approved, or completed — newest first.
+            </p>
+          </div>
+
+          <div className="p-5 space-y-4">
+            {loading ? (
+              <div className="py-10 text-center text-sm text-gray-400">Loading completion comments…</div>
+            ) : loadError ? (
+              <div className="py-10 text-center text-sm text-red-600">{loadError}</div>
+            ) : notes.length === 0 ? (
+              <div className="py-10 text-center text-sm text-gray-400">
+                No completion comments yet. They appear here when a worker submits, a supervisor approves, or an admin completes the job.
+              </div>
+            ) : (
+              notes.map((note) => {
+                const photos = photosByNoteId.get(note.id) ?? [];
+                const body = stageBody(note.text);
+                return (
+                  <div
+                    key={note.id}
+                    className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <span className="text-sm font-bold text-gray-900">{note.author?.name ?? "Unknown"}</span>
+                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border bg-white text-gray-600 border-gray-200">
+                        {roleLabel(note.author?.role)}
+                      </span>
+                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border bg-emerald-100 text-emerald-800 border-emerald-200">
+                        {stageLabel(note.text)}
+                      </span>
                     </div>
-                  )}
-                  <p className="text-[10px] text-gray-400 mt-2">{new Date(note.createdAt).toLocaleString()}</p>
-                </div>
-              );
-            })
-          )}
+                    {body && body !== "(Photos attached)" ? (
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap">{body}</p>
+                    ) : photos.length > 0 ? (
+                      <p className="text-sm text-gray-500 italic">Photos attached</p>
+                    ) : null}
+                    {photos.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {photos.map((photo) => (
+                          <button
+                            key={photo.id}
+                            type="button"
+                            onClick={() => setPreviewPhoto(photo)}
+                            className="block w-24 h-24 rounded-xl overflow-hidden border border-emerald-100 bg-white hover:ring-2 hover:ring-emerald-300 transition-all cursor-pointer"
+                            title={photo.fileName}
+                          >
+                            <img
+                              src={jobAttachmentPreviewUrl(jobId, photo.id)}
+                              alt={photo.fileName}
+                              className="w-full h-full object-cover"
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[10px] text-gray-400 mt-2">{new Date(note.createdAt).toLocaleString()}</p>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
-      </div>
-    </motion.div>
+      </motion.div>
+
+      <Dialog open={!!previewPhoto} onOpenChange={(open) => !open && setPreviewPhoto(null)}>
+        <DialogContent className="max-w-5xl w-[95vw]">
+          <DialogHeader>
+            <DialogTitle>{previewPhoto?.fileName ?? "Photo preview"}</DialogTitle>
+            <DialogDescription>Preview opens inside Vivid OPS. Use Download to save the file.</DialogDescription>
+          </DialogHeader>
+          {previewPhoto && (
+            <div className="max-h-[75vh] overflow-auto rounded-xl border border-gray-100 bg-gray-50">
+              <img
+                src={jobAttachmentPreviewUrl(jobId, previewPhoto.id)}
+                alt={previewPhoto.fileName}
+                className="max-w-full mx-auto block"
+              />
+            </div>
+          )}
+          <DialogFooter>
+            {previewPhoto && (
+              <button
+                type="button"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
+                onClick={() => downloadPhoto(previewPhoto)}
+              >
+                Download
+              </button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
