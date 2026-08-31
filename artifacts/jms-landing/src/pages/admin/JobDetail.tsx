@@ -11,7 +11,7 @@ import FileExtensionIcon from "@/components/FileExtensionIcon";
 import { Checkbox } from "@/components/ui/checkbox";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
-import type { Role } from "@/lib/roles";
+import { jobMemberRoleLabel, type Role } from "@/lib/roles";
 import {
   Dialog,
   DialogContent,
@@ -2551,11 +2551,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold text-gray-900 truncate">{w.name}</div>
                       <div className="text-[11px] text-gray-500">
-                        {w.role === "super-admin" ? "Super Admin"
-                          : w.role === "admin" ? "Admin"
-                          : w.role === "supervisor" ? "Supervisor"
-                          : w.id === job?.assignee?.id ? "Assignee"
-                          : "Worker"}
+                        {jobMemberRoleLabel(w, job)}
                       </div>
                     </div>
                   </motion.div>
@@ -3476,11 +3472,7 @@ export default function JobDetail({ role = "user", id }: Props) {
             job?.assignee?.name ? { id: job.assignee.id, name: job.assignee.name, role: "user" as Role } : null,
           ].filter(Boolean) as Array<{ id: string; name: string; role: Role }>)
             .map((m) => {
-              const r =
-                m.role === "supervisor" ? "Supervisor"
-                : m.role === "coordinator" ? "Coordinator"
-                : m.id === job?.assignee?.id ? "Assignee"
-                : "Worker";
+              const r = jobMemberRoleLabel(m, job);
               return {
                 name: m.name,
                 avatar: initialsOf(m.name),
