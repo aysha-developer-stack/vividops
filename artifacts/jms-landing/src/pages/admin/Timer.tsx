@@ -107,7 +107,17 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
   };
 
   const stopOtherRunningTimersAndSave = async () => {
-    // Server session is saved when startTimerSession runs — only clear stale local keys.
+    const serverMine = await fetchMyActiveTimerSession();
+    if (serverMine?.segmentStartedAt && serverMine.jobId) {
+      const currentLocal = readTimerState()?.jobId;
+      if (!currentLocal || serverMine.jobId !== currentLocal) {
+        try {
+          await stopTimerSession();
+        } catch {
+          // Server may already have switched sessions.
+        }
+      }
+    }
     clearOtherJobTimerLocalStates();
   };
 
@@ -309,10 +319,11 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
   }, [running]);
 
   useEffect(() => {
+    if (running) return;
     const state = readTimerState();
     if (!state) return;
     writeTimerState({ ...state, task: task.trim(), jobId: jobId || "" });
-  }, [task, jobId]);
+  }, [task, jobId, running]);
 
   useEffect(() => {
     if (!running) return;
@@ -509,7 +520,8 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
               <select
                 value={jobId}
                 onChange={(e) => setJobId(e.target.value)}
-                className="bg-white/5 border-2 border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary"
+                disabled={running}
+                className="bg-white/5 border-2 border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="" className="bg-black">General / No Project</option>
                 {projects.map((p) => <option key={p.id} value={p.id} className="bg-black">{p.label}</option>)}

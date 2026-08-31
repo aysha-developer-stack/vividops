@@ -55,7 +55,7 @@ export async function pauseWorkTimerForSupervisor(supervisorId: string): Promise
     .limit(1);
   if (!workSession) return;
   if (workSession.segmentStartedAt) {
-    await stopTimerSessionAndSaveLog(workSession, supervisorId);
+    await stopTimerSessionAndSaveLog(workSession, supervisorId, { useElapsed: true });
     return;
   }
   await db.delete(activeTimerSessions).where(eq(activeTimerSessions.id, workSession.id));

@@ -5,9 +5,15 @@ import {
   fetchMyActiveTimerSession,
   heartbeatTimerSession,
   TIMER_HEARTBEAT_INTERVAL_MS,
+  type ActiveTimerSession,
 } from "@/lib/timerSessionApi";
 import { handleTimerHeartbeatSideEffects } from "@/lib/timerHeartbeatEffects";
-import { writeJobTimerState, jobTimerStateFromServerSession, computeJobTimerElapsed } from "@/lib/jobTimerLocalState";
+import {
+  writeJobTimerState,
+  jobTimerStateFromServerSession,
+  computeJobTimerElapsed,
+  dispatchTimerSessionSync,
+} from "@/lib/jobTimerLocalState";
 
 /**
  * Keep the server work timer alive while the user navigates anywhere in OPS.
@@ -16,59 +22,60 @@ import { writeJobTimerState, jobTimerStateFromServerSession, computeJobTimerElap
  */
 export function useGlobalTimerHeartbeat(enabled: boolean): void {
   const qc = useQueryClient();
-  const sessionRunningRef = useRef(false);
+  const sessionRef = useRef<ActiveTimerSession | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
 
     let cancelled = false;
 
-    const refreshSessionState = async () => {
-      const session = await fetchMyActiveTimerSession();
-      if (cancelled) return;
-      sessionRunningRef.current = !!session?.segmentStartedAt;
+    const publishSession = (session: ActiveTimerSession | null) => {
+      sessionRef.current = session;
+      dispatchTimerSessionSync(session);
       if (session?.jobId) {
-        const synced = jobTimerStateFromServerSession(session);
-        writeJobTimerState(session.jobId, synced);
+        writeJobTimerState(session.jobId, jobTimerStateFromServerSession(session));
       }
     };
 
-    const sendHeartbeat = () => {
-      void heartbeatTimerSession()
-        .then((payload) => {
-          if (!payload) {
-            sessionRunningRef.current = false;
-            return;
-          }
-          sessionRunningRef.current = !!payload.segmentStartedAt;
-          if (payload.jobId) {
-            writeJobTimerState(payload.jobId, jobTimerStateFromServerSession(payload));
-          }
-          return handleTimerHeartbeatSideEffects(payload, {
-            onAutoPaused: (session) => {
-              sessionRunningRef.current = false;
-              if (session.jobId) {
-                writeJobTimerState(session.jobId, {
-                  ...jobTimerStateFromServerSession(session),
-                  running: false,
-                  startedAt: null,
-                  accumulated: computeJobTimerElapsed(jobTimerStateFromServerSession(session)),
-                });
-              }
-              void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
-            },
-            onAutoStopped: () => {
-              sessionRunningRef.current = false;
-              void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
-            },
-          });
-        })
-        .catch(() => {});
+    const refreshSessionState = async (): Promise<ActiveTimerSession | null> => {
+      const session = await fetchMyActiveTimerSession();
+      if (cancelled) return null;
+      publishSession(session);
+      return session;
+    };
+
+    const sendHeartbeat = async () => {
+      const payload = await heartbeatTimerSession().catch(() => null);
+      if (cancelled || !payload) {
+        if (!payload) publishSession(null);
+        return;
+      }
+
+      if (payload.autoStopped) {
+        publishSession(null);
+        void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+        return;
+      }
+
+      publishSession(payload);
+
+      await handleTimerHeartbeatSideEffects(payload, {
+        onAutoPaused: (session) => {
+          publishSession(session);
+          void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+        },
+        onAutoStopped: () => {
+          publishSession(null);
+          void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+        },
+      });
     };
 
     const tick = async () => {
-      await refreshSessionState();
-      if (sessionRunningRef.current) sendHeartbeat();
+      const session = await refreshSessionState();
+      if (session?.segmentStartedAt) {
+        await sendHeartbeat();
+      }
     };
 
     void tick();
@@ -80,12 +87,18 @@ export function useGlobalTimerHeartbeat(enabled: boolean): void {
       if (document.visibilityState !== "visible") return;
       void tick();
     };
+    const onFocus = () => {
+      void tick();
+    };
+
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
     };
   }, [enabled, qc]);
 }

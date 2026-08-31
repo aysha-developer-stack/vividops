@@ -86,4 +86,4 @@ export async function heartbeatTimerSession(): Promise<
   return parseJson<ActiveTimerSession & { autoPaused?: boolean; autoStopped?: boolean; duration?: number }>(res);
 }
 
-export const TIMER_HEARTBEAT_INTERVAL_MS = 60_000;
+export const TIMER_HEARTBEAT_INTERVAL_MS = 30_000;

@@ -89,3 +89,28 @@ export async function syncJobTimerFromServer(jobId: string): Promise<JobTimerLoc
 export function elapsedFromServerSession(session: ActiveTimerSession): number {
   return liveSessionElapsedSeconds(session);
 }
+
+export const TIMER_SESSION_SYNC_EVENT = "jms:timer-session-sync";
+
+export function dispatchTimerSessionSync(session: ActiveTimerSession | null): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(TIMER_SESSION_SYNC_EVENT, { detail: session }));
+}
+
+/** Apply server session to local state for a job; returns false if server paused/stopped this job. */
+export function applyServerTimerToJob(
+  jobId: string,
+  session: ActiveTimerSession | null,
+): { running: boolean; seconds: number; paused: boolean } {
+  if (!session || session.jobId !== jobId) {
+    clearJobTimerState(jobId);
+    return { running: false, seconds: 0, paused: false };
+  }
+  const synced = jobTimerStateFromServerSession(session);
+  writeJobTimerState(jobId, synced);
+  return {
+    running: !!synced.running,
+    seconds: computeJobTimerElapsed(synced),
+    paused: !synced.running && (synced.accumulated ?? 0) > 0,
+  };
+}

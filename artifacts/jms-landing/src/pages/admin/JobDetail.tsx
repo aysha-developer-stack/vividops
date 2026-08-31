@@ -66,6 +66,8 @@ import {
   clearOtherJobTimerLocalStates,
   syncJobTimerFromServer,
   jobTimerStateFromServerSession,
+  applyServerTimerToJob,
+  TIMER_SESSION_SYNC_EVENT,
 } from "@/lib/jobTimerLocalState";
 import {
   fetchActiveReviewCheckSessions,
@@ -879,6 +881,15 @@ export default function JobDetail({ role = "user", id }: Props) {
   const stopOtherRunningTimersAndSave = async () => {
     const currentJobId = job?.id;
 
+    const serverMine = await fetchMyActiveTimerSession();
+    if (serverMine?.segmentStartedAt && serverMine.jobId && serverMine.jobId !== currentJobId) {
+      try {
+        await stopTimerSession();
+      } catch {
+        // Server may already have switched sessions.
+      }
+    }
+
     const g = readGlobalTimerState();
     if (g?.running) {
       try {
@@ -1024,14 +1035,54 @@ export default function JobDetail({ role = "user", id }: Props) {
     };
   }, [canUseJobTimer, job?.id]);
 
+  const timerWasRunningRef = useRef(false);
+  useEffect(() => {
+    timerWasRunningRef.current = running;
+  }, [running]);
+
+  useEffect(() => {
+    if (!canUseJobTimer || !job?.id) return;
+
+    const notifyTimerPaused = () => {
+      if (!timerWasRunningRef.current) return;
+      void postTimerNotification(
+        "Timer paused",
+        `Your timer was paused for ${job?.number ?? "this job"}. Tap Start Work to keep tracking time.`,
+        job.id,
+      );
+    };
+
+    const onSync = (event: Event) => {
+      const session = (event as CustomEvent<ActiveTimerSession | null>).detail ?? null;
+      const applied = applyServerTimerToJob(job.id, session);
+      if (timerWasRunningRef.current && !applied.running) {
+        notifyTimerPaused();
+      }
+      setRunning(applied.running);
+      setSeconds(applied.seconds);
+      if (!applied.running) setShowActivityPing(false);
+    };
+
+    window.addEventListener(TIMER_SESSION_SYNC_EVENT, onSync);
+    return () => window.removeEventListener(TIMER_SESSION_SYNC_EVENT, onSync);
+  }, [canUseJobTimer, job?.id, job?.number]);
+
   useEffect(() => {
     if (!running || !canUseJobTimer || !job?.id) return;
     const syncPaused = (session: ActiveTimerSession | null) => {
+      const wasRunning = timerWasRunningRef.current;
       setRunning(false);
-      if (!session) return;
-      const synced = jobTimerStateFromServerSession(session);
-      writeTimerState(job.id, synced);
-      setSeconds(computeJobTimerElapsed(synced));
+      setShowActivityPing(false);
+      if (!session || !job?.id) return;
+      const applied = applyServerTimerToJob(job.id, session);
+      setSeconds(applied.seconds);
+      if (wasRunning) {
+        void postTimerNotification(
+          "Timer paused",
+          `Your timer was paused for ${job.number ?? "this job"}. Tap Start Work to keep tracking time.`,
+          job.id,
+        );
+      }
     };
     const runHeartbeat = () => {
       void heartbeatTimerSession()
@@ -1057,14 +1108,19 @@ export default function JobDetail({ role = "user", id }: Props) {
   useTimerHeartbeatOnVisible(running && canUseJobTimer, (payload) => {
     void handleTimerHeartbeatSideEffects(payload, {
       onAutoPaused: (session) => {
-        if (!job?.id) {
-          setRunning(false);
-          return;
-        }
-        const synced = jobTimerStateFromServerSession(session);
-        writeTimerState(job.id, synced);
+        const wasRunning = timerWasRunningRef.current;
         setRunning(false);
-        setSeconds(computeJobTimerElapsed(synced));
+        setShowActivityPing(false);
+        if (!job?.id) return;
+        const applied = applyServerTimerToJob(job.id, session);
+        setSeconds(applied.seconds);
+        if (wasRunning) {
+          void postTimerNotification(
+            "Timer paused",
+            `Your timer was paused for ${job.number ?? "this job"}. Tap Start Work to keep tracking time.`,
+            job.id,
+          );
+        }
       },
       onAutoStopped: () => {
         if (!job?.id) return;

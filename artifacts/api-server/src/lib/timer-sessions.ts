@@ -1,8 +1,8 @@
 import type { JobRow, UserRow, ActiveTimerSessionRow } from "@workspace/db";
 
 export const TIMER_HEARTBEAT_LIVE_MS = 5 * 60 * 1000;
-/** If no heartbeat within this window, treat the segment as paused (sleep / lid closed). */
-export const TIMER_HEARTBEAT_GAP_PAUSE_MS = 90_000;
+/** If no heartbeat within this window, treat the segment as paused (sleep / lid closed / throttled tab). */
+export const TIMER_HEARTBEAT_GAP_PAUSE_MS = 3 * 60 * 1000;
 
 export function timerSessionElapsedSeconds(
   session: Pick<ActiveTimerSessionRow, "accumulatedSeconds" | "segmentStartedAt">,

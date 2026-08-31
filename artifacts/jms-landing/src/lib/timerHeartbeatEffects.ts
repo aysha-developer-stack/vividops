@@ -3,7 +3,7 @@ import { heartbeatTimerSession, type ActiveTimerSession } from "./timerSessionAp
 
 /**
  * Timer keeps running when the user switches tabs or minimizes the browser.
- * Sleep / offline is handled server-side: if heartbeats stop for ~90s, the next
+ * Sleep / offline is handled server-side: if heartbeats stop for ~3 minutes, the next
  * heartbeat auto-pauses without counting the gap.
  *
  * When the user returns to this tab, send an immediate heartbeat so sleep is

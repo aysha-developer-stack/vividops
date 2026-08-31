@@ -75,7 +75,7 @@ async function stopSessionAndSaveLog(
   session: typeof activeTimerSessions.$inferSelect,
   actor: UserRow,
 ): Promise<number> {
-  return stopTimerSessionAndSaveLog(session, actor.id);
+  return stopTimerSessionAndSaveLog(session, actor.id, { useElapsed: true });
 }
 
 async function loadSessionForUser(userId: string) {

@@ -11,6 +11,7 @@ import {
 import { resolveReworkCycleForTimeLog } from "./time-log-cycles";
 import {
   timerSessionBillableSeconds,
+  timerSessionElapsedSeconds,
   TIMER_HEARTBEAT_GAP_PAUSE_MS,
 } from "./timer-sessions";
 import { logger } from "./logger";
@@ -63,12 +64,21 @@ function capDurationForClosedJob(
   return duration;
 }
 
+export type StopTimerSessionOptions = {
+  /** Explicit stop (user action, job switch, reassign) — save full segment time. */
+  useElapsed?: boolean;
+};
+
 /** Save elapsed time from a session to time_logs and remove the active session row. */
 export async function stopTimerSessionAndSaveLog(
   session: ActiveTimerSessionRow,
   workerUserId: string,
+  opts?: StopTimerSessionOptions,
 ): Promise<number> {
-  let rawDuration = timerSessionBillableSeconds(session);
+  const nowMs = Date.now();
+  let rawDuration = opts?.useElapsed
+    ? timerSessionElapsedSeconds(session, nowMs)
+    : timerSessionBillableSeconds(session, nowMs);
   if (session.jobId) {
     const [job] = await db
       .select({ status: jobs.status, completedAt: jobs.completedAt })
@@ -117,22 +127,14 @@ export async function stopAllActiveTimersOnJob(jobId: string): Promise<number> {
 
   let saved = 0;
   for (const session of sessions) {
-    saved += await stopTimerSessionAndSaveLog(session, session.userId);
+    saved += await stopTimerSessionAndSaveLog(session, session.userId, { useElapsed: true });
   }
   return saved;
 }
 
-/** Stop timers without writing a time log (e.g. admin assigned rework — worker starts fresh). */
+/** Stop every active timer on a job (alias — always persists elapsed time). */
 export async function clearAllActiveTimersOnJob(jobId: string): Promise<number> {
-  const sessions = await db
-    .select()
-    .from(activeTimerSessions)
-    .where(eq(activeTimerSessions.jobId, jobId));
-
-  for (const session of sessions) {
-    await db.delete(activeTimerSessions).where(eq(activeTimerSessions.id, session.id));
-  }
-  return sessions.length;
+  return stopAllActiveTimersOnJob(jobId);
 }
 
 /** Pause a running segment after sleep/offline — accumulate billable time only. */
@@ -180,5 +182,5 @@ export async function stopActiveTimerForUserOnJob(
     .where(and(eq(activeTimerSessions.userId, userId), eq(activeTimerSessions.jobId, jobId)))
     .limit(1);
   if (!session) return 0;
-  return stopTimerSessionAndSaveLog(session, userId);
+  return stopTimerSessionAndSaveLog(session, userId, { useElapsed: true });
 }
