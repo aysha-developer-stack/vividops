@@ -27,6 +27,14 @@ export function canOpenAttachmentPreview(fileName: string, fileType?: string | n
   return canPreviewAttachment(fileName, fileType);
 }
 
+/** Fixed-height pane — scroll happens inside iframe/video viewer only (avoids nested scroll jank). */
+const EMBEDDED_VIEWER_CLASS =
+  "h-[min(75vh,calc(92vh-10rem))] min-h-[320px] shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-gray-50";
+
+/** Scrollable pane for tall images — single scroll container with smooth overscroll. */
+const IMAGE_SCROLL_CLASS =
+  "max-h-[min(75vh,calc(92vh-10rem))] min-h-0 overflow-y-auto overscroll-contain rounded-xl border border-gray-100 bg-gray-50 [overflow-anchor:none] [-webkit-overflow-scrolling:touch]";
+
 export default function AttachmentPreviewDialog({
   open,
   onOpenChange,
@@ -36,17 +44,23 @@ export default function AttachmentPreviewDialog({
   onDownload,
 }: Props) {
   const ext = attachmentExtension(fileName);
+  const isImage = isPreviewableImageAttachment(fileName, fileType);
+  const isPdf = ext === "pdf" || fileType === "application/pdf";
+  const isText = ext === "txt" || (fileType || "").startsWith("text/");
+  const isVideo =
+    ["mp4", "mov", "webm", "m4v"].includes(ext) || (fileType || "").startsWith("video/");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl w-[95vw]">
-        <DialogHeader>
-          <DialogTitle>{fileName || "File preview"}</DialogTitle>
+      <DialogContent className="flex max-h-[92vh] w-[95vw] max-w-5xl flex-col gap-4 overflow-hidden p-6">
+        <DialogHeader className="shrink-0 pr-8">
+          <DialogTitle className="truncate">{fileName || "File preview"}</DialogTitle>
           <DialogDescription>Preview opens inside Vivid OPS. Use Download to save the file.</DialogDescription>
         </DialogHeader>
-        <div className="max-h-[75vh] overflow-auto rounded-xl border border-gray-100 bg-gray-50">
-          {isPreviewableImageAttachment(fileName, fileType) ? (
-            isHeicAttachment(fileName, fileType) ? (
+
+        {isImage ? (
+          <div className={IMAGE_SCROLL_CLASS}>
+            {isHeicAttachment(fileName, fileType) ? (
               <PreviewableImage
                 src={previewUrl}
                 fileName={fileName}
@@ -62,21 +76,28 @@ export default function AttachmentPreviewDialog({
                 decoding="async"
                 fetchPriority="high"
               />
-            )
-          ) : ext === "pdf" || fileType === "application/pdf" ? (
-            <iframe src={previewUrl} title={fileName} className="w-full h-[75vh] bg-white" />
-          ) : ext === "txt" || (fileType || "").startsWith("text/") ? (
-            <iframe src={previewUrl} title={fileName} className="w-full h-[75vh] bg-white" />
-          ) : ["mp4", "mov", "webm", "m4v"].includes(ext) || (fileType || "").startsWith("video/") ? (
-            <video src={previewUrl} controls className="w-full max-h-[75vh] bg-black mx-auto block" />
-          ) : (
-            <div className="p-8 text-center text-sm text-gray-500">
-              Preview is not available for this file type.
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        ) : isPdf || isText ? (
+          <div className={EMBEDDED_VIEWER_CLASS}>
+            <iframe
+              src={previewUrl}
+              title={fileName}
+              className="h-full w-full border-0 bg-white"
+            />
+          </div>
+        ) : isVideo ? (
+          <div className={`${EMBEDDED_VIEWER_CLASS} flex items-center justify-center bg-black`}>
+            <video src={previewUrl} controls className="max-h-full max-w-full" />
+          </div>
+        ) : (
+          <div className="rounded-xl border border-gray-100 bg-gray-50 p-8 text-center text-sm text-gray-500">
+            Preview is not available for this file type.
+          </div>
+        )}
+
         {onDownload && (
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <button
               type="button"
               className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"

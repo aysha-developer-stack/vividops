@@ -46,10 +46,10 @@ export default function PreviewableImage({
   }
 
   return (
-    <div className={`relative ${compact ? "" : "min-h-[120px]"}`}>
+    <div className={`relative ${compact ? "" : ""}`}>
       {!loaded && (
         <div
-          className={`absolute inset-0 flex items-center justify-center bg-gray-50/80 ${compact ? "" : "min-h-[200px]"}`}
+          className={`pointer-events-none absolute inset-0 z-[1] flex items-center justify-center bg-gray-50/80 transition-opacity duration-200 ${compact ? "" : "min-h-[120px]"}`}
         >
           <Loader2 size={compact ? 14 : 16} className="animate-spin text-gray-400" />
         </div>
