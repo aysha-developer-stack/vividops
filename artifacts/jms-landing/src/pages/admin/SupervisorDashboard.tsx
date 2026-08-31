@@ -10,11 +10,24 @@ import Pagination, { usePagination } from "@/components/Pagination";
 import JobAddressLine from "@/components/JobAddressLine";
 import { useGetDashboardSupervisor } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/auth";
+import { statusToUi, type UiStatus } from "@/lib/jobMappers";
 
 const PRIORITY_COLOR: Record<string, string> = {
   High: "bg-red-50 text-red-700 border-red-200",
   Medium: "bg-amber-50 text-amber-700 border-amber-200",
   Low: "bg-emerald-50 text-emerald-700 border-emerald-200",
+};
+
+const STATUS_BADGE: Record<UiStatus, string> = {
+  "Not Started": "bg-amber-50 text-amber-700 border-amber-200",
+  "In Progress": "bg-primary/10 text-primary border-primary/20",
+  "Awaiting Supervisor": "bg-sky-50 text-sky-700 border-sky-200",
+  "Awaiting Admin": "bg-indigo-50 text-indigo-700 border-indigo-200",
+  "Awaiting Super Admin": "bg-violet-50 text-violet-700 border-violet-200",
+  Done: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  "On Hold": "bg-orange-50 text-orange-700 border-orange-200",
+  Overdue: "bg-red-50 text-red-700 border-red-200",
+  Rework: "bg-purple-50 text-purple-700 border-purple-200",
 };
 
 export default function SupervisorDashboard() {
@@ -41,7 +54,8 @@ export default function SupervisorDashboard() {
     address: j.address,
     due: j.dueDate ? new Date(j.dueDate).toLocaleDateString() : "No date",
     priority: j.priority.charAt(0).toUpperCase() + j.priority.slice(1),
-    progress: j.progress
+    progress: j.progress,
+    status: statusToUi(j),
   })), [dashboard?.activeJobs]);
 
   const team = useMemo(() => dashboard?.team ?? [], [dashboard?.team]);
@@ -51,7 +65,7 @@ export default function SupervisorDashboard() {
     return Math.round(team.reduce((sum: number, member: any) => sum + (member.efficiency ?? 0), 0) / team.length);
   }, [team]);
 
-  const assignedP = usePagination(assignedJobs, 5);
+  const assignedP = usePagination(assignedJobs, 10);
   const teamP = usePagination(team, 5);
   const overdueP = usePagination(overdue, 4);
 
@@ -71,7 +85,7 @@ export default function SupervisorDashboard() {
         <div className="relative z-10 flex items-start justify-between flex-wrap gap-4">
           <div>
             <h2 className="text-2xl md:text-3xl font-bold text-white">Hey {currentUser?.name?.split(" ")[0] ?? "Supervisor"}, ready to lead today? 💪</h2>
-            <p className="text-sm text-gray-400 mt-1">You have {stats.activeJobs ?? 0} active jobs and a team of {stats.teamSize ?? 0} reporting to you.</p>
+            <p className="text-sm text-gray-400 mt-1">You have {stats.activeJobs ?? 0} in-progress jobs and a team of {stats.teamSize ?? 0} reporting to you.</p>
           </div>
           <Link href="/supervisor/jobs">
             <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-primary/30">
@@ -84,7 +98,7 @@ export default function SupervisorDashboard() {
       {/* Stats */}
       <div className="grid grid-cols-2 xl:grid-cols-6 gap-4 mb-6">
         {[
-          { label: "Active Jobs", value: stats.activeJobs ?? 0, icon: Briefcase, color: "from-primary to-sky-700", bg: "bg-primary/10", text: "text-primary" },
+          { label: "In Progress Jobs", value: stats.activeJobs ?? 0, icon: Briefcase, color: "from-primary to-sky-700", bg: "bg-primary/10", text: "text-primary" },
           { label: "Team Members", value: stats.teamSize ?? 0, icon: Users, color: "from-emerald-500 to-emerald-700", bg: "bg-emerald-50", text: "text-emerald-600" },
           { label: "Due Today", value: stats.dueToday ?? 0, icon: Clock, color: "from-purple-500 to-purple-700", bg: "bg-purple-50", text: "text-purple-600" },
           { label: "Overdue Jobs", value: stats.overdueJobs ?? 0, icon: AlertCircle, color: "from-red-500 to-rose-700", bg: "bg-red-50", text: "text-red-600" },
@@ -132,8 +146,8 @@ export default function SupervisorDashboard() {
         >
           <div className="p-5 border-b border-gray-100 flex items-center justify-between">
             <div>
-              <h3 className="font-bold text-gray-900">My Active Jobs</h3>
-              <p className="text-xs text-gray-500 mt-0.5">Jobs assigned to your team</p>
+              <h3 className="font-bold text-gray-900">In Progress Jobs</h3>
+              <p className="text-xs text-gray-500 mt-0.5">All ongoing jobs — in progress, rework, awaiting review, on hold</p>
             </div>
             <Link href="/supervisor/jobs"><span className="text-xs text-primary font-semibold hover:underline cursor-pointer">View all</span></Link>
           </div>
@@ -148,8 +162,9 @@ export default function SupervisorDashboard() {
               >
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className="font-semibold text-sm text-gray-900">{j.title}</span>
+                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${STATUS_BADGE[j.status]}`}>{j.status}</span>
                       <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${PRIORITY_COLOR[j.priority]}`}>{j.priority}</span>
                     </div>
                     <div className="text-xs text-gray-500">{j.number} · {j.client}</div>
