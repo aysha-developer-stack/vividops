@@ -33,6 +33,25 @@ export function timerSessionBillableSeconds(
   return base + Math.max(0, Math.floor((effectiveEndMs - segMs) / 1000));
 }
 
+export type TimerSaveDurationOptions = {
+  /** Explicit stop (user action, job switch, reassign) — save full segment time. */
+  useElapsed?: boolean;
+};
+
+/** Pure duration math for saves — covered by regression tests. */
+export function resolveTimerSaveDuration(
+  session: Pick<
+    ActiveTimerSessionRow,
+    "accumulatedSeconds" | "segmentStartedAt" | "lastHeartbeatAt"
+  >,
+  nowMs = Date.now(),
+  opts?: TimerSaveDurationOptions,
+): number {
+  return opts?.useElapsed
+    ? timerSessionElapsedSeconds(session, nowMs)
+    : timerSessionBillableSeconds(session, nowMs);
+}
+
 export function isTimerSessionLive(
   session: Pick<ActiveTimerSessionRow, "segmentStartedAt" | "lastHeartbeatAt">,
   nowMs = Date.now(),
@@ -41,6 +60,17 @@ export function isTimerSessionLive(
   const hbMs = session.lastHeartbeatAt?.getTime?.() ?? new Date(session.lastHeartbeatAt as any).getTime();
   if (!Number.isFinite(hbMs)) return false;
   return nowMs - hbMs <= TIMER_HEARTBEAT_LIVE_MS;
+}
+
+/** True when a running segment missed heartbeats beyond the grace window. */
+export function isTimerSessionStale(
+  session: Pick<ActiveTimerSessionRow, "segmentStartedAt" | "lastHeartbeatAt">,
+  nowMs = Date.now(),
+): boolean {
+  if (!session.segmentStartedAt) return false;
+  const hbMs = session.lastHeartbeatAt?.getTime?.() ?? new Date(session.lastHeartbeatAt as Date).getTime();
+  if (!Number.isFinite(hbMs)) return false;
+  return nowMs - hbMs > TIMER_HEARTBEAT_GAP_PAUSE_MS;
 }
 
 export type PublicTimerSession = {
@@ -54,7 +84,11 @@ export type PublicTimerSession = {
   segmentStartedAt: string | null;
   lastHeartbeatAt: string;
   elapsedSeconds: number;
+  /** Seconds that would be saved if the timer stopped now (heartbeat-capped while running). */
+  billableSeconds: number;
   isLive: boolean;
+  /** Server auto-paused or stale — client must not show a running timer. */
+  trackingPaused: boolean;
 };
 
 export function publicTimerSession(
@@ -62,6 +96,8 @@ export function publicTimerSession(
   job?: Pick<JobRow, "jobNumber" | "title"> | null,
   nowMs = Date.now(),
 ): PublicTimerSession {
+  const stale = isTimerSessionStale(session, nowMs);
+  const trackingPaused = !session.segmentStartedAt || stale;
   return {
     id: session.id,
     userId: session.userId,
@@ -73,7 +109,9 @@ export function publicTimerSession(
     segmentStartedAt: session.segmentStartedAt?.toISOString() ?? null,
     lastHeartbeatAt: session.lastHeartbeatAt.toISOString(),
     elapsedSeconds: timerSessionElapsedSeconds(session, nowMs),
-    isLive: isTimerSessionLive(session, nowMs),
+    billableSeconds: timerSessionBillableSeconds(session, nowMs),
+    isLive: isTimerSessionLive(session, nowMs) && !stale,
+    trackingPaused,
   };
 }
 

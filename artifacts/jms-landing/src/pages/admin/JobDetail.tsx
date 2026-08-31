@@ -58,16 +58,14 @@ import {
   type ActiveTimerSession,
 } from "@/lib/timerSessionApi";
 import { handleTimerHeartbeatSideEffects, useTimerHeartbeatOnVisible } from "@/lib/timerHeartbeatEffects";
+import { useServerAuthoritativeTimer } from "@/lib/useServerAuthoritativeTimer";
 import {
   readJobTimerState,
   writeJobTimerState,
   clearJobTimerState,
   computeJobTimerElapsed,
   clearOtherJobTimerLocalStates,
-  syncJobTimerFromServer,
   jobTimerStateFromServerSession,
-  applyServerTimerToJob,
-  TIMER_SESSION_SYNC_EVENT,
 } from "@/lib/jobTimerLocalState";
 import {
   fetchActiveReviewCheckSessions,
@@ -406,6 +404,14 @@ export default function JobDetail({ role = "user", id }: Props) {
     }
     return false;
   }, [role, job?.id, job?.status, job?.supervisor?.id, job?.assignee?.id, currentUser?.id]);
+  const {
+    running,
+    setRunning,
+    seconds,
+    setSeconds,
+    task: serverTimerTask,
+    refresh: refreshServerTimer,
+  } = useServerAuthoritativeTimer({ jobId: job?.id, enabled: canUseJobTimer });
   const checklistWorkerUserId = useMemo(() => {
     if (role === "user") return null;
     if (canUseJobTimer && role === "supervisor") return currentUser?.id ?? null;
@@ -502,8 +508,6 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [messages, setMessages] = useState(INITIAL_MESSAGES);
   const [cliqChannel, setCliqChannel] = useState<JobCliqChannelApi | null>(null);
   const [draft, setDraft] = useState("");
-  const [running, setRunning] = useState(false);
-  const [seconds, setSeconds] = useState(0);
   const [reworkOpen, setReworkOpen] = useState(false);
   const [editingRework, setEditingRework] = useState<JobReworkApi | null>(null);
   const [reworkTargetItem, setReworkTargetItem] = useState<ChecklistItem | null>(null);
@@ -557,7 +561,6 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [reviewCheckSavedSeconds, setReviewCheckSavedSeconds] = useState(0);
   const [reviewCheckTick, setReviewCheckTick] = useState(0);
   const taskDialogResolverRef = useRef<((task: string | null) => void) | null>(null);
-  const intervalRef = useRef<number | null>(null);
   const pingTimerRef = useRef<number | null>(null);
   const autoStopRef = useRef<number | null>(null);
   const uploadChecklistIdRef = useRef<number | null>(null);
@@ -851,8 +854,6 @@ export default function JobDetail({ role = "user", id }: Props) {
   const writeTimerState = (jid: string, state: { running: boolean; startedAt: number | null; accumulated: number; task?: string }) => {
     writeJobTimerState(jid, { ...state, task: state.task ?? "" });
   };
-  const computeElapsed = computeJobTimerElapsed;
-
   const readGlobalTimerState = () => {
     try {
       const raw = localStorage.getItem("global_timer_v1");
@@ -926,12 +927,9 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   const pauseTimer = () => {
     if (!job?.id) return;
-    const state = readTimerState(job.id) ?? { running: false, startedAt: null, accumulated: 0, task: "" };
-    const elapsed = computeElapsed(state);
-    writeTimerState(job.id, { running: false, startedAt: null, accumulated: elapsed, task: state?.task ?? "" });
-    setRunning(false);
-    setSeconds(elapsed);
-    void pauseTimerSession().catch(() => {});
+    void pauseTimerSession()
+      .then(() => refreshServerTimer())
+      .catch(() => {});
   };
 
   const startTimer = async () => {
@@ -939,10 +937,7 @@ export default function JobDetail({ role = "user", id }: Props) {
 
     const serverMine = await fetchMyActiveTimerSession();
     if (serverMine?.jobId === job.id && serverMine.segmentStartedAt) {
-      const synced = jobTimerStateFromServerSession(serverMine);
-      writeTimerState(job.id, synced);
-      setRunning(true);
-      setSeconds(computeJobTimerElapsed(synced));
+      await refreshServerTimer();
       return;
     }
 
@@ -958,10 +953,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     });
     if (!session) return;
 
-    const synced = jobTimerStateFromServerSession(session);
-    writeTimerState(job.id, synced);
-    setRunning(synced.running);
-    setSeconds(computeJobTimerElapsed(synced));
+    await refreshServerTimer();
     await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
     await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
     await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
@@ -978,7 +970,6 @@ export default function JobDetail({ role = "user", id }: Props) {
       job.status === "awaiting_super_admin";
     if (!autoStop) return;
 
-    setRunning(false);
     setShowActivityPing(false);
     void (async () => {
       try {
@@ -987,53 +978,19 @@ export default function JobDetail({ role = "user", id }: Props) {
         // Server may have already stopped the session on status change.
       }
       clearJobTimerState(job.id);
-      setSeconds(0);
+      await refreshServerTimer();
       await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
     })();
-  }, [job?.id, job?.status, qc]);
+  }, [job?.id, job?.status, qc, refreshServerTimer]);
 
-  // When admin/supervisor assigns rework, server clears active timers — resync so local UI does not keep counting.
+  // When admin/supervisor assigns rework, server clears active timers — resync from server.
   useEffect(() => {
     if (!canUseJobTimer || !job?.id || job.status !== "rework") return;
-    let cancelled = false;
-    void (async () => {
-      const synced = await syncJobTimerFromServer(job.id);
-      if (cancelled) return;
-      setRunning(!!synced?.running);
-      setSeconds(computeJobTimerElapsed(synced));
-      if (!synced?.running) {
-        setShowActivityPing(false);
-      }
-      await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [canUseJobTimer, job?.id, job?.status, qc]);
-
-  useEffect(() => {
-    if (!canUseJobTimer) return;
-    if (!job?.id) return;
-
-    let cancelled = false;
-    const resync = async () => {
-      const synced = await syncJobTimerFromServer(job.id);
-      if (cancelled) return;
-      setSeconds(computeJobTimerElapsed(synced));
-      setRunning(!!synced?.running);
-    };
-
-    void resync();
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void resync();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-
-    return () => {
-      cancelled = true;
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [canUseJobTimer, job?.id]);
+    void refreshServerTimer().then(() => {
+      setShowActivityPing(false);
+      void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+    });
+  }, [canUseJobTimer, job?.id, job?.status, qc, refreshServerTimer]);
 
   const timerWasRunningRef = useRef(false);
   useEffect(() => {
@@ -1041,42 +998,12 @@ export default function JobDetail({ role = "user", id }: Props) {
   }, [running]);
 
   useEffect(() => {
-    if (!canUseJobTimer || !job?.id) return;
-
-    const notifyTimerPaused = () => {
-      if (!timerWasRunningRef.current) return;
-      void postTimerNotification(
-        "Timer paused",
-        `Your timer was paused for ${job?.number ?? "this job"}. Tap Start Work to keep tracking time.`,
-        job.id,
-      );
-    };
-
-    const onSync = (event: Event) => {
-      const session = (event as CustomEvent<ActiveTimerSession | null>).detail ?? null;
-      const applied = applyServerTimerToJob(job.id, session);
-      if (timerWasRunningRef.current && !applied.running) {
-        notifyTimerPaused();
-      }
-      setRunning(applied.running);
-      setSeconds(applied.seconds);
-      if (!applied.running) setShowActivityPing(false);
-    };
-
-    window.addEventListener(TIMER_SESSION_SYNC_EVENT, onSync);
-    return () => window.removeEventListener(TIMER_SESSION_SYNC_EVENT, onSync);
-  }, [canUseJobTimer, job?.id, job?.number]);
-
-  useEffect(() => {
     if (!running || !canUseJobTimer || !job?.id) return;
     const syncPaused = (session: ActiveTimerSession | null) => {
       const wasRunning = timerWasRunningRef.current;
-      setRunning(false);
       setShowActivityPing(false);
-      if (!session || !job?.id) return;
-      const applied = applyServerTimerToJob(job.id, session);
-      setSeconds(applied.seconds);
-      if (wasRunning) {
+      void refreshServerTimer();
+      if (wasRunning && job?.id) {
         void postTimerNotification(
           "Timer paused",
           `Your timer was paused for ${job.number ?? "this job"}. Tap Start Work to keep tracking time.`,
@@ -1091,9 +1018,9 @@ export default function JobDetail({ role = "user", id }: Props) {
           return handleTimerHeartbeatSideEffects(payload, {
             onAutoPaused: syncPaused,
             onAutoStopped: () => {
-              setRunning(false);
-              clearJobTimerState(job.id);
-              setSeconds(0);
+              setShowActivityPing(false);
+              if (job?.id) clearJobTimerState(job.id);
+              void refreshServerTimer();
               void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
             },
           });
@@ -1103,18 +1030,15 @@ export default function JobDetail({ role = "user", id }: Props) {
     const id = window.setInterval(runHeartbeat, TIMER_HEARTBEAT_INTERVAL_MS);
     runHeartbeat();
     return () => window.clearInterval(id);
-  }, [running, canUseJobTimer, job?.id, qc]);
+  }, [running, canUseJobTimer, job?.id, qc, refreshServerTimer]);
 
   useTimerHeartbeatOnVisible(running && canUseJobTimer, (payload) => {
     void handleTimerHeartbeatSideEffects(payload, {
-      onAutoPaused: (session) => {
+      onAutoPaused: () => {
         const wasRunning = timerWasRunningRef.current;
-        setRunning(false);
         setShowActivityPing(false);
-        if (!job?.id) return;
-        const applied = applyServerTimerToJob(job.id, session);
-        setSeconds(applied.seconds);
-        if (wasRunning) {
+        void refreshServerTimer();
+        if (wasRunning && job?.id) {
           void postTimerNotification(
             "Timer paused",
             `Your timer was paused for ${job.number ?? "this job"}. Tap Start Work to keep tracking time.`,
@@ -1124,9 +1048,9 @@ export default function JobDetail({ role = "user", id }: Props) {
       },
       onAutoStopped: () => {
         if (!job?.id) return;
-        setRunning(false);
+        setShowActivityPing(false);
         clearJobTimerState(job.id);
-        setSeconds(0);
+        void refreshServerTimer();
         void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
       },
     });
@@ -1322,20 +1246,6 @@ export default function JobDetail({ role = "user", id }: Props) {
     return () => { if (autoStopRef.current) clearInterval(autoStopRef.current); };
   }, [showActivityPing, seconds]);
 
-  useEffect(() => {
-    if (!running) {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      intervalRef.current = null;
-      return;
-    }
-    intervalRef.current = window.setInterval(() => {
-      if (!job?.id) return;
-      const state = readTimerState(job.id);
-      setSeconds(computeElapsed(state));
-    }, 1000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [running, job?.id]);
-
   const completedCount = checklist.filter((c) => c.status === "completed").length;
   const checklistProgress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
 
@@ -1511,7 +1421,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   }, [reworks]);
 
   const displaySeconds = totalLoggedSeconds + seconds;
-  const activeTimerTask = job?.id ? (readTimerState(job.id)?.task?.trim() ?? "") : "";
+  const activeTimerTask = serverTimerTask.trim();
 
   const timeLogUserNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -2028,8 +1938,6 @@ export default function JobDetail({ role = "user", id }: Props) {
   const stopAndSaveTimeLog = async (_task: string) => {
     if (!job?.id) return;
 
-    setRunning(false);
-    setSeconds(0);
     setShowActivityPing(false);
 
     try {
@@ -2038,6 +1946,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       // Server may have already stopped the session on status change.
     }
     clearJobTimerState(job.id);
+    await refreshServerTimer();
     await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
   };
 

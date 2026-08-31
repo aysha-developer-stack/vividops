@@ -9,7 +9,9 @@ export type ActiveTimerSession = {
   segmentStartedAt: string | null;
   lastHeartbeatAt: string;
   elapsedSeconds: number;
+  billableSeconds?: number;
   isLive: boolean;
+  trackingPaused?: boolean;
 };
 
 export function liveSessionElapsedSeconds(

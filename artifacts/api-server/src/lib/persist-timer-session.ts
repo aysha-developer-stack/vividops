@@ -12,6 +12,8 @@ import { resolveReworkCycleForTimeLog } from "./time-log-cycles";
 import {
   timerSessionBillableSeconds,
   timerSessionElapsedSeconds,
+  resolveTimerSaveDuration,
+  isTimerSessionStale,
   TIMER_HEARTBEAT_GAP_PAUSE_MS,
 } from "./timer-sessions";
 import { logger } from "./logger";
@@ -69,6 +71,25 @@ export type StopTimerSessionOptions = {
   useElapsed?: boolean;
 };
 
+/** Auto-pause a running segment when heartbeats were missed (called on read paths). */
+export async function reconcileStaleRunningTimerSession(
+  session: ActiveTimerSessionRow,
+): Promise<ActiveTimerSessionRow> {
+  if (!session.segmentStartedAt) return session;
+  const nowMs = Date.now();
+  if (!isTimerSessionStale(session, nowMs)) return session;
+  logger.warn(
+    {
+      sessionId: session.id,
+      jobId: session.jobId,
+      userId: session.userId,
+      gapMs: nowMs - session.lastHeartbeatAt.getTime(),
+    },
+    "Reconciling stale timer session on read — auto-pausing",
+  );
+  return pauseTimerSessionAfterGap(session);
+}
+
 /** Save elapsed time from a session to time_logs and remove the active session row. */
 export async function stopTimerSessionAndSaveLog(
   session: ActiveTimerSessionRow,
@@ -76,9 +97,22 @@ export async function stopTimerSessionAndSaveLog(
   opts?: StopTimerSessionOptions,
 ): Promise<number> {
   const nowMs = Date.now();
-  let rawDuration = opts?.useElapsed
-    ? timerSessionElapsedSeconds(session, nowMs)
-    : timerSessionBillableSeconds(session, nowMs);
+  let rawDuration = resolveTimerSaveDuration(session, nowMs, opts);
+  const elapsed = timerSessionElapsedSeconds(session, nowMs);
+  const billable = timerSessionBillableSeconds(session, nowMs);
+  if (!opts?.useElapsed && elapsed - billable > 120) {
+    logger.warn(
+      {
+        sessionId: session.id,
+        jobId: session.jobId,
+        userId: workerUserId,
+        elapsed,
+        billable,
+        deltaSeconds: elapsed - billable,
+      },
+      "Timer save using billable cap — large gap vs elapsed (possible missed heartbeats)",
+    );
+  }
   if (session.jobId) {
     const [job] = await db
       .select({ status: jobs.status, completedAt: jobs.completedAt })
