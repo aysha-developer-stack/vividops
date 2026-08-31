@@ -2912,7 +2912,10 @@ export default function JobDetail({ role = "user", id }: Props) {
                           <>
                             <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Checklist files (Word / PDF)</div>
                             {instructionFiles.length === 0 ? (
-                              <p className="text-[11px] text-gray-400 mb-3">No checklist/instruction file for this task.</p>
+                              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
+                                Admin instruction file is missing. Worker uploads below do not count as the template.
+                                Drop the checklist Word/PDF here, or open Edit Job and use Upload instruction file on this task.
+                              </p>
                             ) : (
                               <div className="space-y-2 mb-4">{instructionFiles.map(renderFileRow)}</div>
                             )}

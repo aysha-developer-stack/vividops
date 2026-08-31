@@ -43,6 +43,16 @@ import {
   appendChecklistFileToMap,
   resolveChecklistUploadTarget,
 } from "@/lib/checklistTemplateUpload";
+import {
+  findMissingChecklistInstructions,
+  mapChecklistInstructionsFromRows,
+  parseJobAttachmentRow,
+  type ChecklistInstructionOnServer,
+} from "@/lib/checklistInstructionFiles";
+import {
+  ChecklistTemplateList,
+  queueChecklistInstructionFile,
+} from "@/components/ChecklistTemplateList";
 import JobListSortControl from "@/components/JobListSortControl";
 import {
   type JobListSortMode,
@@ -389,6 +399,9 @@ export default function JobManagement(
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [checklistTemplate, setChecklistTemplate] = useState<ChecklistTemplateItem[]>([]);
   const [checklistItemFiles, setChecklistItemFiles] = useState<Record<number, File[]>>({});
+  const [checklistInstructionsOnServer, setChecklistInstructionsOnServer] = useState<
+    Record<number, ChecklistInstructionOnServer>
+  >({});
   const [checkPendingFile, setCheckPendingFile] = useState<File | null>(null);
   const [savedTemplates, setSavedTemplates] = useState<Array<{ id: string; name: string; items: ChecklistTemplateItem[] }>>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -498,6 +511,7 @@ export default function JobManagement(
       }
 
       let attachments: ExistingAttachment[] = [];
+      const attachmentRows = [];
       try {
         const attRes = await fetch(`/api/jobs/${j.id}/attachments`, { credentials: "include" });
         if (attRes.ok) {
@@ -505,6 +519,8 @@ export default function JobManagement(
           if (Array.isArray(attData)) {
             for (const a of attData) {
               if (!a || typeof a !== "object") continue;
+              const row = parseJobAttachmentRow(a as Record<string, unknown>);
+              if (row) attachmentRows.push(row);
               const parsed = parseExistingJobAttachment(a as Record<string, unknown>);
               if (parsed) attachments.push(parsed);
             }
@@ -517,6 +533,8 @@ export default function JobManagement(
       const applied = applyJobToForm(job, extras, role, currentUser?.id);
       setForm(applied.form);
       setChecklistTemplate(applied.checklist);
+      setChecklistInstructionsOnServer(mapChecklistInstructionsFromRows(attachmentRows));
+      setChecklistItemFiles({});
       setMemberIds(applied.memberIds);
       setExistingAttachments(attachments);
     } finally {
@@ -782,6 +800,21 @@ export default function JobManagement(
       return;
     }
 
+    if (editingId !== null) {
+      const missingInstructions = findMissingChecklistInstructions({
+        templateLength: finalChecklist.length,
+        getTaskLabel: (index) => finalChecklist[index]?.text ?? `Task ${index + 1}`,
+        instructionsOnServer: checklistInstructionsOnServer,
+        pendingFiles: finalChecklistFiles,
+      });
+      if (missingInstructions.length > 0) {
+        setError(
+          `Upload the admin instruction file for: ${missingInstructions.join(", ")}. Task names alone are not enough — use Upload instruction file on each checklist row.`,
+        );
+        return;
+      }
+    }
+
     const primaryAssigneeId =
       form.assigneeId && workerIds.has(form.assigneeId)
         ? form.assigneeId
@@ -880,6 +913,7 @@ export default function JobManagement(
       setMemberIds([]);
       setChecklistTemplate([]);
       setChecklistItemFiles({});
+      setChecklistInstructionsOnServer({});
       setCheckPendingFile(null);
       setUploadingFiles(false);
       setUploadFileProgress(null);
@@ -895,6 +929,7 @@ export default function JobManagement(
     setEditingId(null);
     setChecklistTemplate([]);
     setChecklistItemFiles({});
+    setChecklistInstructionsOnServer({});
     setCheckPendingFile(null);
     setJobFiles([]);
     setExistingAttachments([]);
@@ -1689,35 +1724,26 @@ export default function JobManagement(
 
                   <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                     <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                      <div className="text-xs font-bold text-gray-900">Attached checklist files</div>
+                      <div>
+                        <div className="text-xs font-bold text-gray-900">Checklist tasks</div>
+                        <div className="text-[10px] text-gray-500 mt-0.5">
+                          Each task needs an admin instruction file on the server
+                        </div>
+                      </div>
                       <div className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary">
                         {checklistTemplate.length}
                       </div>
                     </div>
-                    {checklistTemplate.length === 0 ? (
-                      <div className="px-4 py-8 text-center text-xs text-gray-400">No checklist files attached yet</div>
-                    ) : (
-                      <div className="divide-y divide-gray-50 max-h-[280px] overflow-y-auto">
-                        {checklistTemplate.map((it, idx) => (
-                          <div key={`${idx}-${it.text}`} className="px-4 py-3 flex items-start gap-3">
-                            <div className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-[11px] font-bold shrink-0">{idx + 1}</div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold text-gray-900 truncate">{it.text}</div>
-                              {it.desc && <div className="text-[11px] text-gray-500 mt-0.5">{it.desc}</div>}
-                              <div className="mt-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Worker upload required</div>
-                              {(checklistItemFiles[idx] ?? []).map((f) => (
-                                <div key={f.name} className="mt-1 text-[11px] text-primary font-medium break-words whitespace-normal leading-snug flex items-start gap-1">
-                                  <FileExtensionIcon fileName={f.name} size="sm" /> {f.name}
-                                </div>
-                              ))}
-                            </div>
-                            <button onClick={() => removeChecklistItem(idx)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <ChecklistTemplateList
+                      items={checklistTemplate}
+                      instructionsOnServer={checklistInstructionsOnServer}
+                      pendingFiles={checklistItemFiles}
+                      onRemove={removeChecklistItem}
+                      onQueueFile={(index, file) => {
+                        setChecklistItemFiles((prev) => queueChecklistInstructionFile(prev, index, file));
+                        setError(null);
+                      }}
+                    />
                   </div>
                 </div>
 
