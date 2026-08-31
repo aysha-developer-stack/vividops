@@ -277,6 +277,109 @@ async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   return !!row;
 }
 
+function canManageJob(actor: UserRow, job: JobRow): boolean {
+  if (actor.role === "super-admin" || actor.role === "admin") return true;
+  if (actor.role === "supervisor") return job.supervisorId === actor.id;
+  return false;
+}
+
+router.post("/jobs/:jobId/attachments/:attachmentId/link-checklist", requireAuth, async (req, res) => {
+  try {
+    await ensureAttachmentsSchema();
+    await ensureChecklistAttachmentsSchema();
+    const jobId = Array.isArray(req.params.jobId) ? req.params.jobId[0] : req.params.jobId;
+    const attachmentId = Array.isArray(req.params.attachmentId)
+      ? req.params.attachmentId[0]
+      : req.params.attachmentId;
+    const itemId = Number((req.body as { itemId?: unknown })?.itemId);
+    const actor = req.session!.user;
+
+    if (!Number.isFinite(itemId) || itemId <= 0) {
+      res.status(400).json({ message: "itemId is required" });
+      return;
+    }
+
+    const [jobRow] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    if (!jobRow) {
+      res.status(404).json({ message: "Job not found" });
+      return;
+    }
+    if (!canManageJob(actor, jobRow)) {
+      res.status(403).json({ message: "Forbidden" });
+      return;
+    }
+
+    const [attachment] = await db
+      .select({
+        attachment: jobAttachments,
+        uploadedBy: { role: users.role },
+        checklistItemId: jobChecklistAttachments.itemId,
+      })
+      .from(jobAttachments)
+      .leftJoin(users, eq(users.id, jobAttachments.uploadedById))
+      .leftJoin(jobChecklistAttachments, eq(jobChecklistAttachments.attachmentId, jobAttachments.id))
+      .where(and(eq(jobAttachments.id, attachmentId), eq(jobAttachments.jobId, jobId)))
+      .limit(1);
+    if (!attachment) {
+      res.status(404).json({ message: "Attachment not found" });
+      return;
+    }
+
+    const fileCategory = attachment.attachment.fileCategory;
+    const uploaderRole = attachment.uploadedBy?.role ?? null;
+    const isCompleted =
+      fileCategory === "completed" ||
+      (!fileCategory && uploaderRole === "user");
+    if (isCompleted || fileCategory === "rework" || fileCategory === "review") {
+      res.status(400).json({
+        message: "Completed or rework files cannot be used as checklist instruction files.",
+      });
+      return;
+    }
+
+    if (attachment.checklistItemId != null && attachment.checklistItemId === itemId) {
+      res.json({ ok: true, itemId, attachmentId });
+      return;
+    }
+
+    await db
+      .delete(jobChecklistAttachments)
+      .where(eq(jobChecklistAttachments.attachmentId, attachmentId));
+
+    const linkUserId = jobRow.assigneeId ?? actor.id;
+    await db.insert(jobChecklistAttachments).values({
+      id: randomUUID(),
+      jobId,
+      userId: linkUserId,
+      itemId,
+      attachmentId,
+    });
+
+    if (fileCategory !== "job") {
+      await db
+        .update(jobAttachments)
+        .set({ fileCategory: "job", reworkId: null })
+        .where(eq(jobAttachments.id, attachmentId));
+    }
+
+    io.to(`job:${jobId}`).emit("attachment:added", {
+      jobId,
+      attachmentId,
+      linkedChecklistItemId: itemId,
+      uploadedBy: actor.name,
+    });
+
+    res.json({ ok: true, itemId, attachmentId });
+    return;
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : typeof err === "string" ? err : "Internal server error";
+    logger.error({ err, message }, "Failed to link attachment to checklist");
+    res.status(500).json({ message });
+    return;
+  }
+});
+
 router.get("/jobs/:jobId/attachments", requireAuth, async (req, res) => {
   try {
     await ensureAttachmentsSchema();

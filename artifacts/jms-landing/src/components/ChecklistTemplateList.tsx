@@ -1,6 +1,6 @@
 import { Trash2, Upload } from "lucide-react";
 import type { ChecklistTemplateItem } from "@/lib/jobMeta";
-import type { ChecklistInstructionOnServer } from "@/lib/checklistInstructionFiles";
+import type { ChecklistInstructionOnServer, LinkableChecklistFile } from "@/lib/checklistInstructionFiles";
 import { isChecklistDocFile } from "@/lib/collectDroppedFiles";
 import { CHECKLIST_FILE_ACCEPT } from "@/lib/uploadFileTypes";
 import { appendChecklistFileToMap } from "@/lib/checklistTemplateUpload";
@@ -8,17 +8,23 @@ import { appendChecklistFileToMap } from "@/lib/checklistTemplateUpload";
 type Props = {
   items: ChecklistTemplateItem[];
   instructionsOnServer: Record<number, ChecklistInstructionOnServer>;
+  linkableFilesByItem: Record<number, LinkableChecklistFile[]>;
   pendingFiles: Record<number, File[]>;
   onRemove: (index: number) => void;
   onQueueFile: (index: number, file: File) => void;
+  onLinkExisting?: (index: number, attachmentId: string) => void | Promise<void>;
+  linkingItemId?: number | null;
 };
 
 export function ChecklistTemplateList({
   items,
   instructionsOnServer,
+  linkableFilesByItem,
   pendingFiles,
   onRemove,
   onQueueFile,
+  onLinkExisting,
+  linkingItemId = null,
 }: Props) {
   if (items.length === 0) {
     return (
@@ -32,6 +38,7 @@ export function ChecklistTemplateList({
         const itemId = idx + 1;
         const onServer = instructionsOnServer[itemId];
         const queued = pendingFiles[idx] ?? [];
+        const linkable = linkableFilesByItem[itemId] ?? [];
         const inputId = `checklist-instruction-upload-${idx}`;
         return (
           <div key={`${idx}-${it.text}`} className="px-4 py-3 flex items-start gap-3">
@@ -56,8 +63,25 @@ export function ChecklistTemplateList({
                   ))}
                 </div>
               ) : (
-                <div className="mt-1.5 text-[11px] text-amber-700 font-medium">
-                  Missing instruction file — upload Word/PDF below
+                <div className="mt-1.5 space-y-1">
+                  <div className="text-[11px] text-amber-700 font-medium">
+                    Missing instruction link — this task name exists but the file is not linked yet.
+                  </div>
+                  {linkable.length > 0 && onLinkExisting && (
+                    <div className="space-y-1">
+                      {linkable.map((file) => (
+                        <button
+                          key={file.id}
+                          type="button"
+                          disabled={linkingItemId === itemId}
+                          onClick={() => void onLinkExisting(idx, file.id)}
+                          className="block text-left w-full text-[11px] font-semibold text-primary hover:text-primary/80 disabled:opacity-50"
+                        >
+                          Use existing job file: {file.fileName}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               {!onServer && (

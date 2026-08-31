@@ -47,10 +47,13 @@ import {
   resolveChecklistUploadTarget,
 } from "@/lib/checklistTemplateUpload";
 import {
+  autoLinkChecklistInstructionsFromJobFiles,
+  findLinkableChecklistFilesByItem,
   findMissingChecklistInstructions,
-  mapChecklistInstructionsFromRows,
-  parseJobAttachmentRow,
+  linkAttachmentAsChecklistInstruction,
+  parseJobAttachmentRows,
   type ChecklistInstructionOnServer,
+  type JobAttachmentRow,
 } from "@/lib/checklistInstructionFiles";
 import {
   ChecklistTemplateList,
@@ -93,6 +96,8 @@ export default function JobFormModal({
   const [checklistInstructionsOnServer, setChecklistInstructionsOnServer] = useState<
     Record<number, ChecklistInstructionOnServer>
   >({});
+  const [attachmentRows, setAttachmentRows] = useState<JobAttachmentRow[]>([]);
+  const [linkingChecklistItemId, setLinkingChecklistItemId] = useState<number | null>(null);
   const [checkPendingFile, setCheckPendingFile] = useState<File | null>(null);
   const [savedTemplates, setSavedTemplates] = useState<Array<{ id: string; name: string; items: ChecklistTemplateItem[] }>>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -135,6 +140,8 @@ export default function JobFormModal({
     setChecklistTemplate([]);
     setChecklistItemFiles({});
     setChecklistInstructionsOnServer({});
+    setAttachmentRows([]);
+    setLinkingChecklistItemId(null);
     setCheckPendingFile(null);
     setUploadingFiles(false);
     setUploadFileProgress(null);
@@ -172,6 +179,47 @@ export default function JobFormModal({
         queryFn: () => listAssignableUsers(),
       }),
     [qc],
+  );
+
+  const linkableFilesByItem = useMemo(
+    () => findLinkableChecklistFilesByItem(attachmentRows, checklistTemplate),
+    [attachmentRows, checklistTemplate],
+  );
+
+  const refreshJobAttachments = useCallback(async (id: string) => {
+    const attRes = await fetch(`/api/jobs/${id}/attachments`, { credentials: "include" });
+    if (!attRes.ok) return;
+    const attData = (await attRes.json()) as unknown;
+    const rows = parseJobAttachmentRows(attData);
+    setAttachmentRows(rows);
+    setChecklistInstructionsOnServer(mapChecklistInstructionsFromRows(rows));
+    const attachments: ExistingJobAttachment[] = [];
+    if (Array.isArray(attData)) {
+      for (const a of attData) {
+        if (!a || typeof a !== "object") continue;
+        const parsed = parseExistingJobAttachment(a as Record<string, unknown>);
+        if (parsed) attachments.push(parsed);
+      }
+    }
+    setExistingAttachments(attachments);
+  }, []);
+
+  const linkExistingChecklistFile = useCallback(
+    async (index: number, attachmentId: string) => {
+      if (!jobId) return;
+      const itemId = index + 1;
+      setLinkingChecklistItemId(itemId);
+      setError(null);
+      try {
+        await linkAttachmentAsChecklistInstruction(jobId, attachmentId, itemId);
+        await refreshJobAttachments(jobId);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to link checklist file");
+      } finally {
+        setLinkingChecklistItemId(null);
+      }
+    },
+    [jobId, refreshJobAttachments],
   );
 
   const loadJobForEdit = useCallback(async (id: string) => {
@@ -212,16 +260,15 @@ export default function JobFormModal({
       }
 
       let attachments: ExistingJobAttachment[] = [];
-      const attachmentRows = [];
+      let rows: JobAttachmentRow[] = [];
       try {
         const attRes = await fetch(`/api/jobs/${id}/attachments`, { credentials: "include" });
         if (attRes.ok) {
           const attData = (await attRes.json()) as unknown;
+          rows = parseJobAttachmentRows(attData);
           if (Array.isArray(attData)) {
             for (const a of attData) {
               if (!a || typeof a !== "object") continue;
-              const row = parseJobAttachmentRow(a as Record<string, unknown>);
-              if (row) attachmentRows.push(row);
               const parsed = parseExistingJobAttachment(a as Record<string, unknown>);
               if (parsed) attachments.push(parsed);
             }
@@ -234,8 +281,20 @@ export default function JobFormModal({
       const applied = applyJobToForm(job, extras, role, currentUser?.id);
       setForm(applied.form);
       setChecklistTemplate(applied.checklist);
-      setChecklistInstructionsOnServer(mapChecklistInstructionsFromRows(attachmentRows));
       setChecklistItemFiles({});
+      setAttachmentRows(rows);
+      try {
+        const linked = await autoLinkChecklistInstructionsFromJobFiles(id, rows, applied.checklist);
+        setChecklistInstructionsOnServer(linked);
+        if (Object.keys(linked).length > Object.keys(mapChecklistInstructionsFromRows(rows)).length) {
+          await refreshJobAttachments(id);
+        } else {
+          setExistingAttachments(attachments);
+        }
+      } catch {
+        setChecklistInstructionsOnServer(mapChecklistInstructionsFromRows(rows));
+        setExistingAttachments(attachments);
+      }
       setMemberIds(applied.memberIds);
       setExistingAttachments(attachments);
     } catch {
@@ -243,7 +302,7 @@ export default function JobFormModal({
     } finally {
       setLoading(false);
     }
-  }, [role, currentUser?.id, refetchAssignables]);
+  }, [role, currentUser?.id, refetchAssignables, refreshJobAttachments]);
 
   const loadCreateDefaults = useCallback(async () => {
     setLoading(true);
@@ -918,12 +977,15 @@ export default function JobFormModal({
                   <ChecklistTemplateList
                     items={checklistTemplate}
                     instructionsOnServer={checklistInstructionsOnServer}
+                    linkableFilesByItem={linkableFilesByItem}
                     pendingFiles={checklistItemFiles}
+                    linkingItemId={linkingChecklistItemId}
                     onRemove={removeChecklistItem}
                     onQueueFile={(index, file) => {
                       setChecklistItemFiles((prev) => queueChecklistInstructionFile(prev, index, file));
                       setError(null);
                     }}
+                    onLinkExisting={isEdit ? linkExistingChecklistFile : undefined}
                   />
                 </div>
               </div>
