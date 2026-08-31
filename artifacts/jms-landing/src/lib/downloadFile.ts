@@ -22,6 +22,11 @@ export function jobAttachmentPreviewUrl(jobId: string, attachmentId: string): st
   return `/api/jobs/${jobId}/attachments/${attachmentId}/view?disposition=inline`;
 }
 
+/** Same-origin proxy URL — required for fetch()-based previews (e.g. HEIC conversion). */
+export function jobAttachmentPreviewProxyUrl(jobId: string, attachmentId: string): string {
+  return `/api/jobs/${jobId}/attachments/${attachmentId}/view?disposition=inline&proxy=1`;
+}
+
 export function sanitizeDownloadBaseName(raw: string, fallback = "download"): string {
   const cleaned = raw.replace(/[/\\?%*:|"<>]/g, "_").replace(/\s+/g, " ").trim().slice(0, 120);
   return cleaned || fallback;

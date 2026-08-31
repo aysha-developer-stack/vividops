@@ -179,3 +179,14 @@ export async function storageObjectExists(storageKey: string): Promise<boolean> 
   if (error) return false;
   return (data ?? []).some((item) => item.name === name);
 }
+
+/** Download object bytes from Supabase (for same-origin proxy streaming). */
+export async function downloadStorageBuffer(storageKey: string): Promise<Buffer> {
+  const bucketName = getBucketName();
+  const { data, error } = await supabase.storage.from(bucketName).download(storageKey);
+  if (error || !data) {
+    const raw = typeof error?.message === "string" ? error.message : "Failed to download file from storage";
+    throw new Error(raw);
+  }
+  return Buffer.from(await data.arrayBuffer());
+}

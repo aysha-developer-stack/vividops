@@ -64,6 +64,13 @@ export function canPreviewAttachment(fileName: string, fileType?: string | null)
   );
 }
 
+/** Append same-origin proxy param so fetch() can read bytes (redirects to CDN break CORS). */
+export function attachmentPreviewProxyUrl(url: string): string {
+  const sep = url.includes("?") ? "&" : "?";
+  if (/[?&]proxy=1(?:&|$)/.test(url)) return url;
+  return `${url}${sep}proxy=1`;
+}
+
 /** Convert HEIC/HEIF to a JPEG object URL for browser preview; passthrough for other images. */
 export async function resolveImagePreviewSrc(
   url: string,
@@ -74,7 +81,13 @@ export async function resolveImagePreviewSrc(
     return { src: url, revoke: false };
   }
 
-  const res = await fetch(url, { credentials: "include" });
+  const fetchUrl = attachmentPreviewProxyUrl(url);
+  let res: Response;
+  try {
+    res = await fetch(fetchUrl, { credentials: "include" });
+  } catch {
+    throw new Error("Failed to load image for preview");
+  }
   if (!res.ok) {
     throw new Error("Failed to load image for preview");
   }

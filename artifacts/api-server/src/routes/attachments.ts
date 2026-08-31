@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq, desc, inArray, sql as dsql } from "drizzle-orm";
 import { createZipArchive, type ArchiverError } from "../lib/attachment-zip";
-import { upload, uploadToSupabase, supabase, buildStorageObjectKey, createDirectUploadUrl, getPublicUrlForKey, storageObjectExists, createSignedDownloadUrl } from "../lib/storage";
+import { upload, uploadToSupabase, supabase, buildStorageObjectKey, createDirectUploadUrl, getPublicUrlForKey, storageObjectExists, createSignedDownloadUrl, downloadStorageBuffer } from "../lib/storage";
 import { validateUploadFileName } from "../lib/upload-file-types";
 import {
   buildJobAttachmentFolder,
@@ -594,6 +594,26 @@ router.get("/jobs/:jobId/attachments/:attachmentId/view", requireAuth, async (re
     }
 
     const rawName = (attachment.fileName || "file").split(/[/\\]/).pop() || "file";
+    const proxy = req.query.proxy === "1" || req.query.proxy === "true";
+
+    if (proxy) {
+      const buffer = await downloadStorageBuffer(attachment.fileKey);
+      const contentType =
+        attachment.fileType?.trim() ||
+        (rawName.toLowerCase().endsWith(".heic") || rawName.toLowerCase().endsWith(".heif")
+          ? "image/heic"
+          : "application/octet-stream");
+      const encodedName = encodeURIComponent(rawName).replace(/['()]/g, escape);
+      res.setHeader("Content-Type", contentType);
+      res.setHeader(
+        "Content-Disposition",
+        `${disposition}; filename="${rawName.replace(/[\r\n"]+/g, "_")}"; filename*=UTF-8''${encodedName}`,
+      );
+      res.setHeader("Cache-Control", "private, no-store");
+      res.send(buffer);
+      return;
+    }
+
     const signedUrl = await createSignedDownloadUrl(attachment.fileKey, {
       fileName: rawName,
       inline: disposition === "inline",
