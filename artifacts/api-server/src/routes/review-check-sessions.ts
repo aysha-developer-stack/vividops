@@ -42,9 +42,14 @@ async function loadSessionForSupervisor(supervisorId: string) {
 }
 
 function canStartReviewCheck(actor: UserRow, job: JobRow): boolean {
-  if (job.status !== "awaiting_supervisor") return false;
-  if (actor.role === "supervisor") return job.supervisorId === actor.id;
-  if (actor.role === "admin" || actor.role === "super-admin") return true;
+  if (job.status === "awaiting_supervisor") {
+    if (actor.role === "supervisor") return job.supervisorId === actor.id;
+    if (actor.role === "admin" || actor.role === "super-admin") return true;
+    return false;
+  }
+  if (job.status === "awaiting_admin" && !job.supervisorId) {
+    return actor.role === "admin" || actor.role === "super-admin";
+  }
   return false;
 }
 

@@ -747,7 +747,8 @@ export default function JobDetail({ role = "user", id }: Props) {
   };
 
   const canShowReviewCheck =
-    job?.status === "awaiting_supervisor" &&
+    (job?.status === "awaiting_supervisor" ||
+      (job?.status === "awaiting_admin" && !job.supervisor?.id)) &&
     ((role === "supervisor" && job.supervisor?.id === currentUser?.id) ||
       role === "admin" ||
       role === "super-admin");
@@ -1354,6 +1355,9 @@ export default function JobDetail({ role = "user", id }: Props) {
     hasJobLevelCompletedFiles &&
     allChecklistItemsHaveCompletedUploads;
   const hasJobSupervisor = !!job?.supervisor?.id;
+  const adminBypassesSupervisorReview =
+    !hasJobSupervisor &&
+    (job?.status === "awaiting_supervisor" || job?.status === "in_progress");
 
   const submitJobForReview = async (comment: string, photos: File[]) => {
     if (!job?.id) return;
@@ -2132,9 +2136,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <CheckCircle2 size={12} /> Approve for Admin
                   </motion.button>
                 )}
-                {(role === "admin" || role === "super-admin") &&
-                  job?.status === "awaiting_supervisor" &&
-                  !job?.supervisor?.id && (
+                {(role === "admin" || role === "super-admin") && adminBypassesSupervisorReview && (
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}

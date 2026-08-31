@@ -44,6 +44,7 @@ import {
 } from "../lib/schema-init";
 import {
   applyJobReview,
+  assertWorkerChecklistReady,
   coerceCompletionStatus,
   jobStatusPatchFields,
   notifyStatusTransition,
@@ -2301,10 +2302,16 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   if (
     body.supervisorId !== undefined &&
     !body.supervisorId &&
-    full.job.status === "awaiting_supervisor" &&
     nextStatus === undefined
   ) {
-    nextStatus = "awaiting_admin";
+    if (full.job.status === "awaiting_supervisor") {
+      nextStatus = "awaiting_admin";
+    } else if (full.job.status === "in_progress" && full.job.assigneeId) {
+      const checklistReady = await assertWorkerChecklistReady(full.job, full.job.assigneeId);
+      if (!checklistReady) {
+        nextStatus = "awaiting_admin";
+      }
+    }
   }
 
   const patch: Record<string, unknown> = { updatedAt: new Date() };
