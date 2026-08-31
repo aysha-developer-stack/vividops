@@ -2302,6 +2302,11 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
         return res.status(403).json({ error: "Only admin or super-admin can put a completed job on hold" });
       }
     }
+    const holdReason =
+      typeof body.holdReason === "string" ? body.holdReason.trim() : "";
+    if (!holdReason) {
+      return res.status(400).json({ error: "A reason is required when putting a job on hold" });
+    }
   }
   if (previousStatus === "on_hold" && nextStatus !== undefined && nextStatus !== "on_hold") {
     if (!isManager) {
@@ -2379,6 +2384,12 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   }
   if (body.comments !== undefined) {
     patch.comments = body.comments?.trim() ? body.comments.trim() : null;
+  }
+  if (body.holdReason !== undefined) {
+    patch.holdReason = body.holdReason?.trim() ? body.holdReason.trim() : null;
+  }
+  if (nextStatus === "on_hold" && typeof body.holdReason === "string") {
+    patch.holdReason = body.holdReason.trim();
   }
   if (body.progress !== undefined) patch.progress = body.progress;
 

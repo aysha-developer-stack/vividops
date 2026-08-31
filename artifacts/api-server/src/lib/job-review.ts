@@ -139,6 +139,7 @@ export function jobStatusPatchFields(opts: {
     checkedAt?: Date | null;
     progress?: number;
     heldFromStatus?: string | null;
+    holdReason?: string | null;
   } = {
     status: nextStatus,
     updatedAt: now,
@@ -202,6 +203,7 @@ export function jobStatusPatchFields(opts: {
 
   if (previousStatus === "on_hold") {
     patch.heldFromStatus = null;
+    patch.holdReason = null;
   }
 
   patch.completedAt = null;
@@ -621,12 +623,13 @@ export async function notifyStatusTransition(opts: {
   }
 
   if (nextStatus === "on_hold") {
+    const holdText = job.holdReason?.trim() ? ` Reason: ${job.holdReason.trim()}` : "";
     if (job.assigneeId) {
       await createNotification({
         userId: job.assigneeId,
         jobId: job.id,
         title: `Job On Hold: ${job.title}`,
-        description: `${actor.name} put ${job.title} on hold.`,
+        description: `${actor.name} put ${job.title} on hold.${holdText}`,
         type: "updated",
       });
     }
@@ -635,7 +638,7 @@ export async function notifyStatusTransition(opts: {
       supervisorId: job.supervisorId,
       actorId: actor.id,
       title: `Job On Hold: ${job.title}`,
-      description: `${actor.name} put ${job.title} on hold.`,
+      description: `${actor.name} put ${job.title} on hold.${holdText}`,
       type: "updated",
     });
   }

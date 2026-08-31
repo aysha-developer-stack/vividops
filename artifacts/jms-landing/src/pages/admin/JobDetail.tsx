@@ -90,6 +90,7 @@ import JobNotesTab from "@/components/JobNotesTab";
 import JobCompletionCommentsTab from "@/components/JobCompletionCommentsTab";
 import ReviewCompletionForm from "@/components/ReviewCompletionForm";
 import JobFormModal from "@/components/JobFormModal";
+import PutJobOnHoldDialog from "@/components/PutJobOnHoldDialog";
 import JobMistakesTab from "@/components/JobMistakesTab";
 import { submitJobReviewWithPhotos } from "@/lib/reviewPhotoUpload";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
@@ -520,6 +521,8 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [reworkOrigin, setReworkOrigin] = useState<ReworkOrigin | null>(null);
   const [reworkSubmitting, setReworkSubmitting] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [holdDialogOpen, setHoldDialogOpen] = useState(false);
+  const [holdSubmitting, setHoldSubmitting] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [reassignTo, setReassignTo] = useState("");
   const [reassignSaving, setReassignSaving] = useState(false);
@@ -1950,6 +1953,24 @@ export default function JobDetail({ role = "user", id }: Props) {
     await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
   };
 
+  const putJobOnHold = async (holdReason: string) => {
+    if (!job?.id) return;
+    setHoldSubmitting(true);
+    try {
+      await updateJobMutation.mutateAsync({
+        id: job.id,
+        data: { status: "on_hold" as any, holdReason },
+      });
+      await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+      await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      setHoldDialogOpen(false);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Failed to put job on hold");
+    } finally {
+      setHoldSubmitting(false);
+    }
+  };
+
   return (
     <DashboardLayout title="Job Details" role={role} headerSearch={tab === "files" ? filesHeaderSearch : undefined}>
       <input ref={inputPickerRef} type="file" multiple accept={JOB_FILE_ACCEPT} className="hidden" onChange={onPickerChange("input")} />
@@ -2048,19 +2069,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={async () => {
-                      if (!job?.id) return;
-                      try {
-                        await updateJobMutation.mutateAsync({
-                          id: job.id,
-                          data: { status: "on_hold" as any },
-                        });
-                        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
-                        await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-                      } catch (err) {
-                        alert(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Failed to put job on hold");
-                      }
-                    }}
+                    onClick={() => setHoldDialogOpen(true)}
                     className="flex items-center gap-2 px-3 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-xl text-xs font-semibold"
                   >
                     <Pause size={12} /> Put on Hold
@@ -2266,9 +2275,20 @@ export default function JobDetail({ role = "user", id }: Props) {
         )}
 
         {job?.status === "on_hold" && (
-          <div className="mt-4 flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
-            <Pause size={14} className="text-orange-600 shrink-0" />
-            <span>This job is <span className="font-semibold">on hold</span>. Work is paused until a supervisor, admin, or super admin resumes it to its previous status.</span>
+          <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+            <div className="flex items-start gap-2">
+              <Pause size={14} className="text-orange-600 shrink-0 mt-0.5" />
+              <div>
+                <p>
+                  This job is <span className="font-semibold">on hold</span>. Work is paused until a supervisor, admin, or super admin resumes it.
+                </p>
+                {job?.holdReason?.trim() ? (
+                  <p className="mt-1.5 text-orange-900">
+                    <span className="font-semibold">Reason:</span> {job.holdReason}
+                  </p>
+                ) : null}
+              </div>
+            </div>
           </div>
         )}
 
@@ -4513,6 +4533,13 @@ export default function JobDetail({ role = "user", id }: Props) {
           onToggleCollapsed={uploadProgress.toggleCollapsed}
         />
       )}
+      <PutJobOnHoldDialog
+        open={holdDialogOpen}
+        onOpenChange={setHoldDialogOpen}
+        jobLabel={job?.number ? `${job.number} · ${job.title}` : job?.title}
+        submitting={holdSubmitting}
+        onConfirm={putJobOnHold}
+      />
     </DashboardLayout>
   );
 }

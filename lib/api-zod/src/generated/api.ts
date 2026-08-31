@@ -406,6 +406,7 @@ export const ListJobsResponseItem = zod.object({
   incomingDate: zod.coerce.date().nullish(),
   remarks: zod.string().nullish(),
   comments: zod.string().nullish(),
+  holdReason: zod.string().nullish(),
   reviewStartedAt: zod.coerce.date().nullish(),
   checkedById: zod.string().uuid().nullish(),
   checkedByLabel: zod.string().nullish(),
@@ -501,6 +502,7 @@ export const GetJobResponse = zod.object({
   incomingDate: zod.coerce.date().nullish(),
   remarks: zod.string().nullish(),
   comments: zod.string().nullish(),
+  holdReason: zod.string().nullish(),
   reviewStartedAt: zod.coerce.date().nullish(),
   checkedById: zod.string().uuid().nullish(),
   checkedByLabel: zod.string().nullish(),
@@ -541,6 +543,7 @@ export const UpdateJobBody = zod.object({
   incomingDate: zod.coerce.date().nullish(),
   remarks: zod.string().nullish(),
   comments: zod.string().nullish(),
+  holdReason: zod.string().min(1).optional(),
   progress: zod
     .number()
     .min(updateJobBodyProgressMin)
@@ -602,6 +605,7 @@ export const UpdateJobResponse = zod.object({
   incomingDate: zod.coerce.date().nullish(),
   remarks: zod.string().nullish(),
   comments: zod.string().nullish(),
+  holdReason: zod.string().nullish(),
   reviewStartedAt: zod.coerce.date().nullish(),
   checkedById: zod.string().uuid().nullish(),
   checkedByLabel: zod.string().nullish(),

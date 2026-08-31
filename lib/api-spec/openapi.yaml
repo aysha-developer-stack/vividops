@@ -845,6 +845,9 @@ components:
           type: ["string", "null"]
         comments:
           type: ["string", "null"]
+        holdReason:
+          type: ["string", "null"]
+          description: Why the job was put on hold (shown while status is on_hold)
         reviewStartedAt:
           type: ["string", "null"]
           format: date-time
@@ -905,6 +908,10 @@ components:
         incomingDate: { type: ["string", "null"], format: date-time }
         remarks: { type: ["string", "null"] }
         comments: { type: ["string", "null"] }
+        holdReason:
+          type: string
+          minLength: 1
+          description: Required when setting status to on_hold
         progress: { type: integer, minimum: 0, maximum: 100 }
 
     DashboardStats:

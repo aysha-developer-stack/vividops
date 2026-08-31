@@ -279,6 +279,8 @@ export interface Job {
   /** @nullable */
   comments?: string | null;
   /** @nullable */
+  holdReason?: string | null;
+  /** @nullable */
   reviewStartedAt?: string | null;
   /** @nullable */
   checkedById?: string | null;
@@ -359,6 +361,8 @@ export interface JobUpdate {
   remarks?: string | null;
   /** @nullable */
   comments?: string | null;
+  /** Required when setting status to on_hold */
+  holdReason?: string;
   /**
    * @minimum 0
    * @maximum 100

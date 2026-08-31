@@ -37,6 +37,7 @@ export const jobs = pgTable(
     priority: jobPriorityEnum("priority").notNull().default("medium"),
     status: jobStatusEnum("status").notNull().default("pending"),
     heldFromStatus: text("held_from_status"),
+    holdReason: text("hold_reason"),
     assigneeId: uuid("assignee_id").references(() => users.id, {
       onDelete: "set null",
     }),

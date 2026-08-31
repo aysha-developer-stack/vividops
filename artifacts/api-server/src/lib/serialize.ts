@@ -109,6 +109,7 @@ export function publicJob(
     checkedById: job.checkedById ?? null,
     checkedByLabel: job.checkedByLabel ?? null,
     checkedAt: job.checkedAt ? job.checkedAt.toISOString() : null,
+    holdReason: job.holdReason ?? null,
     completedAt: job.completedAt ? job.completedAt.toISOString() : null,
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),

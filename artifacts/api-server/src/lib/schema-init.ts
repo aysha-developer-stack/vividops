@@ -111,6 +111,10 @@ export async function ensureJobWriteSchema() {
     `);
     await db.execute(sql`
       ALTER TABLE jobs
+      ADD COLUMN IF NOT EXISTS hold_reason text
+    `);
+    await db.execute(sql`
+      ALTER TABLE jobs
       ADD COLUMN IF NOT EXISTS estimated_time text
     `);
     await db.execute(sql`

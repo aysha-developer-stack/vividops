@@ -58,6 +58,7 @@ import {
   queueChecklistInstructionFile,
 } from "@/components/ChecklistTemplateList";
 import JobListSortControl from "@/components/JobListSortControl";
+import PutJobOnHoldDialog from "@/components/PutJobOnHoldDialog";
 import {
   type JobListSortMode,
   readStoredJobListSort,
@@ -98,6 +99,7 @@ interface UiJob {
   reviewStartedAt?: string | null;
   updatedAt: string;
   lastMessageAt?: string | null;
+  holdReason?: string | null;
 }
 
 function formatReviewTime(seconds: number) {
@@ -164,6 +166,7 @@ function mapJob(j: ApiJob): UiJob {
     reviewStartedAt: j.reviewStartedAt ?? null,
     updatedAt: j.updatedAt,
     lastMessageAt: (j as ApiJob & { lastMessageAt?: string | null }).lastMessageAt ?? null,
+    holdReason: j.holdReason ?? null,
   };
 }
 
@@ -394,6 +397,8 @@ export default function JobManagement(
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [reassignFor, setReassignFor] = useState<UiJob | null>(null);
+  const [holdJobTarget, setHoldJobTarget] = useState<UiJob | null>(null);
+  const [holdSubmitting, setHoldSubmitting] = useState(false);
   const [reassignTo, setReassignTo] = useState<string>("");
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [assigneeMenuOpen, setAssigneeMenuOpen] = useState(false);
@@ -789,16 +794,20 @@ export default function JobManagement(
     }
   };
 
-  const putOnHold = async (j: UiJob) => {
-    setOpenId(null);
+  const putJobOnHold = async (holdReason: string) => {
+    if (!holdJobTarget) return;
+    setHoldSubmitting(true);
     try {
       await updateMutation.mutateAsync({
-        id: j.id,
-        data: { status: "on_hold" as ApiJob["status"] },
+        id: holdJobTarget.id,
+        data: { status: "on_hold" as ApiJob["status"], holdReason },
       });
-      await invalidateJobs(j.id);
+      await invalidateJobs(holdJobTarget.id);
+      setHoldJobTarget(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to put job on hold");
+    } finally {
+      setHoldSubmitting(false);
     }
   };
 
@@ -1202,6 +1211,11 @@ export default function JobManagement(
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-lg border text-xs font-semibold ${sCfg.bg} ${sCfg.color}`}>
                             {j.status}
                           </span>
+                          {j.status === "On Hold" && j.holdReason?.trim() ? (
+                            <span className="text-[10px] text-orange-700 line-clamp-2 max-w-[180px]" title={j.holdReason}>
+                              {j.holdReason}
+                            </span>
+                          ) : null}
                           {j.status === "Awaiting Supervisor" && role !== "user" && (() => {
                             const session = liveReviewByJobId.get(j.id);
                             if (!session?.segmentStartedAt || !session.isLive) return null;
@@ -1295,7 +1309,7 @@ export default function JobManagement(
                                 {(role === "supervisor" || role === "admin" || role === "super-admin") &&
                                   j.status !== "On Hold" &&
                                   (j.status !== "Done" || role === "admin" || role === "super-admin") && (
-                                  <DropdownMenuItem className="cursor-pointer" onClick={() => putOnHold(j)}>
+                                  <DropdownMenuItem className="cursor-pointer" onClick={() => { setOpenId(null); setHoldJobTarget(j); }}>
                                     <Pause size={14} className="mr-2 text-orange-500" />
                                     Put on Hold
                                   </DropdownMenuItem>
@@ -1361,6 +1375,11 @@ export default function JobManagement(
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-lg border text-[10px] font-semibold ${sCfg.bg} ${sCfg.color}`}>
                             {j.status}
                           </span>
+                          {j.status === "On Hold" && j.holdReason?.trim() ? (
+                            <span className="text-[10px] text-orange-700 line-clamp-2 w-full" title={j.holdReason}>
+                              {j.holdReason}
+                            </span>
+                          ) : null}
                           <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${pCfg.color}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${pCfg.dot}`} />
                             {j.priority}
@@ -1467,7 +1486,7 @@ export default function JobManagement(
                                 {(role === "supervisor" || role === "admin" || role === "super-admin") &&
                                   j.status !== "On Hold" &&
                                   (j.status !== "Done" || role === "admin" || role === "super-admin") && (
-                                  <DropdownMenuItem className="cursor-pointer" onClick={() => putOnHold(j)}>
+                                  <DropdownMenuItem className="cursor-pointer" onClick={() => { setOpenId(null); setHoldJobTarget(j); }}>
                                     <Pause size={14} className="mr-2 text-orange-500" />
                                     Put on Hold
                                   </DropdownMenuItem>
@@ -1953,6 +1972,13 @@ export default function JobManagement(
           </div>
         )}
       </AnimatePresence>
+      <PutJobOnHoldDialog
+        open={!!holdJobTarget}
+        onOpenChange={(open) => { if (!open) setHoldJobTarget(null); }}
+        jobLabel={holdJobTarget ? `${holdJobTarget.number} · ${holdJobTarget.title}` : undefined}
+        submitting={holdSubmitting}
+        onConfirm={putJobOnHold}
+      />
     </DashboardLayout>
   );
 }
