@@ -42,6 +42,10 @@ import {
   type JobWithChecklist,
 } from "@/lib/jobForm";
 import { buildJobSaveUploadSpecs, uploadJobAttachmentsBatch } from "@/lib/uploadJobAttachmentsBatch";
+import {
+  appendChecklistFileToMap,
+  resolveChecklistUploadTarget,
+} from "@/lib/checklistTemplateUpload";
 
 type Props = {
   open: boolean;
@@ -318,8 +322,9 @@ export default function JobFormModal({
     const text = file.name.trim();
     if (!text) return;
     setChecklistTemplate((prev) => {
-      const nextIndex = prev.length;
-      setChecklistItemFiles((filesPrev) => ({ ...filesPrev, [nextIndex]: [file] }));
+      const { index, append } = resolveChecklistUploadTarget(prev, text);
+      setChecklistItemFiles((filesPrev) => appendChecklistFileToMap(filesPrev, index, file));
+      if (!append) return prev;
       return [...prev, { text, attachmentRequired: true }];
     });
     setCheckPendingFile(null);

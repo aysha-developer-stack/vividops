@@ -39,6 +39,10 @@ import DescriptionInput, { AddressUrlHint } from "@/components/DescriptionInput"
 import { CHECKLIST_FILE_ACCEPT, isChecklistDocFile, filterJobFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
 import { formatStoredFileSize, parseExistingJobAttachment, todayJobDateInput, type ExistingJobAttachment } from "@/lib/jobForm";
 import { buildJobSaveUploadSpecs, uploadJobAttachmentsBatch } from "@/lib/uploadJobAttachmentsBatch";
+import {
+  appendChecklistFileToMap,
+  resolveChecklistUploadTarget,
+} from "@/lib/checklistTemplateUpload";
 import JobListSortControl from "@/components/JobListSortControl";
 import {
   type JobListSortMode,
@@ -590,12 +594,10 @@ export default function JobManagement(
     const text = file.name.trim();
     if (!text) return;
     setChecklistTemplate((prev) => {
-      const nextIndex = prev.length;
-      setChecklistItemFiles((filesPrev) => ({ ...filesPrev, [nextIndex]: [file] }));
-      return [
-        ...prev,
-        { text, attachmentRequired: true },
-      ];
+      const { index, append } = resolveChecklistUploadTarget(prev, text);
+      setChecklistItemFiles((filesPrev) => appendChecklistFileToMap(filesPrev, index, file));
+      if (!append) return prev;
+      return [...prev, { text, attachmentRequired: true }];
     });
     setCheckPendingFile(null);
     setError(null);

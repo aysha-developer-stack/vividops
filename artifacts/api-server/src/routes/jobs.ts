@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { and, eq, or, desc, inArray, sql as dsql } from "drizzle-orm";
+import { and, eq, or, desc, inArray, sql as dsql, gt } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { db, jobs, users, jobMembers, jobAttachments, jobChecklistAttachments, jobReworks, type JobRow, type UserRow, sql } from "@workspace/db";
+import { db, jobs, users, jobMembers, jobAttachments, jobChecklistAttachments, jobChecklistState, jobReworks, type JobRow, type UserRow, sql } from "@workspace/db";
 import {
   createNotification,
   createNotificationOnce,
@@ -2364,8 +2364,19 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   const oldAssigneeId = full.job.assigneeId;
   const oldSupervisorId = full.job.supervisorId;
   const oldCoordinatorId = full.job.coordinatorId;
+  const checklistCountAfterSave =
+    body.description !== undefined
+      ? parseJobMeta(body.description).checklist.length
+      : null;
 
   await db.update(jobs).set(patch).where(eq(jobs.id, id));
+
+  if (checklistCountAfterSave != null && checklistCountAfterSave >= 0) {
+    await db
+      .delete(jobChecklistState)
+      .where(and(eq(jobChecklistState.jobId, id), gt(jobChecklistState.itemId, checklistCountAfterSave)));
+  }
+
   const after = await loadJob(id);
   if (after) {
     if (nextStatus !== undefined && nextStatus !== previousStatus) {
