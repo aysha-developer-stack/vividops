@@ -46,13 +46,13 @@ export default function PutJobOnHoldDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md bg-white text-gray-900 border-gray-200 [&>button]:text-gray-500 [&>button]:hover:text-gray-800">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 text-gray-900">
             <Pause size={18} className="text-orange-600" />
             Put job on hold
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-gray-600">
             {jobLabel
               ? `Pause work on ${jobLabel}. Workers cannot submit or update the checklist until the job is resumed.`
               : "Pause work on this job. Workers cannot submit or update the checklist until the job is resumed."}
@@ -71,7 +71,7 @@ export default function PutJobOnHoldDialog({
             }}
             rows={4}
             placeholder="e.g. Waiting for client documents, site access delayed, scope clarification needed…"
-            className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 resize-y min-h-[96px]"
+            className="mt-2 w-full rounded-xl border-2 border-gray-200 bg-white px-3 py-2.5 text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-300 resize-y min-h-[96px]"
             disabled={submitting}
           />
           {error ? <p className="mt-1.5 text-xs text-red-600 font-medium">{error}</p> : null}
