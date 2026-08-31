@@ -74,6 +74,7 @@ import {
   pauseReviewCheckSession,
   heartbeatReviewCheckSession,
   liveReviewCheckElapsedSeconds,
+  reviewCheckBannerSeconds,
   REVIEW_CHECK_HEARTBEAT_INTERVAL_MS,
   type ReviewCheckSession,
 } from "@/lib/reviewCheckSessionApi";
@@ -545,7 +546,8 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [taskDialogValue, setTaskDialogValue] = useState("");
   const [taskDialogError, setTaskDialogError] = useState<string | null>(null);
   const [reviewCheckSession, setReviewCheckSession] = useState<ReviewCheckSession | null>(null);
-  const [reviewCheckSavedSeconds, setReviewCheckSavedSeconds] = useState(0);
+  /** Saved review-check logs from past checks on this job — not shown in the live banner timer. */
+  const [reviewCheckTotalLoggedSeconds, setReviewCheckTotalLoggedSeconds] = useState(0);
   const [reviewCheckTick, setReviewCheckTick] = useState(0);
   const taskDialogResolverRef = useRef<((task: string | null) => void) | null>(null);
   const pingTimerRef = useRef<number | null>(null);
@@ -750,17 +752,19 @@ export default function JobDetail({ role = "user", id }: Props) {
     !!reviewCheckSession &&
     !!reviewCheckSession.segmentStartedAt &&
     reviewCheckSession.jobId === job?.id;
+  const reviewCheckPausedOnJob =
+    !!reviewCheckSession &&
+    !reviewCheckSession.segmentStartedAt &&
+    reviewCheckSession.jobId === job?.id &&
+    (reviewCheckSession.accumulatedSeconds ?? 0) > 0;
   const reviewCheckDisplaySeconds = useMemo(() => {
-    if (reviewCheckSession && reviewCheckSession.jobId === job?.id) {
-      return liveReviewCheckElapsedSeconds(reviewCheckSession);
-    }
-    return reviewCheckSavedSeconds;
-  }, [reviewCheckSession, job?.id, reviewCheckSavedSeconds, reviewCheckTick]);
+    return reviewCheckBannerSeconds(reviewCheckSession, job?.id);
+  }, [reviewCheckSession, job?.id, reviewCheckTick]);
 
   useEffect(() => {
     if (!canShowReviewCheck || !job?.id) {
       setReviewCheckSession(null);
-      setReviewCheckSavedSeconds(0);
+      setReviewCheckTotalLoggedSeconds(0);
       return;
     }
     let cancelled = false;
@@ -771,7 +775,7 @@ export default function JobDetail({ role = "user", id }: Props) {
           fetchActiveReviewCheckSessions(),
         ]);
         if (cancelled) return;
-        if (time) setReviewCheckSavedSeconds(time.totalSeconds);
+        if (time) setReviewCheckTotalLoggedSeconds(time.savedSeconds);
         const onThisJob = sessions.filter((s) => s.jobId === job.id);
         const mine =
           role === "supervisor"
@@ -816,7 +820,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
       await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
       const time = await fetchJobReviewCheckTime(job.id);
-      if (time) setReviewCheckSavedSeconds(time.totalSeconds);
+      if (time) setReviewCheckTotalLoggedSeconds(time.savedSeconds);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Failed to start checking");
     }
@@ -828,7 +832,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       if (session) setReviewCheckSession(session);
       if (job?.id) {
         const time = await fetchJobReviewCheckTime(job.id);
-        if (time) setReviewCheckSavedSeconds(time.totalSeconds);
+        if (time) setReviewCheckTotalLoggedSeconds(time.savedSeconds);
         await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
       }
     } catch (err) {
@@ -2363,7 +2367,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 <span className="text-xs font-bold uppercase tracking-wider text-white/80">
                   {reviewCheckRunning
                     ? "Checking in progress"
-                    : reviewCheckSavedSeconds > 0
+                    : reviewCheckPausedOnJob
                       ? "Review check paused"
                       : role === "supervisor"
                         ? "Ready to check this job"
@@ -2379,6 +2383,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                     ? "Admins are notified and can monitor this check live."
                     : "Start checking to track review time on this job."
                   : "Supervisor check time — live while reviewing."}
+                {reviewCheckTotalLoggedSeconds > 0
+                  ? ` · Total logged review time: ${formatTime(reviewCheckTotalLoggedSeconds)}`
+                  : ""}
                 {job?.reviewStartedAt && reviewCheckRunning
                   ? ` · Started ${new Date(job.reviewStartedAt).toLocaleString()}`
                   : ""}
@@ -2408,7 +2415,7 @@ export default function JobDetail({ role = "user", id }: Props) {
               )}
               <div className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white">
                 <Clock size={16} />
-                {reviewCheckRunning ? "Live" : reviewCheckSavedSeconds > 0 ? "Paused" : "Not started"}
+                {reviewCheckRunning ? "Live" : reviewCheckPausedOnJob ? "Paused" : "Not started"}
               </div>
             </div>
           </div>

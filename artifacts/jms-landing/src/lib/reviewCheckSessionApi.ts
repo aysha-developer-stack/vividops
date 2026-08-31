@@ -32,6 +32,16 @@ export function liveReviewCheckElapsedSeconds(
   return base + Math.max(0, Math.floor((nowMs - segMs) / 1000));
 }
 
+/** Banner timer: current open check session only — never include saved logs from past checks. */
+export function reviewCheckBannerSeconds(
+  session: Pick<ReviewCheckSession, "jobId" | "accumulatedSeconds" | "segmentStartedAt"> | null | undefined,
+  jobId: string | undefined,
+  nowMs = Date.now(),
+): number {
+  if (!jobId || !session?.jobId || session.jobId !== jobId) return 0;
+  return liveReviewCheckElapsedSeconds(session, nowMs);
+}
+
 async function parseJson<T>(res: Response): Promise<T | null> {
   if (!res.ok) return null;
   try {

@@ -190,9 +190,13 @@ router.post("/review-check-sessions/start", requireAuth, async (req, res) => {
       }
 
       if (existing.jobId === jobId && !existing.segmentStartedAt) {
+        if ((existing.accumulatedSeconds ?? 0) > 0) {
+          await flushReviewCheckSegment(existing);
+        }
         const [updated] = await db
           .update(activeReviewCheckSessions)
           .set({
+            accumulatedSeconds: 0,
             segmentStartedAt: now,
             lastHeartbeatAt: now,
             updatedAt: now,
