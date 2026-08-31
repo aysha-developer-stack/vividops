@@ -96,7 +96,7 @@ import { submitJobReviewWithPhotos } from "@/lib/reviewPhotoUpload";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { uploadJobAttachmentWithProgress } from "@/lib/uploadJobAttachmentWithProgress";
 import AttachmentPreviewDialog, { canOpenAttachmentPreview } from "@/components/AttachmentPreviewDialog";
-import { attachmentExtension } from "@/lib/attachmentPreview";
+import { attachmentExtension, prefetchImagePreview } from "@/lib/attachmentPreview";
 
 interface Props { role?: Role; id?: string }
 
@@ -1623,6 +1623,14 @@ export default function JobDetail({ role = "user", id }: Props) {
     }
     setPreviewAttachment(attachment);
   };
+  const warmAttachmentPreview = (attachment: Pick<AttachmentApi, "id" | "fileName" | "fileType">) => {
+    if (!job?.id) return;
+    prefetchImagePreview(
+      jobAttachmentPreviewUrl(job.id, attachment.id),
+      attachment.fileName,
+      attachment.fileType,
+    );
+  };
   const handleUpload = (tag: FileItem["tag"]) => {
     if (tag === "input") inputPickerRef.current?.click();
     else outputPickerRef.current?.click();
@@ -2650,6 +2658,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                                 <span className="text-[11px] font-medium text-gray-700 break-words whitespace-normal flex-1 min-w-0">{f.fileName}</span>
                                 <button
                                   type="button"
+                                  onMouseEnter={() => warmAttachmentPreview({ id: f.id, fileName: f.fileName, fileType: f.fileType })}
                                   onClick={() => openAttachmentPreview({
                                     id: f.id,
                                     jobId: job?.id ?? "",
@@ -2821,6 +2830,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                             </div>
                             <button
                               type="button"
+                              onMouseEnter={() => warmAttachmentPreview({ id: f.id, fileName: f.fileName, fileType: f.fileType })}
                               onClick={() => openAttachmentPreview({
                                 id: f.id,
                                 jobId: job?.id ?? "",
@@ -3275,7 +3285,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                             </td>
                             <td className="px-6 py-2.5 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                <button onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
+                                <button onMouseEnter={() => warmAttachmentPreview(a)} onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
                                 <button onClick={() => downloadAttachment(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
                                 {canDeleteAttachment(a) && (
                                   <button onClick={() => void deleteAttachment(a)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
@@ -3338,7 +3348,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                                 <td className="px-6 py-2.5 text-xs text-gray-600">{when}</td>
                                 <td className="px-6 py-2.5 text-right">
                                   <div className="flex items-center justify-end gap-2">
-                                    <button onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
+                                    <button onMouseEnter={() => warmAttachmentPreview(a)} onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
                                     <button onClick={() => downloadAttachment(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
                                     {canDeleteAttachment(a) && (
                                       <button onClick={() => void deleteAttachment(a)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
@@ -3403,7 +3413,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                             </td>
                             <td className="px-6 py-2.5 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                <button onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
+                                <button onMouseEnter={() => warmAttachmentPreview(a)} onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
                                 <button onClick={() => downloadAttachment(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
                                 {canDeleteAttachment(a) && (
                                   <button onClick={() => void deleteAttachment(a)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>

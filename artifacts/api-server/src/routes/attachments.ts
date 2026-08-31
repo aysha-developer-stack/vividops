@@ -2,7 +2,8 @@ import { Router, type IRouter } from "express";
 import { and, eq, desc, inArray, sql as dsql } from "drizzle-orm";
 import { createZipArchive, type ArchiverError } from "../lib/attachment-zip";
 import { upload, uploadToSupabase, supabase, buildStorageObjectKey, createDirectUploadUrl, getPublicUrlForKey, storageObjectExists, createSignedDownloadUrl, downloadStorageBuffer } from "../lib/storage";
-import { convertHeicBufferToJpeg, isHeicAttachment } from "../lib/heic-preview";
+import { isHeicAttachment } from "../lib/heic-preview";
+import { getHeicPreviewJpeg } from "../lib/heic-preview-cache";
 import { validateUploadFileName } from "../lib/upload-file-types";
 import {
   buildJobAttachmentFolder,
@@ -598,22 +599,21 @@ router.get("/jobs/:jobId/attachments/:attachmentId/view", requireAuth, async (re
     const proxy = req.query.proxy === "1" || req.query.proxy === "true";
 
     if (proxy) {
-      let buffer = await downloadStorageBuffer(attachment.fileKey);
-      let contentType =
-        attachment.fileType?.trim() ||
-        (isHeicAttachment(rawName, attachment.fileType)
-          ? "image/heic"
-          : "application/octet-stream");
+      let buffer: Buffer;
+      let contentType: string;
 
       if (isHeicAttachment(rawName, attachment.fileType)) {
         try {
-          buffer = await convertHeicBufferToJpeg(buffer);
+          buffer = await getHeicPreviewJpeg(attachmentId, attachment.fileKey);
           contentType = "image/jpeg";
         } catch (err) {
           logger.error({ err, attachmentId, jobId }, "Failed to convert HEIC for preview");
           res.status(422).json({ message: "Could not convert HEIC for preview" });
           return;
         }
+      } else {
+        buffer = await downloadStorageBuffer(attachment.fileKey);
+        contentType = attachment.fileType?.trim() || "application/octet-stream";
       }
 
       const encodedName = encodeURIComponent(rawName).replace(/['()]/g, escape);
@@ -622,7 +622,7 @@ router.get("/jobs/:jobId/attachments/:attachmentId/view", requireAuth, async (re
         "Content-Disposition",
         `${disposition}; filename="${rawName.replace(/[\r\n"]+/g, "_")}"; filename*=UTF-8''${encodedName}`,
       );
-      res.setHeader("Cache-Control", "private, no-store");
+      res.setHeader("Cache-Control", isHeicAttachment(rawName, attachment.fileType) ? "private, max-age=86400" : "private, max-age=3600");
       res.send(buffer);
       return;
     }

@@ -2,6 +2,7 @@ import PreviewableImage from "@/components/PreviewableImage";
 import {
   attachmentExtension,
   canPreviewAttachment,
+  isHeicAttachment,
   isPreviewableImageAttachment,
 } from "@/lib/attachmentPreview";
 import {
@@ -45,13 +46,23 @@ export default function AttachmentPreviewDialog({
         </DialogHeader>
         <div className="max-h-[75vh] overflow-auto rounded-xl border border-gray-100 bg-gray-50">
           {isPreviewableImageAttachment(fileName, fileType) ? (
-            <PreviewableImage
-              src={previewUrl}
-              fileName={fileName}
-              fileType={fileType}
-              alt={fileName}
-              className="max-w-full mx-auto block"
-            />
+            isHeicAttachment(fileName, fileType) ? (
+              <PreviewableImage
+                src={previewUrl}
+                fileName={fileName}
+                fileType={fileType}
+                alt={fileName}
+                className="max-w-full mx-auto block"
+              />
+            ) : (
+              <img
+                src={previewUrl}
+                alt={fileName}
+                className="max-w-full mx-auto block"
+                decoding="async"
+                fetchPriority="high"
+              />
+            )
           ) : ext === "pdf" || fileType === "application/pdf" ? (
             <iframe src={previewUrl} title={fileName} className="w-full h-[75vh] bg-white" />
           ) : ext === "txt" || (fileType || "").startsWith("text/") ? (

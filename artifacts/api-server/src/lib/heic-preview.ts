@@ -5,7 +5,13 @@ export function isHeicAttachment(fileName: string, fileType?: string | null): bo
   return mime === "image/heic" || mime === "image/heif";
 }
 
-export async function convertHeicBufferToJpeg(input: Buffer, quality = 0.92): Promise<Buffer> {
+/** JPEG quality for preview conversion — lower = smaller/faster (preview only). */
+const PREVIEW_JPEG_QUALITY = 0.82;
+
+export async function convertHeicBufferToJpeg(
+  input: Buffer,
+  quality = PREVIEW_JPEG_QUALITY,
+): Promise<Buffer> {
   const mod = await import("heic-convert");
   const convert = (mod as { default?: (opts: { buffer: Buffer; format: "JPEG"; quality: number }) => Promise<ArrayBuffer> }).default;
   if (!convert) {

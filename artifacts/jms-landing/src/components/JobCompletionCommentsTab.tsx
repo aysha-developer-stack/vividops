@@ -10,6 +10,7 @@ import {
 } from "@/lib/downloadFile";
 import AttachmentPreviewDialog from "@/components/AttachmentPreviewDialog";
 import PreviewableImage from "@/components/PreviewableImage";
+import { prefetchImagePreview } from "@/lib/attachmentPreview";
 
 type ReviewAttachment = {
   id: string;
@@ -192,6 +193,13 @@ export default function JobCompletionCommentsTab({ jobId, refreshKey = 0 }: Prop
                           <button
                             key={photo.id}
                             type="button"
+                            onMouseEnter={() =>
+                              prefetchImagePreview(
+                                jobAttachmentPreviewUrl(jobId, photo.id),
+                                photo.fileName,
+                                photo.fileType,
+                              )
+                            }
                             onClick={() => setPreviewPhoto(photo)}
                             className="block w-24 h-24 rounded-xl overflow-hidden border border-emerald-100 bg-white hover:ring-2 hover:ring-emerald-300 transition-all cursor-pointer"
                             title={photo.fileName}
@@ -202,6 +210,8 @@ export default function JobCompletionCommentsTab({ jobId, refreshKey = 0 }: Prop
                               fileType={photo.fileType}
                               alt={photo.fileName}
                               className="w-full h-full object-cover"
+                              lazy
+                              compact
                             />
                           </button>
                         ))}

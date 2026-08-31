@@ -10,6 +10,7 @@ import { useListJobs, type Job as ApiJob } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
 import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } from "@/lib/downloadFile";
 import AttachmentPreviewDialog, { canOpenAttachmentPreview } from "@/components/AttachmentPreviewDialog";
+import { prefetchImagePreview } from "@/lib/attachmentPreview";
 
 type FileRow = {
   id: string;
@@ -276,6 +277,13 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
                               <td className="px-6 py-4 text-right">
                                 <div className="inline-flex items-center gap-2">
                                   <button
+                                    onMouseEnter={() =>
+                                      prefetchImagePreview(
+                                        jobAttachmentPreviewUrl(f.jobId, f.id),
+                                        f.name,
+                                        f.fileType,
+                                      )
+                                    }
                                     onClick={() => {
                                       if (!canOpenAttachmentPreview(f.name, f.fileType)) {
                                         window.alert(

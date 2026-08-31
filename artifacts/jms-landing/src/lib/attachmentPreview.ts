@@ -13,6 +13,8 @@ const PREVIEWABLE_IMAGE_EXTENSIONS = new Set([
   "tiff",
 ]);
 
+const prefetched = new Set<string>();
+
 export function attachmentExtension(fileName: string): string {
   return fileName.split(".").pop()?.toLowerCase() ?? "";
 }
@@ -71,16 +73,32 @@ export function attachmentPreviewProxyUrl(url: string): string {
   return `${url}${sep}proxy=1`;
 }
 
-/** Resolve a preview src for images; HEIC uses server-side JPEG conversion. */
+/** Resolve preview URL synchronously — HEIC uses server proxy, others use CDN redirect. */
+export function imagePreviewSrc(url: string, fileName: string, fileType?: string | null): string {
+  if (isHeicAttachment(fileName, fileType)) {
+    return attachmentPreviewProxyUrl(url);
+  }
+  return url;
+}
+
+/** Warm browser cache before opening preview (call on hover/focus). */
+export function prefetchImagePreview(url: string, fileName: string, fileType?: string | null): void {
+  if (!isPreviewableImageAttachment(fileName, fileType)) return;
+  const src = imagePreviewSrc(url, fileName, fileType);
+  if (prefetched.has(src)) return;
+  prefetched.add(src);
+  const img = new Image();
+  img.decoding = "async";
+  img.src = src;
+}
+
+/** @deprecated Use imagePreviewSrc — kept for callers expecting a Promise. */
 export async function resolveImagePreviewSrc(
   url: string,
   fileName: string,
   fileType?: string | null,
 ): Promise<{ src: string; revoke: boolean }> {
-  if (!isHeicAttachment(fileName, fileType)) {
-    return { src: url, revoke: false };
-  }
-  return { src: attachmentPreviewProxyUrl(url), revoke: false };
+  return { src: imagePreviewSrc(url, fileName, fileType), revoke: false };
 }
 
 /** Local File picker preview (review photos, training uploads, etc.). */
@@ -92,7 +110,7 @@ export async function resolveLocalImagePreviewSrc(file: File): Promise<{ src: st
   const converted = await heic2any({
     blob: file,
     toType: "image/jpeg",
-    quality: 0.92,
+    quality: 0.82,
   });
   const out = Array.isArray(converted) ? converted[0] : converted;
   if (!(out instanceof Blob)) {
