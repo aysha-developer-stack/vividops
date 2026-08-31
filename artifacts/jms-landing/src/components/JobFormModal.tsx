@@ -51,6 +51,7 @@ import {
   findLinkableChecklistFilesByItem,
   findMissingChecklistInstructions,
   linkAttachmentAsChecklistInstruction,
+  mapChecklistInstructionsFromRows,
   parseJobAttachmentRows,
   type ChecklistInstructionOnServer,
   type JobAttachmentRow,
@@ -296,7 +297,6 @@ export default function JobFormModal({
         setExistingAttachments(attachments);
       }
       setMemberIds(applied.memberIds);
-      setExistingAttachments(attachments);
     } catch {
       setError("Failed to load job details");
     } finally {
