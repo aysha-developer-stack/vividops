@@ -64,14 +64,14 @@ export function canPreviewAttachment(fileName: string, fileType?: string | null)
   );
 }
 
-/** Append same-origin proxy param so fetch() can read bytes (redirects to CDN break CORS). */
+/** Same-origin proxy URL — server converts HEIC to JPEG for browser preview. */
 export function attachmentPreviewProxyUrl(url: string): string {
   const sep = url.includes("?") ? "&" : "?";
   if (/[?&]proxy=1(?:&|$)/.test(url)) return url;
   return `${url}${sep}proxy=1`;
 }
 
-/** Convert HEIC/HEIF to a JPEG object URL for browser preview; passthrough for other images. */
+/** Resolve a preview src for images; HEIC uses server-side JPEG conversion. */
 export async function resolveImagePreviewSrc(
   url: string,
   fileName: string,
@@ -80,29 +80,7 @@ export async function resolveImagePreviewSrc(
   if (!isHeicAttachment(fileName, fileType)) {
     return { src: url, revoke: false };
   }
-
-  const fetchUrl = attachmentPreviewProxyUrl(url);
-  let res: Response;
-  try {
-    res = await fetch(fetchUrl, { credentials: "include" });
-  } catch {
-    throw new Error("Failed to load image for preview");
-  }
-  if (!res.ok) {
-    throw new Error("Failed to load image for preview");
-  }
-  const blob = await res.blob();
-  const { default: heic2any } = await import("heic2any");
-  const converted = await heic2any({
-    blob,
-    toType: "image/jpeg",
-    quality: 0.92,
-  });
-  const out = Array.isArray(converted) ? converted[0] : converted;
-  if (!(out instanceof Blob)) {
-    throw new Error("HEIC conversion failed");
-  }
-  return { src: URL.createObjectURL(out), revoke: true };
+  return { src: attachmentPreviewProxyUrl(url), revoke: false };
 }
 
 /** Local File picker preview (review photos, training uploads, etc.). */

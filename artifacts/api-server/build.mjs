@@ -65,6 +65,7 @@ async function buildAll() {
       "pg",
       "drizzle-orm",
       "archiver",
+      "heic-convert",
       "oracledb",
       "mongodb-client-encryption",
       "nodemailer",

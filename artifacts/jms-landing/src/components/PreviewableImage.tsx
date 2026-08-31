@@ -71,5 +71,12 @@ export default function PreviewableImage({ src, fileName, fileType, alt, classNa
     );
   }
 
-  return <img src={displaySrc} alt={alt} className={className} />;
+  return (
+    <img
+      src={displaySrc}
+      alt={alt}
+      className={className}
+      onError={() => setError("Could not load image preview")}
+    />
+  );
 }
