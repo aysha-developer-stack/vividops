@@ -1354,10 +1354,12 @@ export default function JobDetail({ role = "user", id }: Props) {
     completedCount === checklist.length &&
     hasJobLevelCompletedFiles &&
     allChecklistItemsHaveCompletedUploads;
-  const hasJobSupervisor = !!job?.supervisor?.id;
+  const hasJobSupervisor = !!(job?.supervisor?.id ?? (job as { supervisorId?: string | null })?.supervisorId);
   const adminBypassesSupervisorReview =
     !hasJobSupervisor &&
     (job?.status === "awaiting_supervisor" || job?.status === "in_progress");
+  const canAdminReviewAwaitingAdmin =
+    (role === "admin" || role === "super-admin") && job?.status === "awaiting_admin";
 
   const submitJobForReview = async (comment: string, photos: File[]) => {
     if (!job?.id) return;
@@ -2146,8 +2148,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <CheckCircle2 size={12} /> Approve for Admin
                   </motion.button>
                 )}
-                {(role === "admin" && job?.status === "awaiting_admin") && (
+                {canAdminReviewAwaitingAdmin && (
                   <>
+                    {role === "admin" && (
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
@@ -2156,6 +2159,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                     >
                       <CheckCircle2 size={12} /> Send to Super Admin
                     </motion.button>
+                    )}
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
@@ -4253,7 +4257,10 @@ export default function JobDetail({ role = "user", id }: Props) {
                         setApproveSubmitting(true);
                         try {
                           const action =
-                            role === "supervisor"
+                            role === "supervisor" ||
+                            ((role === "admin" || role === "super-admin") &&
+                              approveMode === "escalate" &&
+                              (job?.status === "awaiting_supervisor" || job?.status === "in_progress"))
                               ? "supervisor_approve"
                               : role === "admin" && approveMode === "finalize"
                                 ? "admin_finalize"

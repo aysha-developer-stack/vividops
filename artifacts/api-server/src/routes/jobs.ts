@@ -145,6 +145,26 @@ function rowToPublic({ job, assignee, supervisor, coordinator }: JobWithRefs, as
   );
 }
 
+async function healOrphanedSupervisorReviewStatus(full: JobWithRefs): Promise<JobWithRefs> {
+  if (full.job.status !== "awaiting_supervisor" || full.job.supervisorId) {
+    return full;
+  }
+  const previousStatus = full.job.status;
+  await db
+    .update(jobs)
+    .set(
+      jobStatusPatchFields({
+        nextStatus: "awaiting_admin",
+        previousStatus,
+        currentProgress: full.job.progress,
+        currentCompletedAt: full.job.completedAt,
+      }),
+    )
+    .where(eq(jobs.id, full.job.id));
+  const reloaded = await loadJob(full.job.id);
+  return reloaded ?? full;
+}
+
 async function toPublicWithAssignees(full: JobWithRefs) {
   try {
     const membersByJob = await loadExtraMembersByJobIds([full.job.id]);
@@ -2142,11 +2162,12 @@ router.post("/jobs", creatorRole, async (req, res) => {
 
 router.get("/jobs/:id", requireAuth, async (req, res) => {
   const id = req.params.id as string;
-  const full = await loadJob(id);
+  let full = await loadJob(id);
   if (!full) return res.status(404).json({ error: "Job not found" });
   if (!(await canViewJob(req.session!.user, full.job))) {
     return res.status(403).json({ error: "You cannot view this job" });
   }
+  full = await healOrphanedSupervisorReviewStatus(full);
   return res.json(await toPublicWithAssignees(full));
 });
 
