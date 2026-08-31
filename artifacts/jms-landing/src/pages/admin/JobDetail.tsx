@@ -1353,6 +1353,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     completedCount === checklist.length &&
     hasJobLevelCompletedFiles &&
     allChecklistItemsHaveCompletedUploads;
+  const hasJobSupervisor = !!job?.supervisor?.id;
 
   const submitJobForReview = async (comment: string, photos: File[]) => {
     if (!job?.id) return;
@@ -1930,7 +1931,8 @@ export default function JobDetail({ role = "user", id }: Props) {
       job.status === "pending" && total > 0 && done > 0;
     const shouldUpdateProgress = (job.progress ?? 0) !== nextProgress;
     const nextStatus =
-      shouldSubmitReview ? ("awaiting_supervisor" as const)
+      shouldSubmitReview
+        ? (job.supervisor?.id ? ("awaiting_supervisor" as const) : ("awaiting_admin" as const))
       : shouldAutoStart ? ("in_progress" as const)
       : null;
     const shouldUpdateStatus = nextStatus != null && job.status !== nextStatus;
@@ -2121,6 +2123,18 @@ export default function JobDetail({ role = "user", id }: Props) {
                 </motion.button>
                 )}
                 {role === "supervisor" && (job?.status === "awaiting_supervisor" || job?.status === "in_progress") && (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => openApproveModal("escalate")}
+                    className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
+                  >
+                    <CheckCircle2 size={12} /> Approve for Admin
+                  </motion.button>
+                )}
+                {(role === "admin" || role === "super-admin") &&
+                  job?.status === "awaiting_supervisor" &&
+                  !job?.supervisor?.id && (
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -2497,7 +2511,9 @@ export default function JobDetail({ role = "user", id }: Props) {
           <div>
             <div className="text-sm font-bold text-emerald-900">All checklist tasks are complete</div>
             <p className="text-xs text-emerald-800/80 mt-1">
-              Add a short note for your supervisor, then submit this job for review.
+              {hasJobSupervisor
+                ? "Add a short note for your supervisor, then submit this job for review."
+                : "Add a short note about the work, then submit this job for admin review."}
             </p>
           </div>
           <button
@@ -4322,13 +4338,21 @@ export default function JobDetail({ role = "user", id }: Props) {
                   <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3">
                     <CheckCircle2 size={28} />
                   </div>
-                  <div className="text-base font-bold text-gray-900">Submitted for supervisor review</div>
-                  <div className="text-xs text-gray-500 mt-1">Your supervisor and admins have been notified.</div>
+                  <div className="text-base font-bold text-gray-900">
+                    {hasJobSupervisor ? "Submitted for supervisor review" : "Submitted for admin review"}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {hasJobSupervisor
+                      ? "Your supervisor and admins have been notified."
+                      : "Admins have been notified."}
+                  </div>
                 </div>
               ) : (
                 <>
                   <p className="text-sm text-gray-600 mb-4">
-                    All checklist items are done. Add a note about the work, then send this job to your supervisor.
+                    {hasJobSupervisor
+                      ? "All checklist items are done. Add a note about the work, then send this job to your supervisor."
+                      : "All checklist items are done. Add a note about the work, then send this job to admin review."}
                   </p>
                   <ReviewCompletionForm
                     comment={submitReviewComment}
@@ -4339,8 +4363,9 @@ export default function JobDetail({ role = "user", id }: Props) {
                     commentFocusClass="focus:border-primary"
                     labels={{
                       comment: "Submission comment",
-                      commentPlaceholder:
-                        "What was completed, anything to highlight, or questions for your supervisor…",
+                      commentPlaceholder: hasJobSupervisor
+                        ? "What was completed, anything to highlight, or questions for your supervisor…"
+                        : "What was completed, anything to highlight, or notes for admin review…",
                       photos: "Photos of completed work (optional)",
                     }}
                   />

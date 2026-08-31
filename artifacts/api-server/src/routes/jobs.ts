@@ -2298,6 +2298,15 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     nextStatus = coerceCompletionStatus(actor, isManager);
   }
 
+  if (
+    body.supervisorId !== undefined &&
+    !body.supervisorId &&
+    full.job.status === "awaiting_supervisor" &&
+    nextStatus === undefined
+  ) {
+    nextStatus = "awaiting_admin";
+  }
+
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (body.jobNumber !== undefined) patch.jobNumber = jobNumber;
   if (body.title !== undefined) patch.title = body.title;

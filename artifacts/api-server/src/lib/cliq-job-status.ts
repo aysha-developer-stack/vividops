@@ -50,10 +50,13 @@ export function buildCliqJobStatusText(opts: {
   }
 
   if (event === "awaiting_admin") {
-    const bySupervisor = actor.role === "supervisor";
-    return bySupervisor
-      ? `✔️ ${label} approved by supervisor ${actorName} — awaiting admin review · ${time}`
-      : `✔️ ${label} forwarded for admin review by ${actorName} · ${time}`;
+    if (actor.role === "supervisor") {
+      return `✔️ ${label} approved by supervisor ${actorName} — awaiting admin review · ${time}`;
+    }
+    if (actor.role === "user") {
+      return `📋 ${label} submitted for admin review by ${actorName} · ${time}`;
+    }
+    return `✔️ ${label} forwarded for admin review by ${actorName} · ${time}`;
   }
 
   if (event === "awaiting_super_admin") {

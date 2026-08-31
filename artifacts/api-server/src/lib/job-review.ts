@@ -458,13 +458,16 @@ export async function notifyStatusTransition(opts: {
 
   if (nextStatus === "awaiting_admin") {
     const approvedBySupervisor = actor.role === "supervisor";
+    const submittedDirectToAdmin = actor.role === "user" && !job.supervisorId;
     await notifyAdminsOnly({
       jobId: job.id,
       actorId: actor.id,
       title: `Ready for Admin Review: ${job.title}`,
       description: approvedBySupervisor
         ? `${actor.name} approved ${job.title}. Please review and forward to super admin or send for rework.${commentSuffix}`
-        : `${actor.name} forwarded ${job.title} for admin review.${commentSuffix}`,
+        : submittedDirectToAdmin
+          ? `${actor.name} submitted ${job.title} for admin review (no supervisor on this job).${commentSuffix}`
+          : `${actor.name} forwarded ${job.title} for admin review.${commentSuffix}`,
       type: "updated",
     });
     if (job.supervisorId && job.supervisorId !== actor.id) {
@@ -478,7 +481,7 @@ export async function notifyStatusTransition(opts: {
         type: "updated",
       });
     }
-    if (job.assigneeId) {
+    if (job.assigneeId && job.assigneeId !== actor.id) {
       await createNotification({
         userId: job.assigneeId,
         jobId: job.id,
@@ -696,7 +699,7 @@ export async function applyJobReview(opts: {
       return { ok: false, status: 400, error: checklistError };
     }
     await markOpenReworksAwaitingReview(job.id, workerId);
-    nextStatus = "awaiting_supervisor";
+    nextStatus = job.supervisorId ? "awaiting_supervisor" : "awaiting_admin";
   } else if (action === "supervisor_approve") {
     const canApprove =
       (actor.role === "supervisor" && canManage) ||
