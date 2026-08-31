@@ -95,6 +95,8 @@ import JobMistakesTab from "@/components/JobMistakesTab";
 import { submitJobReviewWithPhotos } from "@/lib/reviewPhotoUpload";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { uploadJobAttachmentWithProgress } from "@/lib/uploadJobAttachmentWithProgress";
+import AttachmentPreviewDialog, { canOpenAttachmentPreview } from "@/components/AttachmentPreviewDialog";
+import { attachmentExtension } from "@/lib/attachmentPreview";
 
 interface Props { role?: Role; id?: string }
 
@@ -315,24 +317,6 @@ function normalizeJobDetailTab(value: string | null): TabId | null {
   return null;
 }
 
-
-function attachmentExtension(name: string): string {
-  return name.split(".").pop()?.toLowerCase() ?? "";
-}
-
-function canPreviewAttachment(fileName: string, fileType?: string | null): boolean {
-  const ext = attachmentExtension(fileName);
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "pdf", "txt", "mp4", "mov", "webm", "m4v"].includes(ext)) {
-    return true;
-  }
-  const mime = (fileType || "").toLowerCase();
-  return (
-    mime.startsWith("image/") ||
-    mime.startsWith("video/") ||
-    mime === "application/pdf" ||
-    mime.startsWith("text/")
-  );
-}
 
 function fileTypeLabel(name: string): string {
   const ext = attachmentExtension(name);
@@ -1633,7 +1617,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   };
   const openAttachmentPreview = (attachment: AttachmentApi) => {
     if (!job?.id) return;
-    if (!canPreviewAttachment(attachment.fileName, attachment.fileType)) {
+    if (!canOpenAttachmentPreview(attachment.fileName, attachment.fileType)) {
       window.alert("This file type cannot be previewed in the browser. Please use Download.");
       return;
     }
@@ -4452,80 +4436,16 @@ export default function JobDetail({ role = "user", id }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog open={!!previewAttachment} onOpenChange={(open) => !open && setPreviewAttachment(null)}>
-        <DialogContent className="max-w-5xl w-[95vw]">
-          <DialogHeader>
-            <DialogTitle>{previewAttachment?.fileName ?? "File preview"}</DialogTitle>
-            <DialogDescription>Preview opens inside Vivid OPS. Use Download to save the file.</DialogDescription>
-          </DialogHeader>
-          {previewAttachment && job?.id && (
-            <div className="max-h-[75vh] overflow-auto rounded-xl border border-gray-100 bg-gray-50">
-              {(() => {
-                const ext = attachmentExtension(previewAttachment.fileName);
-                const url = attachmentViewUrl(previewAttachment.id, false);
-                if (
-                  ["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext) ||
-                  (previewAttachment.fileType || "").startsWith("image/")
-                ) {
-                  return (
-                    <img
-                      src={url}
-                      alt={previewAttachment.fileName}
-                      className="max-w-full mx-auto block"
-                    />
-                  );
-                }
-                if (ext === "pdf" || previewAttachment.fileType === "application/pdf") {
-                  return (
-                    <iframe
-                      src={url}
-                      title={previewAttachment.fileName}
-                      className="w-full h-[75vh] bg-white"
-                    />
-                  );
-                }
-                if (ext === "txt" || (previewAttachment.fileType || "").startsWith("text/")) {
-                  return (
-                    <iframe
-                      src={url}
-                      title={previewAttachment.fileName}
-                      className="w-full h-[75vh] bg-white"
-                    />
-                  );
-                }
-                if (
-                  ["mp4", "mov", "webm", "m4v"].includes(ext) ||
-                  (previewAttachment.fileType || "").startsWith("video/")
-                ) {
-                  return (
-                    <video
-                      src={url}
-                      controls
-                      className="w-full max-h-[75vh] bg-black mx-auto block"
-                    />
-                  );
-                }
-                return (
-                  <div className="p-8 text-center text-sm text-gray-500">
-                    Preview is not available for this file type.
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-          <DialogFooter>
-            {previewAttachment && (
-              <button
-                type="button"
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
-                onClick={() => previewAttachment && downloadAttachment(previewAttachment)}
-              >
-                Download
-              </button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {previewAttachment && job?.id && (
+        <AttachmentPreviewDialog
+          open={!!previewAttachment}
+          onOpenChange={(open) => !open && setPreviewAttachment(null)}
+          fileName={previewAttachment.fileName}
+          fileType={previewAttachment.fileType}
+          previewUrl={attachmentViewUrl(previewAttachment.id, false)}
+          onDownload={() => downloadAttachment(previewAttachment)}
+        />
+      )}
       {uploadProgress.batch && (
         <UploadProgressPanel
           batch={uploadProgress.batch}

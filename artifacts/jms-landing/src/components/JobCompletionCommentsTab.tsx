@@ -8,14 +8,8 @@ import {
   jobAttachmentDownloadUrl,
   jobAttachmentPreviewUrl,
 } from "@/lib/downloadFile";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import AttachmentPreviewDialog from "@/components/AttachmentPreviewDialog";
+import PreviewableImage from "@/components/PreviewableImage";
 
 type ReviewAttachment = {
   id: string;
@@ -202,8 +196,10 @@ export default function JobCompletionCommentsTab({ jobId, refreshKey = 0 }: Prop
                             className="block w-24 h-24 rounded-xl overflow-hidden border border-emerald-100 bg-white hover:ring-2 hover:ring-emerald-300 transition-all cursor-pointer"
                             title={photo.fileName}
                           >
-                            <img
+                            <PreviewableImage
                               src={jobAttachmentPreviewUrl(jobId, photo.id)}
+                              fileName={photo.fileName}
+                              fileType={photo.fileType}
                               alt={photo.fileName}
                               className="w-full h-full object-cover"
                             />
@@ -220,34 +216,16 @@ export default function JobCompletionCommentsTab({ jobId, refreshKey = 0 }: Prop
         </div>
       </motion.div>
 
-      <Dialog open={!!previewPhoto} onOpenChange={(open) => !open && setPreviewPhoto(null)}>
-        <DialogContent className="max-w-5xl w-[95vw]">
-          <DialogHeader>
-            <DialogTitle>{previewPhoto?.fileName ?? "Photo preview"}</DialogTitle>
-            <DialogDescription>Preview opens inside Vivid OPS. Use Download to save the file.</DialogDescription>
-          </DialogHeader>
-          {previewPhoto && (
-            <div className="max-h-[75vh] overflow-auto rounded-xl border border-gray-100 bg-gray-50">
-              <img
-                src={jobAttachmentPreviewUrl(jobId, previewPhoto.id)}
-                alt={previewPhoto.fileName}
-                className="max-w-full mx-auto block"
-              />
-            </div>
-          )}
-          <DialogFooter>
-            {previewPhoto && (
-              <button
-                type="button"
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
-                onClick={() => downloadPhoto(previewPhoto)}
-              >
-                Download
-              </button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {previewPhoto && (
+        <AttachmentPreviewDialog
+          open={!!previewPhoto}
+          onOpenChange={(open) => !open && setPreviewPhoto(null)}
+          fileName={previewPhoto.fileName}
+          fileType={previewPhoto.fileType}
+          previewUrl={jobAttachmentPreviewUrl(jobId, previewPhoto.id)}
+          onDownload={() => downloadPhoto(previewPhoto)}
+        />
+      )}
     </>
   );
 }

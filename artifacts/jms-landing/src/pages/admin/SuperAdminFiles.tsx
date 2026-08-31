@@ -9,6 +9,7 @@ import Pagination, { usePagination } from "@/components/Pagination";
 import { useListJobs, type Job as ApiJob } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
 import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } from "@/lib/downloadFile";
+import AttachmentPreviewDialog, { canOpenAttachmentPreview } from "@/components/AttachmentPreviewDialog";
 
 type FileRow = {
   id: string;
@@ -16,6 +17,7 @@ type FileRow = {
   jobNumber: string;
   jobTitle: string;
   name: string;
+  fileType?: string | null;
   uploadedBy: string;
   uploadedAt: string;
   kind: "job" | "completed";
@@ -43,6 +45,7 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
   const jobBase = role === "admin" ? "/admin/jobs" : "/super-admin/jobs";
   const [rows, setRows] = useState<FileRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [previewFile, setPreviewFile] = useState<FileRow | null>(null);
 
   useEffect(() => {
     const jobs: ApiJob[] = jobsQuery.data ?? [];
@@ -67,12 +70,14 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
               const createdAt = a?.createdAt ? new Date(a.createdAt).toLocaleString() : "—";
               const fileName = (a?.fileName as string | undefined) ?? "file";
               const fileUrl = (a?.fileUrl as string | undefined) ?? undefined;
+              const fileType = (a?.fileType as string | null | undefined) ?? null;
               return {
                 id: String(a?.id ?? `${j.id}-${fileName}`),
                 jobId: j.id,
                 jobNumber: j.number,
                 jobTitle: j.title,
                 name: fileName,
+                fileType,
                 uploadedBy: uploadedByName,
                 uploadedAt: createdAt,
                 kind: uploadedByRole === "user" ? "completed" : "job",
@@ -272,11 +277,13 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
                                 <div className="inline-flex items-center gap-2">
                                   <button
                                     onClick={() => {
-                                      window.open(
-                                        jobAttachmentPreviewUrl(f.jobId, f.id),
-                                        "_blank",
-                                        "noopener,noreferrer",
-                                      );
+                                      if (!canOpenAttachmentPreview(f.name, f.fileType)) {
+                                        window.alert(
+                                          "This file type cannot be previewed in the browser. Please use Download.",
+                                        );
+                                        return;
+                                      }
+                                      setPreviewFile(f);
                                     }}
                                     className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
                                     title="View"
@@ -349,6 +356,23 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
           </div>
         )}
       </div>
+      {previewFile && (
+        <AttachmentPreviewDialog
+          open={!!previewFile}
+          onOpenChange={(open) => !open && setPreviewFile(null)}
+          fileName={previewFile.name}
+          fileType={previewFile.fileType}
+          previewUrl={jobAttachmentPreviewUrl(previewFile.jobId, previewFile.id)}
+          onDownload={() => {
+            void downloadNamedFile(
+              jobAttachmentDownloadUrl(previewFile.jobId, previewFile.id),
+              previewFile.name,
+            ).catch(() => {
+              window.alert("Download failed. Please try again.");
+            });
+          }}
+        />
+      )}
     </DashboardLayout>
   );
 }

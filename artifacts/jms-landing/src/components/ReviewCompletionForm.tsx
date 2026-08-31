@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { ImagePlus, X } from "lucide-react";
+import LocalPreviewImage from "@/components/LocalPreviewImage";
 import {
   MAX_REVIEW_PHOTOS,
   REVIEW_PHOTO_ACCEPT,
@@ -11,12 +12,6 @@ export type ReviewCompletionFormLabels = {
   comment: string;
   commentPlaceholder: string;
   photos: string;
-};
-
-type PhotoPreview = {
-  id: string;
-  file: File;
-  url: string;
 };
 
 type Props = {
@@ -40,19 +35,6 @@ export default function ReviewCompletionForm({
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
-  const [previews, setPreviews] = useState<PhotoPreview[]>([]);
-
-  useEffect(() => {
-    const next = photos.map((file) => ({
-      id: `${file.name}-${file.size}-${file.lastModified}`,
-      file,
-      url: URL.createObjectURL(file),
-    }));
-    setPreviews(next);
-    return () => {
-      for (const preview of next) URL.revokeObjectURL(preview.url);
-    };
-  }, [photos]);
 
   const addPhotos = (incoming: FileList | File[] | null) => {
     if (!incoming || disabled) return;
@@ -109,18 +91,18 @@ export default function ReviewCompletionForm({
           {labels.photos}
         </label>
         <div className="flex flex-wrap gap-2">
-          {previews.map((preview, index) => (
+          {photos.map((file, index) => (
             <div
-              key={preview.id}
+              key={`${file.name}-${file.size}-${file.lastModified}`}
               className="relative w-20 h-20 rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shrink-0"
             >
-              <img src={preview.url} alt={preview.file.name} className="w-full h-full object-cover" />
+              <LocalPreviewImage file={file} alt={file.name} className="w-full h-full object-cover" />
               {!disabled && (
                 <button
                   type="button"
                   onClick={() => removePhoto(index)}
                   className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
-                  aria-label={`Remove ${preview.file.name}`}
+                  aria-label={`Remove ${file.name}`}
                 >
                   <X size={12} />
                 </button>
