@@ -87,6 +87,13 @@ import { CHECKLIST_FILE_ACCEPT, filterJobFiles, filterChecklistInstructionFiles,
 import { isCompletedAttachment, isJobAttachment, isNoteAttachment, isReworkAttachment, fileCategoryFromUploadTag, completedAttachmentStatusLabel, checklistItemHasCompletedUpload, jobLevelHasCompletedDeliverables, reworkInstructionBadges, type ReworkOrigin } from "@/lib/attachmentCategories";
 import { useDashboardSearch } from "@/lib/pageSearch";
 import { useAuth } from "@/lib/auth";
+import {
+  formatLiveStatusLabel,
+  liveStatusDotClass,
+  liveStatusTextClass,
+  resolveLiveUserStatus,
+  type LiveUserStatus,
+} from "@/lib/liveUserStatus";
 import UploadProgressPanel from "@/components/UploadProgressPanel";
 import JobNotesTab from "@/components/JobNotesTab";
 import JobCompletionCommentsTab from "@/components/JobCompletionCommentsTab";
@@ -420,7 +427,25 @@ export default function JobDetail({ role = "user", id }: Props) {
   }, [job?.description, job]);
   const checklistTemplateKey = useMemo(() => JSON.stringify(meta.checklist), [meta.checklist]);
   const [attachments, setAttachments] = useState<AttachmentApi[]>([]);
-  const [jobMembers, setJobMembers] = useState<Array<{ id: string; name: string; role: Role }>>([]);
+  const [jobMembers, setJobMembers] = useState<
+    Array<{
+      id: string;
+      name: string;
+      role: Role;
+      accountStatus?: string | null;
+      lastSeenAt?: string | null;
+      lastSignInAt?: string | null;
+      activeTimer?: { isLive: boolean; jobId: string | null; task: string } | null;
+    }>
+  >([]);
+
+  const jobMemberLiveStatus = (member: (typeof jobMembers)[number]): LiveUserStatus =>
+    resolveLiveUserStatus({
+      accountStatus: member.accountStatus,
+      lastSeenAt: member.lastSeenAt,
+      lastSignInAt: member.lastSignInAt,
+      activeTimerIsLive: !!member.activeTimer?.isLive,
+    });
 
   useEffect(() => {
     if (!job?.id) {
@@ -456,17 +481,22 @@ export default function JobDetail({ role = "user", id }: Props) {
       return;
     }
     let cancelled = false;
-    (async () => {
+    const loadMembers = async () => {
       try {
         const res = await fetch(`/api/jobs/${job.id}/members`, { credentials: "include" });
         if (!res.ok) return;
         const data = (await res.json()) as unknown;
         if (!Array.isArray(data)) return;
-        if (!cancelled) setJobMembers(data as any[]);
+        if (!cancelled) setJobMembers(data as typeof jobMembers);
       } catch {
       }
-    })();
-    return () => { cancelled = true; };
+    };
+    void loadMembers();
+    const id = window.setInterval(loadMembers, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
   }, [job?.id]);
 
   const tabFromQuery = (() => {
@@ -2556,20 +2586,25 @@ export default function JobDetail({ role = "user", id }: Props) {
               {jobMembers.length === 0 ? (
                 <div className="text-xs text-gray-400 py-6 text-center">No people assigned yet</div>
               ) : (
-                jobMembers.map((w, i) => (
+                jobMembers.map((w, i) => {
+                  const liveStatus = jobMemberLiveStatus(w);
+                  return (
                   <motion.div key={w.id} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
                     <div className="relative">
                       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-xs font-bold flex items-center justify-center">{initialsOf(w.name)}</div>
-                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-white bg-gray-300" />
+                      <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-white ${liveStatusDotClass(liveStatus)}`} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold text-gray-900 truncate">{w.name}</div>
                       <div className="text-[11px] text-gray-500">
                         {jobMemberRoleLabel(w, job)}
+                        <span className="mx-1">·</span>
+                        <span className={liveStatusTextClass(liveStatus)}>{formatLiveStatusLabel(liveStatus)}</span>
                       </div>
                     </div>
                   </motion.div>
-                ))
+                  );
+                })
               )}
             </div>
           </motion.div>
@@ -3489,11 +3524,12 @@ export default function JobDetail({ role = "user", id }: Props) {
           ].filter(Boolean) as Array<{ id: string; name: string; role: Role }>)
             .map((m) => {
               const r = jobMemberRoleLabel(m, job);
+              const liveStatus = jobMemberLiveStatus(m);
               return {
                 name: m.name,
                 avatar: initialsOf(m.name),
                 role: r,
-                status: "online" as const,
+                status: liveStatus,
                 hours: 0,
               };
             });
@@ -3548,11 +3584,11 @@ export default function JobDetail({ role = "user", id }: Props) {
                       <motion.div key={w.name} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} className="flex items-center gap-3 px-5 py-3">
                         <div className="relative">
                           <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-sky-700 text-white text-xs font-bold flex items-center justify-center">{w.avatar}</div>
-                          <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${w.status === "online" ? "bg-emerald-500" : "bg-amber-400"}`} />
+                          <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${liveStatusDotClass(w.status)}`} />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-semibold text-gray-900 truncate">{w.name}</div>
-                          <div className="text-[11px] text-gray-500">{w.role} · {w.status === "online" ? "Active in Cliq" : "Away"}</div>
+                          <div className="text-[11px] text-gray-500">{w.role} · {formatLiveStatusLabel(w.status)}</div>
                         </div>
                         {w.role === "Supervisor" && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Owner</span>}
                         {w.role === "Coordinator" && <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-teal-100 text-teal-700">Coordinator</span>}

@@ -22,6 +22,13 @@ import {
   ApiError,
 } from "@workspace/api-client-react";
 import { invalidateUserDirectoryCaches } from "@/lib/invalidateUserDirectoryCaches";
+import {
+  formatLiveStatusLabel,
+  liveStatusDotClass,
+  liveStatusTextClass,
+  resolveLiveUserStatus,
+} from "@/lib/liveUserStatus";
+import { fetchActiveTimerSessions, type ActiveTimerSession } from "@/lib/timerSessionApi";
 
 import {
   DropdownMenu,
@@ -64,12 +71,41 @@ const initials = (name: string) =>
 
 export default function UserManagement({ role = "super-admin" as Role }: { role?: Role } = {}) {
   const qc = useQueryClient();
-  const usersQuery = useListUsers();
+  const usersQuery = useListUsers({
+    query: { refetchInterval: 30_000 } as any,
+  });
   const createMutation = useCreateUser();
   const updateMutation = useUpdateUser();
   const deleteMutation = useDeleteUser();
   const resendMutation = useResendInvite();
   const isInitialLoading = usersQuery.isLoading && !usersQuery.data;
+  const [activeTimerSessions, setActiveTimerSessions] = useState<ActiveTimerSession[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadSessions = async () => {
+      try {
+        const rows = await fetchActiveTimerSessions();
+        if (!cancelled) setActiveTimerSessions(rows);
+      } catch {
+        if (!cancelled) setActiveTimerSessions([]);
+      }
+    };
+    void loadSessions();
+    const id = window.setInterval(loadSessions, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  const liveTimerByUserId = useMemo(() => {
+    const map = new Map<string, ActiveTimerSession>();
+    for (const session of activeTimerSessions) {
+      if (session.isLive) map.set(session.userId, session);
+    }
+    return map;
+  }, [activeTimerSessions]);
 
   const invalidate = useCallback(
     () => invalidateUserDirectoryCaches(qc),
@@ -316,7 +352,14 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                 const ui = ROLE_API_TO_UI[u.role];
                 const cfg = ROLE_CONFIG[ui];
                 const Icon = cfg.icon;
-                const status = u.status === "active" ? "Active" : "Inactive";
+                const accountActive = u.status === "active";
+                const liveStatus = resolveLiveUserStatus({
+                  accountStatus: u.status,
+                  lastSeenAt: u.lastSeenAt,
+                  lastSignInAt: u.lastSignInAt,
+                  activeTimerIsLive: liveTimerByUserId.get(u.id)?.isLive,
+                });
+                const statusLabel = formatLiveStatusLabel(liveStatus);
                 return (
                   <tr
                     key={u.id}
@@ -348,8 +391,8 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${status === "Active" ? "bg-emerald-500" : "bg-gray-400"}`} />
-                        <span className={`text-sm font-medium ${status === "Active" ? "text-emerald-700" : "text-gray-500"}`}>{status}</span>
+                        <div className={`w-2 h-2 rounded-full ${liveStatusDotClass(liveStatus)}`} />
+                        <span className={`text-sm font-medium ${liveStatusTextClass(liveStatus)}`}>{statusLabel}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">{formatJoined(u.createdAt as unknown as string)}</td>
@@ -371,7 +414,7 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => toggleStatus(u)}>
                             <Power size={14} className="mr-2 text-gray-400" />
-                            {status === "Active" ? "Deactivate" : "Activate"}
+                            {accountActive ? "Deactivate" : "Activate"}
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => resend(u)}>
                             <RefreshCw size={14} className="mr-2 text-gray-400" />

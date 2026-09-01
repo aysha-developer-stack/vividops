@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { db, jobs, jobMembers, users, type UserRow } from "@workspace/db";
+import { activeTimerSessions, db, jobs, jobMembers, users, type UserRow } from "@workspace/db";
+import { isTimerSessionLive } from "../lib/timer-sessions";
 import { requireAuth } from "../middlewares/requireAuth";
 import { announceCliqMemberActivity } from "../lib/cliq-member-activity";
 import { logger } from "../lib/logger";
@@ -73,12 +74,52 @@ router.get("/jobs/:jobId/members", requireAuth, async (req, res) => {
     if (memberIds.size === 0) return res.json([]);
 
     const people = await db
-      .select({ id: users.id, name: users.name, role: users.role })
+      .select({
+        id: users.id,
+        name: users.name,
+        role: users.role,
+        accountStatus: users.status,
+        lastSeenAt: users.lastSeenAt,
+        lastSignInAt: users.lastSignInAt,
+      })
       .from(users)
       .where(inArray(users.id, Array.from(memberIds)));
 
     people.sort((a, b) => a.name.localeCompare(b.name));
-    return res.json(people);
+
+    const userIds = people.map((p) => p.id);
+    const timerRows =
+      userIds.length > 0
+        ? await db
+            .select()
+            .from(activeTimerSessions)
+            .where(inArray(activeTimerSessions.userId, userIds))
+        : [];
+    const timerByUserId = new Map(timerRows.map((row) => [row.userId, row]));
+    const nowMs = Date.now();
+
+    return res.json(
+      people.map((person) => {
+        const timer = timerByUserId.get(person.id);
+        const activeTimer =
+          timer && isTimerSessionLive(timer, nowMs)
+            ? {
+                isLive: true,
+                jobId: timer.jobId,
+                task: timer.task,
+              }
+            : null;
+        return {
+          id: person.id,
+          name: person.name,
+          role: person.role,
+          accountStatus: person.accountStatus,
+          lastSeenAt: person.lastSeenAt?.toISOString() ?? null,
+          lastSignInAt: person.lastSignInAt?.toISOString() ?? null,
+          activeTimer,
+        };
+      }),
+    );
   } catch (err) {
     logger.error({ err }, "Failed to list job members");
     return res.status(500).json({ error: "Internal server error" });
