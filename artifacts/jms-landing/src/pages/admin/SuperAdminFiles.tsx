@@ -31,7 +31,6 @@ type FolderRow = {
   jobNumber: string;
   jobTitle: string;
   files: FileRow[];
-  jobFilesCount: number;
   completedFilesCount: number;
   lastUploadedAt: string;
   lastUploadedBy: string;
@@ -131,7 +130,6 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
 
       if (filteredFiles.length === 0) continue;
 
-      const jobFilesCount = filteredFiles.filter((f) => f.kind === "job").length;
       const completedFilesCount = filteredFiles.filter((f) => f.kind === "completed").length;
       const last = filteredFiles[0];
 
@@ -140,7 +138,6 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
         jobNumber: group.jobNumber,
         jobTitle: group.jobTitle,
         files: filteredFiles,
-        jobFilesCount,
         completedFilesCount,
         lastUploadedAt: last?.uploadedAt ?? "—",
         lastUploadedBy: last?.uploadedBy ?? "—",
@@ -210,7 +207,7 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
                                 <span className="truncate">{folderRow.jobTitle}</span>
                               </div>
                               <div className="text-[11px] text-gray-500 mt-0.5 truncate">
-                                {folderRow.files.length} files • Job: {folderRow.jobFilesCount} • Completed: {folderRow.completedFilesCount}
+                                {folderRow.files.length} files • Completed: {folderRow.completedFilesCount}
                               </div>
                             </div>
                           </button>
