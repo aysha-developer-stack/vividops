@@ -237,6 +237,9 @@ export function getEmail(): string {
 export function getRole(): Role {
   return (cachedUser?.role as Role | undefined) ?? "user";
 }
+export function getAuthUserId(): string | undefined {
+  return cachedUser?.id;
+}
 export function clearSession() {
   // Fire-and-forget logout.
   fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(

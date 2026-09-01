@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Pin, PinOff, Pencil, Trash2, Send, StickyNote, Paperclip, X, Eye, Download } from "lucide-react";
 import type { Role } from "@/lib/roles";
+import { useAuth } from "@/lib/auth";
 import { JOB_FILE_ACCEPT } from "@/lib/collectDroppedFiles";
 import { uploadJobAttachmentsBatch } from "@/lib/uploadJobAttachmentsBatch";
 import {
@@ -78,6 +79,18 @@ function roleLabel(role: Role | undefined): string {
   }
 }
 
+function notesTabHint(role: Role, isAdmin: boolean, canPin: boolean): string {
+  const base =
+    "Everyone on this job can post notes here — text only, files/images only, or both. Attachments stay in Notes (not Job Files).";
+  if (isAdmin) {
+    return `${base} As admin you can edit, delete, and pin any note.`;
+  }
+  if (canPin) {
+    return `${base} You can edit or delete your own notes, and pin notes on jobs you manage.`;
+  }
+  return `${base} You can edit or delete your own notes.`;
+}
+
 function isNotePlaceholderText(text: string): boolean {
   return text === ATTACHMENT_PLACEHOLDER || text === "(Photos attached)";
 }
@@ -91,6 +104,8 @@ type Props = {
 };
 
 export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0 }: Props) {
+  const { user: authUser } = useAuth();
+  const effectiveUserId = currentUserId ?? authUser?.id;
   const isAdmin = role === "super-admin" || role === "admin";
   const canSetInternal = isAdmin || role === "supervisor" || role === "coordinator";
   const canPin = isAdmin || role === "supervisor" || role === "coordinator";
@@ -109,6 +124,7 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
   const [editType, setEditType] = useState("general");
   const [savingEdit, setSavingEdit] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<NoteAttachment | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const attachmentsByNoteId = useMemo(() => {
@@ -178,7 +194,7 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
     void loadNotes();
   }, [loadNotes, refreshKey]);
 
-  const canModify = (note: JobNoteApi) => isAdmin || note.userId === currentUserId;
+  const canModify = (note: JobNoteApi) => isAdmin || note.userId === effectiveUserId;
   const jobNotesOnly = notes.filter((n) => n.noteType !== "completion");
 
   const addPendingFiles = (files: FileList | File[]) => {
@@ -569,10 +585,7 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
               <StickyNote size={18} className="text-primary" />
               <h3 className="font-bold text-gray-900">Job notes</h3>
             </div>
-            <p className="text-xs text-gray-500">
-              Write a note, attach images or files, or both — like a chat thread for this job.
-              {isAdmin ? " As admin you can edit, delete, and pin any note." : ""}
-            </p>
+            <p className="text-xs text-gray-500">{notesTabHint(role, isAdmin, canPin)}</p>
           </div>
 
           <div className="p-5 space-y-4 min-h-[200px] flex-1">
@@ -587,7 +600,7 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
                 {pinnedNotes.length > 0 && (
                   <div className="space-y-3">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Pinned</p>
-                    {pinnedNotes.map((n) => renderNote(n, n.userId === currentUserId))}
+                    {pinnedNotes.map((n) => renderNote(n, n.userId === effectiveUserId))}
                   </div>
                 )}
                 {regularNotes.length > 0 && (
@@ -595,14 +608,28 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
                     {pinnedNotes.length > 0 && (
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">All notes</p>
                     )}
-                    {regularNotes.map((n) => renderNote(n, n.userId === currentUserId))}
+                    {regularNotes.map((n) => renderNote(n, n.userId === effectiveUserId))}
                   </div>
                 )}
               </>
             )}
           </div>
 
-          <div className="p-5 border-t border-gray-100 bg-gray-50/50">
+          <div
+            className={`p-5 border-t border-gray-100 bg-gray-50/50 transition-colors ${dragOver ? "bg-primary/5 ring-2 ring-primary/20 ring-inset" : ""}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              if (e.dataTransfer.files.length > 0) {
+                addPendingFiles(e.dataTransfer.files);
+              }
+            }}
+          >
             <label className="text-xs font-semibold text-gray-700 mb-2 block">Add a note</label>
             <div className="flex flex-col sm:flex-row gap-2 mb-3">
               <select

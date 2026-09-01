@@ -2245,7 +2245,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                   onClick={() => void saveJobNotes()}
                   className="px-4 py-2 rounded-xl text-xs font-semibold bg-primary text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {savingNotes ? "Saving…" : "Save notes"}
+                  {savingNotes ? "Saving…" : "Save remarks"}
                 </button>
                 {notesSaveError && <span className="text-xs text-red-600">{notesSaveError}</span>}
               </div>
