@@ -28,20 +28,30 @@ import {
   type User,
 } from "@workspace/api-client-react";
 
-type UserRoleLabel = "Super Admin" | "Admin" | "Supervisor" | "User";
+type UserRoleLabel = "Super Admin" | "Admin" | "Supervisor" | "Coordinator" | "User";
 const ROLE_BADGE: Record<UserRoleLabel, { color: string; bg: string; icon: any }> = {
   "Super Admin": { color: "text-purple-700", bg: "bg-purple-50 border-purple-200", icon: Crown },
   Admin: { color: "text-red-700", bg: "bg-red-50 border-red-200", icon: Shield },
   Supervisor: { color: "text-amber-700", bg: "bg-amber-50 border-amber-200", icon: UserCog },
+  Coordinator: { color: "text-teal-700", bg: "bg-teal-50 border-teal-200", icon: UserCog },
   User: { color: "text-primary", bg: "bg-primary/10 border-primary/20", icon: UserIcon },
 };
 
-const USER_ROLE_LABEL: Record<string, string> = {
+const USER_ROLE_LABEL: Record<string, UserRoleLabel> = {
   "super-admin": "Super Admin",
   "admin": "Admin",
   "supervisor": "Supervisor",
+  "coordinator": "Coordinator",
   "user": "User",
 };
+
+function userRoleLabelFromApi(role: string): UserRoleLabel {
+  return USER_ROLE_LABEL[role] ?? "User";
+}
+
+function roleBadgeFor(role: UserRoleLabel) {
+  return ROLE_BADGE[role] ?? ROLE_BADGE.User;
+}
 
 interface UserPerf { id: string; name: string; role: UserRoleLabel; jobs: number; completed: number; score: number; scoreTip: string; avg: string; hours: number; rework: number; overdue: number; }
 
@@ -346,7 +356,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
       return {
         id: u.id,
         name: u.name,
-        role: (u.role === "super-admin" ? "Super Admin" : u.role.charAt(0).toUpperCase() + u.role.slice(1)) as UserRoleLabel,
+        role: userRoleLabelFromApi(u.role),
         jobs: totalJobs,
         completed: completedCount,
         score,
@@ -496,8 +506,8 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   }, [activeTab, isFilterableTab, search, userRoleFilter, minScore, dailyUserFilter, dailyDateFrom, dailyDateTo]);
   const isSuperAdmin = role === "super-admin";
   const ROLE_FILTERS: ("All" | UserRoleLabel)[] = isSuperAdmin
-    ? ["All", "Admin", "Supervisor", "User"]
-    : ["All", "Supervisor", "User"];
+    ? ["All", "Admin", "Supervisor", "Coordinator", "User"]
+    : ["All", "Supervisor", "Coordinator", "User"];
 
   const filteredUsers = userPerformance.filter((u) =>
     (userRoleFilter === "All" || u.role === userRoleFilter) &&
@@ -1266,7 +1276,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                       </thead>
                       <tbody>
                         {usersP.pageItems.map((u, i) => {
-                          const badge = ROLE_BADGE[u.role];
+                          const badge = roleBadgeFor(u.role);
                           const Icon = badge.icon;
                           return (
                             <motion.tr key={u.name} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }} className="border-t border-gray-50 hover:bg-gray-50/60">
@@ -1491,7 +1501,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                         </thead>
                         <tbody>
                           {dailyTotalsP.pageItems.map((total) => {
-                              const badge = ROLE_BADGE[USER_ROLE_LABEL[total.userRole] as UserRoleLabel] ?? ROLE_BADGE.User;
+                              const badge = roleBadgeFor(userRoleLabelFromApi(total.userRole));
                               const Icon = badge.icon;
                               return (
                                 <tr key={total.userId} className="border-t border-gray-50 hover:bg-gray-50/60">
@@ -1547,7 +1557,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                           </tr>
                         )}
                         {!dailyLoading && dailyP.pageItems.map((row, i) => {
-                          const badge = ROLE_BADGE[USER_ROLE_LABEL[row.userRole] as UserRoleLabel] ?? ROLE_BADGE.User;
+                          const badge = roleBadgeFor(userRoleLabelFromApi(row.userRole));
                           const Icon = badge.icon;
                           return (
                             <motion.tr key={`${row.userId}-${row.date}`} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }} className="border-t border-gray-50 hover:bg-gray-50">
