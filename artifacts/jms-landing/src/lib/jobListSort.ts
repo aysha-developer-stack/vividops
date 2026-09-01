@@ -10,6 +10,9 @@ export type JobSortFields = {
   reviewStartedAt?: string | null;
 };
 
+const ACTIVE_STATUS_SORT_NOTE =
+  "Rework, In Progress & Not Started always appear before completed jobs";
+
 const UI_STATUS_PRIORITY: Record<string, number> = {
   Rework: 0,
   "In Progress": 1,
@@ -20,6 +23,7 @@ const UI_STATUS_PRIORITY: Record<string, number> = {
   "Awaiting Super Admin": 5,
   "On Hold": 6,
   Done: 7,
+  Finished: 7,
   Cancelled: 8,
 };
 
@@ -42,10 +46,17 @@ export const JOB_LIST_SORT_LABELS: Record<JobListSortMode, string> = {
 };
 
 export const JOB_LIST_SORT_HINTS: Record<JobListSortMode, string> = {
-  recent: "Newest created jobs first",
-  recentlyUpdated: "Latest job activity first (edits, files, messages)",
-  jobNumber: "Sort by job number (highest first)",
+  recent: `Newest created first · ${ACTIVE_STATUS_SORT_NOTE}`,
+  recentlyUpdated: `Latest activity first · ${ACTIVE_STATUS_SORT_NOTE}`,
+  jobNumber: `Highest job number first · ${ACTIVE_STATUS_SORT_NOTE}`,
 };
+
+export { ACTIVE_STATUS_SORT_NOTE };
+
+/** Lower value = higher on the list. Used for active-first job ordering. */
+export function jobStatusSortPriority(status: string): number {
+  return UI_STATUS_PRIORITY[status] ?? API_STATUS_PRIORITY[status] ?? 6;
+}
 
 export const JOB_LIST_SORT_STORAGE_KEY = "jms_job_list_sort_v1";
 
@@ -80,7 +91,7 @@ export function parseJobNumberSortKey(number: string): number {
 }
 
 function activityPriority(status: string): number {
-  return UI_STATUS_PRIORITY[status] ?? API_STATUS_PRIORITY[status] ?? 6;
+  return jobStatusSortPriority(status);
 }
 
 function compareStatusPriority(a: JobSortFields, b: JobSortFields): number {

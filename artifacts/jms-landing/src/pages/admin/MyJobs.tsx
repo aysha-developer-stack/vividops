@@ -14,6 +14,7 @@ import {
   statusToUi, priorityToUi, formatShortDate, daysUntil,
   type UiStatus,
 } from "@/lib/jobMappers";
+import { sortJobs } from "@/lib/jobListSort";
 
 function isJobForUser(j: ApiJob, userId: string): boolean {
   if (j.assignee?.id === userId) return true;
@@ -31,6 +32,7 @@ interface UiJob {
   deadline: string;
   daysLeft: number;
   priority: "Low" | "Medium" | "High";
+  createdAt: string;
 }
 
 function mapJob(j: ApiJob): UiJob {
@@ -52,6 +54,7 @@ function mapJob(j: ApiJob): UiJob {
     deadline,
     daysLeft: days,
     priority: priorityToUi(j.priority),
+    createdAt: j.createdAt,
   };
 }
 
@@ -65,6 +68,7 @@ const STATUS_CFG: Record<UiStatus, { color: string; icon: any; bar: string }> = 
   "On Hold": { color: "bg-orange-50 text-orange-700 border-orange-200", icon: Pause, bar: "bg-orange-400" },
   "Overdue": { color: "bg-red-50 text-red-700 border-red-200", icon: AlertCircle, bar: "bg-red-500" },
   "Rework": { color: "bg-purple-50 text-purple-700 border-purple-200", icon: AlertTriangle, bar: "bg-purple-500" },
+  "Cancelled": { color: "bg-gray-100 text-gray-600 border-gray-300", icon: Clock, bar: "bg-gray-400" },
 };
 
 const FILTERS: ("All" | UiStatus)[] = [
@@ -98,12 +102,19 @@ export default function MyJobs() {
     return mine.map(mapJob);
   }, [jobsQuery.data, user?.id]);
 
-  const filtered = jobs.filter(
-    (j) =>
-      (filter === "All" || j.status === filter) &&
-      (j.title.toLowerCase().includes(search.toLowerCase()) ||
-        j.client.toLowerCase().includes(search.toLowerCase())),
-  );
+  const filtered = useMemo(() => {
+    const matches = jobs.filter(
+      (j) =>
+        (filter === "All" || j.status === filter) &&
+        (j.title.toLowerCase().includes(search.toLowerCase()) ||
+          j.client.toLowerCase().includes(search.toLowerCase())),
+    );
+    return sortJobs(matches, "recent", (j) => ({
+      number: j.number,
+      status: j.status,
+      createdAt: j.createdAt,
+    }));
+  }, [jobs, filter, search]);
   const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 5);
 
   return (
