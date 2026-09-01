@@ -6,7 +6,7 @@ import {
 
 export type JobAttachmentUploadSpec = {
   file: File;
-  fileCategory?: "job" | "completed" | "review";
+  fileCategory?: "job" | "completed" | "review" | "note";
   checklistItemId?: number;
   reviewNoteId?: string;
   reworkId?: string;

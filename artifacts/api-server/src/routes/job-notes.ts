@@ -6,6 +6,7 @@ import {
   users,
   jobMembers,
   jobNotes,
+  jobAttachments,
   JOB_NOTE_TYPES,
   type JobNoteType,
   type JobRow,
@@ -142,11 +143,13 @@ router.post("/jobs/:jobId/notes", requireAuth, async (req, res) => {
       return;
     }
 
-    const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
-    if (!text) {
-      res.status(400).json({ message: "Note text is required" });
+    const textRaw = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+    const hasAttachments = req.body?.hasAttachments === true;
+    if (!textRaw && !hasAttachments) {
+      res.status(400).json({ message: "Note text or at least one attachment is required" });
       return;
     }
+    const text = textRaw || "(Files attached)";
     if (text.length > 5000) {
       res.status(400).json({ message: "Note is too long (max 5000 characters)" });
       return;
@@ -330,6 +333,9 @@ router.delete("/jobs/:jobId/notes/:noteId", requireAuth, async (req, res) => {
     }
 
     await db.delete(jobNotes).where(eq(jobNotes.id, noteId));
+    await db
+      .delete(jobAttachments)
+      .where(and(eq(jobAttachments.reviewNoteId, noteId), eq(jobAttachments.fileCategory, "note")));
 
     await notifyJobManagers({
       jobId,

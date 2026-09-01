@@ -242,7 +242,7 @@ function isJobWorkFile(att: {
   uploadedByRole?: string | null;
 }, checklistItemId: number | null): boolean {
   if (checklistItemId != null) return false;
-  if (att.fileCategory === "rework" || att.fileCategory === "review") return false;
+  if (att.fileCategory === "rework" || att.fileCategory === "review" || att.fileCategory === "note") return false;
   if (att.fileCategory === "completed") return false;
   if (att.fileCategory === "job") return true;
   return att.uploadedByRole !== "user";
@@ -332,7 +332,7 @@ router.post("/jobs/:jobId/attachments/:attachmentId/link-checklist", requireAuth
     const isCompleted =
       fileCategory === "completed" ||
       (!fileCategory && uploaderRole === "user");
-    if (isCompleted || fileCategory === "rework" || fileCategory === "review") {
+    if (isCompleted || fileCategory === "rework" || fileCategory === "review" || fileCategory === "note") {
       res.status(400).json({
         message: "Completed or rework files cannot be used as checklist instruction files.",
       });

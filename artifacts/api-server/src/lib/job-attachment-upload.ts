@@ -1,7 +1,7 @@
 import type { JobRow, UserRow } from "@workspace/db";
 import { isFieldWorkerOnJob } from "./working-supervisor";
 
-export type AttachmentFileCategory = "job" | "completed" | "review" | "rework";
+export type AttachmentFileCategory = "job" | "completed" | "review" | "rework" | "note";
 
 export type ParsedAttachmentUpload = {
   checklistItemId: number;
@@ -28,7 +28,9 @@ export function buildJobAttachmentFolder(jobRow: JobRow, fileCategory: Attachmen
         ? "review-photos"
         : fileCategory === "rework"
           ? "rework-files"
-          : "job-files";
+          : fileCategory === "note"
+            ? "note-files"
+            : "job-files";
   return `jobs/${jobFolder}/${subfolder}`;
 }
 
@@ -60,17 +62,19 @@ export function parseAttachmentUploadBody(
   const treatAsFieldWorker = isFieldWorkerOnJob(actor, jobRow);
 
   const fileCategory: AttachmentFileCategory =
-    categoryRaw === "rework"
-      ? "rework"
-      : categoryRaw === "review"
-        ? "review"
-        : categoryRaw === "completed"
-          ? "completed"
-          : categoryRaw === "job"
-            ? "job"
-            : treatAsFieldWorker
-              ? "completed"
-              : "job";
+    categoryRaw === "note"
+      ? "note"
+      : categoryRaw === "rework"
+        ? "rework"
+        : categoryRaw === "review"
+          ? "review"
+          : categoryRaw === "completed"
+            ? "completed"
+            : categoryRaw === "job"
+              ? "job"
+              : treatAsFieldWorker
+                ? "completed"
+                : "job";
 
   const reviewNoteRaw = body.reviewNoteId;
   const reviewNoteId =
@@ -86,7 +90,8 @@ export function parseAttachmentUploadBody(
 
   const suppressNotifications =
     String(body.suppressNotifications ?? "").toLowerCase() === "true" ||
-    fileCategory === "review";
+    fileCategory === "review" ||
+    fileCategory === "note";
 
   return {
     checklistItemId: Number.isFinite(checklistItemId) ? checklistItemId : 0,
