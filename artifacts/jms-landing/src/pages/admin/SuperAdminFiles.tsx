@@ -8,6 +8,7 @@ import { useDashboardSearch } from "@/lib/pageSearch";
 import Pagination, { usePagination } from "@/components/Pagination";
 import { useListJobs, type Job as ApiJob } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
+import { useAuth } from "@/lib/auth";
 import { jobFieldForTitle, sortJobFields } from "@/lib/jobForm";
 import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } from "@/lib/downloadFile";
 import AttachmentPreviewDialog, { canOpenAttachmentPreview } from "@/components/AttachmentPreviewDialog";
@@ -45,21 +46,61 @@ type FieldGroupRow = {
   totalFiles: number;
 };
 
-export default function SuperAdminFiles({ role = "super-admin" as Role }: { role?: Role } = {}) {
+type SuperAdminFilesProps = {
+  role?: Role;
+  jobScope?: "all" | "assigned";
+  embedded?: boolean;
+  search?: string;
+  canDelete?: boolean;
+};
+
+function isJobAssignedToUser(j: ApiJob, userId: string): boolean {
+  if (j.assignee?.id === userId) return true;
+  if (Array.isArray(j.assignees) && j.assignees.some((member) => member?.id === userId)) return true;
+  return false;
+}
+
+function fieldFilesLabel(kind: "all" | "job" | "completed", count: number): string {
+  if (kind === "job") return `${count} job ${count === 1 ? "file" : "files"}`;
+  if (kind === "completed") return `${count} completed ${count === 1 ? "file" : "files"}`;
+  return `${count} ${count === 1 ? "file" : "files"}`;
+}
+
+export default function SuperAdminFiles({
+  role = "super-admin",
+  jobScope = "all",
+  embedded = false,
+  search: externalSearch,
+  canDelete: canDeleteProp,
+}: SuperAdminFilesProps = {}) {
+  const { user } = useAuth();
   const jobsQuery = useListJobs();
-  const { search, headerSearch } = useDashboardSearch("Search files…");
+  const dashboardSearch = useDashboardSearch("Search files…");
+  const search = embedded ? (externalSearch ?? "") : dashboardSearch.search;
+  const headerSearch = embedded ? undefined : dashboardSearch.headerSearch;
+  const canDelete = canDeleteProp ?? (role === "admin" || role === "super-admin");
   const [kind, setKind] = useState<"all" | "job" | "completed">("all");
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
   const [openFieldIds, setOpenFieldIds] = useState<Record<string, boolean>>({});
   const [openJobIds, setOpenJobIds] = useState<Record<string, boolean>>({});
-  const jobBase = role === "admin" ? "/admin/jobs" : "/super-admin/jobs";
+  const jobBase =
+    role === "admin" ? "/admin/jobs"
+    : role === "supervisor" ? "/supervisor/jobs"
+    : role === "coordinator" ? "/coordinator/jobs"
+    : role === "user" ? "/user/jobs"
+    : "/super-admin/jobs";
   const [rows, setRows] = useState<FileRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [previewFile, setPreviewFile] = useState<FileRow | null>(null);
 
+  const visibleJobs = useMemo(() => {
+    const jobs = jobsQuery.data ?? [];
+    if (jobScope !== "assigned" || !user?.id) return jobs;
+    return jobs.filter((job) => isJobAssignedToUser(job, user.id));
+  }, [jobsQuery.data, jobScope, user?.id]);
+
   useEffect(() => {
-    const jobs: ApiJob[] = jobsQuery.data ?? [];
-    if (jobs.length === 0) {
+    if (visibleJobs.length === 0) {
       setRows([]);
       return;
     }
@@ -69,7 +110,7 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
     (async () => {
       try {
         const results = await Promise.all(
-          jobs.map(async (j) => {
+          visibleJobs.map(async (j) => {
             const res = await fetch(`/api/jobs/${j.id}/attachments`, { credentials: "include" });
             if (!res.ok) return [] as FileRow[];
             const data = (await res.json()) as unknown;
@@ -109,7 +150,7 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
     return () => {
       cancelled = true;
     };
-  }, [jobsQuery.data]);
+  }, [visibleJobs]);
 
   useEffect(() => {
     setOpenFieldIds({});
@@ -166,9 +207,7 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
     return out;
   }, [files, search, kind]);
 
-  const fieldGroups = useMemo((): FieldGroupRow[] | null => {
-    if (kind !== "job") return null;
-
+  const fieldGroups = useMemo((): FieldGroupRow[] => {
     const byField = new Map<string, FolderRow[]>();
     for (const folder of folders) {
       const list = byField.get(folder.field) ?? [];
@@ -185,10 +224,9 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
         totalFiles: jobs.reduce((sum, job) => sum + job.files.length, 0),
       };
     });
-  }, [folders, kind]);
+  }, [folders]);
 
-  const flatPagination = usePagination(folders, 100);
-  const fieldPagination = usePagination(fieldGroups ?? [], 20);
+  const fieldPagination = usePagination(fieldGroups, 20);
 
   const deleteFile = async (f: FileRow) => {
     const ok = window.confirm(`Delete ${f.name}? This cannot be undone.`);
@@ -237,6 +275,7 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
       >
         <Download size={14} />
       </button>
+      {canDelete && (
       <button
         onClick={() => void deleteFile(f)}
         className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -244,6 +283,7 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
       >
         <Trash2 size={14} />
       </button>
+      )}
     </div>
   );
 
@@ -336,79 +376,19 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
           </td>
           <td className="px-6 py-4 text-right" />
         </motion.tr>
-        {isOpen && folderRow.files.map((f) => renderFileRow(f, kind === "job" ? "pl-16" : "pl-12"))}
+        {isOpen && folderRow.files.map((f) => renderFileRow(f, "pl-16"))}
       </Fragment>
     );
   };
 
-  const renderFlatFolderRow = (folderRow: FolderRow, rowIndex: number) => {
-    const isOpen = !!openJobIds[folderRow.jobId];
-    return (
-      <Fragment key={folderRow.jobId}>
-        <motion.tr
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, x: -20 }}
-          transition={{ delay: rowIndex * 0.02 }}
-          className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50"
-        >
-          <td className="px-6 py-4">
-            <button
-              onClick={() => setOpenJobIds((prev) => ({ ...prev, [folderRow.jobId]: !isOpen }))}
-              className="flex items-center gap-3 min-w-[260px] text-left"
-            >
-              <div className="w-9 h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-500">
-                {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-gray-900 truncate flex items-center gap-2">
-                  <Folder size={16} className="text-primary" />
-                  <span className="truncate">{folderRow.jobTitle}</span>
-                </div>
-                <div className="text-[11px] text-gray-500 mt-0.5 truncate">
-                  {folderRow.files.length} files • Completed: {folderRow.completedFilesCount}
-                </div>
-              </div>
-            </button>
-          </td>
-          <td className="px-6 py-4">
-            <Link href={`${jobBase}/${folderRow.jobId}?tab=files`}>
-              <span className="inline-flex items-center gap-2 text-xs font-bold text-primary hover:underline cursor-pointer">
-                {folderRow.jobNumber} <ExternalLink size={12} className="text-gray-300" />
-              </span>
-            </Link>
-          </td>
-          <td className="px-6 py-4">
-            <div className="text-xs text-gray-600">{folderRow.lastUploadedBy}</div>
-            <div className="text-[11px] text-gray-400">{folderRow.lastUploadedAt}</div>
-          </td>
-          <td className="px-6 py-4">
-            <span className="inline-flex items-center px-2 py-1 rounded-lg border text-[10px] font-bold uppercase bg-gray-50 text-gray-700 border-gray-200">
-              folder
-            </span>
-          </td>
-          <td className="px-6 py-4">
-            <span className="inline-flex items-center px-2 py-1 rounded-lg border text-[10px] font-bold uppercase bg-gray-50 text-gray-700 border-gray-200">
-              available
-            </span>
-          </td>
-          <td className="px-6 py-4 text-right" />
-        </motion.tr>
-        {isOpen && folderRow.files.map((f) => renderFileRow(f, "pl-12"))}
-      </Fragment>
-    );
-  };
+  const listEmpty = fieldGroups.length === 0;
 
-  const listEmpty = kind === "job" ? (fieldGroups?.length ?? 0) === 0 : folders.length === 0;
-
-  return (
-    <DashboardLayout title="Files Management" role={role} headerSearch={headerSearch}>
+  const panel = (
+    <>
       <div className="bg-white rounded-2xl border border-gray-100 p-5 mb-5 flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
-        {kind === "job" && (
-          <p className="text-xs text-gray-500">
-            Job files are grouped by field (Engineering, Architectural Plan, Robot Structure, etc.). Open a field to see its jobs.
-          </p>
-        )}
+        <p className="text-xs text-gray-500">
+          Files are grouped by field (Engineering, Architectural Plan, Robot Structure, etc.). Open a field to see its jobs.
+        </p>
         <div className="flex gap-2 lg:ml-auto">
           {(["all", "job", "completed"] as const).map((k) => (
             <button
@@ -438,47 +418,45 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
             </thead>
             <tbody>
               <AnimatePresence>
-                {kind === "job" && fieldGroups
-                  ? fieldPagination.pageItems.map((group, i) => {
-                      const fieldOpen = !!openFieldIds[group.field];
-                      return (
-                        <Fragment key={group.field}>
-                          <motion.tr
-                            initial={{ opacity: 0, y: 8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.02 }}
-                            className="border-b border-gray-100 bg-primary/[0.03] hover:bg-primary/[0.06]"
+                {fieldPagination.pageItems.map((group, i) => {
+                  const fieldOpen = !!openFieldIds[group.field];
+                  return (
+                    <Fragment key={group.field}>
+                      <motion.tr
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: i * 0.02 }}
+                        className="border-b border-gray-100 bg-primary/[0.03] hover:bg-primary/[0.06]"
+                      >
+                        <td className="px-6 py-4" colSpan={6}>
+                          <button
+                            onClick={() =>
+                              setOpenFieldIds((prev) => ({ ...prev, [group.field]: !fieldOpen }))
+                            }
+                            className="flex items-center gap-3 min-w-[260px] text-left w-full"
                           >
-                            <td className="px-6 py-4" colSpan={6}>
-                              <button
-                                onClick={() =>
-                                  setOpenFieldIds((prev) => ({ ...prev, [group.field]: !fieldOpen }))
-                                }
-                                className="flex items-center gap-3 min-w-[260px] text-left w-full"
-                              >
-                                <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
-                                  {fieldOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                                    <Layers size={16} className="text-primary shrink-0" />
-                                    <span>{group.field}</span>
-                                  </div>
-                                  <div className="text-[11px] text-gray-500 mt-0.5">
-                                    {group.jobCount} {group.jobCount === 1 ? "job" : "jobs"} · {group.totalFiles} job {group.totalFiles === 1 ? "file" : "files"}
-                                  </div>
-                                </div>
-                              </button>
-                            </td>
-                          </motion.tr>
-                          {fieldOpen &&
-                            group.jobs.map((folderRow, jobIndex) =>
-                              renderJobFolderRow(folderRow, "pl-8", jobIndex),
-                            )}
-                        </Fragment>
-                      );
-                    })
-                  : flatPagination.pageItems.map((folderRow, i) => renderFlatFolderRow(folderRow, i))}
+                            <div className="w-9 h-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                              {fieldOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                                <Layers size={16} className="text-primary shrink-0" />
+                                <span>{group.field}</span>
+                              </div>
+                              <div className="text-[11px] text-gray-500 mt-0.5">
+                                {group.jobCount} {group.jobCount === 1 ? "job" : "jobs"} · {fieldFilesLabel(kind, group.totalFiles)}
+                              </div>
+                            </div>
+                          </button>
+                        </td>
+                      </motion.tr>
+                      {fieldOpen &&
+                        group.jobs.map((folderRow, jobIndex) =>
+                          renderJobFolderRow(folderRow, "pl-8", jobIndex),
+                        )}
+                    </Fragment>
+                  );
+                })}
               </AnimatePresence>
             </tbody>
           </table>
@@ -488,7 +466,7 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
         {!jobsQuery.isLoading && !loading && listEmpty && (
           <div className="text-center py-12 text-sm text-gray-400">No files found.</div>
         )}
-        {kind === "job" && (fieldGroups?.length ?? 0) > 0 && (
+        {fieldGroups.length > 0 && (
           <div className="border-t border-gray-100">
             <Pagination
               page={fieldPagination.page}
@@ -497,18 +475,6 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
               pageSize={fieldPagination.pageSize}
               onChange={fieldPagination.setPage}
               label="fields"
-            />
-          </div>
-        )}
-        {kind !== "job" && folders.length > 0 && (
-          <div className="border-t border-gray-100">
-            <Pagination
-              page={flatPagination.page}
-              totalPages={flatPagination.totalPages}
-              total={flatPagination.total}
-              pageSize={flatPagination.pageSize}
-              onChange={flatPagination.setPage}
-              label="folders"
             />
           </div>
         )}
@@ -530,6 +496,14 @@ export default function SuperAdminFiles({ role = "super-admin" as Role }: { role
           }}
         />
       )}
+    </>
+  );
+
+  if (embedded) return panel;
+
+  return (
+    <DashboardLayout title="Files Management" role={role} headerSearch={headerSearch}>
+      {panel}
     </DashboardLayout>
   );
 }

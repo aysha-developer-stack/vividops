@@ -1,10 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
-  Calendar, ChevronRight, Briefcase,
-  CheckCircle2, Clock, AlertTriangle, MapPin, 
-  Folder, ListChecks, FileText, Upload, Download, Eye
+  ChevronRight, Briefcase,
+  CheckCircle2, Clock, AlertTriangle,
+  Folder, ListChecks
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useDashboardSearch } from "@/lib/pageSearch";
@@ -15,6 +15,7 @@ import {
   statusToUi, priorityToUi, formatShortDate, daysUntil,
   type UiStatus,
 } from "@/lib/jobMappers";
+import SuperAdminFiles from "@/pages/admin/SuperAdminFiles";
 
 interface UiJob {
   id: string;
@@ -64,12 +65,17 @@ const STATUS_CFG: Record<UiStatus, { color: string; icon: any; bar: string }> = 
   "On Hold": { color: "bg-orange-50 text-orange-700 border-orange-200", icon: Clock, bar: "bg-orange-400" },
   "Overdue": { color: "bg-red-50 text-red-700 border-red-200", icon: Clock, bar: "bg-red-500" },
   "Rework": { color: "bg-purple-50 text-purple-700 border-purple-200", icon: AlertTriangle, bar: "bg-purple-500" },
+  "Cancelled": { color: "bg-gray-100 text-gray-600 border-gray-300", icon: Clock, bar: "bg-gray-400" },
 };
 
 export default function FilesChecklists() {
-  const { search, setSearch, headerSearch } = useDashboardSearch("Search jobs…");
   const [activeTab, setActiveTab] = useState<"checklists" | "files">("checklists");
+  const { search, setSearch, setPlaceholder, headerSearch } = useDashboardSearch("Search jobs…");
   const jobsQuery = useListJobs();
+
+  useEffect(() => {
+    setPlaceholder(activeTab === "files" ? "Search files…" : "Search jobs…");
+  }, [activeTab, setPlaceholder]);
 
   const jobs: UiJob[] = useMemo(
     () => (jobsQuery.data ?? []).map(mapJob),
@@ -106,6 +112,9 @@ export default function FilesChecklists() {
       </div>
 
       {/* Content */}
+      {activeTab === "files" ? (
+        <SuperAdminFiles role="user" jobScope="assigned" embedded search={search} canDelete={false} />
+      ) : (
       <div className="space-y-4">
         {jobsQuery.isLoading && (
           <div className="text-center py-20 text-gray-400">Loading your data...</div>
@@ -177,65 +186,10 @@ export default function FilesChecklists() {
             </div>
           </motion.div>
         ))}
-
-        {!jobsQuery.isLoading && activeTab === "files" && pageItems.map((j, i) => (
-          <motion.div
-            key={j.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.05 }}
-            className="bg-white rounded-2xl border border-gray-100 p-5 group hover:shadow-lg hover:shadow-gray-200/50 transition-all"
-          >
-            <div className="flex flex-col md:flex-row gap-5 items-start md:items-center">
-              <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                <Folder size={24} />
-              </div>
-              
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between mb-1">
-                  <div>
-                    <h4 className="font-bold text-gray-900 group-hover:text-emerald-600 transition-colors">{j.title}</h4>
-                    <p className="text-xs text-gray-500">{j.number} · {j.client}</p>
-                    <JobAddressLine address={j.address} fallback="—" />
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <div className="text-sm font-bold text-gray-900">{j.fileCount}</div>
-                      <div className="text-[10px] text-gray-500 uppercase font-bold">Files</div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-4 mt-3">
-                  <div className="flex -space-x-2">
-                    {[1, 2, 3].map(i => (
-                      <div key={i} className="w-6 h-6 rounded-lg bg-gray-100 border-2 border-white flex items-center justify-center">
-                        <FileText size={10} className="text-gray-400" />
-                      </div>
-                    ))}
-                  </div>
-                  <span className="text-[10px] text-gray-400 font-medium">site_plan.pdf, measurements.xlsx +1 more</span>
-                </div>
-              </div>
-
-              <div className="flex gap-2 w-full md:w-auto">
-                <Link href={`/user/jobs/${j.id}?tab=files`} className="flex-1 md:flex-none">
-                  <button className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-600 rounded-xl text-xs font-bold transition-all border border-emerald-100">
-                    <Folder size={14} /> Manage Files
-                  </button>
-                </Link>
-                <Link href={`/user/jobs/${j.id}`} className="md:flex-none">
-                  <button className="p-2 text-gray-400 hover:text-primary transition-colors">
-                    <ChevronRight size={20} />
-                  </button>
-                </Link>
-              </div>
-            </div>
-          </motion.div>
-        ))}
       </div>
+      )}
 
-      {filtered.length > 0 && (
+      {activeTab === "checklists" && filtered.length > 0 && (
         <div className="mt-6 bg-white rounded-2xl border border-gray-100 overflow-hidden">
           <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize} onChange={setPage} label="jobs" />
         </div>
