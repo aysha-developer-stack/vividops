@@ -11,9 +11,24 @@ import { handleTimerHeartbeatSideEffects } from "@/lib/timerHeartbeatEffects";
 import {
   writeJobTimerState,
   jobTimerStateFromServerSession,
-  computeJobTimerElapsed,
   dispatchTimerSessionSync,
 } from "@/lib/jobTimerLocalState";
+
+function sessionHeartbeatMs(session: ActiveTimerSession | null | undefined): number {
+  if (!session?.lastHeartbeatAt) return 0;
+  const ms = Date.parse(session.lastHeartbeatAt);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function isSessionAtLeastAsFresh(
+  incoming: ActiveTimerSession | null,
+  current: ActiveTimerSession | null,
+): boolean {
+  if (!current) return true;
+  if (!incoming) return true;
+  if (incoming.id !== current.id) return true;
+  return sessionHeartbeatMs(incoming) >= sessionHeartbeatMs(current);
+}
 
 /**
  * Keep the server work timer alive while the user navigates anywhere in OPS.
@@ -29,7 +44,8 @@ export function useGlobalTimerHeartbeat(enabled: boolean): void {
 
     let cancelled = false;
 
-    const publishSession = (session: ActiveTimerSession | null) => {
+    const publishSession = (session: ActiveTimerSession | null, force = false) => {
+      if (!force && !isSessionAtLeastAsFresh(session, sessionRef.current)) return;
       sessionRef.current = session;
       dispatchTimerSessionSync(session);
       if (session?.jobId) {
@@ -57,11 +73,11 @@ export function useGlobalTimerHeartbeat(enabled: boolean): void {
         return;
       }
 
-      publishSession(payload);
+      publishSession(payload, true);
 
       await handleTimerHeartbeatSideEffects(payload, {
         onAutoPaused: (session) => {
-          publishSession(session);
+          publishSession(session, true);
           void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
         },
         onAutoStopped: () => {

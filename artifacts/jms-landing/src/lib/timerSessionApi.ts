@@ -15,11 +15,15 @@ export type ActiveTimerSession = {
 };
 
 export function liveSessionElapsedSeconds(
-  session: Pick<ActiveTimerSession, "accumulatedSeconds" | "segmentStartedAt">,
+  session: Pick<
+    ActiveTimerSession,
+    "accumulatedSeconds" | "segmentStartedAt" | "trackingPaused"
+  > | null | undefined,
   nowMs = Date.now(),
 ): number {
+  if (!session) return 0;
   const base = Math.max(0, session.accumulatedSeconds ?? 0);
-  if (!session.segmentStartedAt) return base;
+  if (session.trackingPaused || !session.segmentStartedAt) return base;
   const segMs = new Date(session.segmentStartedAt).getTime();
   if (!Number.isFinite(segMs)) return base;
   return base + Math.max(0, Math.floor((nowMs - segMs) / 1000));

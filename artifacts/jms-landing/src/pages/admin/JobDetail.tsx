@@ -66,6 +66,7 @@ import {
   computeJobTimerElapsed,
   clearOtherJobTimerLocalStates,
   jobTimerStateFromServerSession,
+  dispatchTimerSessionSync,
 } from "@/lib/jobTimerLocalState";
 import {
   fetchActiveReviewCheckSessions,
@@ -919,7 +920,10 @@ export default function JobDetail({ role = "user", id }: Props) {
   const pauseTimer = () => {
     if (!job?.id) return;
     void pauseTimerSession()
-      .then(() => refreshServerTimer())
+      .then((session) => {
+        dispatchTimerSessionSync(session);
+        return refreshServerTimer();
+      })
       .catch(() => {});
   };
 
@@ -928,6 +932,7 @@ export default function JobDetail({ role = "user", id }: Props) {
 
     const serverMine = await fetchMyActiveTimerSession();
     if (serverMine?.jobId === job.id && serverMine.segmentStartedAt) {
+      dispatchTimerSessionSync(serverMine);
       await refreshServerTimer();
       return;
     }
@@ -944,6 +949,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     });
     if (!session) return;
 
+    dispatchTimerSessionSync(session);
     await refreshServerTimer();
     await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
     await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });

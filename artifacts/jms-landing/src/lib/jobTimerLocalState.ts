@@ -65,9 +65,10 @@ export function clearOtherJobTimerLocalStates(currentJobId?: string): void {
 }
 
 export function jobTimerStateFromServerSession(session: ActiveTimerSession): JobTimerLocalState {
+  const running = !!session.segmentStartedAt && !session.trackingPaused;
   return {
-    running: !!session.segmentStartedAt,
-    startedAt: session.segmentStartedAt ? Date.parse(session.segmentStartedAt) : null,
+    running,
+    startedAt: running && session.segmentStartedAt ? Date.parse(session.segmentStartedAt) : null,
     accumulated: session.accumulatedSeconds ?? 0,
     task: session.task,
   };
@@ -108,9 +109,12 @@ export function applyServerTimerToJob(
   }
   const synced = jobTimerStateFromServerSession(session);
   writeJobTimerState(jobId, synced);
+  const seconds = synced.running
+    ? liveSessionElapsedSeconds(session)
+    : Math.max(0, synced.accumulated ?? 0);
   return {
-    running: !!synced.running,
-    seconds: computeJobTimerElapsed(synced),
+    running: synced.running,
+    seconds,
     paused: !synced.running && (synced.accumulated ?? 0) > 0,
   };
 }
