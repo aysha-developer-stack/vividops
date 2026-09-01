@@ -14,6 +14,35 @@ export const JOB_TITLE_OPTIONS = [
   "Robot Structure",
 ] as const;
 
+/** Map a job title to its field/type for Files Management grouping. */
+export function jobFieldForTitle(title: string): string {
+  const normalized = title.trim().toLowerCase();
+  if (!normalized) return "Other";
+
+  const exact = JOB_TITLE_OPTIONS.find((option) => option.toLowerCase() === normalized);
+  if (exact) return exact;
+
+  const partial = JOB_TITLE_OPTIONS.find(
+    (option) =>
+      normalized.includes(option.toLowerCase()) || option.toLowerCase().includes(normalized),
+  );
+  if (partial) return partial;
+
+  return title.trim();
+}
+
+export function sortJobFields(fields: string[]): string[] {
+  const order = new Map(JOB_TITLE_OPTIONS.map((field, index) => [field, index]));
+  return [...fields].sort((a, b) => {
+    const aRank = order.get(a as (typeof JOB_TITLE_OPTIONS)[number]);
+    const bRank = order.get(b as (typeof JOB_TITLE_OPTIONS)[number]);
+    if (aRank != null && bRank != null) return aRank - bRank;
+    if (aRank != null) return -1;
+    if (bRank != null) return 1;
+    return a.localeCompare(b);
+  });
+}
+
 export const WIND_OPTIONS = ["N2", "N3", "N4", "N5", "C1", "C2"] as const;
 export type WindOption = (typeof WIND_OPTIONS)[number];
 
