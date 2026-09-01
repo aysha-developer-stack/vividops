@@ -84,7 +84,7 @@ import { MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategori
 import { useQueryClient } from "@tanstack/react-query";
 import FileDropzone from "@/components/FileDropzone";
 import { CHECKLIST_FILE_ACCEPT, filterJobFiles, filterChecklistInstructionFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE, CHECKLIST_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
-import { isCompletedAttachment, isJobAttachment, isReworkAttachment, fileCategoryFromUploadTag, completedAttachmentStatusLabel, checklistItemHasCompletedUpload, jobLevelHasCompletedDeliverables, reworkInstructionBadges, type ReworkOrigin } from "@/lib/attachmentCategories";
+import { isCompletedAttachment, isJobAttachment, isNoteAttachment, isReworkAttachment, fileCategoryFromUploadTag, completedAttachmentStatusLabel, checklistItemHasCompletedUpload, jobLevelHasCompletedDeliverables, reworkInstructionBadges, type ReworkOrigin } from "@/lib/attachmentCategories";
 import { useDashboardSearch } from "@/lib/pageSearch";
 import { useAuth } from "@/lib/auth";
 import UploadProgressPanel from "@/components/UploadProgressPanel";
@@ -149,6 +149,7 @@ type AttachmentApi = {
   fileSize: string | null;
   fileCategory?: string | null;
   reworkId?: string | null;
+  reviewNoteId?: string | null;
   uploadedById: string;
   createdAt: string;
   checklistItemId?: number | null;
@@ -2577,7 +2578,9 @@ export default function JobDetail({ role = "user", id }: Props) {
         {tab === "files" && (() => {
           const q = fileSearch.toLowerCase();
           // Keep checklist-linked files in the checklist panel — hide them from Job Files tables
-          const nonChecklist = attachments.filter((a) => a.checklistItemId == null);
+          const nonChecklist = attachments.filter(
+            (a) => a.checklistItemId == null && !isNoteAttachment(a),
+          );
           const reworkFiles = nonChecklist.filter((a) => isReworkAttachment(a));
           const inputFiles = nonChecklist.filter((a) => isJobAttachment(a));
           const outputFiles = nonChecklist.filter((a) => isCompletedAttachment(a));

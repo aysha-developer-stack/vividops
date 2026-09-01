@@ -61,7 +61,7 @@ export function parseAttachmentUploadBody(
     typeof body.fileCategory === "string" ? body.fileCategory.trim().toLowerCase() : "";
   const treatAsFieldWorker = isFieldWorkerOnJob(actor, jobRow);
 
-  const fileCategory: AttachmentFileCategory =
+  let fileCategory: AttachmentFileCategory =
     categoryRaw === "note"
       ? "note"
       : categoryRaw === "rework"
@@ -81,6 +81,10 @@ export function parseAttachmentUploadBody(
     typeof reviewNoteRaw === "string" && reviewNoteRaw.trim().length > 0
       ? reviewNoteRaw.trim()
       : null;
+
+  if (reviewNoteId && fileCategory !== "review" && fileCategory !== "rework") {
+    fileCategory = "note";
+  }
 
   const reworkIdRaw = body.reworkId;
   const reworkId =

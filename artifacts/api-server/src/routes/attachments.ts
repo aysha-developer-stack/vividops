@@ -239,10 +239,12 @@ function jobAddressZipBaseName(jobRow: JobRow): string {
 function isJobWorkFile(att: {
   fileCategory: string | null;
   reworkId: string | null;
+  reviewNoteId?: string | null;
   uploadedByRole?: string | null;
 }, checklistItemId: number | null): boolean {
   if (checklistItemId != null) return false;
   if (att.fileCategory === "rework" || att.fileCategory === "review" || att.fileCategory === "note") return false;
+  if (att.reviewNoteId && att.fileCategory !== "review" && att.fileCategory !== "rework") return false;
   if (att.fileCategory === "completed") return false;
   if (att.fileCategory === "job") return true;
   return att.uploadedByRole !== "user";
@@ -481,6 +483,7 @@ router.get("/jobs/:jobId/attachments/download-zip", requireAuth, async (req, res
           {
             fileCategory: r.attachment.fileCategory,
             reworkId: (r.attachment as { reworkId?: string | null }).reworkId ?? null,
+            reviewNoteId: (r.attachment as { reviewNoteId?: string | null }).reviewNoteId ?? null,
             uploadedByRole: r.uploadedByRole,
           },
           r.checklistItemId ?? null,

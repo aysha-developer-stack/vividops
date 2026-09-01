@@ -149,7 +149,11 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
         }>;
         setNoteAttachments(
           (Array.isArray(attachmentsData) ? attachmentsData : [])
-            .filter((a) => a.fileCategory === "note")
+            .filter(
+              (a) =>
+                a.fileCategory === "note" ||
+                (a.reviewNoteId && a.fileCategory !== "review" && a.fileCategory !== "rework"),
+            )
             .map((a) => ({
               id: a.id,
               fileName: a.fileName,

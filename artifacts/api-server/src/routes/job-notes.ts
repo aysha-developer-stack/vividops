@@ -335,7 +335,12 @@ router.delete("/jobs/:jobId/notes/:noteId", requireAuth, async (req, res) => {
     await db.delete(jobNotes).where(eq(jobNotes.id, noteId));
     await db
       .delete(jobAttachments)
-      .where(and(eq(jobAttachments.reviewNoteId, noteId), eq(jobAttachments.fileCategory, "note")));
+      .where(
+        and(
+          eq(jobAttachments.reviewNoteId, noteId),
+          sql`${jobAttachments.fileCategory} IS DISTINCT FROM 'review'`,
+        ),
+      );
 
     await notifyJobManagers({
       jobId,
