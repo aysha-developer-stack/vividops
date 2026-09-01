@@ -8,7 +8,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   type JobListSortMode,
-  ACTIVE_STATUS_SORT_NOTE,
   JOB_LIST_SORT_HINTS,
   JOB_LIST_SORT_LABELS,
   storeJobListSort,
@@ -60,12 +59,8 @@ export default function JobListSortControl({ value, onChange, variant = "toolbar
         align="end"
         sideOffset={8}
         avoidCollisions
-        className="z-50 w-[var(--radix-dropdown-menu-trigger-width)] min-w-[280px] border border-gray-200 bg-white p-1.5 text-gray-900 shadow-xl"
+        className="z-50 w-[var(--radix-dropdown-menu-trigger-width)] min-w-[240px] border border-gray-200 bg-white p-1.5 text-gray-900 shadow-xl"
       >
-        <div className="px-2.5 py-2 mb-1 border-b border-gray-100">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-primary">Active jobs first</div>
-          <div className="text-[11px] text-gray-500 leading-snug mt-0.5">{ACTIVE_STATUS_SORT_NOTE}</div>
-        </div>
         {MODES.map(([mode, label]) => {
           const selected = value === mode;
           return (
