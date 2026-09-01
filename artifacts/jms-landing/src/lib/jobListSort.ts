@@ -11,27 +11,28 @@ export type JobSortFields = {
 };
 
 const UI_STATUS_PRIORITY: Record<string, number> = {
-  "In Progress": 0,
-  "Awaiting Supervisor": 1,
-  "Awaiting Admin": 2,
-  "Awaiting Super Admin": 2,
-  Rework: 3,
-  Overdue: 4,
-  "On Hold": 5,
-  "Not Started": 6,
+  Rework: 0,
+  "In Progress": 1,
+  "Not Started": 2,
+  Overdue: 3,
+  "Awaiting Supervisor": 4,
+  "Awaiting Admin": 5,
+  "Awaiting Super Admin": 5,
+  "On Hold": 6,
   Done: 7,
+  Cancelled: 8,
 };
 
 const API_STATUS_PRIORITY: Record<string, number> = {
-  in_progress: 0,
-  awaiting_supervisor: 1,
-  awaiting_admin: 2,
-  awaiting_super_admin: 2,
-  rework: 3,
-  on_hold: 5,
-  pending: 6,
-  cancelled: 6,
+  rework: 0,
+  in_progress: 1,
+  pending: 2,
+  awaiting_supervisor: 4,
+  awaiting_admin: 5,
+  awaiting_super_admin: 5,
+  on_hold: 6,
   completed: 7,
+  cancelled: 8,
 };
 
 export const JOB_LIST_SORT_LABELS: Record<JobListSortMode, string> = {
@@ -82,6 +83,10 @@ function activityPriority(status: string): number {
   return UI_STATUS_PRIORITY[status] ?? API_STATUS_PRIORITY[status] ?? 6;
 }
 
+function compareStatusPriority(a: JobSortFields, b: JobSortFields): number {
+  return activityPriority(a.status) - activityPriority(b.status);
+}
+
 function timestampMs(iso: string | null | undefined): number {
   if (!iso) return 0;
   const t = Date.parse(iso);
@@ -99,6 +104,8 @@ function latestActivityMs(fields: JobSortFields): number {
 }
 
 export function compareJobsByRecentlyUpdated(a: JobSortFields, b: JobSortFields): number {
+  const statusDiff = compareStatusPriority(a, b);
+  if (statusDiff !== 0) return statusDiff;
   const activityDiff = latestActivityMs(b) - latestActivityMs(a);
   if (activityDiff !== 0) return activityDiff;
   const numDiff = parseJobNumberSortKey(b.number) - parseJobNumberSortKey(a.number);
@@ -107,6 +114,8 @@ export function compareJobsByRecentlyUpdated(a: JobSortFields, b: JobSortFields)
 }
 
 export function compareJobsByRecent(a: JobSortFields, b: JobSortFields): number {
+  const statusDiff = compareStatusPriority(a, b);
+  if (statusDiff !== 0) return statusDiff;
   const createdDiff = timestampMs(b.createdAt) - timestampMs(a.createdAt);
   if (createdDiff !== 0) return createdDiff;
   const numDiff = parseJobNumberSortKey(b.number) - parseJobNumberSortKey(a.number);
@@ -137,6 +146,8 @@ export function compareJobsByActivity(a: JobSortFields, b: JobSortFields): numbe
 }
 
 export function compareJobsByJobNumber(a: JobSortFields, b: JobSortFields): number {
+  const statusDiff = compareStatusPriority(a, b);
+  if (statusDiff !== 0) return statusDiff;
   const numDiff = parseJobNumberSortKey(b.number) - parseJobNumberSortKey(a.number);
   if (numDiff !== 0) return numDiff;
   return b.number.localeCompare(a.number);
