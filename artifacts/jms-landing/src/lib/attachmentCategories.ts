@@ -1,4 +1,8 @@
-export type AttachmentFileCategory = "job" | "completed" | "review" | "rework";
+export type AttachmentFileCategory = "job" | "completed" | "review" | "rework" | "note";
+
+export function isNoteAttachment(a: { fileCategory?: string | null }): boolean {
+  return a.fileCategory === "note";
+}
 
 export function isReviewAttachment(a: { fileCategory?: string | null }): boolean {
   return a.fileCategory === "review";
@@ -12,6 +16,7 @@ export function isCompletedAttachment(a: {
   fileCategory?: string | null;
   uploadedBy?: { role?: string | null } | null;
 }): boolean {
+  if (isNoteAttachment(a)) return false;
   if (isReworkAttachment(a)) return false;
   if (a.fileCategory === "completed") return true;
   if (a.fileCategory === "job") return false;
@@ -22,6 +27,7 @@ export function isJobAttachment(a: {
   fileCategory?: string | null;
   uploadedBy?: { role?: string | null } | null;
 }): boolean {
+  if (isNoteAttachment(a)) return false;
   if (isReviewAttachment(a)) return false;
   if (isReworkAttachment(a)) return false;
   return !isCompletedAttachment(a);

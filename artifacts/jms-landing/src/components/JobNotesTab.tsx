@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Pin, PinOff, Pencil, Trash2, Send, StickyNote, Paperclip, X } from "lucide-react";
+import { Pin, PinOff, Pencil, Trash2, Send, StickyNote, Paperclip, X, Eye, Download } from "lucide-react";
 import type { Role } from "@/lib/roles";
 import { JOB_FILE_ACCEPT } from "@/lib/collectDroppedFiles";
 import { uploadJobAttachmentsBatch } from "@/lib/uploadJobAttachmentsBatch";
@@ -10,7 +10,7 @@ import {
   jobAttachmentPreviewUrl,
 } from "@/lib/downloadFile";
 import { isPreviewableImageAttachment, prefetchImagePreview } from "@/lib/attachmentPreview";
-import AttachmentPreviewDialog from "@/components/AttachmentPreviewDialog";
+import AttachmentPreviewDialog, { canOpenAttachmentPreview } from "@/components/AttachmentPreviewDialog";
 import PreviewableImage from "@/components/PreviewableImage";
 import LocalPreviewImage from "@/components/LocalPreviewImage";
 import FileExtensionIcon from "@/components/FileExtensionIcon";
@@ -344,46 +344,87 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
     if (attachments.length === 0) return null;
 
     return (
-      <div className="flex flex-wrap gap-2 mt-3">
+      <div className="flex flex-wrap gap-3 mt-3">
         {attachments.map((att) => {
           const isImage = isPreviewableImageAttachment(att.fileName, att.fileType);
+          const canPreview = canOpenAttachmentPreview(att.fileName, att.fileType);
+
           if (isImage) {
             return (
-              <button
+              <div
                 key={att.id}
-                type="button"
-                onMouseEnter={() =>
-                  prefetchImagePreview(
-                    jobAttachmentPreviewUrl(jobId, att.id),
-                    att.fileName,
-                    att.fileType,
-                  )
-                }
-                onClick={() => setPreviewAttachment(att)}
-                className="block h-20 w-20 overflow-hidden rounded-lg border border-gray-200 bg-white hover:ring-2 hover:ring-primary/30"
+                className="overflow-hidden rounded-lg border border-gray-200 bg-white w-24"
               >
-                <PreviewableImage
-                  src={jobAttachmentPreviewUrl(jobId, att.id)}
-                  fileName={att.fileName}
-                  fileType={att.fileType}
-                  alt={att.fileName}
-                  className="h-full w-full object-cover"
-                  lazy
-                  compact
-                />
-              </button>
+                <div className="relative h-20 w-full">
+                  <PreviewableImage
+                    src={jobAttachmentPreviewUrl(jobId, att.id)}
+                    fileName={att.fileName}
+                    fileType={att.fileType}
+                    alt={att.fileName}
+                    className="h-full w-full object-cover"
+                    lazy
+                    compact
+                  />
+                </div>
+                <div className="flex border-t border-gray-100">
+                  <button
+                    type="button"
+                    onMouseEnter={() =>
+                      prefetchImagePreview(
+                        jobAttachmentPreviewUrl(jobId, att.id),
+                        att.fileName,
+                        att.fileType,
+                      )
+                    }
+                    onClick={() => setPreviewAttachment(att)}
+                    className="flex-1 flex items-center justify-center py-1 text-gray-500 hover:text-primary hover:bg-primary/5"
+                    title="Preview"
+                  >
+                    <Eye size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadAttachment(att)}
+                    className="flex-1 flex items-center justify-center py-1 text-gray-500 hover:text-primary hover:bg-primary/5 border-l border-gray-100"
+                    title="Download"
+                  >
+                    <Download size={13} />
+                  </button>
+                </div>
+              </div>
             );
           }
+
           return (
-            <button
+            <div
               key={att.id}
-              type="button"
-              onClick={() => downloadAttachment(att)}
-              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left hover:bg-gray-50 max-w-[220px]"
+              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 max-w-[260px]"
             >
               <FileExtensionIcon fileName={att.fileName} size="lg" />
-              <span className="text-xs font-medium text-gray-800 truncate">{att.fileName}</span>
-            </button>
+              <span className="text-xs font-medium text-gray-800 truncate flex-1 min-w-0" title={att.fileName}>
+                {att.fileName}
+              </span>
+              <div className="flex shrink-0 items-center gap-0.5">
+                {canPreview ? (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewAttachment(att)}
+                    className="p-1.5 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg"
+                    title="Preview"
+                  >
+                    <Eye size={14} />
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => downloadAttachment(att)}
+                  className="p-1.5 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg"
+                  title="Download"
+                >
+                  <Download size={14} />
+                </button>
+              </div>
+            </div>
           );
         })}
       </div>

@@ -150,6 +150,7 @@ export async function uploadJobAttachmentsBatch(
   let jobFileCount = 0;
   let checklistFileCount = 0;
   for (const spec of specs) {
+    if (spec.fileCategory === "note" || spec.fileCategory === "review") continue;
     if (spec.checklistItemId != null) checklistFileCount += 1;
     else jobFileCount += 1;
   }
