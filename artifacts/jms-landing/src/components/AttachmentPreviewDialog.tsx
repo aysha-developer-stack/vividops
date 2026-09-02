@@ -1,3 +1,4 @@
+import { Download } from "lucide-react";
 import PreviewableImage from "@/components/PreviewableImage";
 import {
   attachmentExtension,
@@ -9,7 +10,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -29,11 +29,11 @@ export function canOpenAttachmentPreview(fileName: string, fileType?: string | n
 
 /** Fixed-height pane — scroll happens inside iframe/video viewer only (avoids nested scroll jank). */
 const EMBEDDED_VIEWER_CLASS =
-  "h-[min(75vh,calc(92vh-10rem))] min-h-[320px] shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-gray-50";
+  "h-[min(82vh,calc(92vh-7rem))] min-h-[360px] flex-1 shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-gray-50";
 
 /** Scrollable pane for tall images — single scroll container with smooth overscroll. */
 const IMAGE_SCROLL_CLASS =
-  "max-h-[min(75vh,calc(92vh-10rem))] min-h-0 overflow-y-auto overscroll-contain rounded-xl border border-gray-100 bg-gray-50 [overflow-anchor:none] [-webkit-overflow-scrolling:touch]";
+  "max-h-[min(82vh,calc(92vh-7rem))] min-h-[360px] flex-1 overflow-y-auto overscroll-contain rounded-xl border border-gray-100 bg-gray-50 [overflow-anchor:none] [-webkit-overflow-scrolling:touch]";
 
 export default function AttachmentPreviewDialog({
   open,
@@ -52,11 +52,25 @@ export default function AttachmentPreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[92vh] w-[95vw] max-w-5xl flex-col gap-4 overflow-hidden p-6">
-        <DialogHeader className="shrink-0 pr-8">
-          <DialogTitle className="truncate">{fileName || "File preview"}</DialogTitle>
-          <DialogDescription>Preview opens inside Vivid OPS. Use Download to save the file.</DialogDescription>
-        </DialogHeader>
+      <DialogContent className="flex max-h-[92vh] w-[96vw] max-w-[min(96vw,1600px)] flex-col gap-3 overflow-hidden p-4 sm:p-5">
+        <div className="flex shrink-0 items-start justify-between gap-4 pr-8">
+          <DialogHeader className="min-w-0 flex-1 space-y-1 text-left">
+            <DialogTitle className="truncate pr-2">{fileName || "File preview"}</DialogTitle>
+            <DialogDescription>
+              Preview opens inside Vivid OPS. Use Download to save the file.
+            </DialogDescription>
+          </DialogHeader>
+          {onDownload ? (
+            <button
+              type="button"
+              className="mt-0.5 inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
+              onClick={onDownload}
+            >
+              <Download size={16} />
+              Download
+            </button>
+          ) : null}
+        </div>
 
         {isImage ? (
           <div className={IMAGE_SCROLL_CLASS}>
@@ -94,18 +108,6 @@ export default function AttachmentPreviewDialog({
           <div className="rounded-xl border border-gray-100 bg-gray-50 p-8 text-center text-sm text-gray-500">
             Preview is not available for this file type.
           </div>
-        )}
-
-        {onDownload && (
-          <DialogFooter className="shrink-0">
-            <button
-              type="button"
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
-              onClick={onDownload}
-            >
-              Download
-            </button>
-          </DialogFooter>
         )}
       </DialogContent>
     </Dialog>
