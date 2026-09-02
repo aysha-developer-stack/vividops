@@ -47,7 +47,9 @@ export default function SupervisorDashboard() {
     waitingReview?: number;
   };
 
-  const assignedJobs = useMemo(() => (dashboard?.activeJobs ?? []).map(j => ({
+  const assignedJobs = useMemo(() => (dashboard?.activeJobs ?? [])
+    .filter((j) => j.status === "in_progress" || j.status === "rework")
+    .map(j => ({
     id: j.id,
     number: j.number,
     title: j.title,
@@ -148,7 +150,7 @@ export default function SupervisorDashboard() {
           <div className="p-5 border-b border-gray-100 flex items-center justify-between">
             <div>
               <h3 className="font-bold text-gray-900">In Progress Jobs</h3>
-              <p className="text-xs text-gray-500 mt-0.5">All ongoing jobs — in progress, rework, awaiting review, on hold</p>
+              <p className="text-xs text-gray-500 mt-0.5">In progress and rework jobs only</p>
             </div>
             <Link href="/supervisor/jobs"><span className="text-xs text-primary font-semibold hover:underline cursor-pointer">View all</span></Link>
           </div>

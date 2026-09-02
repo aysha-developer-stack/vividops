@@ -163,11 +163,11 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
       .where(eq(jobs.supervisorId, supervisorId));
     const supervisedJobIds = supervisedJobs.map((job) => job.id);
 
-    // 1. Get stats — active = all ongoing (non-completed) supervised jobs
+    // 1. Get stats — active = in progress or rework only
     const [statsResult] = await db
       .select({
         totalJobs: sql<number>`count(*)`,
-        activeJobs: sql<number>`count(*) filter (where ${jobs.status} not in ('completed', 'cancelled'))`,
+        activeJobs: sql<number>`count(*) filter (where ${jobs.status} in ('in_progress', 'rework'))`,
         overdueJobs: sql<number>`count(*) filter (where ${jobs.status} not in ('completed', 'cancelled') and ${jobs.dueDate} is not null and (${jobs.dueDate})::date < CURRENT_DATE)`,
         pendingReworkTasks: sql<number>`count(*) filter (where ${jobs.status} = 'rework')`,
         dueToday: sql<number>`count(*) filter (where ${jobs.dueDate} >= ${todayStart} and ${jobs.dueDate} < ${new Date(todayStart.getTime() + 24 * 60 * 60 * 1000)})`,
@@ -250,13 +250,12 @@ router.get("/dashboard/supervisor", requireAuth, async (req, res) => {
       });
     }
 
-    // 3. All ongoing supervised jobs (in progress, rework, awaiting review, on hold, etc.)
+    // 3. Supervised jobs actively being worked (in progress or rework only)
     const activeJobsRows = await db.select()
       .from(jobs)
       .where(and(
         eq(jobs.supervisorId, supervisorId),
-        ne(jobs.status, "completed"),
-        ne(jobs.status, "cancelled"),
+        inArray(jobs.status, ["in_progress", "rework"]),
       ))
       .orderBy(desc(jobs.updatedAt));
 

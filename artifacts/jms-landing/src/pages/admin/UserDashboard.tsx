@@ -47,6 +47,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+const WORKER_ACTIVE_JOB_STATUSES = new Set(["in_progress", "rework"]);
+
 export default function UserDashboard() {
   const { user: currentUser } = useAuth();
   const qc = useQueryClient();
@@ -135,7 +137,7 @@ export default function UserDashboard() {
   // Derive Statistics
   const stats = useMemo(() => {
     const myJobs = (apiJobs ?? []).filter(j => j.assignee?.id === currentUser?.id);
-    const activeJobs = myJobs.filter(j => j.status !== 'completed').length;
+    const activeJobs = myJobs.filter(j => WORKER_ACTIVE_JOB_STATUSES.has(j.status as string)).length;
     const completedJobs = myJobs.filter(j => j.status === 'completed').length;
     
     // Weekly hours
@@ -157,7 +159,7 @@ export default function UserDashboard() {
   }, [apiJobs, apiTimeLogs, currentUser]);
 
   const assignedJobs = useMemo(() => (apiJobs ?? [])
-    .filter(j => j.assignee?.id === currentUser?.id && j.status !== 'completed')
+    .filter(j => j.assignee?.id === currentUser?.id && WORKER_ACTIVE_JOB_STATUSES.has(j.status as string))
     .map((j: Job) => ({
       id: j.id,
       number: j.number,
