@@ -79,18 +79,6 @@ function roleLabel(role: Role | undefined): string {
   }
 }
 
-function notesTabHint(role: Role, isAdmin: boolean, canPin: boolean): string {
-  const base =
-    "Everyone on this job can post notes here — text only, files/images only, or both. Attachments stay in Notes (not Job Files).";
-  if (isAdmin) {
-    return `${base} As admin you can edit, delete, and pin any note.`;
-  }
-  if (canPin) {
-    return `${base} You can edit or delete your own notes, and pin notes on jobs you manage.`;
-  }
-  return `${base} You can edit or delete your own notes.`;
-}
-
 function isNotePlaceholderText(text: string): boolean {
   return text === ATTACHMENT_PLACEHOLDER || text === "(Photos attached)";
 }
@@ -575,12 +563,12 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
             </p>
           </div>
           {!isEditing && canModify(note) && (
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex shrink-0 items-start gap-2">
               {canPin && (
                 <button
                   type="button"
                   onClick={() => void togglePin(note)}
-                  className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
+                  className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg border border-gray-200 bg-white transition-colors"
                   title={note.pinned ? "Unpin" : "Pin"}
                 >
                   {note.pinned ? <PinOff size={14} /> : <Pin size={14} />}
@@ -589,7 +577,7 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
               <button
                 type="button"
                 onClick={() => startEdit(note)}
-                className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
+                className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg border border-gray-200 bg-white transition-colors"
                 title="Edit"
               >
                 <Pencil size={14} />
@@ -597,7 +585,7 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
               <button
                 type="button"
                 onClick={() => void deleteNote(note)}
-                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg border border-gray-200 bg-white transition-colors"
                 title="Delete"
               >
                 <Trash2 size={14} />
@@ -620,11 +608,10 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
       >
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden flex flex-col">
           <div className="p-5 border-b border-gray-100">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2">
               <StickyNote size={18} className="text-primary" />
               <h3 className="font-bold text-gray-900">Job notes</h3>
             </div>
-            <p className="text-xs text-gray-500">{notesTabHint(role, isAdmin, canPin)}</p>
           </div>
 
           <div className="p-5 space-y-4 min-h-[200px] flex-1">
