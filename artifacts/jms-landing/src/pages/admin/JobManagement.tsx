@@ -15,7 +15,6 @@ import {
   useListJobs,
   useCreateJob,
   useUpdateJob,
-  useDeleteJob,
   useListAssignableUsers,
   getListJobsQueryKey,
   getGetJobQueryKey,
@@ -180,6 +179,7 @@ const STATUS_CONFIG: Record<UiStatus, { color: string; bg: string }> = {
   "On Hold": { color: "text-orange-700", bg: "bg-orange-50 border-orange-200" },
   "Overdue": { color: "text-red-700", bg: "bg-red-50 border-red-200" },
   "Rework": { color: "text-purple-700", bg: "bg-purple-50 border-purple-200" },
+  "Cancelled": { color: "text-gray-600", bg: "bg-gray-100 border-gray-300" },
 };
 
 const PRIORITY_CONFIG: Record<UiPriority, { color: string; dot: string }> = {
@@ -328,7 +328,6 @@ export default function JobManagement(
   const assignablesQuery = useListAssignableUsers();
   const createMutation = useCreateJob();
   const updateMutation = useUpdateJob();
-  const deleteMutation = useDeleteJob();
 
   const invalidateJobs = async (jobId?: string | null) => {
     await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
@@ -765,13 +764,20 @@ export default function JobManagement(
     setPage(1);
   }, [sortMode, setPage]);
 
-  const remove = async (id: string) => {
+  const archiveJob = async (j: UiJob) => {
     setOpenId(null);
+    const ok = window.confirm(
+      `Cancel ${j.number} · ${j.title}?\n\nThe job will be marked Cancelled and remain in the list (not permanently deleted).`,
+    );
+    if (!ok) return;
     try {
-      await deleteMutation.mutateAsync({ id });
-      await invalidateJobs();
+      await updateMutation.mutateAsync({
+        id: j.id,
+        data: { status: "cancelled" as ApiJob["status"] },
+      });
+      await invalidateJobs(j.id);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to delete job");
+      setError(err instanceof ApiError ? err.message : "Failed to cancel job");
     }
   };
 
@@ -1061,6 +1067,7 @@ export default function JobManagement(
     "On Hold": jobs.filter((j) => j.status === "On Hold").length,
     "Overdue": jobs.filter((j) => j.status === "Overdue").length,
     "Rework": jobs.filter((j) => j.status === "Rework").length,
+    "Cancelled": jobs.filter((j) => j.status === "Cancelled").length,
   };
 
   const isSaving = createMutation.isPending || updateMutation.isPending || uploadingFiles;
@@ -1099,7 +1106,7 @@ export default function JobManagement(
 
       {/* Status pills */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-9 gap-2 md:gap-3 mb-6">
-        {(["All", "Not Started", "In Progress", "On Hold", "Awaiting Supervisor", "Awaiting Admin", "Awaiting Super Admin", "Done", "Overdue", "Rework"] as const).map((s, i) => (
+        {(["All", "Not Started", "In Progress", "On Hold", "Awaiting Supervisor", "Awaiting Admin", "Awaiting Super Admin", "Done", "Overdue", "Rework", "Cancelled"] as const).map((s, i) => (
           <motion.button
             key={s}
             initial={{ opacity: 0, y: 10 }}
@@ -1314,12 +1321,12 @@ export default function JobManagement(
                                     Put on Hold
                                   </DropdownMenuItem>
                                 )}
-                                {(role === "admin" || role === "super-admin") && (
+                                {(role === "admin" || role === "super-admin") && j.status !== "Cancelled" && (
                                   <>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => remove(j.id)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                                    <DropdownMenuItem onClick={() => archiveJob(j)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
                                       <Trash2 size={14} className="mr-2" />
-                                      Delete
+                                      Cancel job
                                     </DropdownMenuItem>
                                   </>
                                 )}
@@ -1491,12 +1498,12 @@ export default function JobManagement(
                                     Put on Hold
                                   </DropdownMenuItem>
                                 )}
-                                {(role === "admin" || role === "super-admin") && (
+                                {(role === "admin" || role === "super-admin") && j.status !== "Cancelled" && (
                                   <>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => remove(j.id)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                                    <DropdownMenuItem onClick={() => archiveJob(j)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
                                       <Trash2 size={14} className="mr-2" />
-                                      Delete
+                                      Cancel job
                                     </DropdownMenuItem>
                                   </>
                                 )}

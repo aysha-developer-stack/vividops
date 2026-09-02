@@ -22,6 +22,7 @@ const STATUS_BADGE: Record<UiStatus, string> = {
   "On Hold": "bg-orange-50 text-orange-700",
   Overdue: "bg-red-50 text-red-700",
   Rework: "bg-rose-50 text-rose-700",
+  Cancelled: "bg-gray-100 text-gray-600",
 };
 
 export default function AdminDashboard() {

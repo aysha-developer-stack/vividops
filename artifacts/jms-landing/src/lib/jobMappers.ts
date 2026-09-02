@@ -9,7 +9,8 @@ export type UiStatus =
   | "Done"
   | "On Hold"
   | "Overdue"
-  | "Rework";
+  | "Rework"
+  | "Cancelled";
 export type UiPriority = "Low" | "Medium" | "High";
 
 const STATUS_API_TO_UI: Record<string, UiStatus> = {
@@ -19,7 +20,6 @@ const STATUS_API_TO_UI: Record<string, UiStatus> = {
   awaiting_admin: "Awaiting Admin",
   awaiting_super_admin: "Awaiting Super Admin",
   completed: "Done",
-  cancelled: "Not Started",
   rework: "Rework",
   on_hold: "On Hold",
 };
@@ -39,6 +39,7 @@ export const STATUS_UI_TO_API: Record<Exclude<UiStatus, "Overdue">, string> = {
   Done: "completed",
   "On Hold": "on_hold",
   Rework: "rework",
+  Cancelled: "cancelled",
 };
 
 export const PRIORITY_UI_TO_API: Record<UiPriority, JobPriority> = {
@@ -67,6 +68,7 @@ export function isJobOverdueByDueDate(
 }
 
 export function statusToUi(j: ApiJob): UiStatus {
+  if (j.status === "cancelled") return "Cancelled";
   if (j.isOverdue) return "Overdue";
   return STATUS_API_TO_UI[j.status] ?? "Not Started";
 }

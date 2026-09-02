@@ -191,6 +191,11 @@ export function jobStatusPatchFields(opts: {
     return patch;
   }
 
+  if (nextStatus === "cancelled") {
+    patch.reviewStartedAt = null;
+    return patch;
+  }
+
   if (nextStatus === "on_hold") {
     if (previousStatus !== "completed") {
       patch.completedAt = null;

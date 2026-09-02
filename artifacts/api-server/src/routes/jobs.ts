@@ -65,6 +65,7 @@ import {
 } from "../lib/persist-timer-session";
 import { updateRework } from "../lib/reworks";
 import { isReworkOrigin, type ReworkOrigin } from "../lib/rework-origin";
+import { finalizeReviewCheckForJob } from "../lib/persist-review-check-session";
 
 const router: IRouter = Router();
 
@@ -2308,6 +2309,14 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "A reason is required when putting a job on hold" });
     }
   }
+  if (nextStatus === "cancelled") {
+    if (actor.role !== "admin" && actor.role !== "super-admin") {
+      return res.status(403).json({ error: "Only admin or super-admin can cancel a job" });
+    }
+    if (previousStatus === "cancelled") {
+      return res.status(400).json({ error: "Job is already cancelled" });
+    }
+  }
   if (previousStatus === "on_hold" && nextStatus !== undefined && nextStatus !== "on_hold") {
     if (!isManager) {
       return res.status(403).json({ error: "Only supervisor, admin, or super-admin can resume a job on hold" });
@@ -2412,6 +2421,9 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   const after = await loadJob(id);
   if (after) {
     if (nextStatus !== undefined && nextStatus !== previousStatus) {
+      if (previousStatus === "awaiting_supervisor" && nextStatus !== "awaiting_supervisor") {
+        await finalizeReviewCheckForJob(after.job.id, after.job.supervisorId ?? undefined);
+      }
       await notifyStatusTransition({
         actor,
         job: after.job,
@@ -2740,16 +2752,44 @@ router.delete("/jobs/:id", creatorRole, async (req, res) => {
   const actor = req.session!.user;
   const full = await loadJob(id);
   if (!full) return res.status(404).json({ error: "Job not found" });
+  if (actor.role !== "admin" && actor.role !== "super-admin") {
+    return res.status(403).json({ error: "Only admin or super-admin can cancel a job" });
+  }
   if (!canManageJob(actor, full.job)) {
-    return res.status(403).json({ error: "You cannot delete this job" });
+    return res.status(403).json({ error: "You cannot cancel this job" });
+  }
+  if (full.job.status === "cancelled") {
+    return res.status(400).json({ error: "Job is already cancelled" });
   }
   try {
-    await deleteNotificationsForJob(id);
-    await db.delete(jobs).where(eq(jobs.id, id));
+    const previousStatus = full.job.status;
+    const patch = {
+      ...jobStatusPatchFields({
+        nextStatus: "cancelled" as ReviewableStatus,
+        previousStatus,
+        currentProgress: full.job.progress,
+        currentCompletedAt: full.job.completedAt,
+      }),
+      updatedAt: new Date(),
+    };
+    await db.update(jobs).set(patch).where(eq(jobs.id, id));
+    if (previousStatus === "awaiting_supervisor") {
+      await finalizeReviewCheckForJob(id, full.job.supervisorId ?? undefined);
+    }
+    await stopAllActiveTimersOnJob(id);
+    const after = await loadJob(id);
+    if (after) {
+      await notifyStatusTransition({
+        actor,
+        job: after.job,
+        previousStatus,
+        nextStatus: "cancelled",
+      });
+    }
     return res.status(204).end();
   } catch (err) {
-    logger.error({ err, jobId: id }, "Failed to delete job");
-    return res.status(500).json({ error: "Failed to delete job" });
+    logger.error({ err, jobId: id }, "Failed to cancel job");
+    return res.status(500).json({ error: "Failed to cancel job" });
   }
 });
 
