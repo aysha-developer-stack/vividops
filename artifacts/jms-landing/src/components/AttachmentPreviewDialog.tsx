@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Download } from "lucide-react";
 import PreviewableImage from "@/components/PreviewableImage";
 import {
@@ -27,13 +28,12 @@ export function canOpenAttachmentPreview(fileName: string, fileType?: string | n
   return canPreviewAttachment(fileName, fileType);
 }
 
-/** Fixed-height pane — scroll happens inside iframe/video viewer only (avoids nested scroll jank). */
-const EMBEDDED_VIEWER_CLASS =
-  "h-[min(82vh,calc(92vh-7rem))] min-h-[360px] flex-1 shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-gray-50";
-
-/** Scrollable pane for tall images — single scroll container with smooth overscroll. */
-const IMAGE_SCROLL_CLASS =
-  "max-h-[min(82vh,calc(92vh-7rem))] min-h-[360px] flex-1 overflow-y-auto overscroll-contain rounded-xl border border-gray-100 bg-gray-50 [overflow-anchor:none] [-webkit-overflow-scrolling:touch]";
+/** Same-origin proxy avoids redirect quirks and fills the iframe like the native PDF viewer. */
+function embeddedPreviewSrc(previewUrl: string): string {
+  if (!previewUrl.includes("/view")) return previewUrl;
+  if (previewUrl.includes("proxy=1")) return previewUrl;
+  return `${previewUrl}${previewUrl.includes("?") ? "&" : "?"}proxy=1`;
+}
 
 export default function AttachmentPreviewDialog({
   open,
@@ -50,9 +50,14 @@ export default function AttachmentPreviewDialog({
   const isVideo =
     ["mp4", "mov", "webm", "m4v"].includes(ext) || (fileType || "").startsWith("video/");
 
+  const iframeSrc = useMemo(
+    () => (isPdf || isText ? embeddedPreviewSrc(previewUrl) : previewUrl),
+    [isPdf, isText, previewUrl],
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[92vh] w-[96vw] max-w-[min(96vw,1600px)] flex-col gap-3 overflow-hidden p-4 sm:p-5">
+      <DialogContent className="flex h-[92vh] max-h-[92vh] w-[98vw] max-w-[min(98vw,1760px)] flex-col gap-3 overflow-hidden p-4 sm:p-5">
         <div className="flex shrink-0 items-start justify-between gap-4 pr-8">
           <DialogHeader className="min-w-0 flex-1 space-y-1 text-left">
             <DialogTitle className="truncate pr-2">{fileName || "File preview"}</DialogTitle>
@@ -73,39 +78,41 @@ export default function AttachmentPreviewDialog({
         </div>
 
         {isImage ? (
-          <div className={IMAGE_SCROLL_CLASS}>
-            {isHeicAttachment(fileName, fileType) ? (
-              <PreviewableImage
-                src={previewUrl}
-                fileName={fileName}
-                fileType={fileType}
-                alt={fileName}
-                className="max-w-full mx-auto block"
-              />
-            ) : (
-              <img
-                src={previewUrl}
-                alt={fileName}
-                className="max-w-full mx-auto block"
-                decoding="async"
-                fetchPriority="high"
-              />
-            )}
+          <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-xl border border-gray-200 bg-[#525659] [overflow-anchor:none] [-webkit-overflow-scrolling:touch]">
+            <div className="flex min-h-full items-start justify-center p-2 sm:p-4">
+              {isHeicAttachment(fileName, fileType) ? (
+                <PreviewableImage
+                  src={previewUrl}
+                  fileName={fileName}
+                  fileType={fileType}
+                  alt={fileName}
+                  className="max-h-full max-w-full object-contain"
+                />
+              ) : (
+                <img
+                  src={previewUrl}
+                  alt={fileName}
+                  className="max-h-full max-w-full object-contain"
+                  decoding="async"
+                  fetchPriority="high"
+                />
+              )}
+            </div>
           </div>
         ) : isPdf || isText ? (
-          <div className={EMBEDDED_VIEWER_CLASS}>
+          <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-gray-200 bg-[#525659]">
             <iframe
-              src={previewUrl}
+              src={iframeSrc}
               title={fileName}
-              className="h-full w-full border-0 bg-white"
+              className="absolute inset-0 h-full w-full border-0 bg-[#525659]"
             />
           </div>
         ) : isVideo ? (
-          <div className={`${EMBEDDED_VIEWER_CLASS} flex items-center justify-center bg-black`}>
-            <video src={previewUrl} controls className="max-h-full max-w-full" />
+          <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-gray-200 bg-black">
+            <video src={previewUrl} controls className="absolute inset-0 h-full w-full object-contain" />
           </div>
         ) : (
-          <div className="rounded-xl border border-gray-100 bg-gray-50 p-8 text-center text-sm text-gray-500">
+          <div className="flex flex-1 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 p-8 text-center text-sm text-gray-500">
             Preview is not available for this file type.
           </div>
         )}
