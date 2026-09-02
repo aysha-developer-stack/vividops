@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Pin, PinOff, Pencil, Trash2, Send, StickyNote, Paperclip, X, Eye, Download } from "lucide-react";
+import { Pin, PinOff, Pencil, Trash2, Send, StickyNote, Paperclip, X, Eye, Download, AlertCircle } from "lucide-react";
 import type { Role } from "@/lib/roles";
 import { useAuth } from "@/lib/auth";
 import { JOB_FILE_ACCEPT } from "@/lib/collectDroppedFiles";
@@ -119,6 +119,7 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [posting, setPosting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [postError, setPostError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [editType, setEditType] = useState("general");
@@ -138,57 +139,68 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
     return map;
   }, [noteAttachments]);
 
-  const loadNotes = useCallback(async () => {
-    if (!jobId) return;
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const [notesRes, attachmentsRes] = await Promise.all([
-        fetch(`/api/jobs/${jobId}/notes`, { credentials: "include" }),
-        fetch(`/api/jobs/${jobId}/attachments`, { credentials: "include" }),
-      ]);
-      if (!notesRes.ok) {
-        const data = (await notesRes.json().catch(() => ({}))) as { message?: string };
-        throw new Error(data.message || "Failed to load notes");
+  const loadNotes = useCallback(
+    async (options?: { keepExistingOnError?: boolean }): Promise<boolean> => {
+      if (!jobId) return false;
+      setLoading(true);
+      if (!options?.keepExistingOnError) {
+        setLoadError(null);
       }
-      const data = (await notesRes.json()) as JobNoteApi[];
-      setNotes(Array.isArray(data) ? data : []);
+      try {
+        const [notesRes, attachmentsRes] = await Promise.all([
+          fetch(`/api/jobs/${jobId}/notes`, { credentials: "include" }),
+          fetch(`/api/jobs/${jobId}/attachments`, { credentials: "include" }),
+        ]);
+        if (!notesRes.ok) {
+          const data = (await notesRes.json().catch(() => ({}))) as { message?: string };
+          throw new Error(data.message || "Failed to load notes");
+        }
+        const data = (await notesRes.json()) as JobNoteApi[];
+        setNotes(Array.isArray(data) ? data : []);
 
-      if (attachmentsRes.ok) {
-        const attachmentsData = (await attachmentsRes.json()) as Array<{
-          id: string;
-          fileName: string;
-          fileUrl: string;
-          fileType?: string | null;
-          fileCategory?: string | null;
-          reviewNoteId?: string | null;
-        }>;
-        setNoteAttachments(
-          (Array.isArray(attachmentsData) ? attachmentsData : [])
-            .filter(
-              (a) =>
-                a.fileCategory === "note" ||
-                (a.reviewNoteId && a.fileCategory !== "review" && a.fileCategory !== "rework"),
-            )
-            .map((a) => ({
-              id: a.id,
-              fileName: a.fileName,
-              fileUrl: a.fileUrl,
-              fileType: a.fileType,
-              reviewNoteId: a.reviewNoteId ?? null,
-            })),
-        );
-      } else {
+        if (attachmentsRes.ok) {
+          const attachmentsData = (await attachmentsRes.json()) as Array<{
+            id: string;
+            fileName: string;
+            fileUrl: string;
+            fileType?: string | null;
+            fileCategory?: string | null;
+            reviewNoteId?: string | null;
+          }>;
+          setNoteAttachments(
+            (Array.isArray(attachmentsData) ? attachmentsData : [])
+              .filter(
+                (a) =>
+                  a.fileCategory === "note" ||
+                  (a.reviewNoteId && a.fileCategory !== "review" && a.fileCategory !== "rework"),
+              )
+              .map((a) => ({
+                id: a.id,
+                fileName: a.fileName,
+                fileUrl: a.fileUrl,
+                fileType: a.fileType,
+                reviewNoteId: a.reviewNoteId ?? null,
+              })),
+          );
+        } else {
+          setNoteAttachments([]);
+        }
+        return true;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to load notes";
+        if (options?.keepExistingOnError) {
+          return false;
+        }
+        setLoadError(message);
+        setNotes([]);
         setNoteAttachments([]);
+        return false;
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Failed to load notes");
-      setNotes([]);
-      setNoteAttachments([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [jobId]);
+    },
+    [jobId],
+  );
 
   useEffect(() => {
     void loadNotes();
@@ -200,6 +212,7 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
   const addPendingFiles = (files: FileList | File[]) => {
     const next = Array.from(files);
     if (next.length === 0) return;
+    setPostError(null);
     setPendingFiles((prev) => [...prev, ...next]);
   };
 
@@ -216,6 +229,9 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
 
     setPosting(true);
     setUploadProgress(null);
+    setPostError(null);
+    let noteCreated = false;
+
     try {
       const res = await fetch(`/api/jobs/${jobId}/notes`, {
         method: "POST",
@@ -232,6 +248,7 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
         throw new Error(data.message || "Failed to post note");
       }
       const created = (await res.json()) as JobNoteApi;
+      noteCreated = true;
 
       if (files.length > 0) {
         setUploadProgress(`Uploading 0/${files.length}…`);
@@ -251,12 +268,34 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
         );
       }
 
-      await loadNotes();
+      setUploadProgress("Finishing…");
+      const refreshed = await loadNotes({ keepExistingOnError: true });
+      if (!refreshed) {
+        throw new Error("Could not refresh the notes list");
+      }
+
       setDraft("");
       setNoteType("general");
       setPendingFiles([]);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Failed to post note");
+      const reason = err instanceof Error ? err.message : "Failed to send note";
+      if (noteCreated) {
+        await loadNotes({ keepExistingOnError: true });
+        if (files.length > 0) {
+          setPostError(
+            `Send failed: ${reason}. Your note was saved, but one or more files may not have uploaded. Check the note below and attach any missing files in a new message if needed.`,
+          );
+        } else {
+          setPostError(
+            `Send failed: ${reason}. Your note was saved on the server — refresh this page if you do not see it below.`,
+          );
+        }
+        setDraft("");
+        setNoteType("general");
+        setPendingFiles([]);
+      } else {
+        setPostError(`Could not send note: ${reason}`);
+      }
     } finally {
       setPosting(false);
       setUploadProgress(null);
@@ -631,6 +670,23 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
             }}
           >
             <label className="text-xs font-semibold text-gray-700 mb-2 block">Add a note</label>
+            {postError ? (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 mb-3 text-sm text-red-800"
+              >
+                <AlertCircle size={16} className="shrink-0 mt-0.5 text-red-600" />
+                <p className="flex-1 min-w-0">{postError}</p>
+                <button
+                  type="button"
+                  onClick={() => setPostError(null)}
+                  className="shrink-0 p-1 text-red-500 hover:text-red-700 rounded"
+                  title="Dismiss"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : null}
             <div className="flex flex-col sm:flex-row gap-2 mb-3">
               <select
                 value={noteType}
@@ -644,7 +700,10 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
             </div>
             <textarea
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                if (postError) setPostError(null);
+              }}
               rows={3}
               placeholder="Type a message… add photos or files with the attach button"
               className="w-full bg-white border-2 border-gray-200 rounded-xl p-3 text-sm !text-gray-900 !placeholder:text-gray-400 focus:outline-none focus:border-primary resize-none"
