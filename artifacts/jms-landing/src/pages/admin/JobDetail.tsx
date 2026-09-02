@@ -554,11 +554,13 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [approveComment, setApproveComment] = useState("");
   const [approvePhotos, setApprovePhotos] = useState<File[]>([]);
   const [approveSubmitting, setApproveSubmitting] = useState(false);
+  const [approveProgress, setApproveProgress] = useState<string | null>(null);
   const [jobApproved, setJobApproved] = useState(false);
   const [submitReviewOpen, setSubmitReviewOpen] = useState(false);
   const [submitReviewComment, setSubmitReviewComment] = useState("");
   const [submitReviewPhotos, setSubmitReviewPhotos] = useState<File[]>([]);
   const [submitReviewSubmitting, setSubmitReviewSubmitting] = useState(false);
+  const [submitReviewProgress, setSubmitReviewProgress] = useState<string | null>(null);
   const [submitReviewDone, setSubmitReviewDone] = useState(false);
   const [notesRefreshKey, setNotesRefreshKey] = useState(0);
   const [showActivityPing, setShowActivityPing] = useState(false);
@@ -1358,24 +1360,25 @@ export default function JobDetail({ role = "user", id }: Props) {
   const submitJobForReview = async (comment: string, photos: File[]) => {
     if (!job?.id) return;
     setSubmitReviewSubmitting(true);
+    setSubmitReviewProgress(null);
     try {
       await submitJobReviewWithPhotos({
         jobId: job.id,
         action: "submit_for_supervisor",
         comment,
         photos,
+        onProgress: setSubmitReviewProgress,
       });
-      try {
-        await stopTimerSession();
-      } catch {
-      }
       clearJobTimerState(job.id);
       setRunning(false);
       setSeconds(0);
-      await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
-      await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
-      await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-      await loadReworks();
+      void stopTimerSession().catch(() => {});
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() }),
+        qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) }),
+        qc.invalidateQueries({ queryKey: getListJobsQueryKey() }),
+        loadReworks(),
+      ]);
       setNotesRefreshKey((k) => k + 1);
       setSubmitReviewDone(true);
       setTimeout(() => {
@@ -1383,11 +1386,13 @@ export default function JobDetail({ role = "user", id }: Props) {
         setSubmitReviewDone(false);
         setSubmitReviewComment("");
         setSubmitReviewPhotos([]);
+        setSubmitReviewProgress(null);
       }, 1400);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Failed to submit for review");
     } finally {
       setSubmitReviewSubmitting(false);
+      setSubmitReviewProgress(null);
     }
   };
 
@@ -1404,6 +1409,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       setSubmitReviewComment("");
       setSubmitReviewPhotos([]);
       setSubmitReviewDone(false);
+      setSubmitReviewProgress(null);
     }
   }, [submitReviewOpen]);
   const progress = checklist.length > 0 ? checklistProgress : (job?.progress ?? 0);
@@ -4278,6 +4284,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                       onClick={async () => {
                         if (!job?.id) return;
                         setApproveSubmitting(true);
+                        setApproveProgress(null);
                         try {
                           const action =
                             role === "supervisor" ||
@@ -4295,29 +4302,34 @@ export default function JobDetail({ role = "user", id }: Props) {
                             action,
                             comment: approveComment,
                             photos: approvePhotos,
+                            onProgress: setApproveProgress,
                           });
-                          await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
-                          await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-                          await loadReworks();
+                          await Promise.all([
+                            qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) }),
+                            qc.invalidateQueries({ queryKey: getListJobsQueryKey() }),
+                            loadReworks(),
+                          ]);
                           setNotesRefreshKey((k) => k + 1);
                           setJobApproved(true);
                           setTimeout(() => {
                             setApproveOpen(false);
                             setJobApproved(false);
                             setApprovePhotos([]);
+                            setApproveProgress(null);
                           }, 1400);
                         } catch (err) {
                           const msg = err instanceof Error ? err.message : "Failed to approve job";
                           window.alert(msg);
                         } finally {
                           setApproveSubmitting(false);
+                          setApproveProgress(null);
                         }
                       }}
                       className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 flex items-center justify-center gap-2 disabled:opacity-50"
                     >
                       {approveSubmitting ? (
                         <>
-                          <Loader2 size={14} className="animate-spin" /> Submitting…
+                          <Loader2 size={14} className="animate-spin" /> {approveProgress ?? "Submitting…"}
                         </>
                       ) : (
                         <>
@@ -4421,7 +4433,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                     >
                       {submitReviewSubmitting ? (
                         <>
-                          <Loader2 size={14} className="animate-spin" /> Submitting…
+                          <Loader2 size={14} className="animate-spin" /> {submitReviewProgress ?? "Submitting…"}
                         </>
                       ) : (
                         <>

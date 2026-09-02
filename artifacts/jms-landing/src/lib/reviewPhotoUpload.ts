@@ -24,6 +24,7 @@ export async function uploadReviewPhotos(
   jobId: string,
   files: File[],
   reviewNoteId: string,
+  onProgress?: (completed: number, total: number) => void,
 ): Promise<void> {
   if (files.length === 0) return;
   await uploadJobAttachmentsBatch(
@@ -33,7 +34,11 @@ export async function uploadReviewPhotos(
       fileCategory: "review" as const,
       reviewNoteId,
     })),
-    { suppressNotifications: true },
+    {
+      suppressNotifications: true,
+      concurrency: 6,
+      onProgress,
+    },
   );
 }
 
@@ -48,9 +53,12 @@ export async function submitJobReviewWithPhotos(opts: {
   action: JobReviewAction;
   comment: string;
   photos: File[];
+  onProgress?: (message: string) => void;
 }): Promise<{ completionNoteId: string | null }> {
   const photoError = validateReviewPhotos(opts.photos);
   if (photoError) throw new Error(photoError);
+
+  opts.onProgress?.("Saving submission…");
 
   const res = await fetch(`/api/jobs/${opts.jobId}/review`, {
     method: "POST",
@@ -75,8 +83,12 @@ export async function submitJobReviewWithPhotos(opts: {
     if (!completionNoteId) {
       throw new Error("Review saved but photos could not be linked. Please try uploading again from Files.");
     }
-    await uploadReviewPhotos(opts.jobId, opts.photos, completionNoteId);
+    opts.onProgress?.(`Uploading photos 0/${opts.photos.length}…`);
+    await uploadReviewPhotos(opts.jobId, opts.photos, completionNoteId, (completed, total) => {
+      opts.onProgress?.(`Uploading photos ${completed}/${total}…`);
+    });
   }
 
+  opts.onProgress?.("Finishing…");
   return { completionNoteId };
 }

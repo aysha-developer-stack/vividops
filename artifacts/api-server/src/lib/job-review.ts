@@ -312,19 +312,28 @@ export async function assertWorkerChecklistReady(
         ),
       );
 
+    const instructionLinkedAll =
+      requiredIds.length > 0
+        ? await db
+            .select({
+              itemId: jobChecklistAttachments.itemId,
+              uploaderRole: users.role,
+              fileCategory: jobAttachments.fileCategory,
+            })
+            .from(jobChecklistAttachments)
+            .innerJoin(jobAttachments, eq(jobAttachments.id, jobChecklistAttachments.attachmentId))
+            .leftJoin(users, eq(users.id, jobAttachments.uploadedById))
+            .where(
+              and(
+                eq(jobChecklistAttachments.jobId, job.id),
+                inArray(jobChecklistAttachments.itemId, requiredIds),
+              ),
+            )
+        : [];
+
     for (const id of requiredIds) {
       const itemLinked = linked.filter((r) => r.itemId === id);
-      const instructionLinked = await db
-        .select({
-          uploaderRole: users.role,
-          fileCategory: jobAttachments.fileCategory,
-        })
-        .from(jobChecklistAttachments)
-        .innerJoin(jobAttachments, eq(jobAttachments.id, jobChecklistAttachments.attachmentId))
-        .leftJoin(users, eq(users.id, jobAttachments.uploadedById))
-        .where(
-          and(eq(jobChecklistAttachments.jobId, job.id), eq(jobChecklistAttachments.itemId, id)),
-        );
+      const instructionLinked = instructionLinkedAll.filter((r) => r.itemId === id);
       const hasChecklist = instructionLinked.some((r) => r.uploaderRole != null && r.uploaderRole !== "user");
       if (!hasChecklist) missingChecklist.push(id);
       const hasCompletedUpload = itemLinked.some(
