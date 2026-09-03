@@ -12,6 +12,13 @@ import {
 import DashboardLayout from "@/components/DashboardLayout";
 import { useDashboardSearch } from "@/lib/pageSearch";
 import Pagination, { usePagination } from "@/components/Pagination";
+import AttachmentPreviewDialog from "@/components/AttachmentPreviewDialog";
+import FileExtensionIcon from "@/components/FileExtensionIcon";
+import { downloadNamedFile } from "@/lib/downloadFile";
+import {
+  trainingAttachmentDownloadUrl,
+  trainingAttachmentPreviewUrl,
+} from "@/lib/postAttachmentUrls";
 import type { Role } from "@/lib/roles";
 import { useGetPosts, useCreatePost, getGetPostsQueryKey, type Post } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,9 +26,11 @@ import { useQueryClient } from "@tanstack/react-query";
 const CATEGORIES = ["All", "Onboarding", "Safety", "Technical", "Leadership"];
 
 type Attachment =
-  | { id?: string; kind: "image"; url: string; fileName: string }
-  | { id?: string; kind: "video"; url: string; fileName: string }
-  | { id?: string; kind: "file"; url: string; fileName: string };
+  | { id?: string; kind: "image"; url: string; fileName: string; mimeType?: string }
+  | { id?: string; kind: "video"; url: string; fileName: string; mimeType?: string }
+  | { id?: string; kind: "file"; url: string; fileName: string; mimeType?: string };
+
+type TrainingAttachmentPreview = { postId: string; attachment: Attachment };
 
 type DraftAttachment = {
   id: string;
@@ -64,14 +73,45 @@ function parsePostAttachments(post: Post): Attachment[] {
         const kind = a?.kind as Attachment["kind"] | undefined;
         const url = typeof a?.url === "string" ? a.url : "";
         const fileName = typeof a?.fileName === "string" ? a.fileName : "file";
+        const mimeType = typeof a?.mimeType === "string" ? a.mimeType : undefined;
         if (!kind || !url) return null;
         if (kind !== "image" && kind !== "video" && kind !== "file") return null;
-        return { id, kind, url, fileName } satisfies Attachment;
+        return { id, kind, url, fileName, mimeType } satisfies Attachment;
       })
       .filter(Boolean) as Attachment[];
   } catch {
     return [];
   }
+}
+
+function TrainingAttachmentPreviewDialog({
+  target,
+  onClose,
+}: {
+  target: TrainingAttachmentPreview | null;
+  onClose: () => void;
+}) {
+  if (!target) return null;
+  const { postId, attachment } = target;
+  return (
+    <AttachmentPreviewDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      fileName={attachment.fileName}
+      fileType={attachment.mimeType}
+      previewUrl={trainingAttachmentPreviewUrl(postId, attachment)}
+      onDownload={() => {
+        void downloadNamedFile(
+          trainingAttachmentDownloadUrl(postId, attachment),
+          attachment.fileName,
+        ).catch(() => {
+          window.alert("Download failed. Please try again.");
+        });
+      }}
+    />
+  );
 }
 
 export default function Training({ role = "super-admin" as Role }: { role?: Role } = {}) {
@@ -148,7 +188,7 @@ function DailyUpdates({ canPost, search }: { canPost: boolean; search: string })
   const { data: apiPosts, isLoading } = useGetPosts();
   const createPostMutation = useCreatePost();
   const qc = useQueryClient();
-  const [lightbox, setLightbox] = useState<Attachment | null>(null);
+  const [previewAttachment, setPreviewAttachment] = useState<TrainingAttachmentPreview | null>(null);
   const [metaByPostId, setMetaByPostId] = useState<Record<string, { liked: boolean; likeCount: number; commentCount: number }>>({});
   const [likesModal, setLikesModal] = useState<{ postId: string; title: string } | null>(null);
   const [likesUsers, setLikesUsers] = useState<Array<{ id: string; name: string; role: string }>>([]);
@@ -387,7 +427,7 @@ function DailyUpdates({ canPost, search }: { canPost: boolean; search: string })
               onToggleLike={() => void toggleLike(post.id)}
               onOpenLikes={() => openLikes(post.id, post.title || "Post")}
               onOpenComments={() => openComments(post.id, post.title || "Post")}
-              onOpenAttachment={(a) => setLightbox(a)}
+              onOpenAttachment={(a) => setPreviewAttachment({ postId: post.id, attachment: a })}
               canDelete={canPost}
               onDelete={() => void handleDelete(post.id)}
             />
@@ -435,50 +475,10 @@ function DailyUpdates({ canPost, search }: { canPost: boolean; search: string })
         </div>
       </div>
 
-      {/* Lightbox */}
-      <AnimatePresence>
-        {lightbox && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setLightbox(null)}
-            className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-6"
-          >
-            <button
-              onClick={() => setLightbox(null)}
-              className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center"
-            >
-              <X size={20} />
-            </button>
-            <motion.div
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.9 }}
-              onClick={(e) => e.stopPropagation()}
-              className="relative max-w-3xl w-full rounded-2xl overflow-hidden bg-black flex items-center justify-center"
-            >
-              {lightbox.kind === "image" && (
-                <img src={lightbox.url} alt={lightbox.fileName} className="max-h-[80vh] w-auto object-contain" />
-              )}
-              {lightbox.kind === "video" && (
-                <video src={lightbox.url} controls autoPlay className="max-h-[80vh] w-auto" />
-              )}
-              {lightbox.kind === "file" && (
-                <div className="p-8 text-center text-white">
-                  <div className="text-sm font-semibold">{lightbox.fileName}</div>
-                  <button
-                    onClick={() => window.open(lightbox.url, "_blank", "noopener,noreferrer")}
-                    className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-gray-900 text-sm font-semibold"
-                  >
-                    <Download size={16} /> Download
-                  </button>
-                </div>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <TrainingAttachmentPreviewDialog
+        target={previewAttachment}
+        onClose={() => setPreviewAttachment(null)}
+      />
 
       <AnimatePresence>
         {likesModal && (
@@ -999,9 +999,10 @@ function AttachmentCarousel({
               </div>
             )}
             {a.kind === "file" && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-gray-700">
-                <Paperclip size={22} className="text-gray-500" />
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-gray-700 bg-gray-50">
+                <FileExtensionIcon fileName={a.fileName} size="lg" />
                 <div className="px-4 text-xs font-semibold text-gray-700 line-clamp-2">{a.fileName}</div>
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">Preview</span>
               </div>
             )}
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
@@ -1521,6 +1522,7 @@ function CoursesView({
 }) {
   const { data: apiPosts, isLoading } = useGetPosts();
   const [filter, setFilter] = useState("All");
+  const [previewAttachment, setPreviewAttachment] = useState<TrainingAttachmentPreview | null>(null);
 
   const courses = useMemo(() => {
     const out: Array<{
@@ -1625,8 +1627,18 @@ function CoursesView({
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
       ) : (
-        <CourseGrid filtered={filtered} totalCourses={totalCourses} search={search} filter={filter} />
+        <CourseGrid
+          filtered={filtered}
+          totalCourses={totalCourses}
+          search={search}
+          filter={filter}
+          onPreviewFile={(postId, file) => setPreviewAttachment({ postId, attachment: file })}
+        />
       )}
+      <TrainingAttachmentPreviewDialog
+        target={previewAttachment}
+        onClose={() => setPreviewAttachment(null)}
+      />
     </>
   );
 }
@@ -1636,6 +1648,7 @@ function CourseGrid({
   totalCourses,
   search,
   filter,
+  onPreviewFile,
 }: {
   filtered: Array<{
     id: string;
@@ -1649,6 +1662,7 @@ function CourseGrid({
   totalCourses: number;
   search: string;
   filter: string;
+  onPreviewFile: (postId: string, file: Attachment) => void;
 }) {
   const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 6);
   return (
@@ -1682,14 +1696,14 @@ function CourseGrid({
                   {c.files.slice(0, 5).map((f) => (
                     <button
                       key={f.id ?? `${f.url}:${f.fileName}`}
-                      onClick={() => window.open(f.url, "_blank", "noopener,noreferrer")}
+                      onClick={() => onPreviewFile(c.id, f)}
                       className="w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 text-left"
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <Paperclip size={14} className="text-gray-500 shrink-0" />
+                        <FileExtensionIcon fileName={f.fileName} size="lg" />
                         <div className="text-xs font-semibold text-gray-800 truncate">{f.fileName}</div>
                       </div>
-                      <Download size={14} className="text-gray-500 shrink-0" />
+                      <Eye size={14} className="text-primary shrink-0" />
                     </button>
                   ))}
                 </div>

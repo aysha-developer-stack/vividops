@@ -4,8 +4,10 @@ import { randomUUID } from "crypto";
 import { db, posts, users, sql } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { requireAuth, requireRole } from "../middlewares/requireAuth";
-import { supabase, upload, uploadToSupabase } from "../lib/storage";
+import { supabase, upload, uploadToSupabase, createSignedDownloadUrl, downloadStorageBuffer } from "../lib/storage";
 import { createNotification } from "../lib/notifications";
+import { isHeicAttachment } from "../lib/heic-preview";
+import { getHeicPreviewJpeg } from "../lib/heic-preview-cache";
 
 const router = Router();
 
@@ -280,6 +282,96 @@ router.post(
     }
   },
 );
+
+router.get("/posts/:postId/attachments/:attachmentId/view", requireAuth, async (req, res) => {
+  try {
+    await ensureSchema();
+    const postId = Array.isArray(req.params.postId) ? req.params.postId[0] : req.params.postId;
+    const attachmentId = Array.isArray(req.params.attachmentId)
+      ? req.params.attachmentId[0]
+      : req.params.attachmentId;
+    const disposition = req.query.disposition === "attachment" ? "attachment" : "inline";
+    const proxy = req.query.proxy === "1" || req.query.proxy === "true";
+
+    const [postRow] = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, postId)).limit(1);
+    if (!postRow) {
+      res.status(404).json({ error: "Post not found" });
+      return;
+    }
+
+    const rows = await db.execute(sql`
+      SELECT file_name, mime_type, file_key
+      FROM post_attachments
+      WHERE post_id = ${postId} AND id = ${attachmentId}
+      LIMIT 1
+    `);
+    const resultRows = (rows as { rows?: unknown[] }).rows ?? rows;
+    const row = Array.isArray(resultRows) ? (resultRows[0] as Record<string, unknown> | undefined) : undefined;
+
+    let fileKey = typeof row?.file_key === "string" ? row.file_key : "";
+    let rawName = typeof row?.file_name === "string" ? row.file_name : "file";
+    let contentType = typeof row?.mime_type === "string" ? row.mime_type : "application/octet-stream";
+
+    if (!fileKey) {
+      const [legacyPost] = await db.select({ attachments: posts.attachments }).from(posts).where(eq(posts.id, postId)).limit(1);
+      let parsed: unknown[] = [];
+      try {
+        parsed = legacyPost?.attachments ? (JSON.parse(legacyPost.attachments) as unknown[]) : [];
+        if (!Array.isArray(parsed)) parsed = [];
+      } catch {
+        parsed = [];
+      }
+      const legacy = parsed.find((a) => typeof (a as { id?: string })?.id === "string" && (a as { id: string }).id === attachmentId) as
+        | { fileKey?: string; fileName?: string; mimeType?: string; url?: string }
+        | undefined;
+      if (!legacy?.fileKey) {
+        res.status(404).json({ error: "Attachment not found" });
+        return;
+      }
+      fileKey = legacy.fileKey;
+      rawName = legacy.fileName || rawName;
+      contentType = legacy.mimeType || contentType;
+    }
+
+    rawName = rawName.split(/[/\\]/).pop() || "file";
+    const encodedName = encodeURIComponent(rawName).replace(/['()]/g, escape);
+
+    if (proxy) {
+      let buffer: Buffer;
+      if (isHeicAttachment(rawName, contentType)) {
+        try {
+          buffer = await getHeicPreviewJpeg(attachmentId, fileKey);
+          contentType = "image/jpeg";
+        } catch (err) {
+          logger.error({ err, attachmentId, postId }, "Failed to convert HEIC for training preview");
+          res.status(422).json({ error: "Could not convert HEIC for preview" });
+          return;
+        }
+      } else {
+        buffer = await downloadStorageBuffer(fileKey);
+      }
+      res.setHeader("Content-Type", contentType);
+      res.setHeader(
+        "Content-Disposition",
+        `${disposition}; filename="${rawName.replace(/[\r\n"]+/g, "_")}"; filename*=UTF-8''${encodedName}`,
+      );
+      res.setHeader("Cache-Control", isHeicAttachment(rawName, contentType) ? "private, max-age=86400" : "private, max-age=3600");
+      res.send(buffer);
+      return;
+    }
+
+    const signedUrl = await createSignedDownloadUrl(fileKey, {
+      fileName: rawName,
+      inline: disposition === "inline",
+    });
+    res.redirect(302, signedUrl);
+    return;
+  } catch (err) {
+    logger.error({ err }, "Failed to view post attachment");
+    res.status(500).json({ error: "Internal server error" });
+    return;
+  }
+});
 
 router.get("/posts/:id/likes", requireAuth, async (req, res) => {
   try {
