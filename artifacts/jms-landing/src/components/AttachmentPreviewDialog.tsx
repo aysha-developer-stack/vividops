@@ -1,10 +1,13 @@
 import { useMemo } from "react";
 import { Download } from "lucide-react";
 import PreviewableImage from "@/components/PreviewableImage";
+import WordDocumentPreview from "@/components/WordDocumentPreview";
 import {
   attachmentExtension,
   canPreviewAttachment,
+  isDocxAttachment,
   isHeicAttachment,
+  isLegacyDocAttachment,
   isPreviewableImageAttachment,
 } from "@/lib/attachmentPreview";
 import {
@@ -49,6 +52,8 @@ export default function AttachmentPreviewDialog({
   const isText = ext === "txt" || (fileType || "").startsWith("text/");
   const isVideo =
     ["mp4", "mov", "webm", "m4v"].includes(ext) || (fileType || "").startsWith("video/");
+  const isDocx = isDocxAttachment(fileName, fileType);
+  const isLegacyDoc = isLegacyDocAttachment(fileName, fileType);
 
   const iframeSrc = useMemo(
     () => (isPdf || isText ? embeddedPreviewSrc(previewUrl) : previewUrl),
@@ -110,6 +115,13 @@ export default function AttachmentPreviewDialog({
         ) : isVideo ? (
           <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-gray-200 bg-black">
             <video src={previewUrl} controls className="absolute inset-0 h-full w-full object-contain" />
+          </div>
+        ) : isDocx ? (
+          <WordDocumentPreview previewUrl={previewUrl} />
+        ) : isLegacyDoc ? (
+          <div className="flex flex-1 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 p-8 text-center text-sm text-gray-500">
+            Preview is not available for legacy Word (.doc) files. Use Download to open the file, or
+            convert it to .docx.
           </div>
         ) : (
           <div className="flex flex-1 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 p-8 text-center text-sm text-gray-500">

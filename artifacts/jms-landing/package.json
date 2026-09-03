@@ -79,6 +79,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "heic2any": "^0.0.4"
+    "heic2any": "^0.0.4",
+    "mammoth": "^1.12.2"
   }
 }

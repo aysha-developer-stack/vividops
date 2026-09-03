@@ -26,10 +26,22 @@ export function isHeicAttachment(fileName: string, fileType?: string | null): bo
   return mime === "image/heic" || mime === "image/heif";
 }
 
-export function isPreviewableImageAttachment(fileName: string, fileType?: string | null): boolean {
+export function isDocxAttachment(fileName: string, fileType?: string | null): boolean {
   const ext = attachmentExtension(fileName);
-  if (PREVIEWABLE_IMAGE_EXTENSIONS.has(ext)) return true;
-  return (fileType || "").toLowerCase().startsWith("image/");
+  if (ext === "docx") return true;
+  const mime = (fileType || "").toLowerCase();
+  return (
+    mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.template"
+  );
+}
+
+/** Legacy Word `.doc` (binary) — preview not supported; download only. */
+export function isLegacyDocAttachment(fileName: string, fileType?: string | null): boolean {
+  const ext = attachmentExtension(fileName);
+  if (ext !== "doc") return false;
+  const mime = (fileType || "").toLowerCase();
+  return mime === "" || mime === "application/msword";
 }
 
 export function canPreviewAttachment(fileName: string, fileType?: string | null): boolean {
@@ -53,6 +65,7 @@ export function canPreviewAttachment(fileName: string, fileType?: string | null)
       "mov",
       "webm",
       "m4v",
+      "docx",
     ].includes(ext)
   ) {
     return true;
@@ -62,8 +75,15 @@ export function canPreviewAttachment(fileName: string, fileType?: string | null)
     mime.startsWith("image/") ||
     mime.startsWith("video/") ||
     mime === "application/pdf" ||
-    mime.startsWith("text/")
+    mime.startsWith("text/") ||
+    isDocxAttachment(fileName, fileType)
   );
+}
+
+export function isPreviewableImageAttachment(fileName: string, fileType?: string | null): boolean {
+  const ext = attachmentExtension(fileName);
+  if (PREVIEWABLE_IMAGE_EXTENSIONS.has(ext)) return true;
+  return (fileType || "").toLowerCase().startsWith("image/");
 }
 
 /** Same-origin proxy URL — server converts HEIC to JPEG for browser preview. */
