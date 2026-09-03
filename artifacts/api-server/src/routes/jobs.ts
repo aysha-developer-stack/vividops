@@ -66,6 +66,7 @@ import {
 import { updateRework } from "../lib/reworks";
 import { isReworkOrigin, type ReworkOrigin } from "../lib/rework-origin";
 import { finalizeReviewCheckForJob } from "../lib/persist-review-check-session";
+import { supabase } from "../lib/storage";
 
 const router: IRouter = Router();
 
@@ -2753,14 +2754,50 @@ router.patch("/jobs/:id/reworks/:reworkId", requireAuth, async (req, res) => {
 router.delete("/jobs/:id", creatorRole, async (req, res) => {
   const id = req.params.id as string;
   const actor = req.session!.user;
+  const permanent = req.query.permanent === "1" || req.query.permanent === "true";
   const full = await loadJob(id);
   if (!full) return res.status(404).json({ error: "Job not found" });
   if (actor.role !== "admin" && actor.role !== "super-admin") {
-    return res.status(403).json({ error: "Only admin or super-admin can cancel a job" });
+    return res.status(403).json({
+      error: permanent
+        ? "Only admin or super-admin can permanently delete a job"
+        : "Only admin or super-admin can cancel a job",
+    });
   }
   if (!canManageJob(actor, full.job)) {
-    return res.status(403).json({ error: "You cannot cancel this job" });
+    return res.status(403).json({
+      error: permanent ? "You cannot delete this job" : "You cannot cancel this job",
+    });
   }
+
+  if (permanent) {
+    if (full.job.status !== "cancelled") {
+      return res.status(400).json({ error: "Only cancelled jobs can be permanently deleted" });
+    }
+    try {
+      await stopAllActiveTimersOnJob(id);
+      const attachmentRows = await db
+        .select({ fileKey: jobAttachments.fileKey })
+        .from(jobAttachments)
+        .where(eq(jobAttachments.jobId, id));
+      const fileKeys = attachmentRows.map((row) => row.fileKey).filter((key) => key.trim().length > 0);
+      if (fileKeys.length > 0) {
+        const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "vivid-ops-files";
+        try {
+          await supabase.storage.from(bucketName).remove(fileKeys);
+        } catch (err) {
+          logger.warn({ err, jobId: id }, "Failed to delete some job files from storage");
+        }
+      }
+      await deleteNotificationsForJob(id);
+      await db.delete(jobs).where(eq(jobs.id, id));
+      return res.status(204).end();
+    } catch (err) {
+      logger.error({ err, jobId: id }, "Failed to permanently delete job");
+      return res.status(500).json({ error: "Failed to permanently delete job" });
+    }
+  }
+
   if (full.job.status === "cancelled") {
     return res.status(400).json({ error: "Job is already cancelled" });
   }

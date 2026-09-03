@@ -781,6 +781,27 @@ export default function JobManagement(
     }
   };
 
+  const permanentlyDeleteJob = async (j: UiJob) => {
+    setOpenId(null);
+    const ok = window.confirm(
+      `Permanently delete ${j.number} · ${j.title}?\n\nThis removes the job and its files from Vivid OPS. This cannot be undone.`,
+    );
+    if (!ok) return;
+    try {
+      const res = await fetch(`/api/jobs/${j.id}?permanent=1`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error || "Failed to delete job");
+      }
+      await invalidateJobs(j.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete job");
+    }
+  };
+
   const markReviewAction = async (j: UiJob, action: string) => {
     setOpenId(null);
     try {
@@ -1330,6 +1351,18 @@ export default function JobManagement(
                                     </DropdownMenuItem>
                                   </>
                                 )}
+                                {(role === "admin" || role === "super-admin") && j.status === "Cancelled" && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onClick={() => permanentlyDeleteJob(j)}
+                                      className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                    >
+                                      <Trash2 size={14} className="mr-2" />
+                                      Delete permanently
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
                               </>
                             )}
                           </DropdownMenuContent>
@@ -1504,6 +1537,18 @@ export default function JobManagement(
                                     <DropdownMenuItem onClick={() => archiveJob(j)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
                                       <Trash2 size={14} className="mr-2" />
                                       Cancel job
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                                {(role === "admin" || role === "super-admin") && j.status === "Cancelled" && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onClick={() => permanentlyDeleteJob(j)}
+                                      className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                    >
+                                      <Trash2 size={14} className="mr-2" />
+                                      Delete permanently
                                     </DropdownMenuItem>
                                   </>
                                 )}
