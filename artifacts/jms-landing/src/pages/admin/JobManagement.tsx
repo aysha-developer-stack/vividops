@@ -68,6 +68,11 @@ import {
   liveReviewCheckElapsedSeconds,
   type ReviewCheckSession,
 } from "@/lib/reviewCheckSessionApi";
+import {
+  fetchActiveTimerSessions,
+  liveSessionElapsedSeconds,
+  type ActiveTimerSession,
+} from "@/lib/timerSessionApi";
 
 import {
   DropdownMenu,
@@ -129,6 +134,69 @@ function ReviewTimerBadge({
     <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-mono font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded px-1.5 py-0.5">
       <Clock size={10} />
       {formatReviewTime(elapsed)}
+    </span>
+  );
+}
+
+const WORK_ACTIVITY_STATUSES = new Set<UiStatus>(["In Progress", "Rework", "Overdue"]);
+
+function firstName(name: string | null | undefined): string {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) return "Worker";
+  return trimmed.split(/\s+/)[0] ?? trimmed;
+}
+
+function WorkingTimerBadge({
+  session,
+  workerName,
+}: {
+  session: ActiveTimerSession;
+  workerName: string | null;
+}) {
+  const [elapsed, setElapsed] = useState(() => liveSessionElapsedSeconds(session));
+
+  useEffect(() => {
+    const tick = () => setElapsed(liveSessionElapsedSeconds(session));
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [session.accumulatedSeconds, session.segmentStartedAt, session.trackingPaused]);
+
+  return (
+    <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 animate-pulse" />
+      Working · {firstName(workerName)} · <span className="font-mono">{formatReviewTime(elapsed)}</span>
+    </span>
+  );
+}
+
+function JobWorkActivityBadge({
+  job,
+  session,
+  workerName,
+}: {
+  job: UiJob;
+  session: ActiveTimerSession | undefined;
+  workerName: string | null;
+}) {
+  if (!WORK_ACTIVITY_STATUSES.has(job.status)) return null;
+
+  if (session?.isLive && !session.trackingPaused) {
+    return <WorkingTimerBadge session={session} workerName={workerName} />;
+  }
+
+  if (session && (session.trackingPaused || !session.isLive)) {
+    return (
+      <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+        <Pause size={10} />
+        Timer paused · {firstName(workerName)}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5">
+      Idle · no active work
     </span>
   );
 }
@@ -337,6 +405,7 @@ export default function JobManagement(
   };
 
   const [liveReviewSessions, setLiveReviewSessions] = useState<ReviewCheckSession[]>([]);
+  const [activeWorkSessions, setActiveWorkSessions] = useState<ActiveTimerSession[]>([]);
 
   const jobs: UiJob[] = useMemo(
     () => (jobsQuery.data ?? []).map(mapJob),
@@ -350,6 +419,21 @@ export default function JobManagement(
     }
     return map;
   }, [liveReviewSessions]);
+  const workTimerByJobId = useMemo(() => {
+    const map = new Map<string, ActiveTimerSession>();
+    for (const session of activeWorkSessions) {
+      if (!session.jobId) continue;
+      const existing = map.get(session.jobId);
+      if (!existing) {
+        map.set(session.jobId, session);
+        continue;
+      }
+      const existingLive = existing.isLive && !existing.trackingPaused;
+      const sessionLive = session.isLive && !session.trackingPaused;
+      if (sessionLive && !existingLive) map.set(session.jobId, session);
+    }
+    return map;
+  }, [activeWorkSessions]);
 
   useEffect(() => {
     if (role === "user") {
@@ -372,6 +456,24 @@ export default function JobManagement(
       window.clearInterval(id);
     };
   }, [role]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const rows = await fetchActiveTimerSessions();
+        if (!cancelled) setActiveWorkSessions(rows);
+      } catch {
+        if (!cancelled) setActiveWorkSessions([]);
+      }
+    };
+    void load();
+    const id = window.setInterval(load, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
   const assignables = assignablesQuery.data ?? [];
   const supervisors = useMemo(
     () => assignables.filter((u) => u.role === "supervisor"),
@@ -385,6 +487,11 @@ export default function JobManagement(
     () => assignables.filter((u) => u.role === "user"),
     [assignables],
   );
+  const userNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const user of assignables) map.set(user.id, user.name);
+    return map;
+  }, [assignables]);
 
   const { search, setSearch, headerSearch } = useDashboardSearch(
     "Search jobs by title, client, number, address…",
@@ -1254,6 +1361,16 @@ export default function JobManagement(
                               />
                             );
                           })()}
+                          {(() => {
+                            const workSession = workTimerByJobId.get(j.id);
+                            return (
+                              <JobWorkActivityBadge
+                                job={j}
+                                session={workSession}
+                                workerName={workSession ? userNameById.get(workSession.userId) ?? null : null}
+                              />
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -1431,6 +1548,16 @@ export default function JobManagement(
                               <ReviewTimerBadge
                                 accumulatedSeconds={session.accumulatedSeconds}
                                 segmentStartedAt={session.segmentStartedAt}
+                              />
+                            );
+                          })()}
+                          {(() => {
+                            const workSession = workTimerByJobId.get(j.id);
+                            return (
+                              <JobWorkActivityBadge
+                                job={j}
+                                session={workSession}
+                                workerName={workSession ? userNameById.get(workSession.userId) ?? null : null}
                               />
                             );
                           })()}
