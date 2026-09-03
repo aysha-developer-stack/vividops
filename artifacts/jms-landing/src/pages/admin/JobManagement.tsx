@@ -70,7 +70,6 @@ import {
 } from "@/lib/reviewCheckSessionApi";
 import {
   fetchActiveTimerSessions,
-  liveSessionElapsedSeconds,
   type ActiveTimerSession,
 } from "@/lib/timerSessionApi";
 
@@ -140,63 +139,36 @@ function ReviewTimerBadge({
 
 const WORK_ACTIVITY_STATUSES = new Set<UiStatus>(["In Progress", "Rework", "Overdue"]);
 
-function firstName(name: string | null | undefined): string {
-  const trimmed = (name ?? "").trim();
-  if (!trimmed) return "Worker";
-  return trimmed.split(/\s+/)[0] ?? trimmed;
-}
-
-function WorkingTimerBadge({
-  session,
-  workerName,
-}: {
-  session: ActiveTimerSession;
-  workerName: string | null;
-}) {
-  const [elapsed, setElapsed] = useState(() => liveSessionElapsedSeconds(session));
-
-  useEffect(() => {
-    const tick = () => setElapsed(liveSessionElapsedSeconds(session));
-    tick();
-    const id = window.setInterval(tick, 1000);
-    return () => window.clearInterval(id);
-  }, [session.accumulatedSeconds, session.segmentStartedAt, session.trackingPaused]);
-
-  return (
-    <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 animate-pulse" />
-      Working · {firstName(workerName)} · <span className="font-mono">{formatReviewTime(elapsed)}</span>
-    </span>
-  );
-}
-
 function JobWorkActivityBadge({
   job,
   session,
-  workerName,
 }: {
   job: UiJob;
   session: ActiveTimerSession | undefined;
-  workerName: string | null;
 }) {
   if (!WORK_ACTIVITY_STATUSES.has(job.status)) return null;
 
   if (session?.isLive && !session.trackingPaused) {
-    return <WorkingTimerBadge session={session} workerName={workerName} />;
+    return (
+      <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 animate-pulse" />
+        Working
+      </span>
+    );
   }
 
   if (session && (session.trackingPaused || !session.isLive)) {
     return (
       <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
         <Pause size={10} />
-        Timer paused · {firstName(workerName)}
+        Timer paused
       </span>
     );
   }
 
   return (
     <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-medium text-gray-500 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5">
-      Idle · no active work
+      Idle
     </span>
   );
 }
@@ -487,11 +459,6 @@ export default function JobManagement(
     () => assignables.filter((u) => u.role === "user"),
     [assignables],
   );
-  const userNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const user of assignables) map.set(user.id, user.name);
-    return map;
-  }, [assignables]);
 
   const { search, setSearch, headerSearch } = useDashboardSearch(
     "Search jobs by title, client, number, address…",
@@ -1364,11 +1331,7 @@ export default function JobManagement(
                           {(() => {
                             const workSession = workTimerByJobId.get(j.id);
                             return (
-                              <JobWorkActivityBadge
-                                job={j}
-                                session={workSession}
-                                workerName={workSession ? userNameById.get(workSession.userId) ?? null : null}
-                              />
+                              <JobWorkActivityBadge job={j} session={workSession} />
                             );
                           })()}
                         </div>
@@ -1554,11 +1517,7 @@ export default function JobManagement(
                           {(() => {
                             const workSession = workTimerByJobId.get(j.id);
                             return (
-                              <JobWorkActivityBadge
-                                job={j}
-                                session={workSession}
-                                workerName={workSession ? userNameById.get(workSession.userId) ?? null : null}
-                              />
+                              <JobWorkActivityBadge job={j} session={workSession} />
                             );
                           })()}
                         </div>
