@@ -848,7 +848,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 <h2>Users: ${filteredUsers.length}</h2>
 <p class="sub">Filters: role=${userRoleFilter} · minScore=${minScore}${search ? ` · search="${search.replaceAll('"', "&quot;")}"` : ""}</p>
 <table>
-<thead><tr><th>User</th><th>Role</th><th style="text-align:right">Jobs</th><th style="text-align:right">Completed</th><th style="text-align:right">Hours</th><th style="text-align:right">Overdue</th><th style="text-align:right">Internal</th><th style="text-align:right">External</th><th style="text-align:right">Score</th></tr></thead>
+<thead><tr><th>User</th><th>Role</th><th style="text-align:right">Jobs</th><th style="text-align:right">Completed</th><th style="text-align:right">Hours</th><th style="text-align:right">Overdue</th><th style="text-align:right">Internal rework</th><th style="text-align:right">External rework</th><th style="text-align:right">Score</th></tr></thead>
 <tbody>${rows || `<tr><td colspan="9" style="padding:14px;color:#64748b">No users found.</td></tr>`}</tbody>
 </table>
 <script>
@@ -1339,13 +1339,13 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-gray-50 rounded-lg">
-                        <tr>{["User", "Role", "Jobs", "Completed", "Hours", "Internal", "External", "Overdue", "Score", "Avg time", "Report"].map((h) => (
+                        <tr>{["User", "Role", "Jobs", "Completed", "Hours", "Internal rework", "External rework", "Overdue", "Score", "Avg time", "Report"].map((h) => (
                           <th
                             key={h}
                             title={
-                              h === "Internal"
+                              h === "Internal rework"
                                 ? "Admin/super-admin internal rework cases in this period"
-                                : h === "External"
+                                : h === "External rework"
                                   ? "Admin/super-admin external rework cases in this period"
                                   : h === "Score"
                                     ? "Score out of 100: Completion (60) + On-time (25) + Low rework (15)"
