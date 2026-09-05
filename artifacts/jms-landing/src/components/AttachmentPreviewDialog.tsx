@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Download } from "lucide-react";
 import PreviewableImage from "@/components/PreviewableImage";
+import PdfDocumentPreview from "@/components/PdfDocumentPreview";
 import WordDocumentPreview from "@/components/WordDocumentPreview";
 import {
   attachmentExtension,
@@ -56,8 +57,8 @@ export default function AttachmentPreviewDialog({
   const isLegacyDoc = isLegacyDocAttachment(fileName, fileType);
 
   const iframeSrc = useMemo(
-    () => (isPdf || isText ? embeddedPreviewSrc(previewUrl) : previewUrl),
-    [isPdf, isText, previewUrl],
+    () => (isText ? embeddedPreviewSrc(previewUrl) : previewUrl),
+    [isText, previewUrl],
   );
 
   return (
@@ -104,7 +105,9 @@ export default function AttachmentPreviewDialog({
               )}
             </div>
           </div>
-        ) : isPdf || isText ? (
+        ) : isPdf ? (
+          <PdfDocumentPreview previewUrl={previewUrl} />
+        ) : isText ? (
           <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-gray-200 bg-[#525659]">
             <iframe
               src={iframeSrc}

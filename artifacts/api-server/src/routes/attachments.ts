@@ -23,6 +23,23 @@ import { createNotification, notifyJobManagers, notifyAdminsOnly } from "../lib/
 
 const router: IRouter = Router();
 
+function attachmentFileExtension(fileName: string): string {
+  return fileName.split(".").pop()?.toLowerCase() ?? "";
+}
+
+function proxyContentDisposition(rawName: string, disposition: "inline" | "attachment"): string {
+  const encodedName = encodeURIComponent(rawName).replace(/['()]/g, escape);
+  const asciiName = rawName.replace(/[\r\n"]+/g, "_").replace(/[^\x20-\x7E]+/g, "_") || "file";
+  return `${disposition}; filename="${asciiName}"; filename*=UTF-8''${encodedName}`;
+}
+
+function proxyContentType(rawName: string, fileType: string | null | undefined): string {
+  const trimmed = fileType?.trim();
+  if (trimmed) return trimmed;
+  if (attachmentFileExtension(rawName) === "pdf") return "application/pdf";
+  return "application/octet-stream";
+}
+
 let jobMembersSchemaEnsured = false;
 const ensureJobMembersSchema = async () => {};
 let attachmentsSchemaEnsured = false;
@@ -616,15 +633,13 @@ router.get("/jobs/:jobId/attachments/:attachmentId/view", requireAuth, async (re
         }
       } else {
         buffer = await downloadStorageBuffer(attachment.fileKey);
-        contentType = attachment.fileType?.trim() || "application/octet-stream";
+        contentType = proxyContentType(rawName, attachment.fileType);
       }
 
-      const encodedName = encodeURIComponent(rawName).replace(/['()]/g, escape);
       res.setHeader("Content-Type", contentType);
-      res.setHeader(
-        "Content-Disposition",
-        `${disposition}; filename="${rawName.replace(/[\r\n"]+/g, "_")}"; filename*=UTF-8''${encodedName}`,
-      );
+      if (disposition === "attachment") {
+        res.setHeader("Content-Disposition", proxyContentDisposition(rawName, disposition));
+      }
       res.setHeader("Cache-Control", isHeicAttachment(rawName, attachment.fileType) ? "private, max-age=86400" : "private, max-age=3600");
       res.send(buffer);
       return;
