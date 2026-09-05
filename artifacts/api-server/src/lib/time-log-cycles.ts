@@ -35,6 +35,7 @@ export function publicTimeLog(row: {
   reworkCycleNumber: number | null;
   startTime: Date;
   createdAt: Date;
+  userName?: string | null;
 }) {
   return {
     id: row.id,
@@ -45,5 +46,6 @@ export function publicTimeLog(row: {
     reworkCycleNumber: row.reworkCycleNumber,
     startTime: row.startTime.toISOString(),
     createdAt: row.createdAt.toISOString(),
+    ...(row.userName ? { userName: row.userName } : {}),
   };
 }

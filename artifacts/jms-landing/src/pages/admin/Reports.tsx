@@ -436,8 +436,14 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     for (const u of apiUsers ?? []) {
       map[u.id] = u.name;
     }
+    for (const j of apiJobs ?? []) {
+      if (j.assignee?.id && j.assignee.name) map[j.assignee.id] = j.assignee.name;
+      for (const member of j.assignees ?? []) {
+        if (member?.id && member.name) map[member.id] = member.name;
+      }
+    }
     return map;
-  }, [apiUsers]);
+  }, [apiUsers, apiJobs]);
 
   const jobLabelById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -454,11 +460,17 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
         const createdMs = parseMs(l.createdAt);
         return createdMs != null && createdMs >= periodStartMs;
       })
-      .map(l => ({
-        user: userNameById[l.userId] ?? `${l.userId.slice(0, 8)}…`,
-        project: l.jobId ? (jobLabelById[l.jobId] ?? "Job") : "General",
-        seconds: l.duration ?? 0,
-      }));
+      .map((l) => {
+        const logUserName =
+          typeof (l as { userName?: string }).userName === "string"
+            ? (l as { userName: string }).userName
+            : undefined;
+        return {
+          user: logUserName ?? userNameById[l.userId] ?? "Unknown user",
+          project: l.jobId ? (jobLabelById[l.jobId] ?? "Job") : "General",
+          seconds: l.duration ?? 0,
+        };
+      });
   }, [apiTimeLogs, userNameById, jobLabelById, periodStartMs]);
 
   const pctChange = (current: number, previous: number) => {

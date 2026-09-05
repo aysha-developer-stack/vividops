@@ -22,7 +22,15 @@ router.get("/time-logs", requireAuth, async (req, res) => {
     await ensureSchema();
     const actor = req.session!.user;
 
-    let query = db.select().from(timeLogs);
+    const baseQuery = db
+      .select({
+        log: timeLogs,
+        userName: users.name,
+      })
+      .from(timeLogs)
+      .innerJoin(users, eq(users.id, timeLogs.userId));
+
+    let rows: Array<{ log: typeof timeLogs.$inferSelect; userName: string }>;
 
     if (actor.role === "supervisor") {
       const visibleJobs = await db
@@ -34,13 +42,20 @@ router.get("/time-logs", requireAuth, async (req, res) => {
         return res.json([]);
       }
 
-      (query as any) = query.where(inArray(timeLogs.jobId, visibleJobIds));
+      rows = await baseQuery
+        .where(inArray(timeLogs.jobId, visibleJobIds))
+        .orderBy(desc(timeLogs.createdAt));
     } else if (actor.role !== "super-admin" && actor.role !== "admin") {
-      (query as any) = query.where(eq(timeLogs.userId, actor.id));
+      rows = await baseQuery
+        .where(eq(timeLogs.userId, actor.id))
+        .orderBy(desc(timeLogs.createdAt));
+    } else {
+      rows = await baseQuery.orderBy(desc(timeLogs.createdAt));
     }
 
-    const rows = await query.orderBy(desc(timeLogs.createdAt));
-    return res.json(rows.map(publicTimeLog));
+    return res.json(
+      rows.map(({ log, userName }) => publicTimeLog({ ...log, userName })),
+    );
   } catch (err) {
     logger.error({ err }, "Failed to list time logs");
     return res.status(500).json({ error: "Internal server error" });
