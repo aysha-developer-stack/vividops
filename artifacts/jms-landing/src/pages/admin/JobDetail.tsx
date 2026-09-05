@@ -676,6 +676,31 @@ export default function JobDetail({ role = "user", id }: Props) {
     setReworkOrigin(null);
   };
 
+  const appendReworkPendingFiles = (incoming: File[]) => {
+    if (incoming.length === 0) return;
+    const allowed = filterJobFiles(incoming);
+    if (allowed.length === 0) {
+      window.alert(JOB_FILE_REJECTED_MESSAGE);
+      return;
+    }
+    if (allowed.length < incoming.length) {
+      window.alert(
+        `${incoming.length - allowed.length} file(s) skipped — invalid file name or exceeds the 200 MB limit.`,
+      );
+    }
+    setReworkPendingFiles((prev) => {
+      const seen = new Set(prev.map((f) => `${f.name}\0${f.size}\0${f.lastModified}`));
+      const next = [...prev];
+      for (const file of allowed) {
+        const key = `${file.name}\0${file.size}\0${file.lastModified}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push(file);
+      }
+      return next;
+    });
+  };
+
   const openCreateReworkModal = (item?: ChecklistItem | null) => {
     resetReworkForm();
     if (item) setReworkTargetItem(item);
@@ -4037,27 +4062,48 @@ export default function JobDetail({ role = "user", id }: Props) {
                 onChange={(e) => setReworkDueAt(e.target.value)}
                 className="w-full bg-white border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-primary mb-4"
               />
-              <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Attach rework files (optional)</label>
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <label className="text-xs font-semibold text-gray-700">Attach rework files (optional)</label>
+                {reworkPendingFiles.length > 0 ? (
+                  <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">
+                    {reworkPendingFiles.length} file{reworkPendingFiles.length === 1 ? "" : "s"} attached
+                  </span>
+                ) : null}
+              </div>
               <FileDropzone
                 accept={JOB_FILE_ACCEPT}
                 label="Drop rework instruction files or folders"
-                onFiles={(files) => setReworkPendingFiles((prev) => [...prev, ...filterJobFiles(files)])}
+                onFiles={(files) => appendReworkPendingFiles(files)}
                 className="mb-3"
               />
               {reworkPendingFiles.length > 0 && (
-                <div className="mb-4 space-y-2 max-h-36 overflow-y-auto">
-                  {reworkPendingFiles.map((file, idx) => (
-                    <div key={`${file.name}-${idx}`} className="flex items-center justify-between gap-2 px-3 py-2 bg-amber-50 border border-amber-100 rounded-lg">
-                      <span className="text-xs text-gray-800 truncate">{file.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => setReworkPendingFiles((prev) => prev.filter((_, i) => i !== idx))}
-                        className="text-xs font-semibold text-amber-700 hover:text-amber-900 shrink-0"
+                <div className="mb-4 rounded-xl border border-amber-100 bg-amber-50/50 p-2">
+                  <div className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                    {reworkPendingFiles.length} file{reworkPendingFiles.length === 1 ? "" : "s"} ready to upload
+                    {" · "}
+                    {formatSize(reworkPendingFiles.reduce((sum, f) => sum + f.size, 0))} total
+                  </div>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {reworkPendingFiles.map((file, idx) => (
+                      <div
+                        key={`${file.name}-${file.size}-${file.lastModified}-${idx}`}
+                        className="flex items-center gap-2 rounded-lg border border-amber-100 bg-white px-3 py-2"
                       >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
+                        <FileExtensionIcon fileName={file.name} size="sm" className="shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-medium text-gray-800">{file.name}</div>
+                          <div className="text-[10px] text-gray-500">{formatSize(file.size)}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setReworkPendingFiles((prev) => prev.filter((_, i) => i !== idx))}
+                          className="shrink-0 text-xs font-semibold text-amber-700 hover:text-amber-900"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
               <div className="flex gap-2">
@@ -4184,7 +4230,14 @@ export default function JobDetail({ role = "user", id }: Props) {
                   }}
                   className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-semibold hover:bg-amber-600 flex items-center justify-center gap-2 disabled:opacity-60"
                 >
-                  <RefreshCw size={14} /> {reworkSubmitting ? "Saving…" : editingRework ? "Save Changes" : "Submit"}
+                  <RefreshCw size={14} />{" "}
+                  {reworkSubmitting
+                    ? "Saving…"
+                    : editingRework
+                      ? "Save Changes"
+                      : reworkPendingFiles.length > 0
+                        ? `Submit (${reworkPendingFiles.length} file${reworkPendingFiles.length === 1 ? "" : "s"})`
+                        : "Submit"}
                 </button>
               </div>
             </motion.div>

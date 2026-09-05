@@ -90,8 +90,9 @@ function collectArchiveFilesFromDataTransfer(dataTransfer: DataTransfer): File[]
 
 export async function collectFilesFromDataTransfer(dataTransfer: DataTransfer): Promise<File[]> {
   const archiveFiles = collectArchiveFilesFromDataTransfer(dataTransfer);
-  if (archiveFiles.length > 0) return archiveFiles;
+  const archiveNames = new Set(archiveFiles.map((f) => f.name.toLowerCase()));
 
+  const otherFiles: File[] = [];
   const items = dataTransfer.items;
   if (items && items.length > 0) {
     const entries: FileSystemEntryLike[] = [];
@@ -105,12 +106,31 @@ export async function collectFilesFromDataTransfer(dataTransfer: DataTransfer): 
     }
 
     if (entries.length > 0) {
-      const files: File[] = [];
       for (const entry of entries) {
-        await walkEntry(entry, "", files);
+        if (isArchiveFileName(entry.name)) continue;
+        await walkEntry(entry, "", otherFiles);
       }
-      if (files.length > 0) return files;
     }
+  }
+
+  const flatOthers = Array.from(dataTransfer.files ?? []).filter(
+    (f) =>
+      f &&
+      typeof f.name === "string" &&
+      f.size > 0 &&
+      !isArchiveFileName(f.name) &&
+      !archiveNames.has(f.name.toLowerCase()),
+  );
+
+  const combined = [...archiveFiles, ...otherFiles, ...flatOthers];
+  if (combined.length > 0) {
+    const seen = new Set<string>();
+    return combined.filter((f) => {
+      const key = `${f.name}\0${f.size}\0${f.lastModified}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   return Array.from(dataTransfer.files ?? []).filter((f) => f && typeof f.name === "string");
