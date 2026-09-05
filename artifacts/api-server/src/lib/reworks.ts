@@ -3,6 +3,7 @@ import {
   db,
   jobChecklistState,
   jobReworks,
+  jobs,
   MISTAKE_CATEGORIES,
   type JobRow,
   type MistakeCategory,
@@ -10,6 +11,7 @@ import {
 } from "@workspace/db";
 import type { ReworkOrigin } from "./rework-origin";
 import { resolveReworkUserId } from "./working-supervisor";
+import { announceCliqJobStatusChange } from "./cliq-job-status";
 
 type ErrorSeverity = "low" | "medium" | "high";
 
@@ -187,21 +189,41 @@ export async function findActiveReworkForCompletedUpload(opts: {
   return rows[0]?.id ?? null;
 }
 
-export async function markOpenReworksAwaitingReview(jobId: string, userId?: string | null) {
+export async function markOpenReworksAwaitingReview(
+  jobId: string,
+  userId?: string | null,
+  opts?: { actor?: Pick<UserRow, "id" | "name" | "role">; announceCliq?: boolean },
+): Promise<number> {
   const conditions = [
     eq(jobReworks.jobId, jobId),
     inArray(jobReworks.status, ["open", "needs_correction"]),
   ];
   if (userId) conditions.push(eq(jobReworks.userId, userId));
 
-  await db
+  const updated = await db
     .update(jobReworks)
     .set({
       status: "awaiting_review",
       completedAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(and(...conditions));
+    .where(and(...conditions))
+    .returning({ id: jobReworks.id });
+
+  const actor = opts?.actor;
+  if (updated.length > 0 && actor && opts?.announceCliq !== false) {
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    if (job) {
+      void announceCliqJobStatusChange({
+        job,
+        actor: actor as UserRow,
+        event: "rework_completed",
+        previousStatus: "rework",
+      });
+    }
+  }
+
+  return updated.length;
 }
 
 export async function resolveJobReworks(jobId: string) {

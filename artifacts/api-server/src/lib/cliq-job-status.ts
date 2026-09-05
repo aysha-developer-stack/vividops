@@ -6,9 +6,13 @@ import { reworkOriginLabel, type ReworkOrigin } from "./rework-origin";
 export type CliqJobStatusEvent =
   | "completed"
   | "rework"
+  | "rework_completed"
   | "awaiting_supervisor"
   | "awaiting_admin"
-  | "awaiting_super_admin";
+  | "awaiting_super_admin"
+  | "on_hold"
+  | "resumed"
+  | "cancelled";
 
 function jobLabel(job: JobRow): string {
   const num = job.jobNumber?.trim();
@@ -39,13 +43,19 @@ export function buildCliqJobStatusText(opts: {
   const commentText = trimDetail(comments);
 
   if (event === "completed") {
-    // Cliq "completed" is super-admin final approval only.
-    if (actor.role !== "super-admin") return null;
-
-    return `✅ ${label} approved and completed by ${actorName} · ${time}`;
+    if (actor.role === "super-admin") {
+      return `✅ ${label} approved and completed by ${actorName} · ${time}`;
+    }
+    if (actor.role === "admin") {
+      return `✅ ${label} completed by admin ${actorName} · ${time}`;
+    }
+    return null;
   }
 
   if (event === "awaiting_supervisor") {
+    if (previousStatus === "rework") {
+      return `✅ Rework completed on ${label} — submitted for supervisor review by ${actorName} · ${time}`;
+    }
     return `📋 ${label} submitted for supervisor review by ${actorName} · ${time}`;
   }
 
@@ -71,6 +81,24 @@ export function buildCliqJobStatusText(opts: {
     if (reasonText) line += `\nReason: ${reasonText}`;
     if (commentText) line += `\nInstructions: ${commentText}`;
     return line;
+  }
+
+  if (event === "rework_completed") {
+    return `✅ Rework completed on ${label} by ${actorName} · ${time}`;
+  }
+
+  if (event === "on_hold") {
+    let line = `⏸️ ${label} put on hold by ${actorName} · ${time}`;
+    if (reasonText) line += `\nReason: ${reasonText}`;
+    return line;
+  }
+
+  if (event === "resumed") {
+    return `▶️ ${label} resumed by ${actorName} · ${time}`;
+  }
+
+  if (event === "cancelled") {
+    return `🚫 ${label} cancelled by ${actorName} · ${time}`;
   }
 
   return null;

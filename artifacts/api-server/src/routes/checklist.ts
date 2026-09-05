@@ -493,7 +493,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
           const { assertWorkerChecklistReady } = await import("../lib/job-review");
           const checklistError = await assertWorkerChecklistReady(job, targetUserId);
           if (!checklistError) {
-            await markOpenReworksAwaitingReview(job.id, targetUserId);
+            await markOpenReworksAwaitingReview(job.id, targetUserId, { actor });
           }
         }
 

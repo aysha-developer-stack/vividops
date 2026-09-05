@@ -655,6 +655,13 @@ export async function notifyStatusTransition(opts: {
       description: `${actor.name} put ${job.title} on hold.${holdText}`,
       type: "updated",
     });
+    void announceCliqJobStatusChange({
+      job,
+      actor,
+      event: "on_hold",
+      previousStatus,
+      reason: job.holdReason,
+    });
   }
 
   if (previousStatus === "on_hold" && nextStatus !== "on_hold") {
@@ -674,6 +681,38 @@ export async function notifyStatusTransition(opts: {
       title: `Job Resumed: ${job.title}`,
       description: `${actor.name} resumed work on ${job.title}.`,
       type: "updated",
+    });
+    void announceCliqJobStatusChange({
+      job,
+      actor,
+      event: "resumed",
+      previousStatus,
+    });
+  }
+
+  if (nextStatus === "cancelled") {
+    await notifyJobManagers({
+      jobId: job.id,
+      supervisorId: job.supervisorId,
+      actorId: actor.id,
+      title: `Job Cancelled: ${job.title}`,
+      description: `${actor.name} cancelled ${job.title}.`,
+      type: "updated",
+    });
+    if (job.assigneeId && job.assigneeId !== actor.id) {
+      await createNotification({
+        userId: job.assigneeId,
+        jobId: job.id,
+        title: `Job Cancelled: ${job.title}`,
+        description: `${actor.name} cancelled ${job.title}.`,
+        type: "updated",
+      });
+    }
+    void announceCliqJobStatusChange({
+      job,
+      actor,
+      event: "cancelled",
+      previousStatus,
     });
   }
 }
@@ -715,7 +754,7 @@ export async function applyJobReview(opts: {
     if (checklistError) {
       return { ok: false, status: 400, error: checklistError };
     }
-    await markOpenReworksAwaitingReview(job.id, workerId);
+    await markOpenReworksAwaitingReview(job.id, workerId, { actor, announceCliq: false });
     nextStatus = job.supervisorId ? "awaiting_supervisor" : "awaiting_admin";
   } else if (action === "supervisor_approve") {
     const canApprove =
