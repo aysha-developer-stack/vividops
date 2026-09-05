@@ -34,6 +34,11 @@ interface CheckedJobRow {
   reviewCheckSeconds: number;
 }
 
+interface StatusBreakdownRow {
+  label: string;
+  count: number;
+}
+
 interface SupervisorCard {
   id: string;
   name: string;
@@ -52,6 +57,45 @@ interface SupervisorCard {
   lastCheckedAt: string | null;
   workers: AssignedWorker[];
   recentChecks: CheckedJobRow[];
+  statusBreakdown: StatusBreakdownRow[];
+}
+
+const STATUS_BREAKDOWN_ORDER = [
+  "pending",
+  "in_progress",
+  "awaiting_supervisor",
+  "rework",
+  "awaiting_admin",
+  "awaiting_super_admin",
+  "on_hold",
+  "completed",
+  "cancelled",
+] as const;
+
+const STATUS_BREAKDOWN_LABELS: Record<(typeof STATUS_BREAKDOWN_ORDER)[number], string> = {
+  pending: "Not started",
+  in_progress: "In progress",
+  awaiting_supervisor: "Awaiting supervisor",
+  rework: "Rework",
+  awaiting_admin: "Awaiting admin",
+  awaiting_super_admin: "Awaiting super admin",
+  on_hold: "On hold",
+  completed: "Done",
+  cancelled: "Cancelled",
+};
+
+function buildStatusBreakdown(jobs: Job[]): StatusBreakdownRow[] {
+  const counts = new Map<string, number>();
+  for (const job of jobs) {
+    const status = job.status ?? "pending";
+    counts.set(status, (counts.get(status) ?? 0) + 1);
+  }
+  return STATUS_BREAKDOWN_ORDER
+    .filter((status) => (counts.get(status) ?? 0) > 0)
+    .map((status) => ({
+      label: STATUS_BREAKDOWN_LABELS[status],
+      count: counts.get(status) ?? 0,
+    }));
 }
 
 const STATUS_DOT: Record<SupervisorCard["status"], string> = {
@@ -311,6 +355,7 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
         lastCheckedAt: checkedJobsList[0]?.checkedAt ?? null,
         workers,
         recentChecks: checkedJobsList.slice(0, 12),
+        statusBreakdown: buildStatusBreakdown(supervisedJobs),
       };
     });
   }, [apiJobs, apiTimeLogs, apiUsers, currentUser, role]);
@@ -511,7 +556,7 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
                 {[
                   { label: "Assigned", val: selected.assignedJobs },
                   { label: "Checked", val: selected.checkedJobs },
@@ -523,6 +568,37 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
                     <div className="text-[10px] uppercase tracking-wide text-gray-500">{m.label}</div>
                   </div>
                 ))}
+              </div>
+              <p className="text-[11px] text-gray-500 mb-6 leading-relaxed">
+                Assigned is the total supervised jobs. Checked and To review overlap — checked includes jobs
+                already approved or logged with review-check time; to review counts in progress, awaiting
+                supervisor, and rework. Use the status breakdown below to account for every job.
+              </p>
+
+              <div className="mb-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <Briefcase size={14} className="text-primary" />
+                  <h3 className="text-sm font-bold text-gray-900">Where every job is</h3>
+                  <span className="text-[10px] text-gray-400 ml-auto">
+                    {selected.statusBreakdown.reduce((sum, row) => sum + row.count, 0)} total
+                  </span>
+                </div>
+                {selected.statusBreakdown.length === 0 ? (
+                  <div className="text-sm text-gray-400 rounded-xl border border-dashed border-gray-200 p-4 text-center">
+                    No supervised jobs yet.
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-gray-100 overflow-hidden">
+                    <div className="divide-y divide-gray-50">
+                      {selected.statusBreakdown.map((row) => (
+                        <div key={row.label} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                          <div className="text-sm text-gray-700">{row.label}</div>
+                          <div className="text-sm font-bold text-gray-900 tabular-nums">{row.count}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="mb-6">
