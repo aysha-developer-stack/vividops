@@ -35,6 +35,19 @@ type DailyRow = {
   job_count: number;
 };
 
+type ReworkCountRow = {
+  user_id: string;
+  rework_origin: string | null;
+  count: number;
+};
+
+function parseReworkRange(req: { query: Record<string, unknown> }) {
+  const today = todayInTimezone(REPORT_TIMEZONE);
+  const from = parseDateParam(req.query.from) ?? shiftDateString(today, -30);
+  const to = parseDateParam(req.query.to) ?? today;
+  return { from, to };
+}
+
 router.get(
   "/reports/daily-time",
   requireAuth,
@@ -158,6 +171,74 @@ router.get(
       });
     } catch (err) {
       logger.error({ err }, "Failed to load daily time report");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
+
+router.get(
+  "/reports/rework-counts",
+  requireAuth,
+  requireRole("admin", "super-admin"),
+  async (req, res) => {
+    try {
+      await ensureJobWriteSchema();
+
+      const { from, to } = parseReworkRange(req);
+      if (from > to) {
+        return res.status(400).json({ error: "from must be on or before to" });
+      }
+
+      const result = await db.execute(sql`
+        SELECT
+          jr.user_id,
+          jr.rework_origin,
+          COUNT(*)::int AS count
+        FROM job_reworks jr
+        WHERE (jr.created_at AT TIME ZONE ${REPORT_TIMEZONE})::date >= ${from}::date
+          AND (jr.created_at AT TIME ZONE ${REPORT_TIMEZONE})::date <= ${to}::date
+        GROUP BY jr.user_id, jr.rework_origin
+      `);
+
+      const rawRows = (
+        (result as unknown as { rows?: ReworkCountRow[] }).rows ?? []
+      ) as ReworkCountRow[];
+
+      const byUser = new Map<
+        string,
+        { userId: string; internal: number; external: number; supervisor: number }
+      >();
+
+      const totals = { internal: 0, external: 0, supervisor: 0 };
+
+      for (const row of rawRows) {
+        const userId = row.user_id;
+        const count = Number(row.count) || 0;
+        if (!byUser.has(userId)) {
+          byUser.set(userId, { userId, internal: 0, external: 0, supervisor: 0 });
+        }
+        const bucket = byUser.get(userId)!;
+        if (row.rework_origin === "internal") {
+          bucket.internal += count;
+          totals.internal += count;
+        } else if (row.rework_origin === "external") {
+          bucket.external += count;
+          totals.external += count;
+        } else {
+          bucket.supervisor += count;
+          totals.supervisor += count;
+        }
+      }
+
+      return res.json({
+        timezone: REPORT_TIMEZONE,
+        from,
+        to,
+        totals,
+        byUser: [...byUser.values()],
+      });
+    } catch (err) {
+      logger.error({ err }, "Failed to load rework counts report");
       return res.status(500).json({ error: "Internal server error" });
     }
   },

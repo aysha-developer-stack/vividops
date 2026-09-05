@@ -53,7 +53,27 @@ function roleBadgeFor(role: UserRoleLabel) {
   return ROLE_BADGE[role] ?? ROLE_BADGE.User;
 }
 
-interface UserPerf { id: string; name: string; role: UserRoleLabel; jobs: number; completed: number; score: number; scoreTip: string; avg: string; hours: number; rework: number; overdue: number; }
+interface UserPerf {
+  id: string;
+  name: string;
+  role: UserRoleLabel;
+  jobs: number;
+  completed: number;
+  score: number;
+  scoreTip: string;
+  avg: string;
+  hours: number;
+  reworkInternal: number;
+  reworkExternal: number;
+  reworkSupervisor: number;
+  rework: number;
+  overdue: number;
+}
+
+interface ReworkCountsReport {
+  totals: { internal: number; external: number; supervisor: number };
+  byUser: Array<{ userId: string; internal: number; external: number; supervisor: number }>;
+}
 
 interface DailyTimeRow {
   userId: string;
@@ -192,6 +212,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const [dailyDateTo, setDailyDateTo] = useState("");
   const [userReportPreview, setUserReportPreview] = useState<{ user: UserPerf; html: string } | null>(null);
   const [userReportPreviewLoading, setUserReportPreviewLoading] = useState(false);
+  const [reworkCounts, setReworkCounts] = useState<ReworkCountsReport | null>(null);
 
   useEffect(() => {
     const placeholder =
@@ -264,6 +285,40 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   }, [activeTab, canViewDailyReport, effectiveDailyRange.from, effectiveDailyRange.to, dailyUserFilter]);
 
   useEffect(() => {
+    if (isUser) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const params = new URLSearchParams({
+          from: dailyRange.from,
+          to: dailyRange.to,
+        });
+        const res = await fetch(`/api/reports/rework-counts?${params.toString()}`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to load rework counts");
+        const data = (await res.json()) as ReworkCountsReport;
+        if (!cancelled) setReworkCounts(data);
+      } catch {
+        if (!cancelled) setReworkCounts(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isUser, dailyRange.from, dailyRange.to, period]);
+
+  const reworkByUserId = useMemo(() => {
+    const map = new Map<string, { internal: number; external: number; supervisor: number }>();
+    for (const row of reworkCounts?.byUser ?? []) {
+      map.set(row.userId, {
+        internal: row.internal,
+        external: row.external,
+        supervisor: row.supervisor,
+      });
+    }
+    return map;
+  }, [reworkCounts]);
+
+  useEffect(() => {
     setDailyDateFrom("");
     setDailyDateTo("");
   }, [period]);
@@ -317,7 +372,11 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
       };
 
       const overdue = userJobs.filter(isJobOverdue).length;
-      const rework = userJobs.filter(j => (j.status as unknown as string) === "rework").length;
+      const reworkStats = reworkByUserId.get(u.id) ?? { internal: 0, external: 0, supervisor: 0 };
+      const reworkInternal = reworkStats.internal;
+      const reworkExternal = reworkStats.external;
+      const reworkSupervisor = reworkStats.supervisor;
+      const rework = reworkInternal + reworkExternal + reworkSupervisor;
 
       const resolutionHours: number[] = [];
       const completedOnTimeCount = completedJobs.reduce((acc, j: any) => {
@@ -363,11 +422,14 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
         scoreTip,
         avg: formatAvgResolution(avgResolutionHours),
         hours: totalSeconds,
+        reworkInternal,
+        reworkExternal,
+        reworkSupervisor,
         rework,
         overdue,
       };
     });
-  }, [apiUsers, apiJobs, apiTimeLogs, periodStartMs, jobMemberships]);
+  }, [apiUsers, apiJobs, apiTimeLogs, periodStartMs, jobMemberships, reworkByUserId]);
 
   const userNameById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -569,7 +631,9 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
       const completedMs = parseMs(j.completedAt);
       return completedMs != null && completedMs >= periodStartMs;
     });
-    const rework = jobs.filter((j) => (j.status as unknown as string) === "rework").length;
+    const reworkInternal = reworkCounts?.totals.internal ?? 0;
+    const reworkExternal = reworkCounts?.totals.external ?? 0;
+    const reworkSupervisor = reworkCounts?.totals.supervisor ?? 0;
     const totalLoggedSeconds = (apiTimeLogs ?? [])
       .filter((l) => {
         if (!periodStartMs) return true;
@@ -581,14 +645,22 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
       total: jobs.length,
       completed: completed.length,
       totalLoggedSeconds,
-      rework,
+      reworkInternal,
+      reworkExternal,
+      reworkSupervisor,
+      rework: reworkInternal + reworkExternal + reworkSupervisor,
     };
-  }, [apiJobs, apiTimeLogs, periodStartMs]);
+  }, [apiJobs, apiTimeLogs, periodStartMs, reworkCounts]);
 
   const totalJobs = platformJobStats.total;
   const totalCompleted = platformJobStats.completed;
   const totalLoggedSeconds = platformJobStats.totalLoggedSeconds;
+  const totalReworkInternal = platformJobStats.reworkInternal;
+  const totalReworkExternal = platformJobStats.reworkExternal;
   const totalRework = platformJobStats.rework;
+
+  const reworkCountClass = (n: number) =>
+    n > 3 ? "text-red-600 font-semibold" : n > 0 ? "text-amber-600" : "text-gray-400";
 
   const anyLoading = statsLoading || usersLoading || logsLoading || jobsLoading;
   const anyData = dashboardData || apiUsers || apiTimeLogs || apiJobs;
@@ -700,7 +772,9 @@ ${printButton}
   <tbody>
     <tr><td>Hours logged</td><td>${formatDurationSeconds(u.hours)}</td><td style="color:#64748b">—</td></tr>
     <tr><td>Average resolution time</td><td>${u.avg}</td><td style="color:#64748b">—</td></tr>
-    <tr><td>Rework cases</td><td>${u.rework}</td><td style="color:${u.rework > 3 ? "#dc2626" : u.rework > 0 ? "#d97706" : "#10b981"}">${u.rework > 3 ? "High" : u.rework > 0 ? "Moderate" : "Excellent"}</td></tr>
+    <tr><td>Internal rework</td><td>${u.reworkInternal}</td><td style="color:${u.reworkInternal > 3 ? "#dc2626" : u.reworkInternal > 0 ? "#d97706" : "#10b981"}">${u.reworkInternal > 3 ? "High" : u.reworkInternal > 0 ? "Moderate" : "Excellent"}</td></tr>
+    <tr><td>External rework</td><td>${u.reworkExternal}</td><td style="color:${u.reworkExternal > 3 ? "#dc2626" : u.reworkExternal > 0 ? "#d97706" : "#10b981"}">${u.reworkExternal > 3 ? "High" : u.reworkExternal > 0 ? "Moderate" : "Excellent"}</td></tr>
+    <tr><td>Supervisor rework</td><td>${u.reworkSupervisor}</td><td style="color:#64748b">—</td></tr>
     <tr><td>Overdue jobs</td><td>${u.overdue}</td><td style="color:${u.overdue > 0 ? "#dc2626" : "#10b981"}">${u.overdue > 0 ? "Needs attention" : "On track"}</td></tr>
     <tr><td>Performance score</td><td><span class="bar"><div></div></span>${u.score} / 100</td><td style="color:${u.score >= 90 ? "#10b981" : u.score >= 80 ? "#0B7EB9" : "#d97706"}">${u.score >= 90 ? "Excellent" : u.score >= 80 ? "Good" : "Needs improvement"}</td></tr>
   </tbody>
@@ -749,7 +823,7 @@ ${printScript}
     const rows = filteredUsers
       .map(
         (u) =>
-          `<tr><td>${u.name}</td><td>${u.role}</td><td style="text-align:right">${u.jobs}</td><td style="text-align:right">${u.completed}</td><td style="text-align:right">${formatDurationSeconds(u.hours)}</td><td style="text-align:right">${u.overdue}</td><td style="text-align:right">${u.rework}</td><td style="text-align:right">${u.score}</td></tr>`,
+          `<tr><td>${u.name}</td><td>${u.role}</td><td style="text-align:right">${u.jobs}</td><td style="text-align:right">${u.completed}</td><td style="text-align:right">${formatDurationSeconds(u.hours)}</td><td style="text-align:right">${u.overdue}</td><td style="text-align:right">${u.reworkInternal}</td><td style="text-align:right">${u.reworkExternal}</td><td style="text-align:right">${u.score}</td></tr>`,
       )
       .join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>User Performance</title>
@@ -774,8 +848,8 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 <h2>Users: ${filteredUsers.length}</h2>
 <p class="sub">Filters: role=${userRoleFilter} · minScore=${minScore}${search ? ` · search="${search.replaceAll('"', "&quot;")}"` : ""}</p>
 <table>
-<thead><tr><th>User</th><th>Role</th><th style="text-align:right">Jobs</th><th style="text-align:right">Completed</th><th style="text-align:right">Hours</th><th style="text-align:right">Overdue</th><th style="text-align:right">Rework</th><th style="text-align:right">Score</th></tr></thead>
-<tbody>${rows || `<tr><td colspan="8" style="padding:14px;color:#64748b">No users found.</td></tr>`}</tbody>
+<thead><tr><th>User</th><th>Role</th><th style="text-align:right">Jobs</th><th style="text-align:right">Completed</th><th style="text-align:right">Hours</th><th style="text-align:right">Overdue</th><th style="text-align:right">Internal</th><th style="text-align:right">External</th><th style="text-align:right">Score</th></tr></thead>
+<tbody>${rows || `<tr><td colspan="9" style="padding:14px;color:#64748b">No users found.</td></tr>`}</tbody>
 </table>
 <script>
   (async () => {
@@ -1242,12 +1316,13 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                   </div>
 
                   {/* Summary KPIs */}
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                     {[
                       { label: "Total jobs", value: totalJobs, icon: FileText, color: "primary" },
                       { label: "Completed", value: totalCompleted, icon: TrendingUp, color: "emerald" },
                       { label: "Hours logged", value: formatDurationSeconds(totalLoggedSeconds), icon: Clock, color: "amber" },
-                      { label: "Rework cases", value: totalRework, icon: AlertTriangle, color: "red" },
+                      { label: "Internal rework", value: totalReworkInternal, icon: AlertTriangle, color: "indigo" },
+                      { label: "External rework", value: totalReworkExternal, icon: AlertTriangle, color: "red" },
                     ].map((k, i) => {
                       const Icon = k.icon;
                       return (
@@ -1264,10 +1339,20 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-gray-50 rounded-lg">
-                        <tr>{["User", "Role", "Jobs", "Completed", "Hours", "Rework", "Overdue", "Score", "Avg time", "Report"].map((h) => (
+                        <tr>{["User", "Role", "Jobs", "Completed", "Hours", "Internal", "External", "Overdue", "Score", "Avg time", "Report"].map((h) => (
                           <th
                             key={h}
-                            title={h === "Score" ? "Score out of 100: Completion (60) + On-time (25) + Low rework (15)" : h === "Avg time" ? "Average time from job assigned to job completed (not timer hours)" : undefined}
+                            title={
+                              h === "Internal"
+                                ? "Admin/super-admin internal rework cases in this period"
+                                : h === "External"
+                                  ? "Admin/super-admin external rework cases in this period"
+                                  : h === "Score"
+                                    ? "Score out of 100: Completion (60) + On-time (25) + Low rework (15)"
+                                    : h === "Avg time"
+                                      ? "Average time from job assigned to job completed (not timer hours)"
+                                      : undefined
+                            }
                             className="text-left px-3 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider"
                           >
                             {h}
@@ -1297,7 +1382,10 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                               <td className="px-3 py-3.5 text-sm text-emerald-700 font-semibold tabular-nums">{u.completed}</td>
                               <td className="px-3 py-3.5 text-sm text-gray-700 tabular-nums">{formatDurationSeconds(u.hours)}</td>
                               <td className="px-3 py-3.5 text-sm tabular-nums">
-                                <span className={u.rework > 3 ? "text-red-600 font-semibold" : u.rework > 0 ? "text-amber-600" : "text-gray-400"}>{u.rework}</span>
+                                <span className={reworkCountClass(u.reworkInternal)}>{u.reworkInternal}</span>
+                              </td>
+                              <td className="px-3 py-3.5 text-sm tabular-nums">
+                                <span className={reworkCountClass(u.reworkExternal)}>{u.reworkExternal}</span>
                               </td>
                               <td className="px-3 py-3.5 text-sm tabular-nums">
                                 <span className={u.overdue > 0 ? "text-red-600 font-semibold" : "text-gray-400"}>{u.overdue}</span>
