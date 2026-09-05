@@ -65,75 +65,46 @@ async function walkEntry(entry: FileSystemEntryLike, pathPrefix: string, out: Fi
   }
 }
 
-function collectArchiveFilesFromDataTransfer(dataTransfer: DataTransfer): File[] {
-  const archives: File[] = [];
-  const items = dataTransfer.items;
-  if (items && items.length > 0) {
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.kind !== "file") continue;
-      const entry = (item as DataTransferItem & {
-        webkitGetAsEntry?: () => FileSystemEntryLike | null;
-      }).webkitGetAsEntry?.();
-      if (!entry || !isArchiveFileName(entry.name)) continue;
-      const file = item.getAsFile();
-      if (file && file.size > 0) archives.push(file);
-    }
-  }
+function dedupeFiles(files: File[]): File[] {
+  const seen = new Set<string>();
+  return files.filter((f) => {
+    const key = `${f.name}\0${f.size}\0${f.lastModified}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
-  if (archives.length > 0) return archives;
-
+function flatFilesFromDataTransfer(dataTransfer: DataTransfer): File[] {
   return Array.from(dataTransfer.files ?? []).filter(
-    (f) => f && typeof f.name === "string" && f.size > 0 && isArchiveFileName(f.name),
+    (f) => f && typeof f.name === "string" && f.size > 0,
   );
 }
 
 export async function collectFilesFromDataTransfer(dataTransfer: DataTransfer): Promise<File[]> {
-  const archiveFiles = collectArchiveFilesFromDataTransfer(dataTransfer);
-  const archiveNames = new Set(archiveFiles.map((f) => f.name.toLowerCase()));
+  // Always trust the browser file list first — most reliable for multi-file drops (e.g. zip + pdf).
+  const flat = flatFilesFromDataTransfer(dataTransfer);
 
-  const otherFiles: File[] = [];
+  const walked: File[] = [];
   const items = dataTransfer.items;
   if (items && items.length > 0) {
-    const entries: FileSystemEntryLike[] = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item.kind !== "file") continue;
       const entry = (item as DataTransferItem & {
         webkitGetAsEntry?: () => FileSystemEntryLike | null;
       }).webkitGetAsEntry?.();
-      if (entry) entries.push(entry);
-    }
-
-    if (entries.length > 0) {
-      for (const entry of entries) {
-        if (isArchiveFileName(entry.name)) continue;
-        await walkEntry(entry, "", otherFiles);
-      }
+      if (!entry) continue;
+      // ZIP/RAR/7Z may appear as a virtual folder — never unpack; the archive file is in `flat`.
+      if (isArchiveFileName(entry.name)) continue;
+      await walkEntry(entry, "", walked);
     }
   }
 
-  const flatOthers = Array.from(dataTransfer.files ?? []).filter(
-    (f) =>
-      f &&
-      typeof f.name === "string" &&
-      f.size > 0 &&
-      !isArchiveFileName(f.name) &&
-      !archiveNames.has(f.name.toLowerCase()),
-  );
+  const combined = dedupeFiles([...flat, ...walked]);
+  if (combined.length > 0) return combined;
 
-  const combined = [...archiveFiles, ...otherFiles, ...flatOthers];
-  if (combined.length > 0) {
-    const seen = new Set<string>();
-    return combined.filter((f) => {
-      const key = `${f.name}\0${f.size}\0${f.lastModified}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }
-
-  return Array.from(dataTransfer.files ?? []).filter((f) => f && typeof f.name === "string");
+  return flat;
 }
 
 export function collectFilesFromList(list: FileList | File[] | null | undefined): File[] {
