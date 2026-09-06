@@ -479,6 +479,35 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     return Math.round(((current - previous) / previous) * 100);
   };
 
+  /** Avoid misleading huge % when the prior-period baseline was tiny (e.g. 2 → 32 jobs). */
+  const formatSystemMetricChange = (
+    current: number,
+    previous: number,
+    opts?: { lowerIsBetter?: boolean },
+  ): { change: string; trend: "up" | "down" } => {
+    const delta = current - previous;
+    const pct = pctChange(current, previous);
+    const trend: "up" | "down" = opts?.lowerIsBetter
+      ? current <= previous ? "up" : "down"
+      : delta >= 0 ? "up" : "down";
+
+    if (delta === 0) return { change: "0%", trend: "up" };
+
+    const absPct = Math.abs(pct);
+    const useAbsolute =
+      previous <= 0 ||
+      absPct > 200 ||
+      (previous <= 5 && absPct > 100);
+
+    if (useAbsolute) {
+      const sign = delta > 0 ? "+" : "";
+      if (opts?.lowerIsBetter) return { change: `${sign}${delta}`, trend };
+      return { change: `${sign}${delta} new`, trend };
+    }
+
+    return { change: `${absPct}%`, trend };
+  };
+
   const systemMetrics = useMemo(() => {
     const days =
       period === "7d" ? 7
@@ -531,16 +560,16 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
       return dueMs < prevMs;
     }).length;
 
-    const usersChange = pctChange(totalUsers, usersPrev);
-    const jobsChange = pctChange(totalJobs, jobsPrev);
-    const activeChange = pctChange(activeJobs, activePrev);
-    const overdueChange = pctChange(overdueJobs, overduePrev);
+    const usersChange = formatSystemMetricChange(totalUsers, usersPrev);
+    const jobsChange = formatSystemMetricChange(totalJobs, jobsPrev);
+    const activeChange = formatSystemMetricChange(activeJobs, activePrev);
+    const overdueChange = formatSystemMetricChange(overdueJobs, overduePrev, { lowerIsBetter: true });
 
     return [
-      { label: "Total Users", value: String(totalUsers), change: `${Math.abs(usersChange)}%`, trend: usersChange >= 0 ? "up" as const : "down" as const },
-      { label: "Total Jobs", value: String(totalJobs), change: `${Math.abs(jobsChange)}%`, trend: jobsChange >= 0 ? "up" as const : "down" as const },
-      { label: "Active Jobs", value: String(activeJobs), change: `${Math.abs(activeChange)}%`, trend: activeChange >= 0 ? "up" as const : "down" as const },
-      { label: "Overdue Jobs", value: String(overdueJobs), change: `${Math.abs(overdueChange)}%`, trend: overdueJobs <= overduePrev ? "up" as const : "down" as const },
+      { label: "Total Users", value: String(totalUsers), change: usersChange.change, trend: usersChange.trend },
+      { label: "Total Jobs", value: String(totalJobs), change: jobsChange.change, trend: jobsChange.trend },
+      { label: "Active Jobs", value: String(activeJobs), change: activeChange.change, trend: activeChange.trend },
+      { label: "Overdue Jobs", value: String(overdueJobs), change: overdueChange.change, trend: overdueChange.trend },
     ];
   }, [dashboardData, apiUsers, apiJobs, period]);
 
