@@ -276,11 +276,13 @@ router.post("/review-check-sessions/pause", requireAuth, async (req, res) => {
     if (!session) return res.status(404).json({ error: "No active review check session" });
 
     const now = new Date();
-    const elapsed = reviewCheckElapsedSeconds(session);
+    if (reviewCheckElapsedSeconds(session) > 0) {
+      await flushReviewCheckSegment(session);
+    }
     const [updated] = await db
       .update(activeReviewCheckSessions)
       .set({
-        accumulatedSeconds: elapsed,
+        accumulatedSeconds: 0,
         segmentStartedAt: null,
         lastHeartbeatAt: now,
         updatedAt: now,

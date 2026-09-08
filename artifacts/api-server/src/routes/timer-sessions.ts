@@ -20,6 +20,7 @@ import {
 } from "../lib/timer-sessions";
 import {
   stopTimerSessionAndSaveLog,
+  flushTimerSegmentToLog,
   pauseTimerSessionAfterGap,
   reconcileStaleRunningTimerSession,
   TIMER_HEARTBEAT_GAP_PAUSE_MS,
@@ -235,11 +236,14 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
             publicTimerSession(updated, { jobNumber: job.jobNumber, title: job.title }),
           );
         }
+        if ((existing.accumulatedSeconds ?? 0) > 0) {
+          await flushTimerSegmentToLog(existing, { useElapsed: true });
+        }
         const [updated] = await db
           .update(activeTimerSessions)
           .set({
             task,
-            accumulatedSeconds: Math.max(0, existing.accumulatedSeconds ?? 0),
+            accumulatedSeconds: 0,
             segmentStartedAt: now,
             lastHeartbeatAt: now,
             updatedAt: now,
@@ -298,12 +302,14 @@ router.post("/timer-sessions/pause", requireAuth, async (req, res) => {
     if (!session) return res.status(404).json({ error: "No active timer session" });
 
     const now = new Date();
-    const elapsed = timerSessionElapsedSeconds(session, now.getTime());
+    if (timerSessionElapsedSeconds(session, now.getTime()) > 0) {
+      await flushTimerSegmentToLog(session, { useElapsed: true });
+    }
 
     const [updated] = await db
       .update(activeTimerSessions)
       .set({
-        accumulatedSeconds: elapsed,
+        accumulatedSeconds: 0,
         segmentStartedAt: null,
         lastHeartbeatAt: now,
         updatedAt: now,

@@ -814,8 +814,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const reviewCheckPausedOnJob =
     !!reviewCheckSession &&
     !reviewCheckSession.segmentStartedAt &&
-    reviewCheckSession.jobId === job?.id &&
-    (reviewCheckSession.accumulatedSeconds ?? 0) > 0;
+    reviewCheckSession.jobId === job?.id;
   const reviewCheckDisplaySeconds = useMemo(() => {
     return reviewCheckBannerSeconds(reviewCheckSession, job?.id);
   }, [reviewCheckSession, job?.id, reviewCheckTick]);

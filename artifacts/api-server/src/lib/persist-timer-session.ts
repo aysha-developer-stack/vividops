@@ -90,6 +90,38 @@ export async function reconcileStaleRunningTimerSession(
   return pauseTimerSessionAfterGap(session);
 }
 
+/** Save the current segment to time_logs but keep the active session row (pause / fresh start). */
+export async function flushTimerSegmentToLog(
+  session: ActiveTimerSessionRow,
+  opts?: StopTimerSessionOptions,
+): Promise<number> {
+  const nowMs = Date.now();
+  let rawDuration = resolveTimerSaveDuration(session, nowMs, { useElapsed: opts?.useElapsed ?? true });
+  if (session.jobId) {
+    const [job] = await db
+      .select({ status: jobs.status, completedAt: jobs.completedAt })
+      .from(jobs)
+      .where(eq(jobs.id, session.jobId))
+      .limit(1);
+    if (job) {
+      rawDuration = capDurationForClosedJob(session, job, rawDuration);
+    }
+  }
+  const duration = Math.min(Math.max(0, rawDuration), MAX_TIMER_SEGMENT_SECONDS);
+  if (duration > 0 && session.jobId) {
+    const reworkCycleNumber = await resolveReworkCycleForTimeLog(session.jobId, session.userId);
+    await db.insert(timeLogs).values({
+      id: randomUUID(),
+      task: session.task,
+      duration,
+      jobId: session.jobId,
+      userId: session.userId,
+      reworkCycleNumber,
+    });
+  }
+  return duration;
+}
+
 /** Save elapsed time from a session to time_logs and remove the active session row. */
 export async function stopTimerSessionAndSaveLog(
   session: ActiveTimerSessionRow,
