@@ -12,7 +12,7 @@ import {
   type JobRow,
   type UserRow,
 } from "@workspace/db";
-import { createNotification, notifyJobManagers, notifyAllJobMembers, notifyAdminsOnly, notifySuperAdminsOnly, previewText, type NotificationType } from "./notifications";
+import { createNotification, notifyJobManagers, notifyAllJobMembers, notifyJobMembersAndManagers, notifyAdminsOnly, notifySuperAdminsOnly, previewText, type NotificationType } from "./notifications";
 import { reworkOriginLabel, resolveReworkOriginForActor, type ReworkOrigin } from "./rework-origin";
 import {
   createRework,
@@ -556,19 +556,11 @@ export async function notifyStatusTransition(opts: {
     const completeMsg = `${job.title} has been marked completed by ${actor.name}.` + commentSuffix;
     const completeTitle = `Job Completed: ${job.title}`;
 
-    await notifyAllJobMembers({
+    await notifyJobMembersAndManagers({
       jobId: job.id,
       assigneeId: job.assigneeId,
       supervisorId: job.supervisorId,
       coordinatorId: job.coordinatorId,
-      actorId: actor.id,
-      title: completeTitle,
-      description: completeMsg,
-      type: "completed",
-    });
-    await notifyJobManagers({
-      jobId: job.id,
-      supervisorId: job.supervisorId,
       actorId: actor.id,
       title: completeTitle,
       description: completeMsg,

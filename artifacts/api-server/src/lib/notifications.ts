@@ -180,6 +180,50 @@ export async function notifySuperAdminsOnly(opts: {
   }
 }
 
+/** Job members + all admins/super-admins, one notification per user (no duplicate sends). */
+export async function notifyJobMembersAndManagers(opts: {
+  jobId: string;
+  assigneeId?: string | null;
+  supervisorId?: string | null;
+  coordinatorId?: string | null;
+  actorId: string;
+  title: string;
+  description: string;
+  type: NotificationType;
+}) {
+  const recipientIds = new Set<string>();
+  if (opts.assigneeId) recipientIds.add(opts.assigneeId);
+  if (opts.supervisorId) recipientIds.add(opts.supervisorId);
+  if (opts.coordinatorId) recipientIds.add(opts.coordinatorId);
+  const members = await db
+    .select({ userId: jobMembers.userId })
+    .from(jobMembers)
+    .where(eq(jobMembers.jobId, opts.jobId));
+  for (const m of members) recipientIds.add(m.userId);
+
+  const managers = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(inArray(users.role, ["admin", "super-admin"]));
+  for (const admin of managers) recipientIds.add(admin.id);
+
+  recipientIds.delete(opts.actorId);
+
+  const dedupeSince = new Date(Date.now() - 2 * 60 * 1000);
+  for (const userId of recipientIds) {
+    await createNotificationOnce(
+      {
+        userId,
+        jobId: opts.jobId,
+        title: opts.title,
+        description: opts.description,
+        type: opts.type,
+      },
+      dedupeSince,
+    );
+  }
+}
+
 /** Notify all admins, super-admins, and the job supervisor (not the actor). */
 export async function notifyJobManagers(opts: {
   jobId: string;
