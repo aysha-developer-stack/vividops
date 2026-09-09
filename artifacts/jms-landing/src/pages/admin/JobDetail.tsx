@@ -75,6 +75,7 @@ import {
   startReviewCheckSession,
   pauseReviewCheckSession,
   heartbeatReviewCheckSession,
+  isActiveReviewCheckSessionRunning,
   liveReviewCheckElapsedSeconds,
   reviewCheckBannerSeconds,
   REVIEW_CHECK_HEARTBEAT_INTERVAL_MS,
@@ -810,12 +811,14 @@ export default function JobDetail({ role = "user", id }: Props) {
   const showFieldWorkTimer = canUseJobTimer && !canShowReviewCheck;
   const reviewCheckRunning =
     !!reviewCheckSession &&
-    !!reviewCheckSession.segmentStartedAt &&
-    reviewCheckSession.jobId === job?.id;
+    reviewCheckSession.jobId === job?.id &&
+    isActiveReviewCheckSessionRunning(reviewCheckSession);
   const reviewCheckPausedOnJob =
     !!reviewCheckSession &&
+    reviewCheckSession.jobId === job?.id &&
+    !reviewCheckRunning &&
     !reviewCheckSession.segmentStartedAt &&
-    reviewCheckSession.jobId === job?.id;
+    (reviewCheckSession.accumulatedSeconds ?? 0) > 0;
   const reviewCheckDisplaySeconds = useMemo(() => {
     return reviewCheckBannerSeconds(reviewCheckSession, job?.id);
   }, [reviewCheckSession, job?.id, reviewCheckTick]);
@@ -873,6 +876,12 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   const startReviewCheck = async () => {
     if (!job?.id) return;
+    if (
+      reviewCheckSession?.jobId === job.id &&
+      isActiveReviewCheckSessionRunning(reviewCheckSession)
+    ) {
+      return;
+    }
     try {
       const session = await startReviewCheckSession(job.id);
       if (session) setReviewCheckSession(session);

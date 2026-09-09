@@ -24,6 +24,7 @@ import {
 import {
   flushReviewCheckSegment,
   pauseWorkTimerForSupervisor,
+  reconcileStaleReviewCheckSession,
   stopReviewCheckSessionAndSaveLog,
 } from "../lib/persist-review-check-session";
 
@@ -105,8 +106,11 @@ router.get("/review-check-sessions/active", requireAuth, async (req, res) => {
 
     if (actor.role !== "supervisor") return res.json([]);
 
-    const session = await loadSessionForSupervisor(actor.id);
+    let session = await loadSessionForSupervisor(actor.id);
     if (!session) return res.json([]);
+    if (session.segmentStartedAt) {
+      session = await reconcileStaleReviewCheckSession(session);
+    }
     return res.json(await enrichSessions([session], nowMs));
   } catch (err) {
     logger.error({ err }, "Failed to list active review check sessions");
@@ -147,7 +151,7 @@ router.get("/jobs/:jobId/review-check-time", requireAuth, async (req, res) => {
       const session = await loadSessionForSupervisor(job.supervisorId);
       if (session?.jobId === jobId) {
         activeSeconds = reviewCheckElapsedSeconds(session);
-        isLive = !!session.segmentStartedAt;
+        isLive = isReviewCheckSessionLive(session);
       }
     }
 
@@ -186,16 +190,19 @@ router.post("/review-check-sessions/start", requireAuth, async (req, res) => {
     let switchedJob = false;
 
     if (existing) {
-      if (
+      const nowMs = now.getTime();
+      const liveOnJob =
         existing.jobId === jobId &&
-        existing.segmentStartedAt &&
-        isReviewCheckSessionLive(existing)
-      ) {
-        return res.json((await enrichSessions([existing], Date.now()))[0]);
+        !!existing.segmentStartedAt &&
+        isReviewCheckSessionLive(existing, nowMs) &&
+        (existing.accumulatedSeconds ?? 0) === 0;
+
+      if (liveOnJob) {
+        return res.json((await enrichSessions([existing], nowMs))[0]);
       }
 
-      if (existing.jobId === jobId && !existing.segmentStartedAt) {
-        if ((existing.accumulatedSeconds ?? 0) > 0) {
+      if (existing.jobId === jobId) {
+        if (reviewCheckElapsedSeconds(existing, nowMs) > 0 || (existing.accumulatedSeconds ?? 0) > 0) {
           await flushReviewCheckSegment(existing);
         }
         const [updated] = await db
@@ -212,7 +219,7 @@ router.post("/review-check-sessions/start", requireAuth, async (req, res) => {
           .update(jobs)
           .set({ reviewStartedAt: job.reviewStartedAt ?? now, updatedAt: now })
           .where(eq(jobs.id, jobId));
-        return res.json((await enrichSessions([updated], Date.now()))[0]);
+        return res.json((await enrichSessions([updated], nowMs))[0]);
       }
 
       await flushReviewCheckSegment(existing);

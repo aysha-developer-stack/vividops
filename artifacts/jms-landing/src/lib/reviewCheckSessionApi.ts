@@ -20,6 +20,13 @@ export type JobReviewCheckTime = {
   reviewStartedAt: string | null;
 };
 
+/** True only when the supervisor is actively checking right now (live heartbeat). */
+export function isActiveReviewCheckSessionRunning(
+  session: Pick<ReviewCheckSession, "segmentStartedAt" | "isLive"> | null | undefined,
+): boolean {
+  return !!(session?.segmentStartedAt && session.isLive);
+}
+
 export function liveReviewCheckElapsedSeconds(
   session: Pick<ReviewCheckSession, "accumulatedSeconds" | "segmentStartedAt"> | null | undefined,
   nowMs = Date.now(),
@@ -34,11 +41,15 @@ export function liveReviewCheckElapsedSeconds(
 
 /** Banner timer: current open check session only — never include saved logs from past checks. */
 export function reviewCheckBannerSeconds(
-  session: Pick<ReviewCheckSession, "jobId" | "accumulatedSeconds" | "segmentStartedAt"> | null | undefined,
+  session: Pick<
+    ReviewCheckSession,
+    "jobId" | "accumulatedSeconds" | "segmentStartedAt" | "isLive"
+  > | null | undefined,
   jobId: string | undefined,
   nowMs = Date.now(),
 ): number {
   if (!jobId || !session?.jobId || session.jobId !== jobId) return 0;
+  if (!isActiveReviewCheckSessionRunning(session)) return 0;
   return liveReviewCheckElapsedSeconds(session, nowMs);
 }
 

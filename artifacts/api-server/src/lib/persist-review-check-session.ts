@@ -8,7 +8,12 @@ import {
   type ActiveReviewCheckSessionRow,
 } from "@workspace/db";
 import { stopTimerSessionAndSaveLog } from "./persist-timer-session";
-import { reviewCheckElapsedSeconds, SUPERVISOR_REVIEW_CHECK_TASK } from "./review-check-sessions";
+import {
+  isReviewCheckSessionLive,
+  reviewCheckElapsedSeconds,
+  SUPERVISOR_REVIEW_CHECK_TASK,
+} from "./review-check-sessions";
+import { logger } from "./logger";
 
 /** Save elapsed review-check time to time_logs and remove the active session row. */
 export async function stopReviewCheckSessionAndSaveLog(
@@ -45,6 +50,36 @@ export async function flushReviewCheckSegment(
     });
   }
   return duration;
+}
+
+/** Auto-pause a stale running review check (tab closed / missed heartbeats). */
+export async function reconcileStaleReviewCheckSession(
+  session: ActiveReviewCheckSessionRow,
+): Promise<ActiveReviewCheckSessionRow> {
+  if (!session.segmentStartedAt || isReviewCheckSessionLive(session)) return session;
+  logger.warn(
+    {
+      sessionId: session.id,
+      jobId: session.jobId,
+      supervisorId: session.supervisorId,
+    },
+    "Reconciling stale review check session on read — saving and clearing segment",
+  );
+  if (reviewCheckElapsedSeconds(session) > 0) {
+    await flushReviewCheckSegment(session);
+  }
+  const now = new Date();
+  const [updated] = await db
+    .update(activeReviewCheckSessions)
+    .set({
+      accumulatedSeconds: 0,
+      segmentStartedAt: null,
+      lastHeartbeatAt: now,
+      updatedAt: now,
+    })
+    .where(eq(activeReviewCheckSessions.id, session.id))
+    .returning();
+  return updated;
 }
 
 export async function pauseWorkTimerForSupervisor(supervisorId: string): Promise<void> {
