@@ -9,6 +9,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { useDashboardSearch } from "@/lib/pageSearch";
 import type { Role } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
+import { refreshSidebarBadges } from "@/lib/sidebarBadgesApi";
 import { collectFilesFromDataTransfer, collectFilesFromList } from "@/lib/collectDroppedFiles";
 import JobListSortControl from "@/components/JobListSortControl";
 import { jobAttachmentPreviewUrl } from "@/lib/downloadFile";
@@ -192,6 +193,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
         method: "POST",
         credentials: "include",
       });
+      refreshSidebarBadges();
     } catch {
       // optional
     }

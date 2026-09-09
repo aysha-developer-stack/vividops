@@ -408,6 +408,13 @@ export async function ensureAllSchemas() {
       CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id);
       CREATE INDEX IF NOT EXISTS notifications_job_idx ON notifications (job_id);
 
+      CREATE TABLE IF NOT EXISTS user_section_read_state (
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        section text NOT NULL,
+        last_seen_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, section)
+      );
+
       -- Time Logs
       CREATE TABLE IF NOT EXISTS time_logs (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

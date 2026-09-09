@@ -8,6 +8,7 @@ import {
   connectNotificationSocket,
   disconnectNotificationSocket,
 } from "@/lib/notificationSocket";
+import { refreshSidebarBadges } from "@/lib/sidebarBadgesApi";
 
 /** Keep one notification socket per logged-in session (survives page navigation). */
 export function useNotificationSocketSession(userId: string | undefined) {
@@ -27,6 +28,7 @@ export function useNotificationSocketSession(userId: string | undefined) {
         if (prev.some((n) => n.id === incoming.id)) return prev;
         return [incoming, ...prev];
       });
+      refreshSidebarBadges();
     });
 
     return () => {

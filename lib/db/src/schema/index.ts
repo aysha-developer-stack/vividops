@@ -17,5 +17,6 @@ export * from "./time_logs";
 export * from "./active_timer_sessions";
 export * from "./active_review_check_sessions";
 export * from "./user_settings";
+export * from "./user_section_read_state";
 export * from "./system_settings";
 export * from "./push_subscriptions";

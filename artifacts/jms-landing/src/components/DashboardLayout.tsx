@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, ReactNode, type ChangeEvent } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, ReactNode, type ChangeEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -11,6 +11,15 @@ import ActiveTimerBanner from "@/components/ActiveTimerBanner";
 import { getNotifStyle, sortNotificationsByPriority } from "@/lib/notifications";
 import { getNotificationPath } from "@/lib/notificationNavigation";
 import { ROLES, Role } from "@/lib/roles";
+import {
+  badgeSectionFromPath,
+  EMPTY_SIDEBAR_BADGES,
+  fetchSidebarBadgeCounts,
+  formatBadgeCount,
+  markSidebarSectionSeen,
+  SIDEBAR_BADGES_REFRESH_EVENT,
+  type SidebarBadgeCounts,
+} from "@/lib/sidebarBadgesApi";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetDashboardStatsQueryOptions,
@@ -148,6 +157,53 @@ export default function DashboardLayout({
   });
 
   const unreadCount = notifications.filter((n) => n.unread).length;
+
+  const [sidebarBadges, setSidebarBadges] = useState<SidebarBadgeCounts>(EMPTY_SIDEBAR_BADGES);
+  const loadSidebarBadges = useCallback(async () => {
+    if (!user?.id) {
+      setSidebarBadges(EMPTY_SIDEBAR_BADGES);
+      return;
+    }
+    try {
+      const section = badgeSectionFromPath(location);
+      const onListPage =
+        section === "jobs"
+          ? /\/jobs\/?$/.test(location)
+          : section === "training"
+            ? /\/training\/?$/.test(location)
+            : section === "mistakes"
+              ? /\/mistakes\/?$/.test(location)
+              : false;
+      if (onListPage && section) {
+        setSidebarBadges(await markSidebarSectionSeen(section));
+        return;
+      }
+      setSidebarBadges(await fetchSidebarBadgeCounts());
+    } catch {
+      // keep last known counts
+    }
+  }, [user?.id, location]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setSidebarBadges(EMPTY_SIDEBAR_BADGES);
+      return;
+    }
+    void loadSidebarBadges();
+    const id = window.setInterval(() => void loadSidebarBadges(), 20_000);
+    const onRefresh = () => void loadSidebarBadges();
+    window.addEventListener(SIDEBAR_BADGES_REFRESH_EVENT, onRefresh);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener(SIDEBAR_BADGES_REFRESH_EVENT, onRefresh);
+    };
+  }, [user?.id, loadSidebarBadges]);
+
+  const badgeForNavPath = (path: string): number => {
+    const section = badgeSectionFromPath(path);
+    if (!section) return 0;
+    return sidebarBadges[section] ?? 0;
+  };
 
   const markAllRead = async () => {
     const unreadIds = notifications.filter((n) => n.unread).map(n => n.id as string);
@@ -358,6 +414,9 @@ export default function DashboardLayout({
           {NAV_ITEMS.map((item, i) => {
             const isActive = location === item.path;
             const Icon = item.icon;
+            const badgeCount = badgeForNavPath(item.path);
+            const section = badgeSectionFromPath(item.path);
+            const showBadge = badgeCount > 0 && (section === "communication" || !isActive);
             return (
               <Link key={item.path} href={item.path}>
                 <motion.div
@@ -381,7 +440,14 @@ export default function DashboardLayout({
                       transition={{ type: "spring", stiffness: 300, damping: 25 }}
                     />
                   )}
-                  <Icon size={18} className="shrink-0 relative" />
+                  <span className="relative shrink-0">
+                    <Icon size={18} className="relative" />
+                    {collapsed && showBadge && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                        {formatBadgeCount(badgeCount)}
+                      </span>
+                    )}
+                  </span>
                   <AnimatePresence>
                     {!collapsed && (
                       <motion.span
@@ -389,15 +455,21 @@ export default function DashboardLayout({
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -8 }}
                         transition={{ duration: 0.15 }}
-                        className="relative text-sm font-medium overflow-hidden whitespace-nowrap"
+                        className="relative text-sm font-medium overflow-hidden whitespace-nowrap flex-1"
                       >
                         {item.label}
                       </motion.span>
                     )}
                   </AnimatePresence>
+                  {!collapsed && showBadge && (
+                    <span className="relative ml-auto shrink-0 min-w-[18px] h-[18px] px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                      {formatBadgeCount(badgeCount)}
+                    </span>
+                  )}
                   {collapsed && (
                     <span className="absolute left-full ml-3 px-2 py-1 bg-black border border-white/10 rounded-md text-xs font-medium opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 shadow-lg">
                       {item.label}
+                      {showBadge ? ` (${formatBadgeCount(badgeCount)})` : ""}
                     </span>
                   )}
                 </motion.div>
