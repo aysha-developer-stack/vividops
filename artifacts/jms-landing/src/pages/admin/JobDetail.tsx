@@ -104,6 +104,7 @@ import JobFormModal from "@/components/JobFormModal";
 import PutJobOnHoldDialog from "@/components/PutJobOnHoldDialog";
 import JobMistakesTab from "@/components/JobMistakesTab";
 import JobJuniorsPanel from "@/components/JobJuniorsPanel";
+import { fetchJobJuniors, liveJuniorElapsedSeconds, type JobJunior } from "@/lib/jobJuniorsApi";
 import { submitJobReviewWithPhotos } from "@/lib/reviewPhotoUpload";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { uploadJobAttachmentWithProgress } from "@/lib/uploadJobAttachmentWithProgress";
@@ -501,6 +502,56 @@ export default function JobDetail({ role = "user", id }: Props) {
       window.clearInterval(id);
     };
   }, [job?.id]);
+
+  const [jobJuniors, setJobJuniors] = useState<JobJunior[]>([]);
+  const [juniorNowMs, setJuniorNowMs] = useState(() => Date.now());
+
+  const loadJobJuniors = async () => {
+    if (!job?.id) {
+      setJobJuniors([]);
+      return;
+    }
+    try {
+      const rows = await fetchJobJuniors(job.id);
+      setJobJuniors(rows);
+    } catch {
+      setJobJuniors([]);
+    }
+  };
+
+  useEffect(() => {
+    if (!job?.id) {
+      setJobJuniors([]);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const rows = await fetchJobJuniors(job.id);
+        if (!cancelled) setJobJuniors(rows);
+      } catch {
+        if (!cancelled) setJobJuniors([]);
+      }
+    };
+    void load();
+    const id = window.setInterval(load, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [job?.id]);
+
+  const anyJuniorRunning = jobJuniors.some((j) => j.running);
+  useEffect(() => {
+    if (!anyJuniorRunning) return;
+    const id = window.setInterval(() => setJuniorNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [anyJuniorRunning]);
+
+  const juniorTotalSeconds = jobJuniors.reduce(
+    (sum, j) => sum + liveJuniorElapsedSeconds(j, juniorNowMs),
+    0,
+  );
 
   const tabFromQuery = (() => {
     try {
@@ -1500,7 +1551,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     return Math.max(...open);
   }, [reworks]);
 
-  const displaySeconds = totalLoggedSeconds + seconds;
+  const displaySeconds = totalLoggedSeconds + seconds + juniorTotalSeconds;
   const activeTimerTask = serverTimerTask.trim();
 
   const timeLogUserNameById = useMemo(() => {
@@ -2282,8 +2333,14 @@ export default function JobDetail({ role = "user", id }: Props) {
           <div>
             <div className="text-[10px] text-gray-500 uppercase font-semibold">Actual Time</div>
             <div className="text-sm text-gray-900 font-medium">{displaySeconds > 0 ? formatTime(displaySeconds) : "—"}</div>
-            {running && displaySeconds > totalLoggedSeconds && (
+            {(running || anyJuniorRunning) && displaySeconds > totalLoggedSeconds && (
               <div className="text-[10px] text-sky-600 font-medium mt-0.5">Includes active timer</div>
+            )}
+            {juniorTotalSeconds > 0 && (
+              <div className="text-[11px] text-gray-500 mt-0.5">
+                Junior trainees:{" "}
+                <span className="font-medium text-gray-700 tabular-nums">{formatTime(juniorTotalSeconds)}</span>
+              </div>
             )}
             {timeBreakdown.length > 1 && !showFieldWorkTimer && !canShowReviewCheck && (
               <div className="mt-1.5 space-y-0.5">
@@ -2617,7 +2674,7 @@ export default function JobDetail({ role = "user", id }: Props) {
 
       {job?.id && (role === "user" || canUseJobTimer) && (
         <div className="mb-5">
-          <JobJuniorsPanel jobId={job.id} canEdit={canEditJuniors} />
+          <JobJuniorsPanel jobId={job.id} canEdit={canEditJuniors} onChanged={loadJobJuniors} />
         </div>
       )}
 
@@ -2678,7 +2735,7 @@ export default function JobDetail({ role = "user", id }: Props) {
             </div>
             </div>
             {job?.id && !(role === "user" || canUseJobTimer) && (
-              <JobJuniorsPanel jobId={job.id} canEdit={canEditJuniors} />
+              <JobJuniorsPanel jobId={job.id} canEdit={canEditJuniors} onChanged={loadJobJuniors} />
             )}
           </motion.div>
         )}
@@ -3793,11 +3850,11 @@ export default function JobDetail({ role = "user", id }: Props) {
                 <p className="text-xs text-gray-500 mt-0.5">All time tracked on this job, grouped by rework cycle</p>
               </div>
               <div className="text-right">
-                <div className="text-2xl font-bold text-gray-900 font-mono">{formatHoursMinutes(totalLoggedSeconds)}</div>
+                <div className="text-2xl font-bold text-gray-900 font-mono">{formatHoursMinutes(totalLoggedSeconds + juniorTotalSeconds)}</div>
                 <div className="text-[10px] text-gray-500 uppercase tracking-wide">Total</div>
               </div>
             </div>
-            {timeBreakdown.length > 0 && (
+            {(timeBreakdown.length > 0 || juniorTotalSeconds > 0) && (
               <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/80 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {timeBreakdown.map((row) => (
                   <div key={String(row.key)} className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
@@ -3805,6 +3862,12 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <div className="text-lg font-bold text-gray-900 font-mono tabular-nums mt-0.5">{formatHoursMinutes(row.seconds)}</div>
                   </div>
                 ))}
+                {juniorTotalSeconds > 0 && (
+                  <div className="rounded-xl border border-amber-200 bg-white px-3 py-2.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Junior trainees</div>
+                    <div className="text-lg font-bold text-gray-900 font-mono tabular-nums mt-0.5">{formatHoursMinutes(juniorTotalSeconds)}</div>
+                  </div>
+                )}
               </div>
             )}
             {jobLogsP.pageItems.map((l, i) => (

@@ -34,9 +34,11 @@ function hoursToSeconds(hours: string, minutes: string): number {
 export default function JobJuniorsPanel({
   jobId,
   canEdit,
+  onChanged,
 }: {
   jobId: string;
   canEdit: boolean;
+  onChanged?: () => void;
 }) {
   const [juniors, setJuniors] = useState<JobJunior[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +85,7 @@ export default function JobJuniorsPanel({
     try {
       await fn();
       await load();
+      onChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -114,8 +117,8 @@ export default function JobJuniorsPanel({
         )}
       </div>
       <p className="text-xs text-gray-500 mb-4">
-        Juniors are not system users. The worker on this job records their name, status, and hours. This time stays
-        separate from the worker's logged time.
+        Juniors are not system users. The worker on this job records their name, status, and hours. Typed hours and
+        junior timers are included in this job's Actual Time. They are not added to the worker's own logged time.
       </p>
 
       {error && (
