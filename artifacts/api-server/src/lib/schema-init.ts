@@ -200,6 +200,22 @@ export async function ensureJobWriteSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS job_members_user_idx ON job_members (user_id)`);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS job_juniors (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        name text NOT NULL,
+        status text NOT NULL DEFAULT 'not_started',
+        logged_seconds integer NOT NULL DEFAULT 0,
+        segment_started_at timestamptz,
+        added_by_id uuid REFERENCES users(id) ON DELETE SET NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS job_juniors_job_idx ON job_juniors (job_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS job_juniors_added_by_idx ON job_juniors (added_by_id)`);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS notifications (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -359,6 +375,20 @@ export async function ensureAllSchemas() {
       );
       CREATE INDEX IF NOT EXISTS job_members_job_idx ON job_members (job_id);
       CREATE INDEX IF NOT EXISTS job_members_user_idx ON job_members (user_id);
+
+      CREATE TABLE IF NOT EXISTS job_juniors (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        job_id uuid NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        name text NOT NULL,
+        status text NOT NULL DEFAULT 'not_started',
+        logged_seconds integer NOT NULL DEFAULT 0,
+        segment_started_at timestamptz,
+        added_by_id uuid REFERENCES users(id) ON DELETE SET NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS job_juniors_job_idx ON job_juniors (job_id);
+      CREATE INDEX IF NOT EXISTS job_juniors_added_by_idx ON job_juniors (added_by_id);
 
       -- Notifications
       CREATE TABLE IF NOT EXISTS notifications (

@@ -103,6 +103,7 @@ import ReviewCompletionForm from "@/components/ReviewCompletionForm";
 import JobFormModal from "@/components/JobFormModal";
 import PutJobOnHoldDialog from "@/components/PutJobOnHoldDialog";
 import JobMistakesTab from "@/components/JobMistakesTab";
+import JobJuniorsPanel from "@/components/JobJuniorsPanel";
 import { submitJobReviewWithPhotos } from "@/lib/reviewPhotoUpload";
 import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { uploadJobAttachmentWithProgress } from "@/lib/uploadJobAttachmentWithProgress";
@@ -659,6 +660,17 @@ export default function JobDetail({ role = "user", id }: Props) {
   const canDeleteAttachment = (attachment: { uploadedById?: string | null }) =>
     attachment.uploadedById === currentUser?.id || role === "admin" || role === "super-admin";
   const canEditRework = role === "supervisor" || role === "admin" || role === "super-admin";
+  const canEditJuniors =
+    !!job &&
+    job.status !== "cancelled" &&
+    (job.status === "completed"
+      ? role === "admin" || role === "super-admin"
+      : role === "user" ||
+        role === "admin" ||
+        role === "super-admin" ||
+        job.assignee?.id === currentUser?.id ||
+        (role === "supervisor" && job.supervisor?.id === currentUser?.id) ||
+        jobMembers.some((m) => m.id === currentUser?.id && m.role === "user"));
   const canMarkJobForRework =
     job?.status !== "cancelled" &&
     ((role === "admin" || role === "super-admin") ||
@@ -2603,6 +2615,12 @@ export default function JobDetail({ role = "user", id }: Props) {
         </motion.div>
       )}
 
+      {job?.id && (role === "user" || canUseJobTimer) && (
+        <div className="mb-5">
+          <JobJuniorsPanel jobId={job.id} canEdit={canEditJuniors} />
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-5 overflow-x-auto">
         {TABS.map((t) => {
@@ -2624,7 +2642,8 @@ export default function JobDetail({ role = "user", id }: Props) {
 
       <AnimatePresence mode="wait">
         {tab === "overview" && (
-          <motion.div key="ov" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <motion.div key="ov" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-5">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-6">
               <h3 className="font-bold text-gray-900 mb-2">Description</h3>
               <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
@@ -2657,6 +2676,10 @@ export default function JobDetail({ role = "user", id }: Props) {
                 })
               )}
             </div>
+            </div>
+            {job?.id && !(role === "user" || canUseJobTimer) && (
+              <JobJuniorsPanel jobId={job.id} canEdit={canEditJuniors} />
+            )}
           </motion.div>
         )}
 
