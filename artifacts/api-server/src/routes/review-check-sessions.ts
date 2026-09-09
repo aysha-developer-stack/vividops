@@ -18,6 +18,7 @@ import {
   canListAllReviewCheckSessions,
   publicReviewCheckSession,
   reviewCheckElapsedSeconds,
+  isReviewCheckSessionLive,
   SUPERVISOR_REVIEW_CHECK_TASK,
 } from "../lib/review-check-sessions";
 import {
@@ -185,7 +186,11 @@ router.post("/review-check-sessions/start", requireAuth, async (req, res) => {
     let switchedJob = false;
 
     if (existing) {
-      if (existing.jobId === jobId && existing.segmentStartedAt) {
+      if (
+        existing.jobId === jobId &&
+        existing.segmentStartedAt &&
+        isReviewCheckSessionLive(existing)
+      ) {
         return res.json((await enrichSessions([existing], Date.now()))[0]);
       }
 

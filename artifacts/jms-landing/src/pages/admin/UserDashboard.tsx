@@ -28,6 +28,7 @@ import { useAuth } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   fetchMyActiveTimerSession,
+  isActiveTimerSessionRunning,
   startTimerSession,
   stopTimerSession,
   liveSessionElapsedSeconds,
@@ -350,7 +351,7 @@ export default function UserDashboard() {
     if (!nextTask) return;
 
     const serverMine = await fetchMyActiveTimerSession();
-    if (serverMine?.jobId === jobId && serverMine.segmentStartedAt) {
+    if (serverMine?.jobId === jobId && isActiveTimerSessionRunning(serverMine)) {
       setActiveJobId(jobId);
       setServerSession(serverMine);
       setTick((v) => v + 1);

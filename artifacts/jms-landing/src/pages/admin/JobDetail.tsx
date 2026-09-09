@@ -54,6 +54,7 @@ import {
   stopTimerSession,
   heartbeatTimerSession,
   fetchMyActiveTimerSession,
+  isActiveTimerSessionRunning,
   TIMER_HEARTBEAT_INTERVAL_MS,
   type ActiveTimerSession,
 } from "@/lib/timerSessionApi";
@@ -988,7 +989,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     if (!job?.id) return;
 
     const serverMine = await fetchMyActiveTimerSession();
-    if (serverMine?.jobId === job.id && serverMine.segmentStartedAt) {
+    if (serverMine?.jobId === job.id && isActiveTimerSessionRunning(serverMine)) {
       dispatchTimerSessionSync(serverMine);
       await refreshServerTimer();
       return;

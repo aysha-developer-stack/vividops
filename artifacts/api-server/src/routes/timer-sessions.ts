@@ -17,6 +17,8 @@ import {
   canListTeamTimerSessions,
   publicTimerSession,
   timerSessionElapsedSeconds,
+  isTimerSessionLive,
+  isTimerSessionStale,
 } from "../lib/timer-sessions";
 import {
   stopTimerSessionAndSaveLog,
@@ -38,6 +40,17 @@ const router: IRouter = Router();
 const ensureSchema = async () => {
   await ensureJobWriteSchema();
 };
+
+function isLiveRunningTimerSession(
+  session: { segmentStartedAt: Date | null; lastHeartbeatAt: Date },
+  nowMs = Date.now(),
+): boolean {
+  return (
+    !!session.segmentStartedAt &&
+    isTimerSessionLive(session, nowMs) &&
+    !isTimerSessionStale(session, nowMs)
+  );
+}
 
 async function isAdditionalJobMember(jobId: string, userId: string): Promise<boolean> {
   const [row] = await db
@@ -222,7 +235,11 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
     if (existing) {
       if (existing.jobId === jobId) {
         const now = new Date();
-        if (existing.segmentStartedAt) {
+        const nowMs = now.getTime();
+        if (
+          isLiveRunningTimerSession(existing, nowMs) &&
+          (existing.accumulatedSeconds ?? 0) === 0
+        ) {
           const [updated] = await db
             .update(activeTimerSessions)
             .set({
@@ -236,7 +253,7 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
             publicTimerSession(updated, { jobNumber: job.jobNumber, title: job.title }),
           );
         }
-        if ((existing.accumulatedSeconds ?? 0) > 0) {
+        if (timerSessionElapsedSeconds(existing, nowMs) > 0 || (existing.accumulatedSeconds ?? 0) > 0) {
           await flushTimerSegmentToLog(existing, { useElapsed: true });
         }
         const [updated] = await db

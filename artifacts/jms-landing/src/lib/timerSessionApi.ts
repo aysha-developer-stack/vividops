@@ -14,6 +14,13 @@ export type ActiveTimerSession = {
   trackingPaused?: boolean;
 };
 
+/** True only when the server session is actively counting time right now. */
+export function isActiveTimerSessionRunning(
+  session: Pick<ActiveTimerSession, "segmentStartedAt" | "trackingPaused" | "isLive"> | null | undefined,
+): boolean {
+  return !!(session?.segmentStartedAt && !session.trackingPaused && session.isLive);
+}
+
 export function liveSessionElapsedSeconds(
   session: Pick<
     ActiveTimerSession,

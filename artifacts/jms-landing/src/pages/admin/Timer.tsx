@@ -28,6 +28,7 @@ import {
   stopTimerSession,
   heartbeatTimerSession,
   fetchMyActiveTimerSession,
+  isActiveTimerSessionRunning,
   liveSessionElapsedSeconds,
   TIMER_HEARTBEAT_INTERVAL_MS,
 } from "@/lib/timerSessionApi";
@@ -171,7 +172,7 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     }
 
     const serverMine = await fetchMyActiveTimerSession();
-    if (serverMine?.jobId === jobId && serverMine.segmentStartedAt) {
+    if (serverMine?.jobId === jobId && isActiveTimerSessionRunning(serverMine)) {
       const elapsed = liveSessionElapsedSeconds(serverMine);
       writeTimerState({
         running: true,

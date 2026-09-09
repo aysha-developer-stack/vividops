@@ -1,5 +1,6 @@
 import {
   fetchMyActiveTimerSession,
+  isActiveTimerSessionRunning,
   liveSessionElapsedSeconds,
   type ActiveTimerSession,
 } from "@/lib/timerSessionApi";
@@ -65,7 +66,7 @@ export function clearOtherJobTimerLocalStates(currentJobId?: string): void {
 }
 
 export function jobTimerStateFromServerSession(session: ActiveTimerSession): JobTimerLocalState {
-  const running = !!session.segmentStartedAt && !session.trackingPaused;
+  const running = isActiveTimerSessionRunning(session);
   return {
     running,
     startedAt: running && session.segmentStartedAt ? Date.parse(session.segmentStartedAt) : null,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   fetchMyActiveTimerSession,
+  isActiveTimerSessionRunning,
   TIMER_HEARTBEAT_INTERVAL_MS,
   type ActiveTimerSession,
 } from "@/lib/timerSessionApi";
@@ -18,11 +19,8 @@ type Options = {
   enabled: boolean;
 };
 
-function isSessionRunning(
-  session: Pick<ActiveTimerSession, "segmentStartedAt" | "trackingPaused"> | null | undefined,
-): boolean {
-  if (!session?.segmentStartedAt) return false;
-  return !session.trackingPaused;
+function isSessionRunning(session: ActiveTimerSession | null | undefined): boolean {
+  return isActiveTimerSessionRunning(session);
 }
 
 function sessionHeartbeatMs(session: ActiveTimerSession | null | undefined): number {
