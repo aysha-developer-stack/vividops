@@ -255,7 +255,7 @@ export default function Login() {
           </Link>
         </motion.div>
 
-        <div className={`w-full max-w-sm ${challenge ? "pb-16" : ""}`}>
+        <div className="w-full max-w-sm">
           {/* Mobile logo */}
           <motion.div
             className="flex justify-center mb-8 lg:hidden"
@@ -594,7 +594,7 @@ export default function Login() {
 
         {/* Bottom back-to-home — desktop */}
         <motion.div
-          className={`${challenge ? "relative mt-2" : "absolute bottom-8"} left-0 right-0 flex justify-center`}
+          className={`${challenge ? "relative mt-3" : "absolute bottom-8"} left-0 right-0 flex justify-center`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.8 }}

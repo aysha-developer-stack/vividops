@@ -218,7 +218,7 @@ export default function TwoFactorChallengePanel({ challenge, onAuthenticated, on
         {busy ? "Verifying…" : challenge.twoFactorEnrolled ? "Verify and sign in" : "Confirm and continue"}
       </motion.button>
 
-      <button type="button" onClick={onBack} className="mt-5 mb-10 w-full text-sm text-gray-500 hover:text-gray-800">
+      <button type="button" onClick={onBack} className="mt-4 w-full text-sm text-gray-500 hover:text-gray-800">
         Back to password
       </button>
     </form>
