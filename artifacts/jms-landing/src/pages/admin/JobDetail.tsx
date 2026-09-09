@@ -2483,6 +2483,10 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <>
                       <Pause size={14} /> Pause Check
                     </>
+                  ) : reviewCheckPausedOnJob ? (
+                    <>
+                      <Play size={14} fill="currentColor" /> Resume Check
+                    </>
                   ) : (
                     <>
                       <Play size={14} fill="currentColor" /> Start Checking
@@ -2515,7 +2519,7 @@ export default function JobDetail({ role = "user", id }: Props) {
               <div className="mb-2 flex items-center gap-2">
                 <div className={`h-2 w-2 shrink-0 rounded-full ${running ? "bg-emerald-300 animate-pulse" : "bg-white/40"}`} />
                 <span className="text-xs font-bold uppercase tracking-wider text-white/80">
-                  {running ? "Tracking time" : "Ready to work"}
+                  {running ? "Tracking time" : seconds > 0 ? "Paused" : "Ready to work"}
                   {activeReworkCycle != null ? ` · ${reworkCycleLabel(activeReworkCycle)}` : ""}
                 </span>
               </div>
@@ -2550,7 +2554,13 @@ export default function JobDetail({ role = "user", id }: Props) {
                 disabled={job?.status === "completed"}
                 className="flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-primary shadow-lg disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {running ? <><Pause size={14} /> Pause</> : <><Play size={14} fill="currentColor" /> Start Work</>}
+                {running ? (
+                  <><Pause size={14} /> Pause</>
+                ) : seconds > 0 ? (
+                  <><Play size={14} fill="currentColor" /> Resume</>
+                ) : (
+                  <><Play size={14} fill="currentColor" /> Start Work</>
+                )}
               </motion.button>
               {seconds > 0 && (
                 <motion.button

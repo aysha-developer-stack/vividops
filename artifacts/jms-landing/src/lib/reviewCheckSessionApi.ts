@@ -49,8 +49,13 @@ export function reviewCheckBannerSeconds(
   nowMs = Date.now(),
 ): number {
   if (!jobId || !session?.jobId || session.jobId !== jobId) return 0;
-  if (!isActiveReviewCheckSessionRunning(session)) return 0;
-  return liveReviewCheckElapsedSeconds(session, nowMs);
+  if (isActiveReviewCheckSessionRunning(session)) {
+    return liveReviewCheckElapsedSeconds(session, nowMs);
+  }
+  if (!session.segmentStartedAt && (session.accumulatedSeconds ?? 0) > 0) {
+    return Math.max(0, session.accumulatedSeconds ?? 0);
+  }
+  return 0;
 }
 
 async function parseJson<T>(res: Response): Promise<T | null> {

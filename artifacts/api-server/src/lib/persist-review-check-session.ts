@@ -65,14 +65,12 @@ export async function reconcileStaleReviewCheckSession(
     },
     "Reconciling stale review check session on read — saving and clearing segment",
   );
-  if (reviewCheckElapsedSeconds(session) > 0) {
-    await flushReviewCheckSegment(session);
-  }
   const now = new Date();
+  const pausedSeconds = reviewCheckElapsedSeconds(session, now.getTime());
   const [updated] = await db
     .update(activeReviewCheckSessions)
     .set({
-      accumulatedSeconds: 0,
+      accumulatedSeconds: pausedSeconds,
       segmentStartedAt: null,
       lastHeartbeatAt: now,
       updatedAt: now,

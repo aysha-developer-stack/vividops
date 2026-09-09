@@ -202,13 +202,32 @@ router.post("/review-check-sessions/start", requireAuth, async (req, res) => {
       }
 
       if (existing.jobId === jobId) {
-        if (reviewCheckElapsedSeconds(existing, nowMs) > 0 || (existing.accumulatedSeconds ?? 0) > 0) {
-          await flushReviewCheckSegment(existing);
+        if (!existing.segmentStartedAt && (existing.accumulatedSeconds ?? 0) > 0) {
+          const [updated] = await db
+            .update(activeReviewCheckSessions)
+            .set({
+              segmentStartedAt: now,
+              lastHeartbeatAt: now,
+              updatedAt: now,
+            })
+            .where(eq(activeReviewCheckSessions.id, existing.id))
+            .returning();
+          await db
+            .update(jobs)
+            .set({ reviewStartedAt: job.reviewStartedAt ?? now, updatedAt: now })
+            .where(eq(jobs.id, jobId));
+          return res.json((await enrichSessions([updated], nowMs))[0]);
         }
+
+        let resumeFromSeconds = 0;
+        if (existing.segmentStartedAt && !isReviewCheckSessionLive(existing, nowMs)) {
+          resumeFromSeconds = reviewCheckElapsedSeconds(existing, nowMs);
+        }
+
         const [updated] = await db
           .update(activeReviewCheckSessions)
           .set({
-            accumulatedSeconds: 0,
+            accumulatedSeconds: resumeFromSeconds,
             segmentStartedAt: now,
             lastHeartbeatAt: now,
             updatedAt: now,
@@ -288,13 +307,11 @@ router.post("/review-check-sessions/pause", requireAuth, async (req, res) => {
     if (!session) return res.status(404).json({ error: "No active review check session" });
 
     const now = new Date();
-    if (reviewCheckElapsedSeconds(session) > 0) {
-      await flushReviewCheckSegment(session);
-    }
+    const pausedSeconds = reviewCheckElapsedSeconds(session, now.getTime());
     const [updated] = await db
       .update(activeReviewCheckSessions)
       .set({
-        accumulatedSeconds: 0,
+        accumulatedSeconds: pausedSeconds,
         segmentStartedAt: null,
         lastHeartbeatAt: now,
         updatedAt: now,

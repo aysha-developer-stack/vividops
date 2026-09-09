@@ -17,6 +17,7 @@ import {
   canListTeamTimerSessions,
   publicTimerSession,
   timerSessionElapsedSeconds,
+  timerSessionBillableSeconds,
   isTimerSessionLive,
   isTimerSessionStale,
 } from "../lib/timer-sessions";
@@ -253,14 +254,33 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
             publicTimerSession(updated, { jobNumber: job.jobNumber, title: job.title }),
           );
         }
-        if (timerSessionElapsedSeconds(existing, nowMs) > 0 || (existing.accumulatedSeconds ?? 0) > 0) {
-          await flushTimerSegmentToLog(existing, { useElapsed: true });
+
+        if (existing.jobId === jobId && !existing.segmentStartedAt && (existing.accumulatedSeconds ?? 0) > 0) {
+          const [updated] = await db
+            .update(activeTimerSessions)
+            .set({
+              task,
+              segmentStartedAt: now,
+              lastHeartbeatAt: now,
+              updatedAt: now,
+            })
+            .where(eq(activeTimerSessions.id, existing.id))
+            .returning();
+          return res.json(
+            publicTimerSession(updated, { jobNumber: job.jobNumber, title: job.title }),
+          );
         }
+
+        let resumeFromSeconds = 0;
+        if (existing.segmentStartedAt && !isLiveRunningTimerSession(existing, nowMs)) {
+          resumeFromSeconds = timerSessionBillableSeconds(existing, nowMs);
+        }
+
         const [updated] = await db
           .update(activeTimerSessions)
           .set({
             task,
-            accumulatedSeconds: 0,
+            accumulatedSeconds: resumeFromSeconds,
             segmentStartedAt: now,
             lastHeartbeatAt: now,
             updatedAt: now,
@@ -319,14 +339,12 @@ router.post("/timer-sessions/pause", requireAuth, async (req, res) => {
     if (!session) return res.status(404).json({ error: "No active timer session" });
 
     const now = new Date();
-    if (timerSessionElapsedSeconds(session, now.getTime()) > 0) {
-      await flushTimerSegmentToLog(session, { useElapsed: true });
-    }
+    const pausedSeconds = timerSessionElapsedSeconds(session, now.getTime());
 
     const [updated] = await db
       .update(activeTimerSessions)
       .set({
-        accumulatedSeconds: 0,
+        accumulatedSeconds: pausedSeconds,
         segmentStartedAt: null,
         lastHeartbeatAt: now,
         updatedAt: now,

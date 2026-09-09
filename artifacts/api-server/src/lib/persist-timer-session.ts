@@ -203,19 +203,16 @@ export async function clearAllActiveTimersOnJob(jobId: string): Promise<number> 
   return stopAllActiveTimersOnJob(jobId);
 }
 
-/** Pause a running segment after sleep/offline — save billable time, then clear session counters. */
+/** Pause a running segment after sleep/offline — keep billable time in session for resume. */
 export async function pauseTimerSessionAfterGap(
   session: ActiveTimerSessionRow,
 ): Promise<ActiveTimerSessionRow> {
   const now = new Date();
   const billable = timerSessionBillableSeconds(session, now.getTime());
-  if (billable > 0) {
-    await flushTimerSegmentToLog(session, { useElapsed: false });
-  }
   const [updated] = await db
     .update(activeTimerSessions)
     .set({
-      accumulatedSeconds: 0,
+      accumulatedSeconds: billable,
       segmentStartedAt: null,
       lastHeartbeatAt: now,
       updatedAt: now,

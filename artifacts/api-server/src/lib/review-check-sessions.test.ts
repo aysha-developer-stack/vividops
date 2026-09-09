@@ -43,7 +43,7 @@ describe("review check session duration math", () => {
     assert.equal(stale, false);
   });
 
-  it("resumes a paused check from accumulated session time only", () => {
+  it("keeps paused check time in session without a running segment", () => {
     const elapsed = reviewCheckElapsedSeconds(
       {
         accumulatedSeconds: 100,
@@ -52,5 +52,17 @@ describe("review check session duration math", () => {
       Date.now(),
     );
     assert.equal(elapsed, 100);
+  });
+
+  it("adds live segment time on top of paused accumulated when resumed", () => {
+    const nowMs = 1_700_000_060_000;
+    const elapsed = reviewCheckElapsedSeconds(
+      {
+        accumulatedSeconds: 100,
+        segmentStartedAt: new Date(nowMs - 10_000),
+      },
+      nowMs,
+    );
+    assert.equal(elapsed, 110);
   });
 });
