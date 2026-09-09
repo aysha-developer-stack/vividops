@@ -37,7 +37,7 @@ const { seedAdminIfEmpty } = await import("./lib/seed");
 const { setupSocketIO } = await import("./lib/socket");
 // Initialize Background Workers (optional — requires REDIS_URL)
 void import("./lib/queue").then(({ setupWorkers }) => setupWorkers());
-const { ensureAllSchemas, ensureJobWriteSchema, ensurePushSubscriptionsSchema } = await import("./lib/schema-init");
+const { ensureAllSchemas, ensureJobWriteSchema, ensurePushSubscriptionsSchema, ensureTwoFactorSchema } = await import("./lib/schema-init");
 
 const { createNotification, createNotificationOnce } = await import("./lib/notifications");
 
@@ -65,6 +65,7 @@ async function start(): Promise<void> {
     await ensureAllSchemas();
     await ensureJobWriteSchema();
     await ensurePushSubscriptionsSchema();
+    await ensureTwoFactorSchema();
   } catch (err) {
     logger.error({ err }, "Schema initialization failed");
   }

@@ -17,6 +17,7 @@ import checklistTemplatesRouter from "./checklist-templates";
 import cliqRouter from "./cliq";
 import zohoRouter from "./zoho";
 import settingsRouter from "./settings";
+import twoFactorRouter from "./two-factor";
 import mistakesRouter from "./mistakes";
 import pushRouter from "./push";
 import reportsRouter from "./reports";
@@ -25,6 +26,7 @@ const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
+router.use(twoFactorRouter);
 router.use(usersRouter);
 router.use(jobsRouter);
 router.use(attachmentsRouter);

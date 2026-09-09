@@ -55,6 +55,51 @@ export async function ensureLegacySupervisorAssignments() {
 }
 
 let jobWriteSchemaEnsured = false;
+let twoFactorSchemaEnsured = false;
+
+export async function ensureTwoFactorSchema() {
+  if (twoFactorSchemaEnsured) return;
+  await db.execute(sql`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS totp_secret text,
+      ADD COLUMN IF NOT EXISTS totp_enrolled_at timestamptz,
+      ADD COLUMN IF NOT EXISTS totp_backup_codes text
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS two_factor_challenges (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash text NOT NULL UNIQUE,
+      pending_totp_secret text,
+      attempts integer NOT NULL DEFAULT 0,
+      expires_at timestamptz NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS two_factor_challenges_user_idx ON two_factor_challenges (user_id)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS two_factor_challenges_expires_idx ON two_factor_challenges (expires_at)
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS two_factor_trusted_devices (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash text NOT NULL UNIQUE,
+      user_agent text,
+      expires_at timestamptz NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS two_factor_trusted_devices_user_idx ON two_factor_trusted_devices (user_id)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS two_factor_trusted_devices_expires_idx ON two_factor_trusted_devices (expires_at)
+  `);
+  twoFactorSchemaEnsured = true;
+}
 
 /** Lightweight migrations required before creating or listing jobs. */
 export async function ensureJobWriteSchema() {
@@ -294,7 +339,10 @@ export async function ensureAllSchemas() {
         ADD COLUMN IF NOT EXISTS bio text,
         ADD COLUMN IF NOT EXISTS avatar_url text,
         ADD COLUMN IF NOT EXISTS last_seen_at timestamptz,
-        ADD COLUMN IF NOT EXISTS cliq_channel_admin boolean NOT NULL DEFAULT false;
+        ADD COLUMN IF NOT EXISTS cliq_channel_admin boolean NOT NULL DEFAULT false,
+        ADD COLUMN IF NOT EXISTS totp_secret text,
+        ADD COLUMN IF NOT EXISTS totp_enrolled_at timestamptz,
+        ADD COLUMN IF NOT EXISTS totp_backup_codes text;
 
       ALTER TABLE jobs ADD COLUMN IF NOT EXISTS job_number text;
       CREATE UNIQUE INDEX IF NOT EXISTS jobs_job_number_uniq_idx
@@ -540,11 +588,35 @@ export async function ensureAllSchemas() {
         last_used_at timestamptz
       );
       CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx ON push_subscriptions (user_id);
+
+      CREATE TABLE IF NOT EXISTS two_factor_challenges (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash text NOT NULL UNIQUE,
+        pending_totp_secret text,
+        attempts integer NOT NULL DEFAULT 0,
+        expires_at timestamptz NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS two_factor_challenges_user_idx ON two_factor_challenges (user_id);
+      CREATE INDEX IF NOT EXISTS two_factor_challenges_expires_idx ON two_factor_challenges (expires_at);
+
+      CREATE TABLE IF NOT EXISTS two_factor_trusted_devices (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash text NOT NULL UNIQUE,
+        user_agent text,
+        expires_at timestamptz NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS two_factor_trusted_devices_user_idx ON two_factor_trusted_devices (user_id);
+      CREATE INDEX IF NOT EXISTS two_factor_trusted_devices_expires_idx ON two_factor_trusted_devices (expires_at);
     `);
 
     await ensureJobMessageSyncSchema();
     await ensureLegacySupervisorAssignments();
     await ensurePushSubscriptionsSchema();
+    twoFactorSchemaEnsured = true;
     
     initialized = true;
     logger.info("Database schemas initialized successfully.");

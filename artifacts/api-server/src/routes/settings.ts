@@ -4,6 +4,7 @@ import { db, userSettings, systemSettings, users, sessions } from "@workspace/db
 import { UpdateUserSettingsBody, UpdateSystemSettingsBody } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { ensureTwoFactorSchema } from "../lib/schema-init";
 
 const router: IRouter = Router();
 
@@ -43,6 +44,7 @@ const ensureSchema = async () => {
 router.get("/settings/user", requireAuth, async (req, res) => {
   try {
     await ensureSchema();
+    await ensureTwoFactorSchema();
     const userId = req.session!.user.id;
     
     let settings = await db.query.userSettings.findFirst({
@@ -53,8 +55,15 @@ router.get("/settings/user", requireAuth, async (req, res) => {
       // Initialize default settings if not exists
       [settings] = await db.insert(userSettings).values({ userId }).returning();
     }
-    
-    return res.json(settings);
+    const [actor] = await db
+      .select({ totpSecret: users.totpSecret, totpEnrolledAt: users.totpEnrolledAt })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return res.json({
+      ...settings,
+      twoFactorEnabled: !!(actor?.totpSecret && actor?.totpEnrolledAt),
+    });
   } catch (err) {
     logger.error({ err }, "Failed to fetch user settings");
     return res.status(500).json({ error: "Internal server error" });
@@ -64,6 +73,7 @@ router.get("/settings/user", requireAuth, async (req, res) => {
 router.patch("/settings/user", requireAuth, async (req, res) => {
   try {
     await ensureSchema();
+    await ensureTwoFactorSchema();
     const userId = req.session!.user.id;
     const parsed = UpdateUserSettingsBody.safeParse(req.body);
     
@@ -71,16 +81,20 @@ router.patch("/settings/user", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Invalid settings data" });
     }
     
+    const { twoFactorEnabled: _ignoredTwoFactor, ...safeData } = parsed.data;
     const [updated] = await db
       .insert(userSettings)
-      .values({ userId, ...parsed.data, updatedAt: new Date() })
+      .values({ userId, ...safeData, updatedAt: new Date() })
       .onConflictDoUpdate({
         target: userSettings.userId,
-        set: { ...parsed.data, updatedAt: new Date() },
+        set: { ...safeData, updatedAt: new Date() },
       })
       .returning();
-      
-    return res.json(updated);
+    const [actor] = await db.select({ totpSecret: users.totpSecret, totpEnrolledAt: users.totpEnrolledAt }).from(users).where(eq(users.id, userId)).limit(1);
+    return res.json({
+      ...updated,
+      twoFactorEnabled: !!(actor?.totpSecret && actor?.totpEnrolledAt),
+    });
   } catch (err) {
     logger.error({ err }, "Failed to update user settings");
     return res.status(500).json({ error: "Internal server error" });

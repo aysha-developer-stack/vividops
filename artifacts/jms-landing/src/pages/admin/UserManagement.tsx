@@ -29,6 +29,7 @@ import {
   resolveLiveUserStatus,
 } from "@/lib/liveUserStatus";
 import { fetchActiveTimerSessions, type ActiveTimerSession } from "@/lib/timerSessionApi";
+import { resetUserTwoFactor } from "@/lib/twoFactorApi";
 
 import {
   DropdownMenu,
@@ -216,6 +217,17 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
     }
   };
 
+  const resetTwoFactor = async (u: User) => {
+    setOpenId(null);
+    if (!confirm(`Reset two-factor authentication for ${u.name}? They must set it up again at next sign-in.`)) return;
+    try {
+      await resetUserTwoFactor(u.id);
+      await invalidate();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : extractError(err));
+    }
+  };
+
   const startCreate = () => {
     setEditingId(null);
     setForm({ name: "", email: "", role: "User", delivery: "email-invite", cliqChannelAdmin: false });
@@ -393,6 +405,11 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                       <div className="flex items-center gap-2">
                         <div className={`w-2 h-2 rounded-full ${liveStatusDotClass(liveStatus)}`} />
                         <span className={`text-sm font-medium ${liveStatusTextClass(liveStatus)}`}>{statusLabel}</span>
+                        {(u as User & { twoFactorEnrolled?: boolean }).twoFactorEnrolled && (
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-100 rounded px-1.5 py-0.5">
+                            2FA
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">{formatJoined(u.createdAt as unknown as string)}</td>
@@ -420,6 +437,12 @@ export default function UserManagement({ role = "super-admin" as Role }: { role?
                             <RefreshCw size={14} className="mr-2 text-gray-400" />
                             Resend invite
                           </DropdownMenuItem>
+                          {role === "super-admin" && (
+                            <DropdownMenuItem onClick={() => void resetTwoFactor(u)}>
+                              <Shield size={14} className="mr-2 text-gray-400" />
+                              Reset 2FA
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => remove(u)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
                             <Trash2 size={14} className="mr-2" />

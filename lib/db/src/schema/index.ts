@@ -1,5 +1,6 @@
 export * from "./users";
 export * from "./sessions";
+export * from "./two_factor";
 export * from "./jobs";
 export * from "./attachments";
 export * from "./job_notes";

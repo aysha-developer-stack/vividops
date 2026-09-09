@@ -14,6 +14,7 @@ export function publicUser(u: UserRow) {
     status: u.status,
     mustResetPassword: u.mustResetPassword,
     cliqChannelAdmin: u.cliqChannelAdmin,
+    twoFactorEnrolled: !!(u.totpSecret && u.totpEnrolledAt),
     lastSignInAt: u.lastSignInAt ? u.lastSignInAt.toISOString() : null,
     lastSeenAt: u.lastSeenAt ? u.lastSeenAt.toISOString() : null,
     createdAt: u.createdAt.toISOString(),

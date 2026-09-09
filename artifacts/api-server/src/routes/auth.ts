@@ -1,4 +1,4 @@
-import { Router, type IRouter, type Request } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { db, sessions, users, sql } from "@workspace/db";
@@ -16,6 +16,14 @@ import { publicUser } from "../lib/serialize";
 import { requireAuth } from "../middlewares/requireAuth";
 import { clearSessionCache, updateSessionCacheUser } from "../middlewares/session";
 import { sendPasswordResetEmail } from "../lib/email";
+import { ensureTwoFactorSchema } from "../lib/schema-init";
+import {
+  createTwoFactorChallenge,
+  hasValidTrustedDevice,
+  isTwoFactorEnrolled,
+  readTrustCookie,
+  twoFactorChallengePayload,
+} from "../lib/two-factor";
 
 const router: IRouter = Router();
 let userColumnsEnsured = false;
@@ -33,7 +41,7 @@ async function ensureUserColumns() {
   `);
 }
 
-function cookieOpts(req?: Request) {
+export function cookieOpts(req?: Request) {
   const forwarded = req?.headers?.["x-forwarded-proto"];
   const proto = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim();
   const secure =
@@ -51,8 +59,28 @@ function cookieOpts(req?: Request) {
   };
 }
 
+export async function completeLoginSession(
+  user: typeof users.$inferSelect,
+  req: Request,
+  res: Response,
+): Promise<typeof users.$inferSelect> {
+  const now = new Date();
+  const [session] = await db
+    .insert(sessions)
+    .values({ userId: user.id, expiresAt: sessionExpiresAt() })
+    .returning();
+  const [updated] = await db
+    .update(users)
+    .set({ lastSignInAt: now, lastSeenAt: now, updatedAt: now })
+    .where(eq(users.id, user.id))
+    .returning();
+  res.cookie(SESSION_COOKIE, session.id, cookieOpts(req));
+  return updated ?? { ...user, lastSignInAt: now, lastSeenAt: now };
+}
+
 router.post("/auth/login", async (req, res) => {
   await ensureUserColumns();
+  await ensureTwoFactorSchema();
   const parsed = LoginBody.safeParse(req.body);
   if (!parsed.success) {
     logger.error({ errors: parsed.error.format() }, "Login validation failed");
@@ -96,24 +124,19 @@ router.post("/auth/login", async (req, res) => {
     return res.status(401).json({ error: "Invalid email or password" });
   }
 
-  let session: typeof sessions.$inferSelect;
   try {
-    [session] = await db
-      .insert(sessions)
-      .values({ userId: user.id, expiresAt: sessionExpiresAt() })
-      .returning();
-
-    await db
-      .update(users)
-      .set({ lastSignInAt: new Date(), lastSeenAt: new Date() })
-      .where(eq(users.id, user.id));
+    await ensureTwoFactorSchema();
+    const trusted = await hasValidTrustedDevice(user.id, readTrustCookie(req));
+    if (isTwoFactorEnrolled(user) && trusted) {
+      const loggedIn = await completeLoginSession(user, req, res);
+      return res.json({ user: publicUser(loggedIn) });
+    }
+    const challengeToken = await createTwoFactorChallenge(user.id);
+    return res.json(twoFactorChallengePayload(user, challengeToken));
   } catch (err) {
-    logger.error({ err }, "Login failed: DB write error");
+    logger.error({ err }, "Login failed: 2FA challenge error");
     return res.status(503).json({ error: "Database connection failed" });
   }
-
-  res.cookie(SESSION_COOKIE, session.id, cookieOpts(req));
-  return res.json({ user: publicUser({ ...user, lastSignInAt: new Date(), lastSeenAt: new Date() }) });
 });
 
 router.post("/auth/logout", async (req, res) => {
@@ -322,24 +345,17 @@ router.post("/auth/reset-password-with-token", async (req, res) => {
 
   await db.execute(sql`DELETE FROM password_reset_tokens WHERE token = ${token}`);
 
-  // Automatically log the user in after successful reset
-  const now = new Date();
-  await db
-    .update(users)
-    .set({ lastSignInAt: now, lastSeenAt: now, updatedAt: now })
-    .where(eq(users.id, user.id));
-
-  const [session] = await db
-    .insert(sessions)
-    .values({ userId: user.id, expiresAt: sessionExpiresAt() })
-    .returning();
-
-  res.cookie(SESSION_COOKIE, session.id, cookieOpts(req));
-  
-  return res.json({ 
-    message: "Password has been reset successfully.",
-    user: publicUser({ ...user, lastSignInAt: now, lastSeenAt: now }),
-  });
+  try {
+    await ensureTwoFactorSchema();
+    const challengeToken = await createTwoFactorChallenge(user.id);
+    return res.json({
+      message: "Password has been reset successfully.",
+      ...twoFactorChallengePayload({ ...user, passwordHash, mustResetPassword: false }, challengeToken),
+    });
+  } catch (err) {
+    logger.error({ err }, "Password reset succeeded but 2FA challenge failed");
+    return res.status(500).json({ error: "Password was reset. Please sign in." });
+  }
 });
 
 export default router;

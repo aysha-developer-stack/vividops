@@ -2,13 +2,15 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, ArrowRight, ArrowLeft, Mail, Lock, CheckCircle2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import logoImg from "@assets/vv_1778503190047.png";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetMeQueryKey } from "@workspace/api-client-react";
-import { useLogin, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { ROLES, Role } from "@/lib/roles";
 import { ApiError } from "@workspace/api-client-react";
+import { loginWithPassword, type TwoFactorChallenge } from "@/lib/twoFactorApi";
+import TwoFactorChallengePanel from "@/components/TwoFactorChallengePanel";
+import type { User } from "@workspace/api-client-react";
 
 const floatingOrbs = [
   { size: 320, x: "-20%", y: "-10%", delay: 0, color: "bg-primary/20" },
@@ -24,17 +26,46 @@ export default function Login() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({});
   const [role, setRole] = useState<Role>("super-admin");
+  const [challenge, setChallenge] = useState<TwoFactorChallenge | null>(null);
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
-  const loginMutation = useLogin();
   const { isAuthenticated, user } = useAuth();
-  const isLoading = loginMutation.isPending;
+  const [submitting, setSubmitting] = useState(false);
+  const isLoading = submitting;
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("vops_2fa_pending");
+      if (!raw) return;
+      const pending = JSON.parse(raw) as TwoFactorChallenge;
+      if (pending?.challengeToken) setChallenge(pending);
+      sessionStorage.removeItem("vops_2fa_pending");
+    } catch {
+      sessionStorage.removeItem("vops_2fa_pending");
+    }
+  }, []);
+
+  const finishAuthenticated = (loggedIn: User) => {
+    setChallenge(null);
+    setIsSuccess(true);
+    sessionStorage.setItem("vops_tab_active", "true");
+    const meKey = getGetMeQueryKey();
+    qc.setQueryData(meKey, loggedIn);
+    if (loggedIn.role === "user" && loggedIn.mustResetPassword) {
+      setTimeout(() => setLocation("/reset-password"), 200);
+      return;
+    }
+    const targetRole = (loggedIn.role as Role) ?? role;
+    const target = ROLES[targetRole]?.base ?? "/";
+    setTimeout(() => setLocation(target), 1200);
+  };
 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
+    if (challenge) return;
     const target = ROLES[user.role as Role]?.base ?? "/";
     setLocation(target);
-  }, [isAuthenticated, user, setLocation]);
+  }, [isAuthenticated, user, setLocation, challenge]);
 
   const validate = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -53,26 +84,14 @@ export default function Login() {
       return;
     }
     setErrors({});
-      try {
-        const result = await loginMutation.mutateAsync({ 
-          data: { 
-            email, 
-            password,
-            role // Pass the selected role to the backend
-          } 
-        });
-        setIsSuccess(true);
-      if (result.user.role === "user" && result.user.mustResetPassword) {
-        setTimeout(() => setLocation("/reset-password"), 200);
+    setSubmitting(true);
+    try {
+      const result = await loginWithPassword({ email, password, role });
+      if (result.kind === "challenge") {
+        setChallenge(result.challenge);
         return;
       }
-      const targetRole = (result.user.role as Role) ?? role;
-      const target = ROLES[targetRole]?.base ?? "/";
-      
-      // Keep me-cache in sync; do not clear the whole client (that refetches /me and can bounce).
-      qc.setQueryData(getGetMeQueryKey(), result.user);
-      
-      setTimeout(() => setLocation(target), 1200);
+      finishAuthenticated(result.user);
     } catch (err) {
       let message = "Something went wrong. Please try again.";
       if (err instanceof ApiError) {
@@ -82,8 +101,12 @@ export default function Login() {
         } else if (err.status === 400) {
           message = "Please check your credentials and try again.";
         }
+      } else if (err instanceof Error && err.message) {
+        message = err.message;
       }
       setErrors({ form: message });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -246,7 +269,20 @@ export default function Login() {
           </motion.div>
 
           <AnimatePresence mode="wait">
-            {isSuccess ? (
+            {challenge && !isSuccess ? (
+              <motion.div
+                key="two-factor"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+              >
+                <TwoFactorChallengePanel
+                  challenge={challenge}
+                  onAuthenticated={(loggedIn) => finishAuthenticated(loggedIn)}
+                  onBack={() => setChallenge(null)}
+                />
+              </motion.div>
+            ) : isSuccess ? (
               /* Success state */
               <motion.div
                 key="success"

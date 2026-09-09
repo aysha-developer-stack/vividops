@@ -29,6 +29,9 @@ export const users = pgTable("users", {
   bio: text("bio"),
   mustResetPassword: boolean("must_reset_password").notNull().default(false),
   cliqChannelAdmin: boolean("cliq_channel_admin").notNull().default(false),
+  totpSecret: text("totp_secret"),
+  totpEnrolledAt: timestamp("totp_enrolled_at", { withTimezone: true }),
+  totpBackupCodes: text("totp_backup_codes"),
   lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })

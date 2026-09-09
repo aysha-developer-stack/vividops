@@ -20,6 +20,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { ensureDesktopNotificationPermission } from "@/lib/desktopNotifications";
 import { registerWebPush } from "@/lib/webPush";
+import { regenerateBackupCodes } from "@/lib/twoFactorApi";
 
 const TABS = [
   { id: "profile", label: "Profile", icon: UserIcon },
@@ -101,6 +102,8 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
     current: "",
     new: "",
   });
+  const [backupCodeInput, setBackupCodeInput] = useState("");
+  const [newBackupCodes, setNewBackupCodes] = useState<string[] | null>(null);
 
   // User Settings states (Notification, Appearance, Regional)
   const [userSettingsState, setUserSettingsState] = useState({
@@ -217,6 +220,25 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
         title: "Update failed", 
         description: err.info?.error || "Could not update settings.",
         variant: "destructive" 
+      });
+    }
+  };
+
+  const handleRegenerateBackupCodes = async () => {
+    if (backupCodeInput.trim().length < 6) {
+      toast({ title: "Code required", description: "Enter your current authenticator code.", variant: "destructive" });
+      return;
+    }
+    try {
+      const result = await regenerateBackupCodes(backupCodeInput.trim());
+      setNewBackupCodes(result.backupCodes);
+      setBackupCodeInput("");
+      toast({ title: "Backup codes updated", description: "Save the new codes. Old backup codes no longer work." });
+    } catch (err) {
+      toast({
+        title: "Could not generate codes",
+        description: err instanceof Error ? err.message : "Invalid authentication code.",
+        variant: "destructive",
       });
     }
   };
@@ -533,9 +555,46 @@ export default function Settings({ role = "super-admin" as Role }: { role?: Role
                 <>
                   <h3 className="text-lg font-bold text-gray-900 mb-1">Security & privacy</h3>
                   <p className="text-sm text-gray-500 mb-4">Manage your account security.</p>
-                  <Row title="Two-factor authentication" desc="Require a code on every sign-in">
-                    <Toggle on={userSettingsState.twoFactorEnabled} onChange={() => setUserSettingsState({ ...userSettingsState, twoFactorEnabled: !userSettingsState.twoFactorEnabled })} />
-                  </Row>
+                    <Row
+                      title="Two-factor authentication"
+                      desc="Authenticator app is required for every account. You cannot turn this off."
+                    >
+                      <span className={`text-xs font-bold uppercase tracking-wide ${userSettingsState.twoFactorEnabled ? "text-emerald-600" : "text-amber-600"}`}>
+                        {userSettingsState.twoFactorEnabled ? "Enabled" : "Required at next sign-in"}
+                      </span>
+                    </Row>
+                    {userSettingsState.twoFactorEnabled && (
+                      <div className="py-4 border-b border-gray-100">
+                        <div className="text-sm font-medium text-gray-900 mb-1">Backup codes</div>
+                        <p className="text-xs text-gray-500 mb-3">
+                          Generate a new set if you used a backup code or lost the originals. This replaces old codes.
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="Current 6-digit code"
+                            value={backupCodeInput}
+                            onChange={(e) => setBackupCodeInput(e.target.value)}
+                            className="bg-white text-gray-900 placeholder:text-gray-400 border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary sm:max-w-[200px]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void handleRegenerateBackupCodes()}
+                            className="text-sm font-semibold text-primary hover:underline"
+                          >
+                            Generate new backup codes
+                          </button>
+                        </div>
+                        {newBackupCodes && (
+                          <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-3 font-mono text-xs grid grid-cols-2 gap-1">
+                            {newBackupCodes.map((c) => (
+                              <div key={c}>{c}</div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   <div className="pt-6 mt-2 border-t border-gray-100">
                     <h4 className="text-sm font-bold text-gray-900 mb-3">Change password</h4>
                     <div className="grid sm:grid-cols-2 gap-3 mb-4">

@@ -99,6 +99,24 @@ export default function ResetPassword() {
           throw new Error(data.error || "Failed to reset password");
         }
 
+        if (data.requiresTwoFactor && data.challengeToken) {
+          sessionStorage.setItem(
+            "vops_2fa_pending",
+            JSON.stringify({
+              requiresTwoFactor: true,
+              challengeToken: data.challengeToken,
+              twoFactorEnrolled: !!data.twoFactorEnrolled,
+              maskedEmail: data.maskedEmail || "",
+            }),
+          );
+          toast({
+            title: "Password Reset Successful",
+            description: "Continue with two-factor authentication to sign in.",
+          });
+          setLocation("/login");
+          return;
+        }
+
         setSuccess(true);
         toast({
           title: "Password Reset Successful",
