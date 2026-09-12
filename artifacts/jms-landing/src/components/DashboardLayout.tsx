@@ -17,6 +17,7 @@ import {
   fetchSidebarBadgeCounts,
   formatBadgeCount,
   markSidebarSectionSeen,
+  refreshSidebarBadges,
   SIDEBAR_BADGES_REFRESH_EVENT,
   type SidebarBadgeCounts,
 } from "@/lib/sidebarBadgesApi";
@@ -218,6 +219,7 @@ export default function DashboardLayout({
 
     try {
       await Promise.all(unreadIds.map(id => markReadMutation.mutateAsync({ id })));
+      refreshSidebarBadges();
     } catch (err) {
       console.error("Failed to mark all as read", err);
       // Invalidate on error
@@ -236,6 +238,7 @@ export default function DashboardLayout({
 
     try {
       await markReadMutation.mutateAsync({ id: notifId });
+      refreshSidebarBadges();
     } catch (err) {
       console.error("Failed to mark as read", err);
       qc.invalidateQueries({ queryKey: key });

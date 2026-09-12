@@ -15,6 +15,7 @@ import {
 import type { Role } from "@/lib/roles";
 import { ROLES } from "@/lib/roles";
 import { getNotificationPath } from "@/lib/notificationNavigation";
+import { refreshSidebarBadges } from "@/lib/sidebarBadgesApi";
 import {
   useGetNotifications,
   useMarkNotificationRead,
@@ -26,6 +27,7 @@ const FILTERS: Array<{ id: "all" | "unread" | NotifType; label: string }> = [
   { id: "all", label: "All" },
   { id: "unread", label: "Unread" },
   { id: "assigned", label: "Jobs" },
+  { id: "admin_ops", label: "Admin" },
   { id: "overdue", label: "Overdue" },
   { id: "timer", label: "Timer" },
   { id: "job_message", label: "Messages" },
@@ -120,6 +122,7 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
     setReadInCache(unreadIds);
     try {
       await Promise.all(unreadIds.map((id) => markReadMutation.mutateAsync({ id })));
+      refreshSidebarBadges();
     } catch (err) {
       console.error("Failed to mark all notifications as read:", err);
     } finally {
@@ -131,6 +134,7 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
     setReadInCache([id]);
     try {
       await markReadMutation.mutateAsync({ id });
+      refreshSidebarBadges();
     } catch (err) {
       console.error("Failed to mark notification as read:", err);
     } finally {

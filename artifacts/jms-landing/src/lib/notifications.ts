@@ -18,13 +18,15 @@ export type NotifType =
   | "training"
   | "error"
   | "progress"
-  | "completed";
+  | "completed"
+  | "admin_ops";
 
 /** Client-spec priority: urgent job alerts first, then assignments, timer, rework, messages, reports. */
 export const NOTIFICATION_PRIORITY: Record<string, number> = {
   overdue: 0,
   error: 1,
   assigned: 2,
+  admin_ops: 2,
   rework: 3,
   timer: 4,
   updated: 5,
@@ -77,6 +79,7 @@ const defaultNotifStyle = { icon: Bell, color: "bg-gray-100 text-gray-600", labe
 
 export const NOTIF_STYLE: Record<string, { icon: LucideIcon; color: string; label: string }> = {
   assigned: { icon: Briefcase, color: "bg-primary/10 text-primary", label: "Assignment" },
+  admin_ops: { icon: Briefcase, color: "bg-primary/10 text-primary", label: "Admin" },
   updated: { icon: Edit3, color: "bg-purple-50 text-purple-600", label: "Update" },
   overdue: { icon: AlertTriangle, color: "bg-red-50 text-red-600", label: "Overdue" },
   timer: { icon: Clock, color: "bg-amber-50 text-amber-600", label: "Timer" },

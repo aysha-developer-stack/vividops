@@ -2,6 +2,7 @@ import { db, sql, type UserRow } from "@workspace/db";
 import { ensureAllSchemas, ensureJobWriteSchema, ensureLegacySupervisorAssignments } from "./schema-init";
 
 let readSchemaEnsured = false;
+let importedHistoryFlagBackfilled = false;
 
 export async function ensureJobCommunicationReadSchema(): Promise<void> {
   if (readSchemaEnsured) return;
@@ -46,21 +47,37 @@ export async function markJobCommunicationRead(userId: string, jobId: string): P
   `);
 }
 
+async function backfillImportedHistoryUnreadFlags(): Promise<void> {
+  if (importedHistoryFlagBackfilled) return;
+  importedHistoryFlagBackfilled = true;
+  await db.execute(sql`
+    UPDATE job_message_sync
+    SET payload = COALESCE(payload, '{}'::jsonb) || '{"opsImportedFromHistory": true}'::jsonb
+    WHERE source = 'zoho_cliq'
+      AND COALESCE(payload->>'opsImportedFromHistory', 'false') <> 'true'
+      AND created_at < now() - interval '2 minutes'
+  `);
+}
+
 export async function getCommunicationUnreadCounts(
   actor: UserRow,
 ): Promise<Record<string, number>> {
   await ensureLegacySupervisorAssignments();
   await ensureJobWriteSchema();
   await ensureJobCommunicationReadSchema();
+  await backfillImportedHistoryUnreadFlags();
 
   const visibleJobs = communicationJobsSubquery(actor);
   const rows = await db.execute(sql`
     SELECT jm.job_id, COUNT(*)::int AS unread_count
     FROM job_messages jm
+    INNER JOIN jobs j ON j.id = jm.job_id
     LEFT JOIN job_communication_read_state rs
       ON rs.job_id = jm.job_id AND rs.user_id = ${actor.id}
+    LEFT JOIN job_message_sync jms ON jms.job_message_id = jm.id
     WHERE jm.job_id IN ${visibleJobs}
       AND jm.user_id <> ${actor.id}
+      AND COALESCE(jms.payload->>'opsImportedFromHistory', 'false') <> 'true'
       AND jm.created_at > COALESCE(rs.last_read_at, to_timestamp(0))
     GROUP BY jm.job_id
   `);

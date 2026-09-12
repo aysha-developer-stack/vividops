@@ -3,7 +3,7 @@ import { logger } from "./logger";
 import { pushNotificationRealtime } from "./socket";
 import { sendWebPushNotification } from "./web-push";
 
-export type NotificationType = "assigned" | "updated" | "overdue" | "timer" | "rework" | "job_message" | "cliq_channel" | "checklist" | "file" | "training" | "progress" | "error" | "completed";
+export type NotificationType = "assigned" | "updated" | "overdue" | "timer" | "rework" | "job_message" | "cliq_channel" | "checklist" | "file" | "training" | "progress" | "error" | "completed" | "admin_ops";
 
 /** Notification types that refer to a job — hide/delete when the job no longer exists. */
 export const JOB_LINKED_NOTIFICATION_TYPES: NotificationType[] = [
@@ -16,7 +16,6 @@ export const JOB_LINKED_NOTIFICATION_TYPES: NotificationType[] = [
   "cliq_channel",
   "checklist",
   "file",
-  "progress",
   "error",
   "completed",
 ];
@@ -130,6 +129,40 @@ export async function notifyAllJobMembersOnce(opts: {
       new Date(0),
     );
   }
+}
+
+function adminRoleLabel(role: string): string {
+  if (role === "super-admin") return "Super Admin";
+  if (role === "admin") return "Admin";
+  return role;
+}
+
+/** Other active admins and super-admins only — never the actor, never workers/supervisors. */
+export async function notifyAdminAndSuperAdminPeers(opts: {
+  actorId: string;
+  title: string;
+  description: string;
+  type: NotificationType;
+  jobId?: string;
+}): Promise<void> {
+  const peers = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(inArray(users.role, ["admin", "super-admin"]), eq(users.status, "active")));
+  for (const peer of peers) {
+    if (peer.id === opts.actorId) continue;
+    await createNotification({
+      userId: peer.id,
+      jobId: opts.jobId,
+      title: opts.title,
+      description: opts.description,
+      type: opts.type,
+    });
+  }
+}
+
+export function adminActorLabel(actor: { name: string; role: string }): string {
+  return `${actor.name} (${adminRoleLabel(actor.role)})`;
 }
 
 /** Notify admins only (excludes super-admin). */

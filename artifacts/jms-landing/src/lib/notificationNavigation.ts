@@ -15,6 +15,7 @@ const JOB_TABS: Record<string, string> = {
   rework: "mistakes",
   error: "mistakes",
   assigned: "overview",
+  admin_ops: "overview",
   updated: "overview",
   overdue: "overview",
   completed: "overview",

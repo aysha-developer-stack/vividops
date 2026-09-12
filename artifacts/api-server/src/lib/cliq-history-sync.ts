@@ -122,7 +122,12 @@ export async function syncJobCliqHistory(
           externalMessageId: parsed.externalMessageId,
           externalChannelId: options.channelId ?? chatId,
           externalChannelName: options.channelName ?? null,
-          rawPayload: parsed.rawPayload,
+          rawPayload: {
+            ...(parsed.rawPayload && typeof parsed.rawPayload === "object"
+              ? (parsed.rawPayload as Record<string, unknown>)
+              : { raw: parsed.rawPayload }),
+            opsImportedFromHistory: true,
+          },
           createdAt: parsed.createdAt,
           notify: false,
           touchJob: false,

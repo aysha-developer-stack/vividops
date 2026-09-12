@@ -7,6 +7,8 @@ import {
   createNotificationOnce,
   deleteNotificationsForJob,
   notifyJobManagers,
+  notifyAdminAndSuperAdminPeers,
+  adminActorLabel,
   previewText,
   type NotificationType,
 } from "../lib/notifications";
@@ -2109,18 +2111,14 @@ router.post("/jobs", creatorRole, async (req, res) => {
       });
     }
 
-    const admins = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(inArray(users.role, ["admin", "super-admin"]));
-    for (const admin of admins) {
-      if (admin.id === actor.id) continue;
-      await createNotification({
-        userId: admin.id,
+    if (actor.role === "admin" || actor.role === "super-admin") {
+      const number = jobDisplayNumber(full.job);
+      await notifyAdminAndSuperAdminPeers({
+        actorId: actor.id,
         jobId: full.job.id,
-        title: `New Job Created: ${full.job.title}`,
-        description: `${full.job.title} for ${full.job.client} was created and assigned to ${full.assignee?.name ?? "Unassigned"}.`,
-        type: "assigned",
+        type: "admin_ops",
+        title: `Job created by ${actor.name}`,
+        description: `${adminActorLabel(actor)} created ${number} · ${full.job.title} for ${full.job.client}.`,
       });
     }
 
@@ -2752,6 +2750,13 @@ router.delete("/jobs/:id", creatorRole, async (req, res) => {
       return res.status(400).json({ error: "Only cancelled jobs can be permanently deleted" });
     }
     try {
+      const number = jobDisplayNumber(full.job);
+      await notifyAdminAndSuperAdminPeers({
+        actorId: actor.id,
+        type: "admin_ops",
+        title: `Job deleted by ${actor.name}`,
+        description: `${adminActorLabel(actor)} permanently deleted ${number} · ${full.job.title}.`,
+      });
       await stopAllActiveTimersOnJob(id);
       const attachmentRows = await db
         .select({ fileKey: jobAttachments.fileKey })

@@ -97,12 +97,14 @@ async function countTraining(userId: string, since: Date): Promise<number> {
 async function countJobs(userId: string, since: Date): Promise<number> {
   const result = await db.execute(sql`
     SELECT COUNT(*)::int AS n
-    FROM notifications
-    WHERE user_id = ${userId}
-      AND created_at > ${since}
-      AND type IN (
-        'assigned', 'updated', 'overdue', 'timer', 'rework',
-        'checklist', 'file', 'progress', 'completed'
+    FROM notifications n
+    INNER JOIN jobs j ON j.id = n.job_id
+    WHERE n.user_id = ${userId}
+      AND n.is_read = false
+      AND n.created_at > ${since}
+      AND n.type IN (
+        'assigned', 'updated', 'overdue', 'rework',
+        'checklist', 'file', 'completed', 'cliq_channel', 'admin_ops'
       )
   `);
   return countFrom(result);
