@@ -76,6 +76,7 @@ export function parseCliqFileRefFromPayload(payload: unknown): CliqFileRef | nul
   const nestedSources: unknown[] = [
     obj.file,
     obj.attachment,
+    nestedRecord(obj.content)?.file,
     nestedRecord(obj.message)?.file,
     nestedRecord(obj.message)?.attachment,
     nestedRecord(nestedRecord(obj.message)?.content)?.file,
@@ -119,6 +120,7 @@ export function parseAttachmentFromCliqPayload(payload: unknown): CliqAttachment
   const nestedSources = [
     obj.file,
     obj.attachment,
+    nestedRecord(obj.content)?.file,
     nestedRecord(obj.message)?.file,
     nestedRecord(obj.message)?.attachment,
     nestedRecord(nestedRecord(obj.message)?.content)?.file,

@@ -385,6 +385,11 @@ async function start(): Promise<void> {
     }, 5000);
     setInterval(() => void runOverdueScan(), 15 * 60 * 1000);
 
+    void import("./lib/cliq-history-sync").then(({ syncStaleCliqChannelHistories }) => {
+      setTimeout(() => void syncStaleCliqChannelHistories(3), 20_000);
+      setInterval(() => void syncStaleCliqChannelHistories(3), 5 * 60 * 1000);
+    });
+
     // Run daily summary at 11:55 PM
     const scheduleDaily = () => {
       const now = new Date();

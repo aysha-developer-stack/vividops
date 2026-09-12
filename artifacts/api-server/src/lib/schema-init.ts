@@ -501,6 +501,7 @@ export async function ensureAllSchemas() {
       );
       CREATE INDEX IF NOT EXISTS job_cliq_channels_status_idx ON job_cliq_channels (status);
       ALTER TABLE job_cliq_channels ADD COLUMN IF NOT EXISTS chat_id text;
+      ALTER TABLE job_cliq_channels ADD COLUMN IF NOT EXISTS last_history_sync_at timestamptz;
 
       -- Rework Cycles
       CREATE TABLE IF NOT EXISTS job_reworks (

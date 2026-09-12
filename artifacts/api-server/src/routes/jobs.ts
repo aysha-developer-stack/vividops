@@ -33,9 +33,11 @@ import {
 } from "../lib/job-communication-read";
 import {
   enrichStoredMessageText,
-  formatInboundCliqMessageText,
   inboundCliqHasAttachment,
 } from "../lib/cliq-message-attachments";
+import { ingestInboundCliqMessage } from "../lib/cliq-message-ingest";
+import { cliqSenderDisplayName } from "../lib/cliq-history-parse";
+import { syncJobCliqHistory } from "../lib/cliq-history-sync";
 import {
   ensureAllSchemas,
   ensureJobMessageSyncSchema,
@@ -1355,31 +1357,6 @@ async function findJobByCliqChannel(channelId: string | null, channelName: strin
   return loadJob(row.job_id);
 }
 
-async function findUserByEmail(email: string): Promise<UserRow | null> {
-  const normalized = email.trim().toLowerCase();
-  if (!normalized) return null;
-  const [row] = await db
-    .select()
-    .from(users)
-    .where(sql`lower(${users.email}) = ${normalized}`)
-    .limit(1);
-  return row ?? null;
-}
-
-function normalizeMirroredCliqText(job: JobRow, text: string): string {
-  const trimmed = text.trim();
-  const prefixes = [
-    `JOB-${job.jobNumber?.trim() || job.serial} - ${job.title}`,
-    `JOB-${job.serial} · ${job.title}`,
-  ];
-  const prefix = prefixes.find((p) => trimmed.startsWith(`${p}\n`));
-  if (!prefix) return trimmed;
-  const remainder = trimmed.slice(prefix.length + 1).trim();
-  const website = remainder.match(/^(?:From website|Vivid OPS)\s*\(([^)]+)\):\s*([\s\S]+)$/i);
-  if (website?.[2]) return website[2].trim();
-  const generic = remainder.match(/^[^:\n]{1,120}:\s*([\s\S]+)$/);
-  return generic?.[1]?.trim() || remainder;
-}
 
 async function findRecentJobMessage(jobId: string, userId: string, text: string): Promise<{
   id: string;
@@ -1775,14 +1752,14 @@ function parseIncomingCliqMessage(payload: unknown): IncomingCliqMessage | null 
     messageObj?.message_id,
   );
 
-  if (!channelName || !senderEmail || !senderName) return null;
+  if (!channelId && !channelName) return null;
   if (!text && !inboundCliqHasAttachment(payload)) return null;
   return {
     channelId: channelId || null,
     channelName,
     text,
     senderEmail,
-    senderName,
+    senderName: senderName || senderEmail || "Cliq user",
     externalMessageId: externalMessageId || null,
     rawPayload: payload,
   };
@@ -2893,89 +2870,20 @@ router.post("/zoho/cliq/messages/incoming", async (req, res) => {
       return res.status(404).json({ error: "Job channel not found" });
     }
 
-    const actor = await findUserByEmail(message.senderEmail);
-    if (!actor) {
-      logger.warn({ senderEmail: message.senderEmail }, "[CLIQ-SYNC] User not found for senderEmail");
-      await markJobCliqStatus(full.job.id, "active", `Cliq sync user not found for ${message.senderEmail}`);
-      return res.json({
-        ok: true,
-        ignored: true,
-        reason: `Cliq sender (${message.senderEmail}) not mapped to an app user`,
-      });
-    }
+    logger.info({ senderEmail: message.senderEmail, job: full.job.serial }, "[CLIQ-SYNC] Syncing message from Zoho Cliq");
 
-    if (!(await canViewJobCommunication(actor, full.job))) {
-      logger.warn({ user: actor.email, jobId: full.job.id }, "[CLIQ-SYNC] User is not authorized to communicate on this job");
-      await markJobCliqStatus(full.job.id, "active", `Cliq sync sender ${message.senderEmail} is not assigned to the job`);
-      return res.json({
-        ok: true,
-        ignored: true,
-        reason: "Cliq sender is not assigned to this job",
-      });
-    }
-
-    logger.info({ user: actor.email, job: full.job.serial }, "[CLIQ-SYNC] Syncing message from Zoho Cliq");
-
-    const normalizedText = normalizeMirroredCliqText(
-      full.job,
-      formatInboundCliqMessageText(message.text, message.rawPayload),
-    );
-    const recent = await findRecentJobMessage(full.job.id, actor.id, normalizedText);
-    if (recent) {
-      return res.json({ ok: true, duplicate: true, id: recent.id });
-    }
-
-    const created = await createStoredJobMessage({
+    const created = await ingestInboundCliqMessage({
       job: full.job,
-      actor,
-      text: normalizedText,
-      pushToCliq: false,
-      externalSource: "zoho_cliq",
+      text: message.text,
+      senderEmail: message.senderEmail,
+      senderName: message.senderName,
       externalMessageId: message.externalMessageId,
       externalChannelId: message.channelId,
       externalChannelName: message.channelName,
-      senderEmail: message.senderEmail,
       rawPayload: message.rawPayload,
+      notify: true,
+      touchJob: true,
     });
-
-    // Notify participants and handle @mentions
-    const mentions = normalizedText.match(/@(\w+)/g);
-    const mentionedNames = mentions ? mentions.map(m => m.slice(1).toLowerCase()) : [];
-    
-    const recipients = new Set<string>();
-    if (full.job.assigneeId) recipients.add(full.job.assigneeId);
-    if (full.job.supervisorId) recipients.add(full.job.supervisorId);
-    
-    // Add additional members
-    const members = await db.select({ userId: jobMembers.userId }).from(jobMembers).where(eq(jobMembers.jobId, full.job.id));
-    for (const m of members) recipients.add(m.userId);
-
-    for (const rid of recipients) {
-      if (rid === actor.id) continue;
-
-      // If there are mentions, only notify mentioned users
-      if (mentionedNames.length > 0) {
-        const [target] = await db.select({ name: users.name }).from(users).where(eq(users.id, rid)).limit(1);
-        if (target && mentionedNames.some(name => target.name.toLowerCase().includes(name))) {
-          await createNotification({
-            userId: rid,
-            jobId: full.job.id,
-            title: `Mentioned in ${full.job.title}`,
-            description: `${actor.name} mentioned you in a message for ${full.job.title}: ${normalizedText}`,
-            type: "job_message"
-          });
-        }
-      } else {
-        // Normal message notification
-        await createNotification({
-          userId: rid,
-          jobId: full.job.id,
-          title: `New Message: ${full.job.title}`,
-          description: `${actor.name}: ${normalizedText}`,
-          type: "job_message"
-        });
-      }
-    }
 
     await markJobCliqStatus(full.job.id, "active", null);
     return res.json({ ok: true, duplicate: created.duplicate, id: created.id });
@@ -2998,6 +2906,43 @@ router.get("/jobs/:id/messages", requireAuth, async (req, res) => {
 
     await ensureJobMessagesSchema();
     await ensureJobMessageSyncSchema();
+
+    try {
+      const chRows = await db.execute(sql`
+        SELECT chat_id, channel_id, channel_name, last_history_sync_at
+        FROM job_cliq_channels
+        WHERE job_id = ${id}
+        LIMIT 1
+      `);
+      const ch = ((chRows as unknown as {
+        rows?: Array<{
+          chat_id: string | null;
+          channel_id: string | null;
+          channel_name: string | null;
+          last_history_sync_at: string | null;
+        }>;
+      }).rows ?? [])[0];
+      let chatId = ch?.chat_id ?? null;
+      let channelId = ch?.channel_id ?? null;
+      let channelName = ch?.channel_name ?? null;
+      if (!chatId && !ch?.last_history_sync_at) {
+        const resolved = await getOrCreateJobCliqChannel(full.job);
+        chatId = resolved.chatId;
+        channelId = resolved.channelId;
+        channelName = resolved.channelName;
+      }
+      if (chatId) {
+        await syncJobCliqHistory(full.job, {
+          chatId,
+          channelId,
+          channelName,
+          maxPages: 5,
+        });
+      }
+    } catch (err) {
+      logger.warn({ err, jobId: id }, "Failed to pull Cliq channel history");
+    }
+
     const rows = await db.execute(sql`
       SELECT
         jm.id,
@@ -3012,8 +2957,8 @@ router.get("/jobs/:id/messages", requireAuth, async (req, res) => {
       JOIN users u ON u.id = jm.user_id
       LEFT JOIN job_message_sync jms ON jms.job_message_id = jm.id
       WHERE jm.job_id = ${id}
-      ORDER BY jm.created_at ASC
-      LIMIT 200
+      ORDER BY jm.created_at DESC
+      LIMIT 2000
     `);
     const items = ((rows as any).rows ?? []) as Array<{
       id: string;
@@ -3027,15 +2972,27 @@ router.get("/jobs/:id/messages", requireAuth, async (req, res) => {
     }>;
 
     return res.json(
-      items.map((m) => ({
-        id: m.id,
-        text: enrichStoredMessageText(m.text, m.sync_payload),
-        createdAt: m.created_at,
-        isMe: m.user_id === actor.id,
-        source: m.source,
-        deliveryState: m.delivery_status,
-        user: { id: m.user_id, name: m.user_name },
-      })),
+      items.reverse().map((m) => {
+        const payload =
+          typeof m.sync_payload === "string"
+            ? (() => {
+                try {
+                  return JSON.parse(m.sync_payload);
+                } catch {
+                  return m.sync_payload;
+                }
+              })()
+            : m.sync_payload;
+        return {
+          id: m.id,
+          text: enrichStoredMessageText(m.text, payload),
+          createdAt: m.created_at,
+          isMe: m.user_id === actor.id,
+          source: m.source,
+          deliveryState: m.delivery_status,
+          user: { id: m.user_id, name: cliqSenderDisplayName(m.source, payload, m.user_name) },
+        };
+      }),
     );
   } catch (err) {
     logger.error({ err }, "Failed to list job messages");

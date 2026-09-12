@@ -6,6 +6,7 @@ import { generateTempPassword, hashPassword } from "../lib/auth";
 import { publicUser } from "../lib/serialize";
 import { requireRole } from "../middlewares/requireAuth";
 import { sendInviteEmail } from "../lib/email";
+import { isCliqSyncUserEmail } from "../lib/cliq-sync-user";
 
 function resolveCliqChannelAdminFlag(
   actor: UserRow,
@@ -123,7 +124,7 @@ router.get("/users", listUsersAllowed, async (req, res) => {
     }
   }
 
-  return res.json(visible.map(publicUser));
+  return res.json(visible.filter((u) => !isCliqSyncUserEmail(u.email)).map(publicUser));
 });
 
 router.post("/users", adminOnly, async (req, res) => {
