@@ -671,10 +671,17 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
                   <ArrowLeft size={18} />
                 </button>
                 <Hash size={16} className="text-gray-400 shrink-0 hidden md:block" />
-                <span className="font-bold text-gray-900 truncate">{activeJob?.number ?? "Select a job"}</span>
-                {activeJob?.title && (
-                  <span className="text-xs text-gray-500 ml-1 sm:ml-2 truncate hidden sm:inline">· {activeJob.title}</span>
-                )}
+                <div className="min-w-0">
+                  <div className="flex items-baseline gap-1.5 min-w-0">
+                    <span className="font-bold text-gray-900 truncate">{activeJob?.number ?? "Select a job"}</span>
+                    {activeJob?.title && (
+                      <span className="text-xs text-gray-500 truncate hidden sm:inline">· {activeJob.title}</span>
+                    )}
+                  </div>
+                  {(activeJob?.address ?? "").trim() ? (
+                    <div className="text-[11px] text-gray-500 truncate mt-0.5">{activeJob?.address}</div>
+                  ) : null}
+                </div>
               </div>
               <div className="flex items-center gap-1">
                 {[Phone, Video, MoreHorizontal].map((Icon, i) => (
