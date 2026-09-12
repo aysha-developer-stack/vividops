@@ -41,13 +41,14 @@ describe("sortJobs", () => {
     );
   });
 
-  it("sorts by created date within the same status on recent mode", () => {
+  it("sorts newest created jobs first on recent mode, even when not started", () => {
     const jobs = [
-      { id: "older", ...fields("In Progress", "JOB-000200", "2026-01-01T00:00:00.000Z") },
-      { id: "newer", ...fields("In Progress", "JOB-000100", "2026-08-01T00:00:00.000Z") },
+      { id: "older-progress", ...fields("In Progress", "JOB-000200", "2026-01-01T00:00:00.000Z") },
+      { id: "newer-pending", ...fields("Not Started", "JOB-000100", "2026-08-01T00:00:00.000Z") },
+      { id: "mid-rework", ...fields("Rework", "JOB-000150", "2026-04-01T00:00:00.000Z") },
     ];
 
     const sorted = sortJobs(jobs, "recent", (j) => j);
-    assert.deepEqual(sorted.map((j) => j.id), ["newer", "older"]);
+    assert.deepEqual(sorted.map((j) => j.id), ["newer-pending", "mid-rework", "older-progress"]);
   });
 });

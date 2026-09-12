@@ -61,6 +61,7 @@ import PutJobOnHoldDialog from "@/components/PutJobOnHoldDialog";
 import {
   type JobListSortMode,
   readStoredJobListSort,
+  storeJobListSort,
   sortJobs,
 } from "@/lib/jobListSort";
 import {
@@ -1071,6 +1072,11 @@ export default function JobManagement(
         await uploadAllFiles(created.id, finalChecklistFiles);
         await syncMembers(created.id);
         await invalidateJobs(created.id);
+        setFilter("All");
+        setAssignmentFilter("all");
+        setSortMode("recent");
+        storeJobListSort("recent");
+        setPage(1);
       }
       setForm(EMPTY_FORM);
       setJobFiles([]);

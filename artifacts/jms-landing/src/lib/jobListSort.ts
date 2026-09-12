@@ -120,8 +120,6 @@ export function compareJobsByRecentlyUpdated(a: JobSortFields, b: JobSortFields)
 }
 
 export function compareJobsByRecent(a: JobSortFields, b: JobSortFields): number {
-  const statusDiff = compareStatusPriority(a, b);
-  if (statusDiff !== 0) return statusDiff;
   const createdDiff = timestampMs(b.createdAt) - timestampMs(a.createdAt);
   if (createdDiff !== 0) return createdDiff;
   const numDiff = parseJobNumberSortKey(b.number) - parseJobNumberSortKey(a.number);
