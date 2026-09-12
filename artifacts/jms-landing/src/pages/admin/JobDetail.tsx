@@ -703,6 +703,9 @@ export default function JobDetail({ role = "user", id }: Props) {
     role === "super-admin" || role === "admin" || (role === "supervisor" && !canUseJobTimer);
   const canPickReworkOrigin =
     currentUser?.role === "admin" || currentUser?.role === "super-admin";
+  const canResumeFromHold =
+    (role === "supervisor" || role === "admin" || role === "super-admin") &&
+    job?.status === "on_hold";
   const canPutJobOnHold =
     (role === "supervisor" || role === "admin" || role === "super-admin") &&
     job?.status !== "cancelled" &&
@@ -2172,46 +2175,43 @@ export default function JobDetail({ role = "user", id }: Props) {
                 <Users size={12} /> Reassign
               </motion.button>
             )}
+            {canResumeFromHold && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={async () => {
+                  if (!job?.id) return;
+                  try {
+                    const res = await fetch(`/api/jobs/${job.id}/review`, {
+                      method: "POST",
+                      credentials: "include",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "resume_from_hold" }),
+                    });
+                    if (!res.ok) {
+                      const data = await res.json().catch(() => ({}));
+                      throw new Error((data as any).error || "Failed to resume job");
+                    }
+                    await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+                    await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                  } catch (err) {
+                    alert(err instanceof Error ? err.message : "Failed to resume job");
+                  }
+                }}
+                className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
+              >
+                <Play size={12} /> Resume Job
+              </motion.button>
+            )}
             {canPutJobOnHold && (
-              <>
-                {job?.status === "on_hold" ? (
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={async () => {
-                      if (!job?.id) return;
-                      try {
-                        const res = await fetch(`/api/jobs/${job.id}/review`, {
-                          method: "POST",
-                          credentials: "include",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ action: "resume_from_hold" }),
-                        });
-                        if (!res.ok) {
-                          const data = await res.json().catch(() => ({}));
-                          throw new Error((data as any).error || "Failed to resume job");
-                        }
-                        await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
-                        await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-                      } catch (err) {
-                        alert(err instanceof Error ? err.message : "Failed to resume job");
-                      }
-                    }}
-                    className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/30"
-                  >
-                    <Play size={12} /> Resume Job
-                  </motion.button>
-                ) : (
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setHoldDialogOpen(true)}
-                    className="flex items-center gap-2 px-3 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-xl text-xs font-semibold"
-                  >
-                    <Pause size={12} /> Put on Hold
-                  </motion.button>
-                )}
-              </>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setHoldDialogOpen(true)}
+                className="flex items-center gap-2 px-3 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-xl text-xs font-semibold"
+              >
+                <Pause size={12} /> Put on Hold
+              </motion.button>
             )}
             {canMarkJobForRework && (
               <motion.button

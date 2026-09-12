@@ -61,7 +61,7 @@ export function isJobOverdueByDueDate(
   status: string,
   now = new Date(),
 ): boolean {
-  if (!dueDateIso || status === "completed" || status === "cancelled") return false;
+  if (!dueDateIso || status === "completed" || status === "cancelled" || status === "on_hold") return false;
   const dueDay = dueDateIso.slice(0, 10);
   const today = now.toISOString().slice(0, 10);
   return today > dueDay;
@@ -69,6 +69,7 @@ export function isJobOverdueByDueDate(
 
 export function statusToUi(j: ApiJob): UiStatus {
   if (j.status === "cancelled") return "Cancelled";
+  if (j.status === "on_hold") return "On Hold";
   if (j.isOverdue) return "Overdue";
   return STATUS_API_TO_UI[j.status] ?? "Not Started";
 }
