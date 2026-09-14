@@ -20,6 +20,7 @@ import { io } from "../lib/socket";
 import { addToQueue } from "../lib/queue";
 import { logger } from "../lib/logger";
 import { createNotification, notifyJobManagers, notifyAdminsOnly } from "../lib/notifications";
+import { contentDispositionHeader } from "../lib/content-disposition";
 
 const router: IRouter = Router();
 
@@ -28,9 +29,7 @@ function attachmentFileExtension(fileName: string): string {
 }
 
 function proxyContentDisposition(rawName: string, disposition: "inline" | "attachment"): string {
-  const encodedName = encodeURIComponent(rawName).replace(/['()]/g, escape);
-  const asciiName = rawName.replace(/[\r\n"]+/g, "_").replace(/[^\x20-\x7E]+/g, "_") || "file";
-  return `${disposition}; filename="${asciiName}"; filename*=UTF-8''${encodedName}`;
+  return contentDispositionHeader(disposition, rawName);
 }
 
 function proxyContentType(rawName: string, fileType: string | null | undefined): string {
@@ -516,8 +515,11 @@ router.get("/jobs/:jobId/attachments/download-zip", requireAuth, async (req, res
     if (candidates.length === 1) {
       const attachment = candidates[0]!.attachment;
       const rawName = (attachment.fileName || "file").split(/[/\\]/).pop() || "file";
-      const signedUrl = await createSignedDownloadUrl(attachment.fileKey, { fileName: rawName });
-      res.redirect(302, signedUrl);
+      const buffer = await downloadStorageBuffer(attachment.fileKey);
+      res.setHeader("Content-Type", proxyContentType(rawName, attachment.fileType));
+      res.setHeader("Content-Disposition", contentDispositionHeader("attachment", rawName));
+      res.setHeader("Cache-Control", "private, no-store");
+      res.send(buffer);
       return;
     }
 
@@ -544,12 +546,8 @@ router.get("/jobs/:jobId/attachments/download-zip", requireAuth, async (req, res
     }
 
     const zipBase = jobAddressZipBaseName(jobRow);
-    const encodedName = encodeURIComponent(`${zipBase}.zip`).replace(/['()]/g, escape);
     res.setHeader("Content-Type", "application/zip");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${zipBase}.zip"; filename*=UTF-8''${encodedName}`,
-    );
+    res.setHeader("Content-Disposition", contentDispositionHeader("attachment", `${zipBase}.zip`));
     res.setHeader("Cache-Control", "private, no-store");
 
     const archive = createZipArchive();
@@ -616,13 +614,14 @@ router.get("/jobs/:jobId/attachments/:attachmentId/view", requireAuth, async (re
     }
 
     const rawName = (attachment.fileName || "file").split(/[/\\]/).pop() || "file";
-    const proxy = req.query.proxy === "1" || req.query.proxy === "true";
+    const proxy =
+      disposition === "attachment" || req.query.proxy === "1" || req.query.proxy === "true";
 
     if (proxy) {
       let buffer: Buffer;
       let contentType: string;
 
-      if (isHeicAttachment(rawName, attachment.fileType)) {
+      if (disposition !== "attachment" && isHeicAttachment(rawName, attachment.fileType)) {
         try {
           buffer = await getHeicPreviewJpeg(attachmentId, attachment.fileKey);
           contentType = "image/jpeg";
@@ -637,9 +636,7 @@ router.get("/jobs/:jobId/attachments/:attachmentId/view", requireAuth, async (re
       }
 
       res.setHeader("Content-Type", contentType);
-      if (disposition === "attachment") {
-        res.setHeader("Content-Disposition", proxyContentDisposition(rawName, disposition));
-      }
+      res.setHeader("Content-Disposition", proxyContentDisposition(rawName, disposition));
       res.setHeader("Cache-Control", isHeicAttachment(rawName, attachment.fileType) ? "private, max-age=86400" : "private, max-age=3600");
       res.send(buffer);
       return;

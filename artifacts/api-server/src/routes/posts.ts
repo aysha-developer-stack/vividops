@@ -8,6 +8,7 @@ import { supabase, upload, uploadToSupabase, createSignedDownloadUrl, downloadSt
 import { createNotification } from "../lib/notifications";
 import { isHeicAttachment } from "../lib/heic-preview";
 import { getHeicPreviewJpeg } from "../lib/heic-preview-cache";
+import { contentDispositionHeader } from "../lib/content-disposition";
 
 const router = Router();
 
@@ -291,7 +292,8 @@ router.get("/posts/:postId/attachments/:attachmentId/view", requireAuth, async (
       ? req.params.attachmentId[0]
       : req.params.attachmentId;
     const disposition = req.query.disposition === "attachment" ? "attachment" : "inline";
-    const proxy = req.query.proxy === "1" || req.query.proxy === "true";
+    const proxy =
+      disposition === "attachment" || req.query.proxy === "1" || req.query.proxy === "true";
 
     const [postRow] = await db.select({ id: posts.id }).from(posts).where(eq(posts.id, postId)).limit(1);
     if (!postRow) {
@@ -334,11 +336,10 @@ router.get("/posts/:postId/attachments/:attachmentId/view", requireAuth, async (
     }
 
     rawName = rawName.split(/[/\\]/).pop() || "file";
-    const encodedName = encodeURIComponent(rawName).replace(/['()]/g, escape);
 
     if (proxy) {
       let buffer: Buffer;
-      if (isHeicAttachment(rawName, contentType)) {
+      if (disposition !== "attachment" && isHeicAttachment(rawName, contentType)) {
         try {
           buffer = await getHeicPreviewJpeg(attachmentId, fileKey);
           contentType = "image/jpeg";
@@ -351,10 +352,7 @@ router.get("/posts/:postId/attachments/:attachmentId/view", requireAuth, async (
         buffer = await downloadStorageBuffer(fileKey);
       }
       res.setHeader("Content-Type", contentType);
-      res.setHeader(
-        "Content-Disposition",
-        `${disposition}; filename="${rawName.replace(/[\r\n"]+/g, "_")}"; filename*=UTF-8''${encodedName}`,
-      );
+      res.setHeader("Content-Disposition", contentDispositionHeader(disposition, rawName));
       res.setHeader("Cache-Control", isHeicAttachment(rawName, contentType) ? "private, max-age=86400" : "private, max-age=3600");
       res.send(buffer);
       return;
