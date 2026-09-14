@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import {
   db,
   jobs,
@@ -15,6 +15,7 @@ import {
 import { requireAuth } from "../middlewares/requireAuth";
 import { createNotification, notifyJobManagers, previewText } from "../lib/notifications";
 import { logger } from "../lib/logger";
+import { ensureJobWriteSchema } from "../lib/schema-init";
 
 const router: IRouter = Router();
 
@@ -332,15 +333,21 @@ router.delete("/jobs/:jobId/notes/:noteId", requireAuth, async (req, res) => {
       return;
     }
 
-    await db.delete(jobNotes).where(eq(jobNotes.id, noteId));
+    await ensureJobWriteSchema();
     await db
-      .delete(jobAttachments)
+      .update(jobAttachments)
+      .set({
+        deletedAt: new Date(),
+        deletedById: actor.id,
+      })
       .where(
         and(
           eq(jobAttachments.reviewNoteId, noteId),
+          isNull(jobAttachments.deletedAt),
           sql`${jobAttachments.fileCategory} IS DISTINCT FROM 'review'`,
         ),
       );
+    await db.delete(jobNotes).where(eq(jobNotes.id, noteId));
 
     await notifyJobManagers({
       jobId,

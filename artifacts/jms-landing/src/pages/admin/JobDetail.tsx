@@ -5,7 +5,7 @@ import {
   ArrowLeft, MapPin, Calendar, User, Briefcase, CheckCircle2, Circle,
   Play, Pause, Square, Upload, FileText, Download, MessageCircle, Send,
   RefreshCw, AlertTriangle, Clock, Users, X, Edit2, Loader2,
-  Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock, ListChecks, Eye, Trash2, StickyNote
+  Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock, ListChecks, Eye, Trash2, StickyNote, RotateCcw
 } from "lucide-react";
 import FileExtensionIcon from "@/components/FileExtensionIcon";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -86,7 +86,8 @@ import { MISTAKE_CATEGORIES, formatMistakeCategory } from "@/lib/mistakeCategori
 import { useQueryClient } from "@tanstack/react-query";
 import FileDropzone from "@/components/FileDropzone";
 import { CHECKLIST_FILE_ACCEPT, filterJobFiles, filterChecklistInstructionFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE, CHECKLIST_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
-import { isCompletedAttachment, isJobAttachment, isNoteAttachment, isReworkAttachment, fileCategoryFromUploadTag, completedAttachmentStatusLabel, checklistItemHasCompletedUpload, jobLevelHasCompletedDeliverables, reworkInstructionBadges, type ReworkOrigin } from "@/lib/attachmentCategories";
+import { isCompletedAttachment, isJobAttachment, isNoteAttachment, isReworkAttachment, isReviewAttachment, fileCategoryFromUploadTag, completedAttachmentStatusLabel, checklistItemHasCompletedUpload, jobLevelHasCompletedDeliverables, reworkInstructionBadges, type ReworkOrigin } from "@/lib/attachmentCategories";
+import { hideJobFileConfirm } from "@/lib/hideJobFileConfirm";
 import { useDashboardSearch } from "@/lib/pageSearch";
 import { useAuth } from "@/lib/auth";
 import {
@@ -163,6 +164,7 @@ type AttachmentApi = {
   reviewNoteId?: string | null;
   uploadedById: string;
   createdAt: string;
+  deletedAt?: string | null;
   checklistItemId?: number | null;
   uploadedBy: { id: string; name: string; role: Role } | null;
 };
@@ -314,6 +316,23 @@ const TABS = [
 
 type TabId = typeof TABS[number]["id"];
 
+function deletedFileSectionLabel(a: AttachmentApi): string {
+  if (a.checklistItemId != null) {
+    if (isCompletedAttachment(a)) return "Checklist · Completed";
+    if (isReworkAttachment(a)) return "Checklist · Rework";
+    return "Checklist";
+  }
+  if (isNoteAttachment(a)) return "Notes";
+  if (isReviewAttachment(a)) return "Review";
+  if (isReworkAttachment(a)) return "Rework";
+  if (isCompletedAttachment(a)) return "Completed";
+  return "Job Files";
+}
+
+function parseAttachmentList(data: unknown): AttachmentApi[] {
+  return Array.isArray(data) ? (data as AttachmentApi[]) : [];
+}
+
 function normalizeJobDetailTab(value: string | null): TabId | null {
   if (!value) return null;
   if (value === "checklist") return "files";
@@ -431,6 +450,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   }, [job?.description, job]);
   const checklistTemplateKey = useMemo(() => JSON.stringify(meta.checklist), [meta.checklist]);
   const [attachments, setAttachments] = useState<AttachmentApi[]>([]);
+  const [deletedAttachments, setDeletedAttachments] = useState<AttachmentApi[]>([]);
   const [jobMembers, setJobMembers] = useState<
     Array<{
       id: string;
@@ -454,30 +474,38 @@ export default function JobDetail({ role = "user", id }: Props) {
   useEffect(() => {
     if (!job?.id) {
       setAttachments([]);
+      setDeletedAttachments([]);
       return;
     }
+    const canViewDeleted = role === "admin" || role === "super-admin";
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/jobs/${job.id}/attachments`, { credentials: "include" });
-        if (!res.ok) {
-          if (!cancelled) setAttachments([]);
-          return;
+        const [liveRes, deletedRes] = await Promise.all([
+          fetch(`/api/jobs/${job.id}/attachments`, { credentials: "include" }),
+          canViewDeleted
+            ? fetch(`/api/jobs/${job.id}/attachments?deleted=1`, { credentials: "include" })
+            : Promise.resolve(null),
+        ]);
+        if (!cancelled) {
+          setAttachments(liveRes.ok ? parseAttachmentList(await liveRes.json()) : []);
+          if (deletedRes?.ok) {
+            setDeletedAttachments(parseAttachmentList(await deletedRes.json()));
+          } else {
+            setDeletedAttachments([]);
+          }
         }
-        const data = (await res.json()) as unknown;
-        if (!Array.isArray(data)) {
-          if (!cancelled) setAttachments([]);
-          return;
-        }
-        if (!cancelled) setAttachments(data as AttachmentApi[]);
       } catch {
-        if (!cancelled) setAttachments([]);
+        if (!cancelled) {
+          setAttachments([]);
+          setDeletedAttachments([]);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [job?.id]);
+  }, [job?.id, role]);
 
   useEffect(() => {
     if (!job?.id) {
@@ -563,6 +591,24 @@ export default function JobDetail({ role = "user", id }: Props) {
   const defaultTab: TabId = tabFromQuery ?? (role === "supervisor" || role === "coordinator" ? "overview" : "files");
   const [tab, setTab] = useState<TabId>(defaultTab);
   const completedFilesSectionRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (tab !== "files" || !job?.id || (role !== "admin" && role !== "super-admin")) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const deletedRes = await fetch(`/api/jobs/${job.id}/attachments?deleted=1`, { credentials: "include" });
+        if (!cancelled && deletedRes.ok) {
+          setDeletedAttachments(parseAttachmentList(await deletedRes.json()));
+        }
+      } catch {
+        // Keep the last successful deleted list if a refresh fails.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, job?.id, role]);
 
   const scrollToCompletedFiles = () => {
     completedFilesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -713,6 +759,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     (job?.status !== "completed" || role === "admin" || role === "super-admin");
   const canDeleteAttachment = (attachment: { uploadedById?: string | null }) =>
     attachment.uploadedById === currentUser?.id || role === "admin" || role === "super-admin";
+  const canRestoreDeletedFiles = role === "admin" || role === "super-admin";
   const canEditRework = role === "supervisor" || role === "admin" || role === "super-admin";
   const canEditJuniors =
     !!job &&
@@ -1425,7 +1472,6 @@ export default function JobDetail({ role = "user", id }: Props) {
     () =>
       checklist.length > 0 &&
       checklist.every((c) => {
-        if (c.status === "completed") return true;
         const activeReworkId =
           c.status === "rework" ? resolveActiveReworkIdForUpload(c.id) : null;
         return checklistItemHasCompletedUpload(c.files, {
@@ -1705,6 +1751,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const outputPickerRef = useRef<HTMLInputElement>(null);
   const reuploadPickerRef = useRef<HTMLInputElement>(null);
   const reuploadGroupRef = useRef<string | null>(null);
+  const fileActionInFlightRef = useRef(new Set<string>());
   const formatSize = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   const detectType = (name: string): FileItem["type"] => {
     const ext = attachmentExtension(name);
@@ -1740,13 +1787,27 @@ export default function JobDetail({ role = "user", id }: Props) {
         setJobFilesZipLoading(false);
       });
   };
+  const refreshJobAttachments = async () => {
+    if (!job?.id) return;
+    const [liveRes, deletedRes] = await Promise.all([
+      fetch(`/api/jobs/${job.id}/attachments`, { credentials: "include" }),
+      canRestoreDeletedFiles
+        ? fetch(`/api/jobs/${job.id}/attachments?deleted=1`, { credentials: "include" })
+        : Promise.resolve(null),
+    ]);
+    if (liveRes.ok) setAttachments(parseAttachmentList(await liveRes.json()));
+    if (deletedRes?.ok) setDeletedAttachments(parseAttachmentList(await deletedRes.json()));
+    else if (!canRestoreDeletedFiles) setDeletedAttachments([]);
+  };
   const deleteAttachment = async (attachment: AttachmentApi) => {
     if (!job?.id) return;
     if (!canDeleteAttachment(attachment)) {
       window.alert("You can only delete files you uploaded.");
       return;
     }
-    if (!window.confirm(`Delete "${attachment.fileName}"? This cannot be undone.`)) return;
+    if (fileActionInFlightRef.current.has(attachment.id)) return;
+    if (!window.confirm(hideJobFileConfirm(attachment.fileName))) return;
+    fileActionInFlightRef.current.add(attachment.id);
     try {
       const res = await fetch(`/api/jobs/${job.id}/attachments/${attachment.id}`, {
         method: "DELETE",
@@ -1757,9 +1818,57 @@ export default function JobDetail({ role = "user", id }: Props) {
         throw new Error(data.message || "Failed to delete file");
       }
       setAttachments((prev) => prev.filter((a) => a.id !== attachment.id));
+      setSelectedJobFileIds((prev) => prev.filter((id) => id !== attachment.id));
+      setPreviewAttachment((prev) => (prev?.id === attachment.id ? null : prev));
+      if (canRestoreDeletedFiles) {
+        setDeletedAttachments((prev) =>
+          prev.some((a) => a.id === attachment.id)
+            ? prev
+            : [{ ...attachment, deletedAt: new Date().toISOString() }, ...prev],
+        );
+      }
+      await refreshJobAttachments();
       await refreshChecklistFiles();
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Failed to delete file");
+    } finally {
+      fileActionInFlightRef.current.delete(attachment.id);
+    }
+  };
+  const restoreAttachment = async (attachment: AttachmentApi) => {
+    if (!job?.id || !canRestoreDeletedFiles) return;
+    if (fileActionInFlightRef.current.has(attachment.id)) return;
+    fileActionInFlightRef.current.add(attachment.id);
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/attachments/${attachment.id}/restore`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(data.message || "Failed to restore file");
+      }
+      const restored = (await res.json().catch(() => null)) as AttachmentApi | null;
+      setDeletedAttachments((prev) => prev.filter((a) => a.id !== attachment.id));
+      setAttachments((prev) => {
+        if (prev.some((a) => a.id === attachment.id)) return prev;
+        return [
+          {
+            ...attachment,
+            ...(restored ?? {}),
+            deletedAt: null,
+            checklistItemId: restored?.checklistItemId ?? attachment.checklistItemId ?? null,
+            uploadedBy: restored?.uploadedBy ?? attachment.uploadedBy,
+          },
+          ...prev,
+        ];
+      });
+      await refreshJobAttachments();
+      await refreshChecklistFiles();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to restore file");
+    } finally {
+      fileActionInFlightRef.current.delete(attachment.id);
     }
   };
   const openAttachmentPreview = (attachment: AttachmentApi) => {
@@ -2752,6 +2861,7 @@ export default function JobDetail({ role = "user", id }: Props) {
           const filteredInput = inputFiles.filter((a) => a.fileName.toLowerCase().includes(q));
           const filteredRework = reworkFiles.filter((a) => a.fileName.toLowerCase().includes(q));
           const filteredOutputServer = outputFiles.filter((a) => a.fileName.toLowerCase().includes(q));
+          const filteredDeleted = deletedAttachments.filter((a) => a.fileName.toLowerCase().includes(q));
           const reworkMetaById = new Map(reworks.map((r) => [r.id, r]));
           const inputFileIds = filteredInput.map((a) => a.id);
           const allInputSelected =
@@ -3607,6 +3717,61 @@ export default function JobDetail({ role = "user", id }: Props) {
                   </div>
                 </div>
               </div>
+
+              {canRestoreDeletedFiles && (
+                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-100 bg-rose-50/40 flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-gray-900">Deleted Files</h3>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Hidden from the job. Restore to put a file back in its original section. Only admin and super-admin can see this.</p>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 uppercase">{filteredDeleted.length} Files</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-gray-50">
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider min-w-[280px]">File Name</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Section</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Uploaded By</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Removed</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {filteredDeleted.length === 0 ? (
+                          <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-gray-400">No deleted files</td></tr>
+                        ) : (
+                          filteredDeleted.map((a) => {
+                            const who = a.uploadedBy?.name ?? "—";
+                            const when = a.deletedAt ? new Date(a.deletedAt).toLocaleString() : "—";
+                            return (
+                              <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
+                                <td className="px-6 py-2.5 align-top">
+                                  <div className="flex items-start gap-2 min-w-0">
+                                    <FileExtensionIcon fileName={a.fileName} size="sm" className="mt-0.5" />
+                                    <span className="text-sm font-medium text-gray-900 break-words whitespace-normal leading-snug min-w-0">{a.fileName}</span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-2.5 text-xs text-gray-600">{deletedFileSectionLabel(a)}</td>
+                                <td className="px-6 py-2.5 text-xs text-gray-600">{who}</td>
+                                <td className="px-6 py-2.5 text-xs text-gray-600">{when}</td>
+                                <td className="px-6 py-2.5 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button onMouseEnter={() => warmAttachmentPreview(a)} onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
+                                    <button onClick={() => downloadAttachment(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
+                                    <button onClick={() => void restoreAttachment(a)} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold uppercase rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors" title="Restore"><RotateCcw size={12} /> Restore</button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               {checklistSection}
             </motion.div>

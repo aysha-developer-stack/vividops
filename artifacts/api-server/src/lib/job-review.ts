@@ -249,6 +249,7 @@ export async function jobHasCompletedDeliverables(jobId: string): Promise<boolea
       and(
         eq(jobAttachments.jobId, jobId),
         isNull(jobChecklistAttachments.attachmentId),
+        isNull(jobAttachments.deletedAt),
       ),
     );
 
@@ -309,6 +310,7 @@ export async function assertWorkerChecklistReady(
           eq(jobChecklistAttachments.jobId, job.id),
           eq(jobChecklistAttachments.userId, workerUserId),
           inArray(jobChecklistAttachments.itemId, requiredIds),
+          isNull(jobAttachments.deletedAt),
         ),
       );
 
@@ -327,6 +329,7 @@ export async function assertWorkerChecklistReady(
               and(
                 eq(jobChecklistAttachments.jobId, job.id),
                 inArray(jobChecklistAttachments.itemId, requiredIds),
+                isNull(jobAttachments.deletedAt),
               ),
             )
         : [];

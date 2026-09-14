@@ -33,6 +33,7 @@ import {
   type ChecklistTemplateItem,
 } from "@/lib/jobMeta";
 import { downloadNamedFile, jobAttachmentDownloadUrl } from "@/lib/downloadFile";
+import { hideJobFileConfirm } from "@/lib/hideJobFileConfirm";
 import FileDropzone from "@/components/FileDropzone";
 import DescriptionInput, { AddressUrlHint } from "@/components/DescriptionInput";
 import { CHECKLIST_FILE_ACCEPT, isChecklistDocFile, filterJobFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
@@ -723,7 +724,7 @@ export default function JobManagement(
       window.alert("You can only delete files you uploaded.");
       return;
     }
-    if (!window.confirm(`Delete "${attachment.fileName}"? This cannot be undone.`)) return;
+    if (!window.confirm(hideJobFileConfirm(attachment.fileName))) return;
     try {
       const res = await fetch(`/api/jobs/${editingId}/attachments/${attachment.id}`, {
         method: "DELETE",

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   db,
@@ -106,7 +106,7 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       .from(jobChecklistAttachments)
       .innerJoin(jobAttachments, eq(jobAttachments.id, jobChecklistAttachments.attachmentId))
       .leftJoin(users, eq(users.id, jobAttachments.uploadedById))
-      .where(eq(jobChecklistAttachments.jobId, jobId))
+      .where(and(eq(jobChecklistAttachments.jobId, jobId), isNull(jobAttachments.deletedAt)))
       .orderBy(desc(jobAttachments.createdAt));
 
     const filesByItem: Record<
@@ -269,6 +269,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
           and(
             eq(jobChecklistAttachments.jobId, jobId),
             eq(jobChecklistAttachments.itemId, itemId),
+            isNull(jobAttachments.deletedAt),
           ),
         );
 
@@ -549,7 +550,7 @@ router.post("/jobs/:jobId/checklist-attachments", requireAuth, async (req, res) 
     }
 
     const [att] = await db.select().from(jobAttachments).where(eq(jobAttachments.id, attachmentId)).limit(1);
-    if (!att || att.jobId !== jobId) return res.status(400).json({ error: "Attachment not found" });
+    if (!att || att.jobId !== jobId || att.deletedAt) return res.status(400).json({ error: "Attachment not found" });
 
     await db.insert(jobChecklistAttachments).values({
       id: randomUUID(),

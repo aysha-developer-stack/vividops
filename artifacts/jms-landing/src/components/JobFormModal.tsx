@@ -17,6 +17,7 @@ import {
 import { PRIORITY_UI_TO_API, type UiPriority } from "@/lib/jobMappers";
 import { serializeJobMeta, type ChecklistTemplateItem } from "@/lib/jobMeta";
 import { downloadNamedFile, jobAttachmentDownloadUrl } from "@/lib/downloadFile";
+import { hideJobFileConfirm } from "@/lib/hideJobFileConfirm";
 import FileExtensionIcon from "@/components/FileExtensionIcon";
 import FileDropzone from "@/components/FileDropzone";
 import DescriptionInput, { AddressUrlHint } from "@/components/DescriptionInput";
@@ -428,7 +429,7 @@ export default function JobFormModal({
       window.alert("You can only delete files you uploaded.");
       return;
     }
-    if (!window.confirm(`Delete "${attachment.fileName}"? This cannot be undone.`)) return;
+    if (!window.confirm(hideJobFileConfirm(attachment.fileName))) return;
     try {
       const res = await fetch(`/api/jobs/${jobId}/attachments/${attachment.id}`, {
         method: "DELETE",

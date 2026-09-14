@@ -67,7 +67,7 @@ export async function jobHasReworkCycleDeliverable(
       eq(jobChecklistAttachments.attachmentId, jobAttachments.id),
     )
     .where(
-      and(eq(jobAttachments.jobId, jobId), isNull(jobChecklistAttachments.id)),
+      and(eq(jobAttachments.jobId, jobId), isNull(jobChecklistAttachments.id), isNull(jobAttachments.deletedAt)),
     );
 
   return rows.some(
@@ -163,6 +163,7 @@ export async function validateReworkUploadsBeforeJobSubmit(
         and(
           eq(jobChecklistAttachments.jobId, jobId),
           eq(jobChecklistAttachments.itemId, itemId),
+          isNull(jobAttachments.deletedAt),
         ),
       );
 

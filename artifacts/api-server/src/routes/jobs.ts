@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, or, desc, inArray, sql as dsql, gt } from "drizzle-orm";
+import { and, eq, or, desc, inArray, sql as dsql, gt, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, jobs, users, jobMembers, jobAttachments, jobChecklistAttachments, jobChecklistState, jobReworks, type JobRow, type UserRow, sql } from "@workspace/db";
 import {
@@ -186,7 +186,7 @@ async function toPublicWithAssignees(full: JobWithRefs) {
           })
           .from(jobChecklistAttachments)
           .innerJoin(jobAttachments, eq(jobAttachments.id, jobChecklistAttachments.attachmentId))
-          .where(eq(jobChecklistAttachments.jobId, full.job.id))
+          .where(and(eq(jobChecklistAttachments.jobId, full.job.id), isNull(jobAttachments.deletedAt)))
           .orderBy(jobChecklistAttachments.itemId);
 
         if (linked.length > 0) {

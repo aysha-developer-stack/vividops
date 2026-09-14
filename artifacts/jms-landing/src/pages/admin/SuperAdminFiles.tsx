@@ -11,6 +11,7 @@ import type { Role } from "@/lib/roles";
 import { useAuth } from "@/lib/auth";
 import { jobFieldForTitle, sortJobFields } from "@/lib/jobForm";
 import { downloadNamedFile, jobAttachmentDownloadUrl, jobAttachmentPreviewUrl } from "@/lib/downloadFile";
+import { hideJobFileConfirm } from "@/lib/hideJobFileConfirm";
 import AttachmentPreviewDialog, { canOpenAttachmentPreview } from "@/components/AttachmentPreviewDialog";
 import { prefetchImagePreview } from "@/lib/attachmentPreview";
 
@@ -229,7 +230,7 @@ export default function SuperAdminFiles({
   const fieldPagination = usePagination(fieldGroups, 20);
 
   const deleteFile = async (f: FileRow) => {
-    const ok = window.confirm(`Delete ${f.name}? This cannot be undone.`);
+    const ok = window.confirm(hideJobFileConfirm(f.name));
     if (!ok) return;
     try {
       const res = await fetch(`/api/jobs/${f.jobId}/attachments/${f.id}`, {

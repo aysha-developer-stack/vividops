@@ -13,7 +13,7 @@ import {
 } from "../lib/job-attachment-upload";
 import { validateReworkAttachmentUpload } from "../lib/rework-attachment-upload";
 import { resolveCompletedUploadReworkId } from "../lib/completed-attachment-upload";
-import { db, jobs, users, jobAttachments, jobChecklistAttachments, jobMembers, type JobRow, type UserRow, sql } from "@workspace/db";
+import { db, jobs, users, jobAttachments, jobChecklistAttachments, jobMembers, jobNotes, type JobRow, type UserRow, sql } from "@workspace/db";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth";
 import { io } from "../lib/socket";
@@ -21,6 +21,11 @@ import { addToQueue } from "../lib/queue";
 import { logger } from "../lib/logger";
 import { createNotification, notifyJobManagers, notifyAdminsOnly } from "../lib/notifications";
 import { contentDispositionHeader } from "../lib/content-disposition";
+import {
+  attachmentIsActive,
+  attachmentIsDeleted,
+} from "../lib/attachment-soft-delete";
+import { canRestoreDeletedAttachments } from "../lib/attachment-permissions";
 
 const router: IRouter = Router();
 
@@ -39,6 +44,27 @@ function proxyContentType(rawName: string, fileType: string | null | undefined):
   return "application/octet-stream";
 }
 
+async function unlinkMissingNoteParent(row: typeof jobAttachments.$inferSelect) {
+  if (row.fileCategory === "review" || row.fileCategory === "rework") return row;
+  const noteId = row.reviewNoteId;
+  const isNoteFile = row.fileCategory === "note" || Boolean(noteId);
+  if (!isNoteFile) return row;
+  if (noteId) {
+    const [note] = await db.select({ id: jobNotes.id }).from(jobNotes).where(eq(jobNotes.id, noteId)).limit(1);
+    if (note) return row;
+  }
+  const nextCategory = row.fileCategory === "note" ? "job" : row.fileCategory;
+  const [patched] = await db
+    .update(jobAttachments)
+    .set({
+      reviewNoteId: dsql`NULL`,
+      fileCategory: nextCategory,
+    })
+    .where(eq(jobAttachments.id, row.id))
+    .returning();
+  return patched ?? { ...row, reviewNoteId: null, fileCategory: nextCategory };
+}
+
 let jobMembersSchemaEnsured = false;
 const ensureJobMembersSchema = async () => {};
 let attachmentsSchemaEnsured = false;
@@ -55,6 +81,18 @@ const ensureAttachmentsSchema = async () => {
   await db.execute(sql`
     ALTER TABLE job_attachments
     ADD COLUMN IF NOT EXISTS rework_id uuid
+  `);
+  await db.execute(sql`
+    ALTER TABLE job_attachments
+    ADD COLUMN IF NOT EXISTS deleted_at timestamptz
+  `);
+  await db.execute(sql`
+    ALTER TABLE job_attachments
+    ADD COLUMN IF NOT EXISTS deleted_by_id uuid
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS job_attachments_deleted_idx
+    ON job_attachments (job_id, deleted_at)
   `);
   attachmentsSchemaEnsured = true;
 };
@@ -338,7 +376,7 @@ router.post("/jobs/:jobId/attachments/:attachmentId/link-checklist", requireAuth
       .from(jobAttachments)
       .leftJoin(users, eq(users.id, jobAttachments.uploadedById))
       .leftJoin(jobChecklistAttachments, eq(jobChecklistAttachments.attachmentId, jobAttachments.id))
-      .where(and(eq(jobAttachments.id, attachmentId), eq(jobAttachments.jobId, jobId)))
+      .where(and(eq(jobAttachments.id, attachmentId), eq(jobAttachments.jobId, jobId), attachmentIsActive))
       .limit(1);
     if (!attachment) {
       res.status(404).json({ message: "Attachment not found" });
@@ -416,6 +454,16 @@ router.get("/jobs/:jobId/attachments", requireAuth, async (req, res) => {
       return;
     }
 
+    const deletedQuery = req.query.deleted;
+    const wantDeleted =
+      deletedQuery === "1" ||
+      deletedQuery === "true" ||
+      (Array.isArray(deletedQuery) && (deletedQuery[0] === "1" || deletedQuery[0] === "true"));
+    if (wantDeleted && !canRestoreDeletedAttachments(actor)) {
+      res.status(403).json({ message: "Only admin or super-admin can view deleted files" });
+      return;
+    }
+
     const rows = await db
       .select({
         attachment: jobAttachments,
@@ -425,11 +473,23 @@ router.get("/jobs/:jobId/attachments", requireAuth, async (req, res) => {
       .from(jobAttachments)
       .leftJoin(users, eq(users.id, jobAttachments.uploadedById))
       .leftJoin(jobChecklistAttachments, eq(jobChecklistAttachments.attachmentId, jobAttachments.id))
-      .where(eq(jobAttachments.jobId, jobId))
-      .orderBy(desc(jobAttachments.createdAt));
+      .where(
+        and(
+          eq(jobAttachments.jobId, jobId),
+          wantDeleted ? attachmentIsDeleted : attachmentIsActive,
+        ),
+      )
+      .orderBy(desc(wantDeleted ? jobAttachments.deletedAt : jobAttachments.createdAt));
+
+    const seen = new Set<string>();
+    const uniqueRows = rows.filter((r) => {
+      if (seen.has(r.attachment.id)) return false;
+      seen.add(r.attachment.id);
+      return true;
+    });
 
     res.json(
-      rows.map((r) => ({
+      uniqueRows.map((r) => ({
         ...r.attachment,
         uploadedBy: r.uploadedBy?.id ? r.uploadedBy : null,
         checklistItemId: r.checklistItemId ?? null,
@@ -476,7 +536,7 @@ router.get("/jobs/:jobId/attachments/download-zip", requireAuth, async (req, res
       .from(jobAttachments)
       .leftJoin(users, eq(users.id, jobAttachments.uploadedById))
       .leftJoin(jobChecklistAttachments, eq(jobChecklistAttachments.attachmentId, jobAttachments.id))
-      .where(eq(jobAttachments.jobId, jobId))
+      .where(and(eq(jobAttachments.jobId, jobId), attachmentIsActive))
       .orderBy(desc(jobAttachments.createdAt));
 
     const seenAttachmentIds = new Set<string>();
@@ -607,7 +667,10 @@ router.get("/jobs/:jobId/attachments/:attachmentId/view", requireAuth, async (re
       res.status(404).json({ message: "Attachment not found" });
       return;
     }
-
+    if (attachment.deletedAt && !canRestoreDeletedAttachments(actor)) {
+      res.status(404).json({ message: "Attachment not found" });
+      return;
+    }
     if (!attachment.fileKey) {
       res.status(404).json({ message: "File not found in storage" });
       return;
@@ -984,17 +1047,18 @@ router.delete("/jobs/:jobId/attachments/:attachmentId", requireAuth, async (req,
       res.status(403).json({ message: "You can only delete files you uploaded" });
       return;
     }
-
-    const bucketName = process.env.SUPABASE_STORAGE_BUCKET || "vivid-ops-files";
-    if (attachment.fileKey) {
-      try {
-        await supabase.storage.from(bucketName).remove([attachment.fileKey]);
-      } catch (err) {
-        logger.warn({ err, attachmentId }, "Failed to delete attachment from storage");
-      }
+    if (attachment.deletedAt) {
+      res.json({ ok: true });
+      return;
     }
 
-    await db.delete(jobAttachments).where(eq(jobAttachments.id, attachmentId));
+    await db
+      .update(jobAttachments)
+      .set({
+        deletedAt: new Date(),
+        deletedById: actor.id,
+      })
+      .where(and(eq(jobAttachments.id, attachmentId), attachmentIsActive));
 
     await notifyJobManagers({
       jobId,
@@ -1013,6 +1077,98 @@ router.delete("/jobs/:jobId/attachments/:attachmentId", requireAuth, async (req,
     const message =
       err instanceof Error ? err.message : typeof err === "string" ? err : "Internal server error";
     logger.error({ err, message }, "Failed to delete attachment");
+    res.status(500).json({ message });
+    return;
+  }
+});
+
+router.post("/jobs/:jobId/attachments/:attachmentId/restore", requireAuth, async (req, res) => {
+  try {
+    await ensureAttachmentsSchema();
+    const jobId = Array.isArray(req.params.jobId) ? req.params.jobId[0] : req.params.jobId;
+    const attachmentId = Array.isArray(req.params.attachmentId)
+      ? req.params.attachmentId[0]
+      : req.params.attachmentId;
+    const actor = req.session!.user;
+
+    if (!canRestoreDeletedAttachments(actor)) {
+      res.status(403).json({ message: "Only admin or super-admin can restore deleted files" });
+      return;
+    }
+
+    const [jobRow] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+    if (!jobRow) {
+      res.status(404).json({ message: "Job not found" });
+      return;
+    }
+    if (!(await canViewJob(actor, jobRow))) {
+      res.status(403).json({ message: "Forbidden" });
+      return;
+    }
+
+    const [attachment] = await db
+      .select()
+      .from(jobAttachments)
+      .where(and(eq(jobAttachments.id, attachmentId), eq(jobAttachments.jobId, jobId)))
+      .limit(1);
+    if (!attachment) {
+      res.status(404).json({ message: "Deleted file not found" });
+      return;
+    }
+
+    let restored = attachment;
+    if (attachment.deletedAt) {
+      const [updated] = await db
+        .update(jobAttachments)
+        .set({
+          deletedAt: dsql`NULL`,
+          deletedById: dsql`NULL`,
+        })
+        .where(and(eq(jobAttachments.id, attachmentId), attachmentIsDeleted))
+        .returning();
+      if (updated?.deletedAt) {
+        res.status(500).json({ message: "Failed to restore file" });
+        return;
+      }
+      if (!updated) {
+        const [again] = await db
+          .select()
+          .from(jobAttachments)
+          .where(and(eq(jobAttachments.id, attachmentId), eq(jobAttachments.jobId, jobId), attachmentIsActive))
+          .limit(1);
+        if (!again) {
+          res.status(500).json({ message: "Failed to restore file" });
+          return;
+        }
+        restored = again;
+      } else {
+        restored = updated;
+      }
+    }
+
+    restored = await unlinkMissingNoteParent(restored);
+
+    const [uploader] = await db
+      .select({ id: users.id, name: users.name, role: users.role })
+      .from(users)
+      .where(eq(users.id, attachment.uploadedById))
+      .limit(1);
+
+    io.to(`job:${jobId}`).emit("attachment:added", {
+      jobId,
+      attachment: restored,
+      uploadedBy: uploader?.name ?? actor.name,
+    });
+
+    res.json({
+      ...restored,
+      uploadedBy: uploader?.id ? uploader : null,
+    });
+    return;
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : typeof err === "string" ? err : "Internal server error";
+    logger.error({ err, message }, "Failed to restore attachment");
     res.status(500).json({ message });
     return;
   }

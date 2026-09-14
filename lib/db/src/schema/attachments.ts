@@ -28,11 +28,13 @@ export const jobAttachments = pgTable(
     uploadedById: uuid("uploaded_by_id")
       .notNull()
       .references(() => users.id),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedById: uuid("deleted_by_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
-  (t) => [index("job_attachments_job_idx").on(t.jobId)]
+  (t) => [index("job_attachments_job_idx").on(t.jobId), index("job_attachments_deleted_idx").on(t.jobId, t.deletedAt)]
 );
 
 export type JobAttachmentRow = typeof jobAttachments.$inferSelect;

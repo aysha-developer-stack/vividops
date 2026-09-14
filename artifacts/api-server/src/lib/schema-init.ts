@@ -250,6 +250,19 @@ export async function ensureJobWriteSchema() {
     await db.execute(sql`UPDATE notifications SET delivery_status = 'sent' WHERE delivery_status IS NULL`);
     await db.execute(sql`UPDATE notifications SET escalation_status = 'none' WHERE escalation_status IS NULL`);
 
+    await db.execute(sql`
+      ALTER TABLE job_attachments
+      ADD COLUMN IF NOT EXISTS deleted_at timestamptz
+    `);
+    await db.execute(sql`
+      ALTER TABLE job_attachments
+      ADD COLUMN IF NOT EXISTS deleted_by_id uuid REFERENCES users(id) ON DELETE SET NULL
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS job_attachments_deleted_idx
+      ON job_attachments (job_id, deleted_at)
+    `);
+
     jobWriteSchemaEnsured = true;
     logger.info("Job write schema ensured.");
   } catch (err) {
@@ -598,6 +611,10 @@ export async function ensureAllSchemas() {
         file_url text NOT NULL,
         created_at timestamptz NOT NULL DEFAULT now()
       );
+
+      ALTER TABLE job_attachments ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+      ALTER TABLE job_attachments ADD COLUMN IF NOT EXISTS deleted_by_id uuid REFERENCES users(id) ON DELETE SET NULL;
+      CREATE INDEX IF NOT EXISTS job_attachments_deleted_idx ON job_attachments (job_id, deleted_at);
       
       -- API Metrics
       CREATE TABLE IF NOT EXISTS api_request_daily (
