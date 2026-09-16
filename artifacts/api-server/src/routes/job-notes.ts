@@ -63,6 +63,19 @@ function canModifyNote(actor: UserRow, noteUserId: string): boolean {
   return noteUserId === actor.id;
 }
 
+const NOTE_EDIT_WINDOW_MS = 5 * 60 * 1000;
+
+function noteCreatedAtMs(createdAt: Date | string | null | undefined): number {
+  const t = createdAt instanceof Date ? createdAt.getTime() : new Date(createdAt ?? "").getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
+function canEditNoteContent(actor: UserRow, note: { userId: string; createdAt: Date | string }): boolean {
+  if (!canModifyNote(actor, note.userId)) return false;
+  if (isAdmin(actor)) return true;
+  return Date.now() - noteCreatedAtMs(note.createdAt) <= NOTE_EDIT_WINDOW_MS;
+}
+
 function canSetInternalNote(actor: UserRow): boolean {
   return isAdmin(actor) || actor.role === "supervisor" || actor.role === "coordinator";
 }
@@ -242,6 +255,15 @@ router.patch("/jobs/:jobId/notes/:noteId", requireAuth, async (req, res) => {
       return;
     }
 
+    const pinOnly =
+      typeof req.body?.pinned === "boolean" &&
+      req.body?.text === undefined &&
+      req.body?.noteType === undefined;
+    if (!pinOnly && !canEditNoteContent(actor, existing)) {
+      res.status(403).json({ message: "Notes can only be edited for 5 minutes after posting" });
+      return;
+    }
+
     const updates: Partial<{ text: string; noteType: JobNoteType; pinned: boolean; updatedAt: Date }> = {
       updatedAt: new Date(),
     };
@@ -330,6 +352,10 @@ router.delete("/jobs/:jobId/notes/:noteId", requireAuth, async (req, res) => {
     }
     if (!canModifyNote(actor, existing.userId)) {
       res.status(403).json({ message: "You can only delete your own notes" });
+      return;
+    }
+    if (!canEditNoteContent(actor, existing)) {
+      res.status(403).json({ message: "Notes can only be deleted for 5 minutes after posting" });
       return;
     }
 

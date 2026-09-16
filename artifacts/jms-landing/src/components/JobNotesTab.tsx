@@ -4,6 +4,7 @@ import { Pin, PinOff, Pencil, Trash2, Send, StickyNote, Paperclip, X, Eye, Downl
 import type { Role } from "@/lib/roles";
 import { useAuth } from "@/lib/auth";
 import { JOB_FILE_ACCEPT } from "@/lib/collectDroppedFiles";
+import { hideJobFileConfirm } from "@/lib/hideJobFileConfirm";
 import { uploadJobAttachmentsBatch } from "@/lib/uploadJobAttachmentsBatch";
 import {
   downloadNamedFile,
@@ -37,6 +38,23 @@ type NoteAttachment = {
 };
 
 const ATTACHMENT_PLACEHOLDER = "(Files attached)";
+const NOTE_EDIT_WINDOW_MS = 5 * 60 * 1000;
+
+function noteCreatedAtMs(createdAt: string): number {
+  const t = new Date(createdAt).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
+function remainingNoteEditMs(createdAt: string, nowMs: number): number {
+  return NOTE_EDIT_WINDOW_MS - (nowMs - noteCreatedAtMs(createdAt));
+}
+
+function formatNoteEditRemain(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
 
 const NOTE_TYPE_OPTIONS: Array<{ value: string; label: string; hint?: string }> = [
   { value: "general", label: "General" },
@@ -112,9 +130,14 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
   const [editDraft, setEditDraft] = useState("");
   const [editType, setEditType] = useState("general");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [editPendingFiles, setEditPendingFiles] = useState<File[]>([]);
+  const [editRemoveIds, setEditRemoveIds] = useState<string[]>([]);
+  const [editFileError, setEditFileError] = useState<string | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<NoteAttachment | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const editFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const attachmentsByNoteId = useMemo(() => {
     const map = new Map<string, NoteAttachment[]>();
@@ -130,8 +153,9 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
   const loadNotes = useCallback(
     async (options?: { keepExistingOnError?: boolean }): Promise<boolean> => {
       if (!jobId) return false;
-      setLoading(true);
-      if (!options?.keepExistingOnError) {
+      const showSpinner = !options?.keepExistingOnError;
+      if (showSpinner) {
+        setLoading(true);
         setLoadError(null);
       }
       try {
@@ -184,7 +208,7 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
         setNoteAttachments([]);
         return false;
       } finally {
-        setLoading(false);
+        if (showSpinner) setLoading(false);
       }
     },
     [jobId],
@@ -194,7 +218,14 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
     void loadNotes();
   }, [loadNotes, refreshKey]);
 
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
   const canModify = (note: JobNoteApi) => isAdmin || note.userId === effectiveUserId;
+  const canEditNoteContent = (note: JobNoteApi) =>
+    canModify(note) && (isAdmin || remainingNoteEditMs(note.createdAt, nowMs) > 0);
   const jobNotesOnly = notes.filter((n) => n.noteType !== "completion");
 
   const addPendingFiles = (files: FileList | File[]) => {
@@ -291,23 +322,53 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
   };
 
   const startEdit = (note: JobNoteApi) => {
+    if (!canEditNoteContent(note)) return;
     setEditingId(note.id);
     setEditDraft(isNotePlaceholderText(note.text) ? "" : note.text);
     setEditType(note.noteType);
+    setEditPendingFiles([]);
+    setEditRemoveIds([]);
+    setEditFileError(null);
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditDraft("");
     setEditType("general");
+    setEditPendingFiles([]);
+    setEditRemoveIds([]);
+    setEditFileError(null);
+  };
+
+  const queueRemoveEditFile = (att: NoteAttachment) => {
+    if (!window.confirm(hideJobFileConfirm(att.fileName))) return;
+    setEditRemoveIds((prev) => (prev.includes(att.id) ? prev : [...prev, att.id]));
+    setEditFileError(null);
+  };
+
+  const addEditPendingFiles = (files: FileList | File[]) => {
+    const next = Array.from(files);
+    if (next.length === 0) return;
+    setEditPendingFiles((prev) => [...prev, ...next]);
+    setEditFileError(null);
   };
 
   const saveEdit = async (noteId: string) => {
+    const note = notes.find((n) => n.id === noteId);
+    if (note && !canEditNoteContent(note)) {
+      setEditFileError("Notes can only be edited for 5 minutes after posting.");
+      return;
+    }
     const text = editDraft.trim();
-    const attachments = attachmentsByNoteId.get(noteId) ?? [];
-    if (!text && attachments.length === 0) return;
+    const attachments = (attachmentsByNoteId.get(noteId) ?? []).filter((a) => !editRemoveIds.includes(a.id));
+    const filesToAdd = editPendingFiles;
+    if (!text && attachments.length === 0 && filesToAdd.length === 0) {
+      setEditFileError("Add note text or keep at least one file.");
+      return;
+    }
     if (!jobId) return;
     setSavingEdit(true);
+    setEditFileError(null);
     try {
       const res = await fetch(`/api/jobs/${jobId}/notes/${noteId}`, {
         method: "PATCH",
@@ -324,16 +385,53 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
       }
       const updated = (await res.json()) as JobNoteApi;
       setNotes((prev) => prev.map((n) => (n.id === noteId ? updated : n)));
+
+      for (const attachmentId of editRemoveIds) {
+        const delRes = await fetch(`/api/jobs/${jobId}/attachments/${attachmentId}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (!delRes.ok) {
+          const data = (await delRes.json().catch(() => ({}))) as { message?: string };
+          throw new Error(data.message || "Failed to remove a file");
+        }
+      }
+
+      if (filesToAdd.length > 0) {
+        await uploadJobAttachmentsBatch(
+          jobId,
+          filesToAdd.map((file) => ({
+            file,
+            fileCategory: "note",
+            reviewNoteId: noteId,
+          })),
+          { suppressNotifications: true },
+        );
+      }
+
+      await loadNotes({ keepExistingOnError: true });
       cancelEdit();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Failed to update note");
+      await loadNotes({ keepExistingOnError: true });
+      setEditPendingFiles([]);
+      setEditFileError(err instanceof Error ? err.message : "Failed to update note");
     } finally {
       setSavingEdit(false);
     }
   };
 
   const deleteNote = async (note: JobNoteApi) => {
-    if (!window.confirm("Delete this note? This cannot be undone.")) return;
+    if (!canEditNoteContent(note)) {
+      window.alert("Notes can only be deleted for 5 minutes after posting.");
+      return;
+    }
+    if (
+      !window.confirm(
+        "Delete this note?\n\nThe note is removed. Attached files are hidden, and an admin can restore them from Deleted files.",
+      )
+    ) {
+      return;
+    }
     try {
       const res = await fetch(`/api/jobs/${jobId}/notes/${note.id}`, {
         method: "DELETE",
@@ -343,6 +441,7 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
         const data = (await res.json().catch(() => ({}))) as { message?: string };
         throw new Error(data.message || "Failed to delete note");
       }
+      if (editingId === note.id) cancelEdit();
       setNotes((prev) => prev.filter((n) => n.id !== note.id));
       setNoteAttachments((prev) => prev.filter((a) => a.reviewNoteId !== note.id));
     } catch (err) {
@@ -482,6 +581,8 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
     const isEditing = editingId === note.id;
     const attachments = attachmentsByNoteId.get(note.id) ?? [];
     const showText = !isNotePlaceholderText(note.text) || attachments.length === 0;
+    const editOpen = canEditNoteContent(note);
+    const remainMs = remainingNoteEditMs(note.createdAt, nowMs);
 
     return (
       <div
@@ -515,6 +616,7 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
                 {canSetInternal && (
                   <select
                     value={editType}
+                    disabled={!editOpen || savingEdit}
                     onChange={(e) => setEditType(e.target.value)}
                     className="w-full max-w-xs bg-white !text-gray-900 border-2 border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-primary"
                   >
@@ -525,25 +627,174 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
                 )}
                 <textarea
                   value={editDraft}
+                  disabled={!editOpen || savingEdit}
                   onChange={(e) => setEditDraft(e.target.value)}
                   rows={4}
                   placeholder="Edit note text…"
                   className="w-full bg-white border-2 border-gray-200 rounded-xl p-3 text-sm !text-gray-900 focus:outline-none focus:border-primary resize-none"
                 />
-                {attachments.length > 0 && (
-                  <p className="text-xs text-gray-500">Attachments stay linked to this note.</p>
+                {(() => {
+                  const visibleAttachments = attachments.filter((a) => !editRemoveIds.includes(a.id));
+                  return (
+                    <div className="space-y-2">
+                      {visibleAttachments.length > 0 || editPendingFiles.length > 0 ? (
+                        <p className="text-xs font-semibold text-gray-600">Files on this note</p>
+                      ) : (
+                        <p className="text-xs text-gray-500">No files on this note. Attach files below if needed.</p>
+                      )}
+                      {visibleAttachments.length > 0 && (
+                        <div className="flex flex-wrap gap-3">
+                          {visibleAttachments.map((att) => {
+                            const isImage = isPreviewableImageAttachment(att.fileName, att.fileType);
+                            const canPreview = canOpenAttachmentPreview(att.fileName, att.fileType);
+                            return (
+                              <div
+                                key={att.id}
+                                className="relative flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 max-w-[280px] pr-8"
+                              >
+                                {isImage ? (
+                                  <PreviewableImage
+                                    src={jobAttachmentPreviewUrl(jobId, att.id)}
+                                    fileName={att.fileName}
+                                    fileType={att.fileType}
+                                    alt={att.fileName}
+                                    className="h-10 w-10 rounded object-cover shrink-0"
+                                    lazy
+                                    compact
+                                  />
+                                ) : (
+                                  <FileExtensionIcon fileName={att.fileName} size="lg" />
+                                )}
+                                <span className="text-xs font-medium text-gray-800 truncate flex-1 min-w-0" title={att.fileName}>
+                                  {att.fileName}
+                                </span>
+                                <div className="flex shrink-0 items-center gap-0.5">
+                                  {canPreview ? (
+                                    <button
+                                      type="button"
+                                      disabled={savingEdit}
+                                      onClick={() => setPreviewAttachment(att)}
+                                      className="p-1 text-gray-400 hover:text-primary rounded"
+                                      title="Preview"
+                                    >
+                                      <Eye size={13} />
+                                    </button>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    disabled={savingEdit}
+                                    onClick={() => downloadAttachment(att)}
+                                    className="p-1 text-gray-400 hover:text-primary rounded"
+                                    title="Download"
+                                  >
+                                    <Download size={13} />
+                                  </button>
+                                </div>
+                                <button
+                                  type="button"
+                                  disabled={savingEdit || !editOpen}
+                                  onClick={() => queueRemoveEditFile(att)}
+                                  className="absolute top-1 right-1 p-1 text-gray-400 hover:text-red-600 rounded"
+                                  title="Remove file"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {editPendingFiles.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {editPendingFiles.map((file, index) => {
+                            const isImage = isPreviewableImageAttachment(file.name, file.type);
+                            return (
+                              <div
+                                key={`${file.name}-${index}`}
+                                className="relative flex items-center gap-2 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-2 pr-8 max-w-[200px]"
+                              >
+                                {isImage ? (
+                                  <LocalPreviewImage file={file} alt={file.name} className="h-10 w-10 rounded object-cover shrink-0" />
+                                ) : (
+                                  <FileExtensionIcon fileName={file.name} size="lg" />
+                                )}
+                                <span className="text-xs text-gray-700 truncate">{file.name}</span>
+                                <button
+                                  type="button"
+                                  disabled={savingEdit}
+                                  onClick={() => setEditPendingFiles((prev) => prev.filter((_, i) => i !== index))}
+                                  className="absolute top-1 right-1 p-1 text-gray-400 hover:text-red-600 rounded"
+                                  title="Remove"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <input
+                        ref={editFileInputRef}
+                        type="file"
+                        multiple
+                        accept={JOB_FILE_ACCEPT}
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files) addEditPendingFiles(e.target.files);
+                          e.target.value = "";
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={savingEdit || !editOpen}
+                        onClick={() => editFileInputRef.current?.click()}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        <Paperclip size={13} />
+                        Add files
+                      </button>
+                    </div>
+                  );
+                })()}
+                {editFileError ? (
+                  <p className="text-xs text-red-600">{editFileError}</p>
+                ) : !isAdmin && remainMs <= 0 ? (
+                  <p className="text-xs text-amber-700">The 5-minute edit window has ended. Cancel, or ask an admin to change this note.</p>
+                ) : !isAdmin ? (
+                  <p className="text-[11px] text-gray-500">Edit time left: {formatNoteEditRemain(remainMs)}. Save to apply text and file changes.</p>
+                ) : (
+                  <p className="text-[11px] text-gray-400">Save to apply text, file add, and file remove. Cancel leaves the note as it was.</p>
                 )}
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    disabled={savingEdit || (!editDraft.trim() && attachments.length === 0)}
+                    disabled={
+                      savingEdit ||
+                      !editOpen ||
+                      (!editDraft.trim() &&
+                        attachments.filter((a) => !editRemoveIds.includes(a.id)).length === 0 &&
+                        editPendingFiles.length === 0)
+                    }
                     onClick={() => void saveEdit(note.id)}
                     className="px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold disabled:opacity-50"
                   >
                     {savingEdit ? "Saving…" : "Save"}
                   </button>
-                  <button type="button" onClick={cancelEdit} className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600">
+                  <button
+                    type="button"
+                    disabled={savingEdit}
+                    onClick={cancelEdit}
+                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600"
+                  >
                     Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingEdit || !editOpen}
+                    onClick={() => void deleteNote(note)}
+                    className="px-3 py-1.5 rounded-lg border border-red-200 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    Delete note
                   </button>
                 </div>
               </div>
@@ -560,9 +811,10 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
             <p className="text-[10px] text-gray-400 mt-2">
               {new Date(note.createdAt).toLocaleString()}
               {note.updatedAt !== note.createdAt ? " · edited" : ""}
+              {!isAdmin && editOpen && isOwn ? ` · editable ${formatNoteEditRemain(remainMs)}` : ""}
             </p>
           </div>
-          {!isEditing && canModify(note) && (
+          {!isEditing && (canPin || editOpen) && canModify(note) && (
             <div className="flex shrink-0 items-start gap-2">
               {canPin && (
                 <button
@@ -574,22 +826,26 @@ export default function JobNotesTab({ jobId, role, currentUserId, refreshKey = 0
                   {note.pinned ? <PinOff size={14} /> : <Pin size={14} />}
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => startEdit(note)}
-                className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg border border-gray-200 bg-white transition-colors"
-                title="Edit"
-              >
-                <Pencil size={14} />
-              </button>
-              <button
-                type="button"
-                onClick={() => void deleteNote(note)}
-                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg border border-gray-200 bg-white transition-colors"
-                title="Delete"
-              >
-                <Trash2 size={14} />
-              </button>
+              {editOpen && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => startEdit(note)}
+                    className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg border border-gray-200 bg-white transition-colors"
+                    title="Edit"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void deleteNote(note)}
+                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg border border-gray-200 bg-white transition-colors"
+                    title="Delete"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

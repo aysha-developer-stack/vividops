@@ -116,12 +116,48 @@ const ensureChecklistAttachmentsSchema = async () => {
   checklistAttachmentsSchemaEnsured = true;
 };
 
+const NOTE_EDIT_WINDOW_MS = 5 * 60 * 1000;
+
+function noteCreatedAtMs(createdAt: Date | string | null | undefined): number {
+  const t = createdAt instanceof Date ? createdAt.getTime() : new Date(createdAt ?? "").getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
+function isAdminOrSuperAdmin(actor: UserRow): boolean {
+  return actor.role === "admin" || actor.role === "super-admin";
+}
+
+async function noteFileChangeForbidden(
+  actor: UserRow,
+  noteId: string | null | undefined,
+): Promise<{ status: number; message: string } | null> {
+  if (!noteId || isAdminOrSuperAdmin(actor)) return null;
+  const [note] = await db
+    .select({ createdAt: jobNotes.createdAt })
+    .from(jobNotes)
+    .where(eq(jobNotes.id, noteId))
+    .limit(1);
+  if (!note) return null;
+  const createdMs = noteCreatedAtMs(note.createdAt);
+  if (createdMs > 0 && Date.now() - createdMs > NOTE_EDIT_WINDOW_MS) {
+    return { status: 403, message: "Note files can only be changed for 5 minutes after posting" };
+  }
+  return null;
+}
+
 async function prepareAttachmentUpload(
   actor: UserRow,
   jobRow: JobRow,
   body: Record<string, unknown>,
 ): Promise<{ parsed: ParsedAttachmentUpload; error: { status: number; message: string } | null }> {
   const parsed = parseAttachmentUploadBody(actor, jobRow, body);
+
+  if (parsed.fileCategory === "note" && parsed.reviewNoteId) {
+    const noteWindowError = await noteFileChangeForbidden(actor, parsed.reviewNoteId);
+    if (noteWindowError) {
+      return { parsed, error: noteWindowError };
+    }
+  }
 
   const reworkError = await validateReworkAttachmentUpload(actor, jobRow, parsed);
   if (reworkError) {
@@ -1042,10 +1078,21 @@ router.delete("/jobs/:jobId/attachments/:attachmentId", requireAuth, async (req,
       return;
     }
     const isUploader = attachment.uploadedById === actor.id;
-    const isAdminOrSuperAdmin = actor.role === "admin" || actor.role === "super-admin";
-    if (!isUploader && !isAdminOrSuperAdmin) {
+    if (!isUploader && !isAdminOrSuperAdmin(actor)) {
       res.status(403).json({ message: "You can only delete files you uploaded" });
       return;
+    }
+    const isNoteFile =
+      attachment.fileCategory === "note" ||
+      (Boolean(attachment.reviewNoteId) &&
+        attachment.fileCategory !== "review" &&
+        attachment.fileCategory !== "rework");
+    if (isNoteFile) {
+      const noteWindowError = await noteFileChangeForbidden(actor, attachment.reviewNoteId);
+      if (noteWindowError) {
+        res.status(noteWindowError.status).json({ message: noteWindowError.message });
+        return;
+      }
     }
     if (attachment.deletedAt) {
       res.json({ ok: true });
