@@ -69,7 +69,7 @@ export async function getCommunicationUnreadCounts(
 
   const visibleJobs = communicationJobsSubquery(actor);
   const rows = await db.execute(sql`
-    SELECT jm.job_id, COUNT(*)::int AS unread_count
+    SELECT jm.job_id, COUNT(DISTINCT jm.id)::int AS unread_count
     FROM job_messages jm
     INNER JOIN jobs j ON j.id = jm.job_id
     LEFT JOIN job_communication_read_state rs
@@ -83,7 +83,8 @@ export async function getCommunicationUnreadCounts(
   `);
 
   const result: Record<string, number> = {};
-  const rawRows = ((rows as unknown as { rows?: Array<{ job_id: string; unread_count: number }> }).rows ?? []);
+  const raw = rows as unknown as { rows?: Array<{ job_id: string; unread_count: number }> };
+  const rawRows = Array.isArray(raw.rows) ? raw.rows : Array.isArray(rows) ? (rows as Array<{ job_id: string; unread_count: number }>) : [];
   for (const row of rawRows) {
     if (row.unread_count > 0) result[row.job_id] = row.unread_count;
   }

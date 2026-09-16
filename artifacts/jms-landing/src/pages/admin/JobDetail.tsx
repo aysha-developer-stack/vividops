@@ -88,6 +88,7 @@ import FileDropzone from "@/components/FileDropzone";
 import { CHECKLIST_FILE_ACCEPT, filterJobFiles, filterChecklistInstructionFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE, CHECKLIST_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
 import { isCompletedAttachment, isJobAttachment, isNoteAttachment, isReworkAttachment, isReviewAttachment, fileCategoryFromUploadTag, completedAttachmentStatusLabel, checklistItemHasCompletedUpload, jobLevelHasCompletedDeliverables, reworkInstructionBadges, type ReworkOrigin } from "@/lib/attachmentCategories";
 import { hideJobFileConfirm } from "@/lib/hideJobFileConfirm";
+import { refreshSidebarBadges } from "@/lib/sidebarBadgesApi";
 import { useDashboardSearch } from "@/lib/pageSearch";
 import { useAuth } from "@/lib/auth";
 import {
@@ -1685,7 +1686,15 @@ export default function JobDetail({ role = "user", id }: Props) {
             time: formatMsgTime(m.createdAt),
             isMe: !!m.isMe,
           }));
-        if (!cancelled) setMessages(next);
+        if (!cancelled) {
+          setMessages(next);
+          void fetch(`/api/jobs/${job.id}/messages/read`, {
+            method: "POST",
+            credentials: "include",
+          })
+            .then(() => refreshSidebarBadges())
+            .catch(() => {});
+        }
       } catch {
       }
     };

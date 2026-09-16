@@ -62,7 +62,12 @@ export async function getOrInitSectionLastSeen(userId: string, section: SidebarS
     WHERE user_id = ${userId} AND section = ${section}
     LIMIT 1
   `);
-  const rows = (result as { rows?: Array<{ last_seen_at: Date | string }> }).rows ?? [];
+  const parsed = result as { rows?: Array<{ last_seen_at: Date | string }> };
+  const rows = Array.isArray(parsed.rows)
+    ? parsed.rows
+    : Array.isArray(result)
+      ? (result as Array<{ last_seen_at: Date | string }>)
+      : [];
   const raw = rows[0]?.last_seen_at;
   const date = raw instanceof Date ? raw : new Date(raw ?? Date.now());
   return Number.isFinite(date.getTime()) ? date : new Date();
