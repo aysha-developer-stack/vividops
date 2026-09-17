@@ -361,7 +361,7 @@ export default function SupervisorMonitoring({ role = "admin" as Role }: { role?
   }, [apiJobs, apiTimeLogs, apiUsers, currentUser, role]);
 
   const filtered = supervisors.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
-  const supervisorsP = usePagination(filtered, 6);
+  const supervisorsP = usePagination(filtered, 9);
 
   const totalAssigned = supervisors.reduce((acc, s) => acc + s.assignedJobs, 0);
   const totalChecked = supervisors.reduce((acc, s) => acc + s.checkedJobs, 0);
