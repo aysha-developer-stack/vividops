@@ -120,14 +120,26 @@ export function resolveResumeStatus(job: Pick<JobRow, "heldFromStatus" | "progre
   return (job.progress ?? 0) > 0 ? "in_progress" : "pending";
 }
 
+/** Set start_date the first time work begins. Never overwrites an existing value. */
+export async function stampJobStartDateIfEmpty(jobId: string): Promise<void> {
+  await db.execute(sql`
+    UPDATE jobs
+    SET start_date = now(),
+        updated_at = now()
+    WHERE id = ${jobId}
+      AND start_date IS NULL
+  `);
+}
+
 export function jobStatusPatchFields(opts: {
   nextStatus: ReviewableStatus;
   previousStatus?: string;
   currentProgress?: number;
   currentCompletedAt?: Date | null;
+  currentStartDate?: Date | null;
   checker?: { id: string; name: string; role: string } | null;
 }) {
-  const { nextStatus, previousStatus, currentProgress = 0, currentCompletedAt, checker } = opts;
+  const { nextStatus, previousStatus, currentProgress = 0, currentCompletedAt, currentStartDate, checker } = opts;
   const now = new Date();
   const patch: {
     status: ReviewableStatus;
@@ -140,10 +152,15 @@ export function jobStatusPatchFields(opts: {
     progress?: number;
     heldFromStatus?: string | null;
     holdReason?: string | null;
+    startDate?: Date;
   } = {
     status: nextStatus,
     updatedAt: now,
   };
+
+  if (!currentStartDate && nextStatus === "in_progress") {
+    patch.startDate = now;
+  }
 
   const applyChecker = () => {
     if (!checker) return;
@@ -883,6 +900,7 @@ export async function applyJobReview(opts: {
         previousStatus,
         currentProgress: job.progress,
         currentCompletedAt: job.completedAt,
+        currentStartDate: job.startDate,
         checker: shouldRecordChecker
           ? { id: actor.id, name: actor.name, role: actor.role }
           : null,

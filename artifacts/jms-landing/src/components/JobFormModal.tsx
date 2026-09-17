@@ -545,7 +545,6 @@ export default function JobFormModal({
       assigneeId: primaryAssigneeId || null,
       dueDate: form.due ? new Date(form.due).toISOString() : null,
       estimatedTime: form.estimatedTime.trim() || null,
-      startDate: form.startDate ? new Date(form.startDate).toISOString() : null,
       eta: form.eta ? new Date(form.eta).toISOString() : null,
       wind: form.wind || null,
       incomingDate: form.incomingDate ? new Date(form.incomingDate).toISOString() : null,
@@ -830,10 +829,11 @@ export default function JobFormModal({
                   <div className="min-w-0">
                     <label className="block text-xs font-semibold text-gray-700 mb-1.5">Start Date</label>
                     <input
-                      type="date"
-                      value={form.startDate}
-                      onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-                      className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+                      type={form.startDate ? "date" : "text"}
+                      value={form.startDate || (isEdit ? "Filled when the job is started" : "Filled when work starts")}
+                      readOnly
+                      className="w-full min-w-0 px-3 py-2.5 bg-gray-100 border-2 border-gray-200 rounded-xl text-sm !text-gray-500 cursor-not-allowed"
+                      title="Start date is set automatically when work begins"
                     />
                   </div>
                   <div className="min-w-0">

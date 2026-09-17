@@ -2051,7 +2051,7 @@ router.post("/jobs", creatorRole, async (req, res) => {
       createdById: actor.id,
       dueDate: body.dueDate ? new Date(body.dueDate) : null,
       estimatedTime: body.estimatedTime?.trim() ? body.estimatedTime.trim() : null,
-      startDate: body.startDate ? new Date(body.startDate) : null,
+      startDate: null,
       eta: body.eta ? new Date(body.eta) : null,
       wind: body.wind ?? null,
       incomingDate: body.incomingDate ? new Date(body.incomingDate) : null,
@@ -2176,6 +2176,7 @@ router.post("/jobs/:id/start-work", requireAuth, async (req, res) => {
       nextStatus,
       previousStatus,
       currentProgress: full.job.progress,
+      currentStartDate: full.job.startDate,
     }),
     updatedAt: new Date(),
   };
@@ -2342,6 +2343,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
         previousStatus,
         currentProgress: body.progress ?? full.job.progress,
         currentCompletedAt: full.job.completedAt,
+        currentStartDate: full.job.startDate,
       }),
     );
   }
@@ -2353,9 +2355,6 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   }
   if (body.estimatedTime !== undefined) {
     patch.estimatedTime = body.estimatedTime?.trim() ? body.estimatedTime.trim() : null;
-  }
-  if (body.startDate !== undefined) {
-    patch.startDate = body.startDate ? new Date(body.startDate) : null;
   }
   if (body.eta !== undefined) {
     patch.eta = body.eta ? new Date(body.eta) : null;

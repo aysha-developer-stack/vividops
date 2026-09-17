@@ -503,6 +503,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
           nextStatus,
           previousStatus,
           currentProgress: nextProgress,
+          currentStartDate: job.startDate,
         });
         await db
           .update(jobs)

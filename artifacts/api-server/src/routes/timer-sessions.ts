@@ -33,6 +33,7 @@ import { flushReviewCheckSegment } from "../lib/persist-review-check-session";
 import {
   jobStatusPatchFields,
   notifyStatusTransition,
+  stampJobStartDateIfEmpty,
   type ReviewableStatus,
 } from "../lib/job-review";
 
@@ -80,6 +81,7 @@ async function markJobInProgressIfPending(jobId: string, actor: UserRow): Promis
       nextStatus,
       previousStatus,
       currentProgress: job.progress,
+      currentStartDate: job.startDate,
     }),
     updatedAt: new Date(),
   };
@@ -214,6 +216,9 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
       });
     }
 
+    await markJobInProgressIfPending(jobId, actor);
+    await stampJobStartDateIfEmpty(jobId);
+
     const [reviewSession] = await db
       .select()
       .from(activeReviewCheckSessions)
@@ -293,8 +298,6 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
       }
       await stopSessionAndSaveLog(existing, actor);
     }
-
-    await markJobInProgressIfPending(jobId, actor);
 
     const now = new Date();
     const [session] = await db
