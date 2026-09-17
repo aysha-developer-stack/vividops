@@ -260,7 +260,7 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
   }, [apiJobs, apiTimeLogs, apiUsers, jobMemberships, activeSessions, liveTick, mistakeCounts]);
 
   const filtered = workers.filter((w) => w.name.toLowerCase().includes(search.toLowerCase()));
-  const workersP = usePagination(filtered, 6);
+  const workersP = usePagination(filtered, 9);
 
   const isLoading = usersLoading || jobsLoading || logsLoading;
   const anyData = apiUsers || apiJobs || apiTimeLogs;
