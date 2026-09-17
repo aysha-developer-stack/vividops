@@ -1,4 +1,10 @@
-import { inboundCliqHasAttachment } from "./cliq-message-attachments";
+import {
+  inboundCliqHasAttachment,
+  parseAttachmentFromCliqPayload,
+  parseCliqFileRefFromPayload,
+} from "./cliq-message-attachments";
+
+export const CLIQ_DEDUP_WINDOW_MS = 10 * 60 * 1000;
 
 type JobNameFields = {
   jobNumber?: string | null;
@@ -36,6 +42,63 @@ function pickString(...values: unknown[]): string {
     if (typeof v === "string" && v.trim()) return v.trim();
   }
   return "";
+}
+
+export function cliqExternalIdCandidates(id: string): string[] {
+  const trimmed = id.trim();
+  if (!trimmed) return [];
+  const aliases = [trimmed];
+  const match = /^(\d{10,})(?:_(\d+))?$/.exec(trimmed);
+  if (match?.[1]) {
+    aliases.push(match[1]);
+    aliases.push(`${match[1]}_1`);
+    if (match[2] && match[2] !== "1") aliases.push(`${match[1]}_${match[2]}`);
+  }
+  return [...new Set(aliases)];
+}
+
+export function cliqDedupeKey(text: string, payload?: unknown): string {
+  const file = parseCliqFileRefFromPayload(payload);
+  if (file?.fileId) return `file:${file.fileId}`;
+  const attachment = parseAttachmentFromCliqPayload(payload);
+  if (attachment?.fileName) return `file:${attachment.fileName.trim().toLowerCase()}`;
+  const shared = text.match(/^Shared attachment:\s*(.+)$/im);
+  if (shared?.[1]) {
+    const fileName = shared[1].split("\n")[0]?.trim().toLowerCase();
+    if (fileName) return `file:${fileName}`;
+  }
+  return `text:${text.trim().toLowerCase()}`;
+}
+
+export function cliqSenderDedupeKey(senderEmail?: string | null, senderName?: string | null, userId?: string | null): string {
+  const email = senderEmail?.trim().toLowerCase();
+  if (email) return `email:${email}`;
+  const name = senderName?.trim().toLowerCase();
+  if (name) return `name:${name}`;
+  const uid = userId?.trim();
+  if (uid) return `user:${uid}`;
+  return "unknown";
+}
+
+export function isWithinCliqDedupeWindow(a: Date | string | number, b: Date | string | number, windowMs = CLIQ_DEDUP_WINDOW_MS): boolean {
+  const left = a instanceof Date ? a.getTime() : new Date(a).getTime();
+  const right = b instanceof Date ? b.getTime() : new Date(b).getTime();
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+  return Math.abs(left - right) <= windowMs;
+}
+
+export function parseCliqCreatedAt(raw: unknown): Date | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const message = obj.message && typeof obj.message === "object" ? (obj.message as Record<string, unknown>) : null;
+  const timeMs =
+    parseEpochMs(obj.time) ??
+    parseEpochMs(obj.timestamp) ??
+    parseEpochMs(obj.created_time) ??
+    parseEpochMs(obj.createdAt) ??
+    parseEpochMs(message?.time) ??
+    parseEpochMs(message?.timestamp);
+  return timeMs != null ? new Date(timeMs) : null;
 }
 
 function parseEpochMs(value: unknown): number | null {

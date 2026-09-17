@@ -37,8 +37,8 @@ import {
   enrichStoredMessageText,
   inboundCliqHasAttachment,
 } from "../lib/cliq-message-attachments";
-import { ingestInboundCliqMessage } from "../lib/cliq-message-ingest";
-import { cliqSenderDisplayName } from "../lib/cliq-history-parse";
+import { collapseDuplicateCliqMessages, ingestInboundCliqMessage } from "../lib/cliq-message-ingest";
+import { cliqSenderDisplayName, parseCliqCreatedAt } from "../lib/cliq-history-parse";
 import { syncJobCliqHistory } from "../lib/cliq-history-sync";
 import {
   ensureAllSchemas,
@@ -1668,6 +1668,7 @@ type IncomingCliqMessage = {
   senderEmail: string;
   senderName: string;
   externalMessageId: string | null;
+  createdAt: Date | null;
   rawPayload: unknown;
 };
 
@@ -1763,6 +1764,7 @@ function parseIncomingCliqMessage(payload: unknown): IncomingCliqMessage | null 
     senderEmail,
     senderName: senderName || senderEmail || "Cliq user",
     externalMessageId: externalMessageId || null,
+    createdAt: parseCliqCreatedAt(payload) ?? parseCliqCreatedAt(messageObj),
     rawPayload: payload,
   };
 }
@@ -2886,6 +2888,7 @@ router.post("/zoho/cliq/messages/incoming", async (req, res) => {
       externalChannelId: message.channelId,
       externalChannelName: message.channelName,
       rawPayload: message.rawPayload,
+      createdAt: message.createdAt,
       notify: true,
       touchJob: true,
     });
@@ -2946,6 +2949,12 @@ router.get("/jobs/:id/messages", requireAuth, async (req, res) => {
       }
     } catch (err) {
       logger.warn({ err, jobId: id }, "Failed to pull Cliq channel history");
+    }
+
+    try {
+      await collapseDuplicateCliqMessages(id);
+    } catch (err) {
+      logger.warn({ err, jobId: id }, "Failed to collapse duplicate Cliq messages");
     }
 
     const rows = await db.execute(sql`

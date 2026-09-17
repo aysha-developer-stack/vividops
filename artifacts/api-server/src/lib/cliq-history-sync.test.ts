@@ -1,8 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  cliqDedupeKey,
+  cliqExternalIdCandidates,
   cliqSenderDisplayName,
+  isWithinCliqDedupeWindow,
   normalizeMirroredCliqText,
+  parseCliqCreatedAt,
   parseCliqHistoryMessage,
 } from "./cliq-history-parse";
 
@@ -51,6 +55,45 @@ describe("normalizeMirroredCliqText", () => {
   });
 });
 
+describe("cliq duplicate detection", () => {
+  it("treats timestamp and timestamp_index Cliq ids as the same message", () => {
+    const ids = cliqExternalIdCandidates("1599387839188_1");
+    assert.ok(ids.includes("1599387839188"));
+    assert.ok(ids.includes("1599387839188_1"));
+  });
+
+  it("uses the same dedupe key for webhook and history copies of a file", () => {
+    const webhook = cliqDedupeKey("Shared a file", {
+      fileId: "fid-9",
+      fileName: "IMG_5168.JPG",
+    });
+    const history = cliqDedupeKey("Please check", {
+      type: "file",
+      content: { file: { id: "fid-9", name: "IMG_5168.JPG" } },
+    });
+    assert.equal(webhook, history);
+    assert.equal(webhook, "file:fid-9");
+  });
+
+  it("treats messages a few seconds apart as the same Cliq post", () => {
+    assert.equal(
+      isWithinCliqDedupeWindow("2026-09-16T14:48:00.000Z", "2026-09-16T14:48:26.000Z"),
+      true,
+    );
+    assert.equal(
+      isWithinCliqDedupeWindow("2026-09-16T14:48:00.000Z", "2026-09-16T15:20:00.000Z"),
+      false,
+    );
+  });
+
+  it("reads created time from a webhook payload", () => {
+    const created = parseCliqCreatedAt({
+      text: "Okay let me confirm",
+      message: { id: "1599387839188_1", time: 1599387839188 },
+    });
+    assert.equal(created?.getTime(), 1599387839188);
+  });
+});
 describe("cliqSenderDisplayName", () => {
   it("uses the Cliq sender name when the row was stored as the sync user", () => {
     assert.equal(
