@@ -22,6 +22,15 @@ const router: IRouter = Router();
 const targetUserAlias = alias(users, "target_user");
 const creatorAlias = alias(users, "creator_user");
 
+const mistakeJobColumns = {
+  id: jobs.id,
+  serial: jobs.serial,
+  jobNumber: jobs.jobNumber,
+  title: jobs.title,
+} as const;
+
+type MistakeJobRef = Pick<JobRow, "id" | "serial" | "jobNumber" | "title">;
+
 /** Only manually logged mistakes — never rework-linked or auto-generated records. */
 const manualMistakeOnly = and(
   eq(errorReports.source, "manual"),
@@ -97,7 +106,7 @@ export type PublicMistake = {
 
 function toPublic(row: {
   report: ErrorReportRow;
-  job: Pick<JobRow, "id" | "serial" | "title"> | null;
+  job: MistakeJobRef | null;
   user: Pick<UserRow, "id" | "name" | "role"> | null;
   createdBy: Pick<UserRow, "id" | "name" | "role"> | null;
 }): PublicMistake {
@@ -362,12 +371,12 @@ router.get("/mistakes", requireAuth, async (req, res) => {
   const userIdFilter = typeof query.userId === "string" ? query.userId : null;
   const jobIdFilter = typeof query.jobId === "string" ? query.jobId : null;
   const categoryFilter = typeof query.category === "string" ? query.category : null;
-  const { from, to } = resolveDateRange(query, { defaultPeriod: "all" });
+  const { from, to } = resolveDateRange(query);
 
   const q = db
     .select({
       report: errorReports,
-      job: { id: jobs.id, serial: jobs.serial, title: jobs.title },
+      job: mistakeJobColumns,
       user: { id: targetUserAlias.id, name: targetUserAlias.name, role: targetUserAlias.role },
       createdBy: { id: creatorAlias.id, name: creatorAlias.name, role: creatorAlias.role },
     })
@@ -510,7 +519,7 @@ router.post("/mistakes", requireAuth, async (req, res) => {
       supervisorId: jobRow.supervisorId,
       actorId: actor.id,
       title: `Mistake logged: ${created.title}`,
-      description: `${actor.name} logged a mistake for ${userRow?.name ?? "a user"} on ${jobRow.title}: ${previewText(created.description)}`,
+      description: `${actor.name} logged a mistake for ${userRow?.name ?? "a user"} on ${jobDisplayNumber(jobRow)} · ${jobRow.title}: ${previewText(created.description)}`,
       type: "error",
     });
   }
@@ -518,7 +527,9 @@ router.post("/mistakes", requireAuth, async (req, res) => {
   res.status(201).json(
     toPublic({
       report: created,
-      job: jobRow ? { id: jobRow.id, serial: jobRow.serial, title: jobRow.title } : null,
+      job: jobRow
+        ? { id: jobRow.id, serial: jobRow.serial, jobNumber: jobRow.jobNumber, title: jobRow.title }
+        : null,
       user: userRow,
       createdBy: { id: actor.id, name: actor.name, role: actor.role },
     }),
@@ -573,7 +584,7 @@ router.patch("/mistakes/:id", requireAuth, async (req, res) => {
 
   const [job] = updated.jobId
     ? await db
-        .select({ id: jobs.id, serial: jobs.serial, title: jobs.title })
+        .select(mistakeJobColumns)
         .from(jobs)
         .where(eq(jobs.id, updated.jobId))
         .limit(1)

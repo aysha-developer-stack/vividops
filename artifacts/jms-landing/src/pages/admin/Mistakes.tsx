@@ -85,6 +85,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
   const [selected, setSelected] = useState<MistakeRecord | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [logError, setLogError] = useState<string | null>(null);
   const [draft, setDraft] = useState({
     jobId: "",
     userId: "",
@@ -118,21 +119,39 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
     return () => { cancelled = true; };
   }, [period, userFilter]);
 
-  const workerOptions = useMemo(() => {
+  const allWorkers = useMemo(() => {
     return (apiUsers ?? []).filter((u) => u.role === "user");
   }, [apiUsers]);
+
+  const workerOptions = useMemo(() => {
+    if (!draft.jobId) return allWorkers;
+    const job = (apiJobs ?? []).find((j) => j.id === draft.jobId);
+    const assignedIds = new Set(
+      [...(job?.assignees ?? []).map((a) => a.id), job?.assignee?.id].filter(
+        (id): id is string => Boolean(id),
+      ),
+    );
+    if (assignedIds.size === 0) return [];
+    return allWorkers.filter((u) => assignedIds.has(u.id));
+  }, [allWorkers, apiJobs, draft.jobId]);
 
   const selectedUserName = useMemo(() => {
     if (!userFilter) return null;
     return (
       analytics?.userProfile?.name ??
       analytics?.byUser.find((u) => u.userId === userFilter)?.name ??
-      workerOptions.find((u) => u.id === userFilter)?.name ??
+      allWorkers.find((u) => u.id === userFilter)?.name ??
       "Selected user"
     );
-  }, [userFilter, analytics, workerOptions]);
+  }, [userFilter, analytics, allWorkers]);
 
-  const jobOptions = useMemo(() => apiJobs ?? [], [apiJobs]);
+  const jobOptions = useMemo(() => {
+    return [...(apiJobs ?? [])].sort((a, b) => {
+      const aNum = Number(a.number.replace(/^JOB-/i, "").replace(/\D/g, "")) || 0;
+      const bNum = Number(b.number.replace(/^JOB-/i, "").replace(/\D/g, "")) || 0;
+      return bNum - aNum;
+    });
+  }, [apiJobs]);
 
   const filtered = useMemo(() => {
     return records.filter((r) => {
@@ -146,7 +165,8 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
         r.description.toLowerCase().includes(q) ||
         (r.user?.name ?? "").toLowerCase().includes(q) ||
         formatMistakeCategory(r.category).toLowerCase().includes(q) ||
-        (r.jobNumber ?? "").toLowerCase().includes(q)
+        (r.jobNumber ?? "").toLowerCase().includes(q) ||
+        (r.jobTitle ?? "").toLowerCase().includes(q)
       );
     });
   }, [records, search, severityFilter, statusFilter]);
@@ -156,6 +176,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
   const submitLog = async () => {
     if (!draft.userId || !draft.title.trim() || !draft.description.trim()) return;
     setSaving(true);
+    setLogError(null);
     try {
       const res = await fetch("/api/mistakes", {
         method: "POST",
@@ -170,7 +191,10 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
           category: draft.category,
         }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || "Failed to log mistake");
+      }
       const created = (await res.json()) as MistakeRecord;
       setRecords((prev) => [created, ...prev]);
       setAnalytics((prev) =>
@@ -184,7 +208,10 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
           : prev,
       );
       setLogOpen(false);
+      setLogError(null);
       setDraft({ jobId: "", userId: "", title: "", description: "", severity: "medium", category: "other" });
+    } catch (err) {
+      setLogError(err instanceof Error ? err.message : "Failed to log mistake");
     } finally {
       setSaving(false);
     }
@@ -255,7 +282,10 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
           ))}
           {canLog && (
             <button
-              onClick={() => setLogOpen(true)}
+              onClick={() => {
+                setLogError(null);
+                setLogOpen(true);
+              }}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white text-xs font-bold shadow-md shadow-primary/30"
             >
               <Plus size={14} /> Log Mistake
@@ -464,6 +494,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                   <p className="text-xs text-gray-500 truncate mt-0.5">
                     {r.user?.name ?? "Unknown"} · {formatMistakeCategory(r.category)}
                     {r.jobNumber ? ` · ${r.jobNumber}` : ""}
+                    {r.jobTitle ? ` · ${r.jobTitle}` : ""}
                     {" · "}{new Date(r.createdAt).toLocaleDateString()}
                   </p>
                 </div>
@@ -522,7 +553,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                   <div>
                     Job:{" "}
                     <Link href={`${jobBase}/${selected.jobId}`} className="text-primary font-semibold hover:underline">
-                      {selected.jobNumber ?? selected.jobTitle ?? selected.jobId}
+                      {[selected.jobNumber, selected.jobTitle].filter(Boolean).join(" · ") || selected.jobId}
                     </Link>
                   </div>
                 )}
@@ -577,6 +608,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
               className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6"
             >
               <h3 className="font-bold text-gray-900 mb-4">Log Mistake</h3>
+              {logError ? <p className="text-sm text-red-600 mb-3">{logError}</p> : null}
               <div className="space-y-3">
                 <div>
                   <label className="text-xs font-bold text-gray-500 uppercase">User *</label>
@@ -595,7 +627,20 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                   <label className="text-xs font-bold text-gray-500 uppercase">Job (optional)</label>
                   <select
                     value={draft.jobId}
-                    onChange={(e) => setDraft((d) => ({ ...d, jobId: e.target.value }))}
+                    onChange={(e) => {
+                      const jobId = e.target.value;
+                      setDraft((d) => {
+                        const job = (apiJobs ?? []).find((j) => j.id === jobId);
+                        const assignedIds = new Set(
+                          [...(job?.assignees ?? []).map((a) => a.id), job?.assignee?.id].filter(
+                            (id): id is string => Boolean(id),
+                          ),
+                        );
+                        const userId = jobId && assignedIds.size > 0 && !assignedIds.has(d.userId) ? "" : d.userId;
+                        return { ...d, jobId, userId };
+                      });
+                      setLogError(null);
+                    }}
                     className={FORM_SELECT}
                   >
                     <option value="" className="text-gray-500">No job link</option>
@@ -603,6 +648,9 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                       <option key={j.id} value={j.id}>{j.number} — {j.title}</option>
                     ))}
                   </select>
+                  {draft.jobId && workerOptions.length === 0 ? (
+                    <p className="text-xs text-amber-700 mt-1">This job has no assigned workers. Pick a different job or leave job unlinked.</p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="text-xs font-bold text-gray-500 uppercase">Mistake type *</label>
