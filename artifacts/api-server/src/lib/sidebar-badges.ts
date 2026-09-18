@@ -1,6 +1,7 @@
 import { db, sql, type UserRow } from "@workspace/db";
 import { getCommunicationUnreadCounts } from "./job-communication-read";
 import { ensureAllSchemas } from "./schema-init";
+import { logger } from "./logger";
 
 export const SIDEBAR_SECTIONS = ["training", "jobs", "communication", "mistakes"] as const;
 export type SidebarSection = (typeof SIDEBAR_SECTIONS)[number];
@@ -54,7 +55,7 @@ export async function getOrInitSectionLastSeen(userId: string, section: SidebarS
   await ensureSectionReadSchema();
   await db.execute(sql`
     INSERT INTO user_section_read_state (user_id, section, last_seen_at)
-    VALUES (${userId}, ${section}, now())
+    VALUES (${userId}, ${section}, to_timestamp(0))
     ON CONFLICT (user_id, section) DO NOTHING
   `);
   const result = await db.execute(sql`
@@ -83,33 +84,27 @@ export async function markSectionSeen(userId: string, section: SidebarSection): 
   `);
 }
 
-async function countTraining(userId: string, since: Date): Promise<number> {
-  const postsCount = await db.execute(sql`
+async function countTraining(userId: string): Promise<number> {
+  const result = await db.execute(sql`
     SELECT COUNT(*)::int AS n
-    FROM posts
-    WHERE author_id <> ${userId}
-      AND created_at > ${since}
+    FROM notifications n
+    WHERE n.user_id = ${userId}
+      AND n.is_read = false
+      AND n.type = 'training'
   `);
-  const commentsCount = await db.execute(sql`
-    SELECT COUNT(*)::int AS n
-    FROM post_comments
-    WHERE user_id <> ${userId}
-      AND created_at > ${since}
-  `);
-  return countFrom(postsCount) + countFrom(commentsCount);
+  return countFrom(result);
 }
 
-async function countJobs(userId: string, since: Date): Promise<number> {
+async function countJobs(userId: string): Promise<number> {
   const result = await db.execute(sql`
     SELECT COUNT(*)::int AS n
     FROM notifications n
     INNER JOIN jobs j ON j.id = n.job_id
     WHERE n.user_id = ${userId}
       AND n.is_read = false
-      AND n.created_at > ${since}
       AND n.type IN (
         'assigned', 'updated', 'overdue', 'rework',
-        'checklist', 'file', 'completed', 'cliq_channel', 'admin_ops'
+        'checklist', 'file', 'completed', 'timer', 'error', 'admin_ops'
       )
   `);
   return countFrom(result);
@@ -168,17 +163,18 @@ async function countMistakes(actor: UserRow, since: Date): Promise<number> {
 
 export async function getSidebarBadgeCounts(actor: UserRow): Promise<SidebarBadgeCounts> {
   await ensureSectionReadSchema();
-  const [trainingSeen, jobsSeen, mistakesSeen, commCounts] = await Promise.all([
-    getOrInitSectionLastSeen(actor.id, "training"),
-    getOrInitSectionLastSeen(actor.id, "jobs"),
+  const [mistakesSeen, commCounts] = await Promise.all([
     getOrInitSectionLastSeen(actor.id, "mistakes"),
-    getCommunicationUnreadCounts(actor),
+    getCommunicationUnreadCounts(actor).catch((err) => {
+      logger.error({ err }, "Failed to load communication sidebar badge counts");
+      return {} as Record<string, number>;
+    }),
   ]);
   const [training, jobs, mistakes] = await Promise.all([
-    countTraining(actor.id, trainingSeen),
-    countJobs(actor.id, jobsSeen),
+    countTraining(actor.id),
+    countJobs(actor.id),
     countMistakes(actor, mistakesSeen),
   ]);
-  const communication = Object.values(commCounts).reduce((sum, n) => sum + (Number(n) || 0), 0);
+  const communication = Object.values(commCounts).filter((n) => Number(n) > 0).length;
   return { training, jobs, communication, mistakes };
 }

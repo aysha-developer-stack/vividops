@@ -167,16 +167,9 @@ export default function DashboardLayout({
     }
     try {
       const section = badgeSectionFromPath(location);
-      const onListPage =
-        section === "jobs"
-          ? /\/jobs\/?$/.test(location)
-          : section === "training"
-            ? /\/training\/?$/.test(location)
-            : section === "mistakes"
-              ? /\/mistakes\/?$/.test(location)
-              : false;
-      if (onListPage && section) {
-        setSidebarBadges(await markSidebarSectionSeen(section));
+      const onMistakesList = section === "mistakes" && /\/mistakes\/?$/.test(location);
+      if (onMistakesList) {
+        setSidebarBadges(await markSidebarSectionSeen("mistakes"));
         return;
       }
       setSidebarBadges(await fetchSidebarBadgeCounts());
@@ -418,8 +411,7 @@ export default function DashboardLayout({
             const isActive = location === item.path;
             const Icon = item.icon;
             const badgeCount = badgeForNavPath(item.path);
-            const section = badgeSectionFromPath(item.path);
-            const showBadge = badgeCount > 0 && (section === "communication" || !isActive);
+            const showBadge = badgeCount > 0;
             return (
               <Link key={item.path} href={item.path}>
                 <motion.div

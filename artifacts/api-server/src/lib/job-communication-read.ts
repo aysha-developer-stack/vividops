@@ -1,8 +1,12 @@
 import { db, sql, type UserRow } from "@workspace/db";
 import { ensureAllSchemas, ensureJobWriteSchema, ensureLegacySupervisorAssignments } from "./schema-init";
+import { logger } from "./logger";
 
 let readSchemaEnsured = false;
 let importedHistoryFlagBackfilled = false;
+
+/** Production `payload` is still text; schema-init may create jsonb. Cast works for both. */
+const payloadAsJsonb = sql`COALESCE(NULLIF(TRIM(jms.payload::text), ''), '{}')::jsonb`;
 
 export async function ensureJobCommunicationReadSchema(): Promise<void> {
   if (readSchemaEnsured) return;
@@ -50,13 +54,17 @@ export async function markJobCommunicationRead(userId: string, jobId: string): P
 async function backfillImportedHistoryUnreadFlags(): Promise<void> {
   if (importedHistoryFlagBackfilled) return;
   importedHistoryFlagBackfilled = true;
-  await db.execute(sql`
-    UPDATE job_message_sync
-    SET payload = COALESCE(payload, '{}'::jsonb) || '{"opsImportedFromHistory": true}'::jsonb
-    WHERE source = 'zoho_cliq'
-      AND COALESCE(payload->>'opsImportedFromHistory', 'false') <> 'true'
-      AND created_at < now() - interval '2 minutes'
-  `);
+  try {
+    await db.execute(sql`
+      UPDATE job_message_sync jms
+      SET payload = (${payloadAsJsonb} || '{"opsImportedFromHistory": true}'::jsonb)::text
+      WHERE jms.source = 'zoho_cliq'
+        AND COALESCE(${payloadAsJsonb}->>'opsImportedFromHistory', 'false') <> 'true'
+        AND jms.created_at < now() - interval '2 minutes'
+    `);
+  } catch (err) {
+    logger.warn({ err }, "Could not backfill imported Cliq history unread flags");
+  }
 }
 
 export async function getCommunicationUnreadCounts(
@@ -77,7 +85,7 @@ export async function getCommunicationUnreadCounts(
     LEFT JOIN job_message_sync jms ON jms.job_message_id = jm.id
     WHERE jm.job_id IN ${visibleJobs}
       AND jm.user_id <> ${actor.id}
-      AND COALESCE(jms.payload->>'opsImportedFromHistory', 'false') <> 'true'
+      AND COALESCE(${payloadAsJsonb}->>'opsImportedFromHistory', 'false') <> 'true'
       AND jm.created_at > COALESCE(rs.last_read_at, to_timestamp(0))
     GROUP BY jm.job_id
   `);
