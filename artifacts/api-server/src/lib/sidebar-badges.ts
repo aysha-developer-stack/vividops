@@ -106,8 +106,7 @@ async function countTraining(userId: string): Promise<number> {
   return countFrom(result);
 }
 
-async function countUnreadJobCreated(userId: string): Promise<number> {
-  const since = await getOrInitSectionLastSeen(userId, "jobs");
+async function countUnreadJobCreated(userId: string, since: Date): Promise<number> {
   const result = await db.execute(sql`
     SELECT COUNT(*)::int AS n
     FROM notifications n
@@ -122,21 +121,30 @@ async function countUnreadJobCreated(userId: string): Promise<number> {
 
 async function countJobs(actor: UserRow): Promise<number> {
   if (actor.role === "super-admin" || actor.role === "admin") {
+    const since = await getOrInitSectionLastSeen(actor.id, "jobs");
     const queue = actor.role === "super-admin"
       ? countFrom(await db.execute(sql`
-          SELECT COUNT(*)::int AS n FROM jobs WHERE status = 'awaiting_super_admin'
+          SELECT COUNT(*)::int AS n
+          FROM jobs
+          WHERE status = 'awaiting_super_admin'
+            AND updated_at > ${since}
         `))
       : countFrom(await db.execute(sql`
-          SELECT COUNT(*)::int AS n FROM jobs WHERE status = 'awaiting_admin'
+          SELECT COUNT(*)::int AS n
+          FROM jobs
+          WHERE status = 'awaiting_admin'
+            AND updated_at > ${since}
         `));
-    return queue + await countUnreadJobCreated(actor.id);
+    return queue + await countUnreadJobCreated(actor.id, since);
   }
   if (actor.role === "supervisor") {
+    const since = await getOrInitSectionLastSeen(actor.id, "jobs");
     return countFrom(await db.execute(sql`
       SELECT COUNT(*)::int AS n
       FROM jobs
       WHERE status = 'awaiting_supervisor'
         AND supervisor_id = ${actor.id}
+        AND updated_at > ${since}
     `));
   }
 

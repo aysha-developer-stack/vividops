@@ -414,7 +414,8 @@ export default function DashboardLayout({
             const isActive = location === item.path;
             const Icon = item.icon;
             const badgeCount = badgeForNavPath(item.path);
-            const showBadge = badgeCount > 0;
+            const section = badgeSectionFromPath(item.path);
+            const showBadge = badgeCount > 0 && (section === "communication" || !isActive);
             return (
               <Link key={item.path} href={item.path}>
                 <motion.div
