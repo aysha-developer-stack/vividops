@@ -35,8 +35,10 @@ interface Worker {
   status: "active" | "idle" | "offline" | "on_job";
   currentJobId: string | null;
   currentJobLabel: string | null;
+  currentJobAddress: string | null;
   lastJobId: string | null;
   lastJobLabel: string | null;
+  lastJobAddress: string | null;
 }
 
 function formatJobDisplay(number: string | null | undefined, title: string | null | undefined): string | null {
@@ -235,10 +237,15 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
 
         const latestJob = getLatestJob(userJobs);
         const lastJobLabel = latestJob ? formatJobDisplay(latestJob.number, latestJob.title) : null;
+        const lastJobAddress = (latestJob?.address ?? "").trim() || null;
+        const currentJob = activeSession?.jobId
+          ? (apiJobs ?? []).find((job) => job.id === activeSession.jobId)
+          : undefined;
         const currentJobLabel =
           activeSession?.isLive && (activeSession.jobNumber || activeSession.jobTitle)
             ? formatJobDisplay(activeSession.jobNumber, activeSession.jobTitle)
             : null;
+        const currentJobAddress = (currentJob?.address ?? "").trim() || null;
 
         return {
           id: u.id,
@@ -253,8 +260,10 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
           status: getWorkerStatus(u, activeSession),
           currentJobId: activeSession?.isLive ? activeSession.jobId ?? null : null,
           currentJobLabel,
+          currentJobAddress,
           lastJobId: latestJob?.id ?? null,
           lastJobLabel,
+          lastJobAddress,
         };
       });
   }, [apiJobs, apiTimeLogs, apiUsers, jobMemberships, activeSessions, liveTick, mistakeCounts]);
@@ -338,32 +347,46 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
                         : "Offline"}
                 </div>
                 {w.currentJobLabel ? (
-                  <div className="text-[10px] mt-0.5 truncate" title={w.currentJobLabel}>
-                    <span className="text-gray-500">Working on: </span>
-                    {w.currentJobId ? (
-                      <Link
-                        href={`${jobBase}/${w.currentJobId}`}
-                        className="text-sky-700 font-medium hover:underline"
-                      >
-                        {w.currentJobLabel}
-                      </Link>
-                    ) : (
-                      <span className="text-sky-700 font-medium">{w.currentJobLabel}</span>
-                    )}
+                  <div className="mt-0.5 min-w-0">
+                    <div className="text-[10px] truncate" title={w.currentJobLabel}>
+                      <span className="text-gray-500">Working on: </span>
+                      {w.currentJobId ? (
+                        <Link
+                          href={`${jobBase}/${w.currentJobId}`}
+                          className="text-sky-700 font-medium hover:underline"
+                        >
+                          {w.currentJobLabel}
+                        </Link>
+                      ) : (
+                        <span className="text-sky-700 font-medium">{w.currentJobLabel}</span>
+                      )}
+                    </div>
+                    {w.currentJobAddress ? (
+                      <div className="text-[10px] text-gray-500 truncate" title={w.currentJobAddress}>
+                        {w.currentJobAddress}
+                      </div>
+                    ) : null}
                   </div>
                 ) : w.lastJobLabel ? (
-                  <div className="text-[10px] mt-0.5 truncate" title={w.lastJobLabel}>
-                    <span className="text-gray-500">Last job: </span>
-                    {w.lastJobId ? (
-                      <Link
-                        href={`${jobBase}/${w.lastJobId}`}
-                        className="text-gray-700 font-medium hover:underline"
-                      >
-                        {w.lastJobLabel}
-                      </Link>
-                    ) : (
-                      <span className="text-gray-700 font-medium">{w.lastJobLabel}</span>
-                    )}
+                  <div className="mt-0.5 min-w-0">
+                    <div className="text-[10px] truncate" title={w.lastJobLabel}>
+                      <span className="text-gray-500">Last job: </span>
+                      {w.lastJobId ? (
+                        <Link
+                          href={`${jobBase}/${w.lastJobId}`}
+                          className="text-gray-700 font-medium hover:underline"
+                        >
+                          {w.lastJobLabel}
+                        </Link>
+                      ) : (
+                        <span className="text-gray-700 font-medium">{w.lastJobLabel}</span>
+                      )}
+                    </div>
+                    {w.lastJobAddress ? (
+                      <div className="text-[10px] text-gray-500 truncate" title={w.lastJobAddress}>
+                        {w.lastJobAddress}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
