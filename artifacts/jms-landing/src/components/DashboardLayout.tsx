@@ -169,7 +169,8 @@ export default function DashboardLayout({
       const section = badgeSectionFromPath(location);
       const onSeenList =
         (section === "mistakes" && /\/mistakes\/?$/.test(location))
-        || (section === "training" && /\/training\/?$/.test(location));
+        || (section === "training" && /\/training\/?$/.test(location))
+        || (section === "jobs" && /\/jobs\/?$/.test(location));
       if (onSeenList && section) {
         setSidebarBadges(await markSidebarSectionSeen(section));
         return;

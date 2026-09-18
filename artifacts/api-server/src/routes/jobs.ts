@@ -2113,16 +2113,14 @@ router.post("/jobs", creatorRole, async (req, res) => {
       });
     }
 
-    if (actor.role === "admin" || actor.role === "super-admin") {
-      const number = jobDisplayNumber(full.job);
-      await notifyAdminAndSuperAdminPeers({
-        actorId: actor.id,
-        jobId: full.job.id,
-        type: "admin_ops",
-        title: `Job created by ${actor.name}`,
-        description: `${adminActorLabel(actor)} created ${number} · ${full.job.title} for ${full.job.client}.`,
-      });
-    }
+    const number = jobDisplayNumber(full.job);
+    await notifyAdminAndSuperAdminPeers({
+      actorId: actor.id,
+      jobId: full.job.id,
+      type: "admin_ops",
+      title: `Job created by ${actor.name}`,
+      description: `${adminActorLabel(actor)} created ${number} · ${full.job.title} for ${full.job.client}.`,
+    });
 
     void getOrCreateJobCliqChannel(full.job).catch((err) => {
       logger.warn({ err, jobId: full.job.id }, "Failed to initialize job Cliq channel metadata");
