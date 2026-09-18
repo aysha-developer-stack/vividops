@@ -28,6 +28,7 @@ import {
   clearAllActiveTimersOnJob,
 } from "./persist-timer-session";
 import { resolveReworkUserId } from "./working-supervisor";
+import { actorIsAssignedJobWorker, listJobAssignedWorkerIds } from "./job-access";
 
 const COMPLETION_NOTE_LABELS: Record<JobReviewAction, string | null> = {
   submit_for_supervisor: "Worker submission",
@@ -309,6 +310,8 @@ export async function assertWorkerChecklistReady(
   const requiredIds = list.map((_item, idx) => idx + 1);
   const missingChecklist: number[] = [];
   const missingCompletedChecklist: number[] = [];
+  const assignedWorkerIds = await listJobAssignedWorkerIds(job);
+  const completedLinkUserIds = assignedWorkerIds.length > 0 ? assignedWorkerIds : [workerUserId];
 
   if (requiredIds.length > 0) {
     const linked = await db
@@ -325,7 +328,7 @@ export async function assertWorkerChecklistReady(
       .where(
         and(
           eq(jobChecklistAttachments.jobId, job.id),
-          eq(jobChecklistAttachments.userId, workerUserId),
+          inArray(jobChecklistAttachments.userId, completedLinkUserIds),
           inArray(jobChecklistAttachments.itemId, requiredIds),
           isNull(jobAttachments.deletedAt),
         ),
@@ -746,14 +749,14 @@ export async function applyJobReview(opts: {
   | { ok: false; status: number; error: string }
 > {
   const { actor, job, action, reason, category, comments, dueAt, severity, canManage, hasPhotos, reworkOrigin: reworkOriginRaw } = opts;
-  const isAssignee = job.assigneeId === actor.id;
+  const isAssignedWorker = await actorIsAssignedJobWorker(actor, job);
   let nextStatus: ReviewableStatus;
   let createdReworkId: string | null = null;
   let appliedReworkOrigin: ReworkOrigin | null = null;
 
   if (action === "submit_for_supervisor") {
-    if (!isAssignee && !canManage) {
-      return { ok: false, status: 403, error: "Only the assigned worker can submit for supervisor review" };
+    if (!isAssignedWorker && !canManage) {
+      return { ok: false, status: 403, error: "Only an assigned worker can submit for supervisor review" };
     }
     if (job.status === "on_hold") {
       return { ok: false, status: 400, error: "Job is on hold — resume work before submitting for review" };

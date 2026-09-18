@@ -883,12 +883,22 @@ export default function JobDetail({ role = "user", id }: Props) {
       out.push({ id: job.assignee.id, name: job.assignee.name ?? "Assignee" });
     }
     for (const member of job?.assignees ?? []) {
-      if (member?.role === "user" && member.id && !out.some((w) => w.id === member.id)) {
+      if (member?.id && (!member.role || member.role === "user") && !out.some((w) => w.id === member.id)) {
+        out.push({ id: member.id, name: member.name ?? "Worker" });
+      }
+    }
+    for (const member of jobMembers) {
+      if (member.role === "user" && member.id && !out.some((w) => w.id === member.id)) {
         out.push({ id: member.id, name: member.name ?? "Worker" });
       }
     }
     return out;
-  }, [job?.assignee, job?.assignees]);
+  }, [job?.assignee, job?.assignees, jobMembers]);
+  const assignedUserNames = useMemo(() => {
+    if (jobWorkers.length > 0) return jobWorkers.map((w) => w.name).join(", ");
+    return job?.assignee?.name ?? "Unassigned";
+  }, [jobWorkers, job?.assignee?.name]);
+  const assignedUserHeading = jobWorkers.length > 1 ? "Assigned Users" : "Assigned User";
   const jobNotesDirty =
     remarksDraft !== (((job as any)?.remarks as string | null | undefined) ?? "") ||
     commentsDraft !== (((job as any)?.comments as string | null | undefined) ?? "");
@@ -2427,7 +2437,7 @@ export default function JobDetail({ role = "user", id }: Props) {
             <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Date Completed</div><div className={`text-sm font-medium ${job?.completedAt ? "text-gray-900" : "text-gray-400 italic"}`}>{job?.completedAt ? new Date(job.completedAt as any).toLocaleString() : "Not yet completed"}</div></div>
           </div>
           <div className="flex items-start gap-2.5"><User size={14} className="text-gray-400 mt-0.5" />
-            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">Assigned User</div><div className="text-sm text-gray-900 font-medium">{job?.assignee?.name ?? "Unassigned"}</div></div>
+            <div><div className="text-[10px] text-gray-500 uppercase font-semibold">{assignedUserHeading}</div><div className="text-sm text-gray-900 font-medium leading-snug">{assignedUserNames}</div></div>
           </div>
         </div>
 
@@ -3085,8 +3095,8 @@ export default function JobDetail({ role = "user", id }: Props) {
                       <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Task Details</div>
                       <div className="space-y-3">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-500">Assigned User</span>
-                          <span className="font-bold text-gray-900">{job?.assignee?.name ?? "Unassigned"}</span>
+                          <span className="text-gray-500">{assignedUserHeading}</span>
+                          <span className="font-bold text-gray-900 text-right">{assignedUserNames}</span>
                         </div>
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-gray-500">Due Date</span>

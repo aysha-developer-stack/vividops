@@ -2199,8 +2199,9 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   const jobNumber = body.jobNumber !== undefined ? normalizeJobNumber(body.jobNumber) : undefined;
 
   const isManager = canManageJob(actor, full.job);
-  const isAssignee = full.job.assigneeId === actor.id;
-  if (!isManager && !isAssignee) {
+  const isAssignedWorker =
+    full.job.assigneeId === actor.id || (await isAdditionalJobMember(id, actor.id));
+  if (!isManager && !isAssignedWorker) {
     return res.status(403).json({ error: "You cannot update this job" });
   }
 

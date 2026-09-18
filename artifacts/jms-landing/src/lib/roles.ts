@@ -122,11 +122,13 @@ export function jobMemberRoleLabel(
     assignee?: { id?: string } | null;
     supervisor?: { id?: string } | null;
     coordinator?: { id?: string } | null;
+    assignees?: Array<{ id?: string }> | null;
   } | null,
 ): string {
   if (member.id === job?.supervisor?.id) return ROLES.supervisor.label;
   if (member.id === job?.coordinator?.id) return ROLES.coordinator.label;
   if (member.id === job?.assignee?.id) return "Assignee";
+  if (job?.assignees?.some((a) => a?.id === member.id)) return "Assignee";
   if (member.role === "super-admin") return ROLES["super-admin"].label;
   if (member.role === "admin") return ROLES.admin.label;
   if (member.role === "supervisor") return ROLES.supervisor.label;

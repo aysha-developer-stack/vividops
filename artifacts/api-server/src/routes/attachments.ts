@@ -222,9 +222,11 @@ async function finalizeUploadedAttachment(opts: {
 
   if (checklistItemId > 0) {
     const linkUserId =
-      treatAsFieldWorker && (actor.role === "user" || isChecklistCompletedUpload)
-        ? actor.id
-        : (jobRow.assigneeId ?? actor.id);
+      actor.role === "user"
+        ? (jobRow.assigneeId ?? actor.id)
+        : treatAsFieldWorker && isChecklistCompletedUpload
+          ? actor.id
+          : (jobRow.assigneeId ?? actor.id);
     await ensureChecklistAttachmentsSchema();
     await db.execute(sql`
       INSERT INTO job_checklist_attachments (id, job_id, user_id, item_id, attachment_id)

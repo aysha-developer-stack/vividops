@@ -30,6 +30,7 @@ import {
   isWorkingSupervisor,
   resolveChecklistTargetUserId,
 } from "../lib/working-supervisor";
+import { listJobAssignedWorkerIds } from "../lib/job-access";
 
 const router: IRouter = Router();
 
@@ -79,7 +80,7 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
 
     const targetUserId = resolveChecklistTargetUserId(actor, job, userIdParam);
 
-    if (actor.role === "user" && targetUserId !== actor.id) {
+    if (actor.role === "user" && !isOwnChecklistWork(actor, job, targetUserId)) {
       return res.status(403).json({ error: "Forbidden" });
     }
     if (
@@ -89,6 +90,10 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
     ) {
       return res.status(403).json({ error: "Forbidden" });
     }
+
+    const assignedWorkerIds = new Set(await listJobAssignedWorkerIds(job));
+    const sharedOwnerId = job.assigneeId ?? targetUserId;
+    const includeAllAssignedUploads = targetUserId === sharedOwnerId;
 
     const rows = await db
       .select()
@@ -133,7 +138,14 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         (row.uploadedBy?.role != null &&
           row.uploadedBy.role !== "user" &&
           row.attachment.fileCategory !== "completed");
-      if (linkUserId !== targetUserId && !isInstructionFile) continue;
+      const isAssignedWorkerUpload = assignedWorkerIds.has(linkUserId);
+      if (
+        !isInstructionFile &&
+        linkUserId !== targetUserId &&
+        !(includeAllAssignedUploads && isAssignedWorkerUpload)
+      ) {
+        continue;
+      }
 
       if (!filesByItem[itemId]) filesByItem[itemId] = [];
       filesByItem[itemId].push({
@@ -150,7 +162,10 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       const isCompleted =
         row.attachment.fileCategory === "completed" ||
         (!row.attachment.fileCategory && row.uploadedBy?.role === "user");
-      if (isCompleted && linkUserId === targetUserId) {
+      if (
+        isCompleted &&
+        (linkUserId === targetUserId || (includeAllAssignedUploads && isAssignedWorkerUpload))
+      ) {
         countByItem[itemId] = (countByItem[itemId] ?? 0) + 1;
       }
     }
@@ -214,7 +229,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
 
     const targetUserId = resolveChecklistTargetUserId(actor, job, userIdParam);
     const ownChecklistWork = isOwnChecklistWork(actor, job, targetUserId);
-    if (actor.role === "user" && targetUserId !== actor.id) {
+    if (actor.role === "user" && !ownChecklistWork) {
       return res.status(403).json({ error: "Forbidden" });
     }
     if (
@@ -315,9 +330,10 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
           return res.status(400).json({ error: reworkUploadError });
         }
       } else {
+      const assignedWorkerIds = new Set(await listJobAssignedWorkerIds(job));
       const hasCompletedChecklistUpload = linked.some(
         (r) =>
-          r.linkUserId === targetUserId &&
+          (r.linkUserId === targetUserId || assignedWorkerIds.has(r.linkUserId)) &&
           (r.fileCategory === "completed" ||
             (!r.fileCategory && (r.uploaderRole === "user" || r.uploaderRole === "supervisor"))),
       );
@@ -539,7 +555,7 @@ router.post("/jobs/:jobId/checklist-attachments", requireAuth, async (req, res) 
     if (!(await canViewJob(actor, job))) return res.status(403).json({ error: "Forbidden" });
 
     const targetUserId = resolveChecklistTargetUserId(actor, job, userIdParam);
-    if (actor.role === "user" && targetUserId !== actor.id) {
+    if (actor.role === "user" && !isOwnChecklistWork(actor, job, targetUserId)) {
       return res.status(403).json({ error: "Forbidden" });
     }
     if (
