@@ -167,9 +167,11 @@ export default function DashboardLayout({
     }
     try {
       const section = badgeSectionFromPath(location);
-      const onMistakesList = section === "mistakes" && /\/mistakes\/?$/.test(location);
-      if (onMistakesList) {
-        setSidebarBadges(await markSidebarSectionSeen("mistakes"));
+      const onSeenList =
+        (section === "mistakes" && /\/mistakes\/?$/.test(location))
+        || (section === "training" && /\/training\/?$/.test(location));
+      if (onSeenList && section) {
+        setSidebarBadges(await markSidebarSectionSeen(section));
         return;
       }
       setSidebarBadges(await fetchSidebarBadgeCounts());

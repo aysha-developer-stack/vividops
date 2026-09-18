@@ -1,12 +1,7 @@
 import { db, sql, type UserRow } from "@workspace/db";
 import { ensureAllSchemas, ensureJobWriteSchema, ensureLegacySupervisorAssignments } from "./schema-init";
-import { logger } from "./logger";
 
 let readSchemaEnsured = false;
-let importedHistoryFlagBackfilled = false;
-
-/** Production `payload` is still text; schema-init may create jsonb. Cast works for both. */
-const payloadAsJsonb = sql`COALESCE(NULLIF(TRIM(jms.payload::text), ''), '{}')::jsonb`;
 
 export async function ensureJobCommunicationReadSchema(): Promise<void> {
   if (readSchemaEnsured) return;
@@ -24,23 +19,6 @@ export async function ensureJobCommunicationReadSchema(): Promise<void> {
   `);
 }
 
-function communicationJobsSubquery(actor: UserRow) {
-  if (actor.role === "super-admin" || actor.role === "admin") {
-    return sql`(SELECT id FROM jobs)`;
-  }
-  if (actor.role === "supervisor") {
-    return sql`(SELECT id FROM jobs WHERE supervisor_id = ${actor.id})`;
-  }
-  if (actor.role === "coordinator") {
-    return sql`(SELECT id FROM jobs WHERE coordinator_id = ${actor.id})`;
-  }
-  return sql`(
-    SELECT id FROM jobs WHERE assignee_id = ${actor.id}
-    UNION
-    SELECT job_id FROM job_members WHERE user_id = ${actor.id}
-  )`;
-}
-
 export async function markJobCommunicationRead(userId: string, jobId: string): Promise<void> {
   await ensureJobCommunicationReadSchema();
   await db.execute(sql`
@@ -49,45 +27,38 @@ export async function markJobCommunicationRead(userId: string, jobId: string): P
     ON CONFLICT (user_id, job_id)
     DO UPDATE SET last_read_at = EXCLUDED.last_read_at
   `);
+  await db.execute(sql`
+    UPDATE notifications
+    SET is_read = true, read_at = now()
+    WHERE user_id = ${userId}
+      AND job_id = ${jobId}
+      AND type = 'job_message'
+      AND is_read = false
+  `);
 }
 
-async function backfillImportedHistoryUnreadFlags(): Promise<void> {
-  if (importedHistoryFlagBackfilled) return;
-  importedHistoryFlagBackfilled = true;
-  try {
-    await db.execute(sql`
-      UPDATE job_message_sync jms
-      SET payload = (${payloadAsJsonb} || '{"opsImportedFromHistory": true}'::jsonb)::text
-      WHERE jms.source = 'zoho_cliq'
-        AND COALESCE(${payloadAsJsonb}->>'opsImportedFromHistory', 'false') <> 'true'
-        AND jms.created_at < now() - interval '2 minutes'
-    `);
-  } catch (err) {
-    logger.warn({ err }, "Could not backfill imported Cliq history unread flags");
-  }
-}
-
+/**
+ * Unread chats = live job_message alerts after last open.
+ * History imports do not create those alerts, so they stay out of the badge.
+ */
 export async function getCommunicationUnreadCounts(
   actor: UserRow,
 ): Promise<Record<string, number>> {
   await ensureLegacySupervisorAssignments();
   await ensureJobWriteSchema();
   await ensureJobCommunicationReadSchema();
-  await backfillImportedHistoryUnreadFlags();
 
-  const visibleJobs = communicationJobsSubquery(actor);
   const rows = await db.execute(sql`
-    SELECT jm.job_id, COUNT(DISTINCT jm.id)::int AS unread_count
-    FROM job_messages jm
-    INNER JOIN jobs j ON j.id = jm.job_id
+    SELECT n.job_id, COUNT(*)::int AS unread_count
+    FROM notifications n
+    INNER JOIN jobs j ON j.id = n.job_id
     LEFT JOIN job_communication_read_state rs
-      ON rs.job_id = jm.job_id AND rs.user_id = ${actor.id}
-    LEFT JOIN job_message_sync jms ON jms.job_message_id = jm.id
-    WHERE jm.job_id IN ${visibleJobs}
-      AND jm.user_id <> ${actor.id}
-      AND COALESCE(${payloadAsJsonb}->>'opsImportedFromHistory', 'false') <> 'true'
-      AND jm.created_at > COALESCE(rs.last_read_at, to_timestamp(0))
-    GROUP BY jm.job_id
+      ON rs.job_id = n.job_id AND rs.user_id = n.user_id
+    WHERE n.user_id = ${actor.id}
+      AND n.is_read = false
+      AND n.type = 'job_message'
+      AND (rs.last_read_at IS NULL OR n.created_at > rs.last_read_at)
+    GROUP BY n.job_id
   `);
 
   const result: Record<string, number> = {};

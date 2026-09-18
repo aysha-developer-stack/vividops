@@ -82,6 +82,16 @@ export async function markSectionSeen(userId: string, section: SidebarSection): 
     ON CONFLICT (user_id, section)
     DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at
   `);
+  if (section === "training") {
+    await db.execute(sql`
+      UPDATE notifications
+      SET is_read = true, read_at = now()
+      WHERE user_id = ${userId}
+        AND is_read = false
+        AND type = 'training'
+        AND title LIKE 'Daily Training Assignment%'
+    `);
+  }
 }
 
 async function countTraining(userId: string): Promise<number> {
@@ -91,20 +101,42 @@ async function countTraining(userId: string): Promise<number> {
     WHERE n.user_id = ${userId}
       AND n.is_read = false
       AND n.type = 'training'
+      AND n.title LIKE 'Daily Training Assignment%'
   `);
   return countFrom(result);
 }
 
-async function countJobs(userId: string): Promise<number> {
+async function countJobs(actor: UserRow): Promise<number> {
+  if (actor.role === "super-admin") {
+    return countFrom(await db.execute(sql`
+      SELECT COUNT(*)::int AS n FROM jobs WHERE status = 'awaiting_super_admin'
+    `));
+  }
+  if (actor.role === "admin") {
+    return countFrom(await db.execute(sql`
+      SELECT COUNT(*)::int AS n FROM jobs WHERE status = 'awaiting_admin'
+    `));
+  }
+  if (actor.role === "supervisor") {
+    return countFrom(await db.execute(sql`
+      SELECT COUNT(*)::int AS n
+      FROM jobs
+      WHERE status = 'awaiting_supervisor'
+        AND supervisor_id = ${actor.id}
+    `));
+  }
+
   const result = await db.execute(sql`
-    SELECT COUNT(*)::int AS n
+    SELECT COUNT(DISTINCT n.job_id)::int AS n
     FROM notifications n
     INNER JOIN jobs j ON j.id = n.job_id
-    WHERE n.user_id = ${userId}
+    WHERE n.user_id = ${actor.id}
       AND n.is_read = false
-      AND n.type IN (
-        'assigned', 'updated', 'overdue', 'rework',
-        'checklist', 'file', 'completed', 'timer', 'error', 'admin_ops'
+      AND n.type IN ('assigned', 'rework', 'overdue')
+      AND (
+        j.assignee_id = ${actor.id}
+        OR j.coordinator_id = ${actor.id}
+        OR j.id IN (SELECT job_id FROM job_members WHERE user_id = ${actor.id})
       )
   `);
   return countFrom(result);
@@ -172,7 +204,7 @@ export async function getSidebarBadgeCounts(actor: UserRow): Promise<SidebarBadg
   ]);
   const [training, jobs, mistakes] = await Promise.all([
     countTraining(actor.id),
-    countJobs(actor.id),
+    countJobs(actor),
     countMistakes(actor, mistakesSeen),
   ]);
   const communication = Object.values(commCounts).filter((n) => Number(n) > 0).length;
