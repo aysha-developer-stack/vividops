@@ -53,9 +53,6 @@ export function buildCliqJobStatusText(opts: {
   }
 
   if (event === "awaiting_supervisor") {
-    if (previousStatus === "rework") {
-      return `✅ Rework completed on ${label} — submitted for supervisor review by ${actorName} · ${time}`;
-    }
     return `📋 ${label} submitted for supervisor review by ${actorName} · ${time}`;
   }
 
@@ -74,7 +71,9 @@ export function buildCliqJobStatusText(opts: {
   }
 
   if (event === "rework") {
-    const origin = reworkOriginLabel(reworkOrigin ?? null);
+    // Supervisor → worker rework stays in OPS. Cliq only for labeled internal/external rework.
+    if (!reworkOrigin) return null;
+    const origin = reworkOriginLabel(reworkOrigin);
     const originTag = origin ? `${origin} · ` : "";
     const itemTag = checklistItemId ? ` (checklist item #${checklistItemId})` : "";
     let line = `🔄 ${originTag}Rework requested on ${label}${itemTag} by ${actorName} · ${time}`;
@@ -84,7 +83,8 @@ export function buildCliqJobStatusText(opts: {
   }
 
   if (event === "rework_completed") {
-    return `✅ Rework completed on ${label} by ${actorName} · ${time}`;
+    // Worker finishing supervisor rework stays in OPS.
+    return null;
   }
 
   if (event === "on_hold") {
