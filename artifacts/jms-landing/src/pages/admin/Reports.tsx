@@ -1510,10 +1510,6 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
                       <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
                         <CalendarDays size={16} className="text-primary" /> Daily worker time
                       </h3>
-                      <p className="mt-1 text-xs text-gray-500 max-w-xl">
-                        Days are calendar dates (Pakistan time) with at least one saved work session.
-                        Hours are billed timer time only — Pause, job On Hold, and idle gaps after the last heartbeat are not counted.
-                      </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">From</label>
