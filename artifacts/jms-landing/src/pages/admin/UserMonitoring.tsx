@@ -15,6 +15,7 @@ import {
 } from "@workspace/api-client-react";
 import type { Role } from "@/lib/roles";
 import { formatDurationSeconds } from "@/lib/jobMappers";
+import { computePerformanceScore } from "@/lib/performanceScore";
 import { getPresenceStatus } from "@/lib/presence";
 import {
   fetchActiveTimerSessions,
@@ -57,10 +58,6 @@ function parseMs(iso: string | null | undefined) {
   return Number.isFinite(ms) ? ms : null;
 }
 
-function clamp(n: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, n));
-}
-
 function getLatestJob(jobs: Job[]): Job | null {
   return [...jobs].sort((a, b) => {
     const aMs = parseMs(a.completedAt) ?? parseMs(a.updatedAt) ?? parseMs(a.createdAt) ?? 0;
@@ -82,21 +79,25 @@ function getWorkerStatus(user: User, activeSession?: ActiveTimerSession | null):
 }
 
 function getPerformanceScore(jobs: Job[]) {
-  if (!jobs.length) return 0;
-  const completedJobs = jobs.filter((job) => job.status === "completed");
-  const completedCount = completedJobs.length;
-  const onTimeCount = completedJobs.reduce((acc, job) => {
+  const activeJobs = jobs.filter((job) => job.status !== "cancelled");
+  const completedJobs = activeJobs.filter((job) => job.status === "completed");
+  let completedOnTimeCount = 0;
+  let completedWithDueCount = 0;
+  for (const job of completedJobs) {
     const completedMs = parseMs(job.completedAt);
     const dueMs = parseMs(job.dueDate);
-    if (completedMs != null && dueMs != null && completedMs <= dueMs) return acc + 1;
-    return acc;
-  }, 0);
-  const reworkCount = jobs.filter((job) => job.status === "rework").length;
-  const completionRate = completedCount / jobs.length;
-  const onTimeRate = completedCount > 0 ? onTimeCount / completedCount : 0;
-  const reworkRate = reworkCount / jobs.length;
-  const score = completionRate * 60 + onTimeRate * 25 + (1 - clamp(reworkRate, 0, 1)) * 15;
-  return Math.round(clamp(score, 0, 100));
+    if (dueMs == null || completedMs == null) continue;
+    completedWithDueCount += 1;
+    if (completedMs <= dueMs) completedOnTimeCount += 1;
+  }
+  const labeledReworkCount = activeJobs.filter((job) => job.status === "rework").length;
+  return computePerformanceScore({
+    jobCount: activeJobs.length,
+    completedCount: completedJobs.length,
+    completedOnTimeCount,
+    completedWithDueCount,
+    labeledReworkCount,
+  }).score;
 }
 
 export default function UserMonitoring({ role = "super-admin" }: { role?: Role } = {}) {

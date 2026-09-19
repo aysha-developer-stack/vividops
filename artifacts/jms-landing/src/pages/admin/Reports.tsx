@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import type { Role } from "@/lib/roles";
 import { isJobOverdueByDueDate, formatDurationSeconds } from "@/lib/jobMappers";
+import { computePerformanceScore } from "@/lib/performanceScore";
 import { useDashboardSearch } from "@/lib/pageSearch";
 import logoImg from "@assets/vv_1778503190047.png";
 import { useAuth } from "@/lib/auth";
@@ -228,8 +229,6 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     return Number.isFinite(ms) ? ms : null;
   };
 
-  const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
-
   const formatAvgResolution = (hours: number) => {
     if (!Number.isFinite(hours) || hours <= 0) return "0h 0m 0s";
     return formatDurationSeconds(Math.round(hours * 3600));
@@ -347,7 +346,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     return (apiUsers ?? []).map((u: User) => {
       const userJobsAll = (apiJobs ?? []).filter((j) => isUserAssignedToJob(j, u.id));
 
-      const userJobs = userJobsAll.filter(isJobInPeriod);
+      const userJobs = userJobsAll.filter((j) => j.status !== "cancelled").filter(isJobInPeriod);
       const userLogs = (apiTimeLogs ?? [])
         .filter(l => l.userId === u.id)
         .filter(l => {
@@ -379,16 +378,19 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
       const rework = reworkInternal + reworkExternal + reworkSupervisor;
 
       const resolutionHours: number[] = [];
-      const completedOnTimeCount = completedJobs.reduce((acc, j: any) => {
+      let completedOnTimeCount = 0;
+      let completedWithDueCount = 0;
+      for (const j of completedJobs as any[]) {
         const createdMs = parseMs(j?.createdAt);
         const completedMs = parseMs(j?.completedAt);
         if (createdMs != null && completedMs != null && completedMs >= createdMs) {
           resolutionHours.push((completedMs - createdMs) / 36e5);
         }
         const dueMs = parseMs(j?.dueDate);
-        if (dueMs != null && completedMs != null) return acc + (completedMs <= dueMs ? 1 : 0);
-        return acc;
-      }, 0);
+        if (dueMs == null || completedMs == null) continue;
+        completedWithDueCount += 1;
+        if (completedMs <= dueMs) completedOnTimeCount += 1;
+      }
 
       const avgResolutionHours =
         resolutionHours.length > 0
@@ -396,21 +398,16 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
           : 0;
 
       const totalJobs = userJobs.length;
-      const completionRate = totalJobs > 0 ? completedCount / totalJobs : 0;
-      const onTimeRate = completedCount > 0 ? completedOnTimeCount / completedCount : 0;
-      const reworkRate = totalJobs > 0 ? rework / totalJobs : 0;
-
-      const completionScore = completionRate * 60;
-      const onTimeScore = onTimeRate * 25;
-      const reworkScore = totalJobs > 0 ? (1 - clamp(reworkRate, 0, 1)) * 15 : 0;
-      const score =
-        totalJobs === 0
-          ? 0
-          : Math.round(clamp(completionScore + onTimeScore + reworkScore, 0, 100));
-      const scoreTip =
-        totalJobs === 0
-          ? "No jobs assigned in this period"
-          : `Completion ${Math.round(completionScore)}/60 · On-time ${Math.round(onTimeScore)}/25 · Low rework ${Math.round(reworkScore)}/15`;
+      const labeledReworkCount = reworkInternal + reworkExternal;
+      const scored = computePerformanceScore({
+        jobCount: totalJobs,
+        completedCount,
+        completedOnTimeCount,
+        completedWithDueCount,
+        labeledReworkCount,
+      });
+      const score = scored.score;
+      const scoreTip = scored.tip;
 
       return {
         id: u.id,
