@@ -34,11 +34,14 @@ export function timerSessionBillableSeconds(
 }
 
 export type TimerSaveDurationOptions = {
-  /** Explicit stop (user action, job switch, reassign) — save full segment time. */
+  /**
+   * Wall-clock only — do not use for billed hours.
+   * Pause, sleep, and job on-hold idle must stay on the default (billable) path.
+   */
   useElapsed?: boolean;
 };
 
-/** Pure duration math for saves — covered by regression tests. */
+/** Seconds to persist. Default is heartbeat-capped so paused/idle time is not billed. */
 export function resolveTimerSaveDuration(
   session: Pick<
     ActiveTimerSessionRow,

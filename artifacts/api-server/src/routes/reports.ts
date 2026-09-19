@@ -82,10 +82,12 @@ router.get(
         FROM time_logs tl
         INNER JOIN users u ON u.id = tl.user_id
         WHERE u.role IN ('user', 'supervisor')
+          AND tl.duration > 0
           AND (tl.created_at AT TIME ZONE ${REPORT_TIMEZONE})::date >= ${from}::date
           AND (tl.created_at AT TIME ZONE ${REPORT_TIMEZONE})::date <= ${to}::date
           ${userId ? sql`AND tl.user_id = ${userId}` : sql``}
         GROUP BY tl.user_id, u.name, u.role, work_date
+        HAVING SUM(tl.duration) > 0
         ORDER BY work_date DESC, u.name ASC
       `);
 
@@ -113,6 +115,7 @@ router.get(
         FROM time_logs tl
         INNER JOIN users u ON u.id = tl.user_id
         WHERE u.role IN ('user', 'supervisor')
+          AND tl.duration > 0
           AND (tl.created_at AT TIME ZONE ${REPORT_TIMEZONE})::date >= ${from}::date
           AND (tl.created_at AT TIME ZONE ${REPORT_TIMEZONE})::date <= ${to}::date
           ${userId ? sql`AND tl.user_id = ${userId}` : sql``}
@@ -140,6 +143,7 @@ router.get(
       >();
 
       for (const row of rows) {
+        if (row.totalSeconds <= 0) continue;
         const existing = totalsMap.get(row.userId);
         if (!existing) {
           totalsMap.set(row.userId, {

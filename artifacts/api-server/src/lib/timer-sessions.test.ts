@@ -22,7 +22,7 @@ function session(overrides: {
 }
 
 describe("timer session duration math", () => {
-  it("counts full elapsed time for explicit stop (regression: 3h UI / 26m saved)", () => {
+  it("does not bill idle time after the last heartbeat (pause / sleep / on-hold)", () => {
     const nowMs = 1_700_000_000_000;
     const segStart = new Date(nowMs - 3 * 3600 * 1000);
     const lastHb = new Date(nowMs - 3 * 3600 * 1000 + 26 * 60 * 1000); // heartbeats stopped after ~26m
@@ -34,13 +34,24 @@ describe("timer session duration math", () => {
 
     const elapsed = timerSessionElapsedSeconds(row, nowMs);
     const billable = timerSessionBillableSeconds(row, nowMs);
-    const explicitStop = resolveTimerSaveDuration(row, nowMs, { useElapsed: true });
-    const autoPauseStop = resolveTimerSaveDuration(row, nowMs, { useElapsed: false });
+    const saved = resolveTimerSaveDuration(row, nowMs);
 
     assert.equal(elapsed, 3 * 3600);
     assert.ok(billable <= 29 * 60, "billable must cap at last heartbeat + grace (~26m + 3m)");
-    assert.equal(explicitStop, 3 * 3600, "manual stop must save full wall-clock segment");
-    assert.ok(autoPauseStop < elapsed, "auto-pause path uses billable cap");
+    assert.equal(saved, billable, "stop / pause / on-hold must save billed time only");
+    assert.ok(saved < elapsed, "idle gap after last heartbeat is not billed");
+  });
+
+  it("paused sessions keep accumulated billed seconds only", () => {
+    const nowMs = 1_700_000_000_000;
+    const row = session({
+      accumulatedSeconds: 1800,
+      segmentStartedAt: null,
+      lastHeartbeatAt: new Date(nowMs),
+    });
+    assert.equal(timerSessionElapsedSeconds(row, nowMs), 1800);
+    assert.equal(timerSessionBillableSeconds(row, nowMs), 1800);
+    assert.equal(resolveTimerSaveDuration(row, nowMs), 1800);
   });
 
   it("marks sessions stale after heartbeat gap", () => {

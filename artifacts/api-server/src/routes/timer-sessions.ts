@@ -16,14 +16,12 @@ import { ensureJobWriteSchema } from "../lib/schema-init";
 import {
   canListTeamTimerSessions,
   publicTimerSession,
-  timerSessionElapsedSeconds,
   timerSessionBillableSeconds,
   isTimerSessionLive,
   isTimerSessionStale,
 } from "../lib/timer-sessions";
 import {
   stopTimerSessionAndSaveLog,
-  flushTimerSegmentToLog,
   pauseTimerSessionAfterGap,
   reconcileStaleRunningTimerSession,
   TIMER_HEARTBEAT_GAP_PAUSE_MS,
@@ -93,7 +91,7 @@ async function stopSessionAndSaveLog(
   session: typeof activeTimerSessions.$inferSelect,
   actor: UserRow,
 ): Promise<number> {
-  return stopTimerSessionAndSaveLog(session, actor.id, { useElapsed: true });
+  return stopTimerSessionAndSaveLog(session, actor.id);
 }
 
 async function loadSessionForUser(userId: string) {
@@ -242,10 +240,7 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
       if (existing.jobId === jobId) {
         const now = new Date();
         const nowMs = now.getTime();
-        if (
-          isLiveRunningTimerSession(existing, nowMs) &&
-          (existing.accumulatedSeconds ?? 0) === 0
-        ) {
+        if (isLiveRunningTimerSession(existing, nowMs)) {
           const [updated] = await db
             .update(activeTimerSessions)
             .set({
@@ -342,7 +337,7 @@ router.post("/timer-sessions/pause", requireAuth, async (req, res) => {
     if (!session) return res.status(404).json({ error: "No active timer session" });
 
     const now = new Date();
-    const pausedSeconds = timerSessionElapsedSeconds(session, now.getTime());
+    const pausedSeconds = timerSessionBillableSeconds(session, now.getTime());
 
     const [updated] = await db
       .update(activeTimerSessions)

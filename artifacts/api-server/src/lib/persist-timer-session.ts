@@ -67,7 +67,7 @@ function capDurationForClosedJob(
 }
 
 export type StopTimerSessionOptions = {
-  /** Explicit stop (user action, job switch, reassign) — save full segment time. */
+  /** Wall-clock only — billed hours always use heartbeat-capped time. */
   useElapsed?: boolean;
 };
 
@@ -96,7 +96,7 @@ export async function flushTimerSegmentToLog(
   opts?: StopTimerSessionOptions,
 ): Promise<number> {
   const nowMs = Date.now();
-  let rawDuration = resolveTimerSaveDuration(session, nowMs, { useElapsed: opts?.useElapsed ?? true });
+  let rawDuration = resolveTimerSaveDuration(session, nowMs, opts);
   if (session.jobId) {
     const [job] = await db
       .select({ status: jobs.status, completedAt: jobs.completedAt })
@@ -122,7 +122,7 @@ export async function flushTimerSegmentToLog(
   return duration;
 }
 
-/** Save elapsed time from a session to time_logs and remove the active session row. */
+/** Save billed time from a session to time_logs and remove the active session row. */
 export async function stopTimerSessionAndSaveLog(
   session: ActiveTimerSessionRow,
   workerUserId: string,
@@ -184,7 +184,7 @@ export async function stopTimerSessionAndSaveLog(
   return duration;
 }
 
-/** Stop every active timer on a job and persist elapsed time (assignee + members). */
+/** Stop every active timer on a job and persist billed time only (assignee + members). */
 export async function stopAllActiveTimersOnJob(jobId: string): Promise<number> {
   const sessions = await db
     .select()
@@ -193,12 +193,12 @@ export async function stopAllActiveTimersOnJob(jobId: string): Promise<number> {
 
   let saved = 0;
   for (const session of sessions) {
-    saved += await stopTimerSessionAndSaveLog(session, session.userId, { useElapsed: true });
+    saved += await stopTimerSessionAndSaveLog(session, session.userId);
   }
   return saved;
 }
 
-/** Stop every active timer on a job (alias — always persists elapsed time). */
+/** Stop every active timer on a job (alias — billed time only). */
 export async function clearAllActiveTimersOnJob(jobId: string): Promise<number> {
   return stopAllActiveTimersOnJob(jobId);
 }
@@ -236,7 +236,7 @@ export { TIMER_HEARTBEAT_GAP_PAUSE_MS };
 
 /**
  * When a worker is removed from a job, stop their server-side timer on that job
- * and persist the elapsed time under their user id.
+ * and persist billed time under their user id.
  */
 export async function stopActiveTimerForUserOnJob(
   userId: string,
@@ -248,5 +248,5 @@ export async function stopActiveTimerForUserOnJob(
     .where(and(eq(activeTimerSessions.userId, userId), eq(activeTimerSessions.jobId, jobId)))
     .limit(1);
   if (!session) return 0;
-  return stopTimerSessionAndSaveLog(session, userId, { useElapsed: true });
+  return stopTimerSessionAndSaveLog(session, userId);
 }
