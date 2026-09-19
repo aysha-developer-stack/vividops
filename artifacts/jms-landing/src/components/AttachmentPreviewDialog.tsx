@@ -1,13 +1,12 @@
 import { useMemo } from "react";
 import { Download } from "lucide-react";
-import PreviewableImage from "@/components/PreviewableImage";
 import PdfDocumentPreview from "@/components/PdfDocumentPreview";
 import WordDocumentPreview from "@/components/WordDocumentPreview";
+import ZoomableImagePreview from "@/components/ZoomableImagePreview";
 import {
   attachmentExtension,
   canPreviewAttachment,
   isDocxAttachment,
-  isHeicAttachment,
   isLegacyDocAttachment,
   isPreviewableImageAttachment,
 } from "@/lib/attachmentPreview";
@@ -68,7 +67,9 @@ export default function AttachmentPreviewDialog({
           <DialogHeader className="min-w-0 flex-1 space-y-1 text-left">
             <DialogTitle className="truncate pr-2">{fileName || "File preview"}</DialogTitle>
             <DialogDescription>
-              Preview opens inside Vivid OPS. Use Download to save the file.
+              {isImage
+                ? "Use + / −, scroll, or pinch to zoom. Drag to pan. Reset returns to fit."
+                : "Preview opens inside Vivid OPS. Use Download to save the file."}
             </DialogDescription>
           </DialogHeader>
           {onDownload ? (
@@ -84,27 +85,12 @@ export default function AttachmentPreviewDialog({
         </div>
 
         {isImage ? (
-          <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-xl border border-gray-200 bg-[#525659] [overflow-anchor:none] [-webkit-overflow-scrolling:touch]">
-            <div className="flex min-h-full items-start justify-center p-2 sm:p-4">
-              {isHeicAttachment(fileName, fileType) ? (
-                <PreviewableImage
-                  src={previewUrl}
-                  fileName={fileName}
-                  fileType={fileType}
-                  alt={fileName}
-                  className="max-h-full max-w-full object-contain"
-                />
-              ) : (
-                <img
-                  src={previewUrl}
-                  alt={fileName}
-                  className="max-h-full max-w-full object-contain"
-                  decoding="async"
-                  fetchPriority="high"
-                />
-              )}
-            </div>
-          </div>
+          <ZoomableImagePreview
+            src={previewUrl}
+            alt={fileName}
+            fileName={fileName}
+            fileType={fileType}
+          />
         ) : isPdf ? (
           <PdfDocumentPreview previewUrl={previewUrl} />
         ) : isText ? (

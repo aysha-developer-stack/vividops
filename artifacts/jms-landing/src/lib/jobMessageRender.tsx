@@ -1,4 +1,6 @@
+import { useState } from "react";
 import FileExtensionIcon from "@/components/FileExtensionIcon";
+import AttachmentPreviewDialog from "@/components/AttachmentPreviewDialog";
 
 export const IMAGE_FILE_RE = /\.(png|jpe?g|gif|webp|bmp|svg|avif)(\?.*)?$/i;
 
@@ -81,6 +83,48 @@ type RenderOptions = {
   variant?: "chat" | "activity";
 };
 
+function ChatImagePreview({
+  url,
+  fileName,
+  isMe,
+  mediaBorder,
+}: {
+  url: string;
+  fileName: string;
+  isMe: boolean;
+  mediaBorder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="space-y-2">
+      <div className={`text-xs font-semibold ${isMe ? "opacity-90" : "text-gray-700"}`}>
+        {fileName}
+      </div>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          setOpen(true);
+        }}
+        className="block max-w-full text-left"
+      >
+        <img
+          src={url}
+          alt={fileName}
+          className={`block max-h-72 w-auto max-w-full cursor-zoom-in rounded-xl border ${mediaBorder} bg-white/10 object-cover`}
+          loading="lazy"
+        />
+      </button>
+      <AttachmentPreviewDialog
+        open={open}
+        onOpenChange={setOpen}
+        fileName={fileName}
+        previewUrl={url}
+      />
+    </div>
+  );
+}
+
 export function renderMessageBody(text: string, options: RenderOptions = {}) {
   const { isMe = false, variant = "chat" } = options;
   const attachment = parseAttachmentMessage(text);
@@ -93,24 +137,12 @@ export function renderMessageBody(text: string, options: RenderOptions = {}) {
 
   if (attachment.isImage) {
     return (
-      <div className="space-y-2">
-        <div className={`text-xs font-semibold ${isMe ? "opacity-90" : "text-gray-700"}`}>
-          {attachment.fileName}
-        </div>
-        <a
-          href={attachment.url}
-          target={openInNewTab ? "_blank" : undefined}
-          rel={openInNewTab ? "noopener noreferrer" : undefined}
-          className="block"
-        >
-          <img
-            src={attachment.url}
-            alt={attachment.fileName}
-            className={`block max-h-72 w-auto max-w-full rounded-xl border ${mediaBorder} object-cover bg-white/10`}
-            loading="lazy"
-          />
-        </a>
-      </div>
+      <ChatImagePreview
+        url={attachment.url}
+        fileName={attachment.fileName}
+        isMe={isMe}
+        mediaBorder={mediaBorder}
+      />
     );
   }
 
