@@ -66,11 +66,13 @@ export default function AttachmentPreviewDialog({
         <div className="flex shrink-0 items-start justify-between gap-4 pr-8">
           <DialogHeader className="min-w-0 flex-1 space-y-1 text-left">
             <DialogTitle className="truncate pr-2">{fileName || "File preview"}</DialogTitle>
-            <DialogDescription>
-              {isImage
-                ? "Use + / −, scroll, or pinch to zoom. Drag to pan. Reset returns to fit."
-                : "Preview opens inside Vivid OPS. Use Download to save the file."}
-            </DialogDescription>
+            {isImage ? (
+              <DialogDescription className="sr-only">Image preview</DialogDescription>
+            ) : (
+              <DialogDescription>
+                Preview opens inside Vivid OPS. Use Download to save the file.
+              </DialogDescription>
+            )}
           </DialogHeader>
           {onDownload ? (
             <button
