@@ -454,6 +454,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const checklistTemplateKey = useMemo(() => JSON.stringify(meta.checklist), [meta.checklist]);
   const [attachments, setAttachments] = useState<AttachmentApi[]>([]);
   const [deletedAttachments, setDeletedAttachments] = useState<AttachmentApi[]>([]);
+  const [deletedFilesOpen, setDeletedFilesOpen] = useState(false);
   const [jobMembers, setJobMembers] = useState<
     Array<{
       id: string;
@@ -597,6 +598,7 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   useEffect(() => {
     if (tab !== "files" || !job?.id || (role !== "admin" && role !== "super-admin")) return;
+    setDeletedFilesOpen(false);
     let cancelled = false;
     (async () => {
       try {
@@ -3748,13 +3750,24 @@ export default function JobDetail({ role = "user", id }: Props) {
 
               {canRestoreDeletedFiles && (
                 <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-                  <div className="px-6 py-4 border-b border-gray-100 bg-rose-50/40 flex items-center justify-between">
-                    <div>
+                  <button
+                    type="button"
+                    onClick={() => setDeletedFilesOpen((open) => !open)}
+                    className={`w-full px-6 py-4 bg-rose-50/40 flex items-center justify-between gap-3 text-left hover:bg-rose-50/70 transition-colors ${deletedFilesOpen ? "border-b border-gray-100" : ""}`}
+                    aria-expanded={deletedFilesOpen}
+                  >
+                    <div className="min-w-0">
                       <h3 className="font-bold text-gray-900">Deleted Files</h3>
-                      <p className="text-[11px] text-gray-500 mt-0.5">Hidden from the job. Restore to put a file back in its original section. Files are permanently deleted after 1 week. Only admin and super-admin can see this.</p>
+                      {deletedFilesOpen && (
+                        <p className="text-[11px] text-gray-500 mt-0.5">Hidden from the job. Restore to put a file back in its original section. Files are permanently deleted after 1 week. Only admin and super-admin can see this.</p>
+                      )}
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 uppercase">{filteredDeleted.length} Files</span>
-                  </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 uppercase">{filteredDeleted.length} Files</span>
+                      <ChevronDown size={16} className={`text-gray-400 transition-transform ${deletedFilesOpen ? "rotate-180" : ""}`} />
+                    </div>
+                  </button>
+                  {deletedFilesOpen && (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
@@ -3801,6 +3814,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                       </tbody>
                     </table>
                   </div>
+                  )}
                 </div>
               )}
 
