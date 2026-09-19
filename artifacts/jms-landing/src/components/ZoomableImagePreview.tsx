@@ -176,7 +176,7 @@ export default function ZoomableImagePreview({ src, alt, fileName, fileType }: P
         onTouchEnd={onTouchEnd}
       >
         <div
-          className="flex h-full w-full items-center justify-center p-2 sm:p-4"
+          className="flex h-full w-full items-center justify-center"
           style={{
             transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
             transformOrigin: "center center",
@@ -189,7 +189,7 @@ export default function ZoomableImagePreview({ src, alt, fileName, fileType }: P
             draggable={false}
             decoding="async"
             fetchPriority="high"
-            className="max-h-full max-w-full select-none object-contain"
+            className="h-full w-full select-none object-contain"
           />
         </div>
       </div>
