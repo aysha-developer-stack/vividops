@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, eq, desc, inArray, sql as dsql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { createZipArchive, type ArchiverError } from "../lib/attachment-zip";
 import { upload, uploadToSupabase, supabase, buildStorageObjectKey, createDirectUploadUrl, getPublicUrlForKey, storageObjectExists, createSignedDownloadUrl, downloadStorageBuffer } from "../lib/storage";
 import { isHeicAttachment } from "../lib/heic-preview";
@@ -28,6 +29,7 @@ import {
 import { canRestoreDeletedAttachments } from "../lib/attachment-permissions";
 
 const router: IRouter = Router();
+const deletedByUsers = alias(users, "deleted_by_users");
 
 function attachmentFileExtension(fileName: string): string {
   return fileName.split(".").pop()?.toLowerCase() ?? "";
@@ -506,10 +508,12 @@ router.get("/jobs/:jobId/attachments", requireAuth, async (req, res) => {
       .select({
         attachment: jobAttachments,
         uploadedBy: { id: users.id, name: users.name, role: users.role },
+        deletedBy: { id: deletedByUsers.id, name: deletedByUsers.name, role: deletedByUsers.role },
         checklistItemId: jobChecklistAttachments.itemId,
       })
       .from(jobAttachments)
       .leftJoin(users, eq(users.id, jobAttachments.uploadedById))
+      .leftJoin(deletedByUsers, eq(deletedByUsers.id, jobAttachments.deletedById))
       .leftJoin(jobChecklistAttachments, eq(jobChecklistAttachments.attachmentId, jobAttachments.id))
       .where(
         and(
@@ -530,6 +534,7 @@ router.get("/jobs/:jobId/attachments", requireAuth, async (req, res) => {
       uniqueRows.map((r) => ({
         ...r.attachment,
         uploadedBy: r.uploadedBy?.id ? r.uploadedBy : null,
+        deletedBy: r.deletedBy?.id ? r.deletedBy : null,
         checklistItemId: r.checklistItemId ?? null,
       })),
     );

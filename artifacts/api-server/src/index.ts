@@ -390,6 +390,11 @@ async function start(): Promise<void> {
       setInterval(() => void syncStaleCliqChannelHistories(3), 5 * 60 * 1000);
     });
 
+    void import("./lib/purge-expired-deleted-attachments").then(({ purgeExpiredDeletedAttachments }) => {
+      setTimeout(() => void purgeExpiredDeletedAttachments(), 20_000);
+      setInterval(() => void purgeExpiredDeletedAttachments(), 60 * 60 * 1000);
+    });
+
     // Run daily summary at 11:55 PM
     const scheduleDaily = () => {
       const now = new Date();

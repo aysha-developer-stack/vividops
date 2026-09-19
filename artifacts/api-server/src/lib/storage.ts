@@ -190,3 +190,14 @@ export async function downloadStorageBuffer(storageKey: string): Promise<Buffer>
   }
   return Buffer.from(await data.arrayBuffer());
 }
+
+export async function removeStorageKeys(keys: string[]): Promise<void> {
+  const unique = [...new Set(keys.map((key) => key.trim()).filter((key) => key.length > 0))];
+  if (unique.length === 0) return;
+  const bucketName = getBucketName();
+  const { error } = await supabase.storage.from(bucketName).remove(unique);
+  if (error) {
+    const raw = typeof error.message === "string" ? error.message : "Failed to delete files from storage";
+    throw new Error(raw);
+  }
+}

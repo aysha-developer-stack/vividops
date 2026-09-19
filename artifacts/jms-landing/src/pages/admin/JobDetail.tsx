@@ -166,8 +166,10 @@ type AttachmentApi = {
   uploadedById: string;
   createdAt: string;
   deletedAt?: string | null;
+  deletedById?: string | null;
   checklistItemId?: number | null;
   uploadedBy: { id: string; name: string; role: Role } | null;
+  deletedBy?: { id: string; name: string; role: Role } | null;
 };
 
 interface FileNote { id: number; author: string; avatar: string; text: string; time: string; kind: "rework" | "comment" }
@@ -1843,7 +1845,14 @@ export default function JobDetail({ role = "user", id }: Props) {
         setDeletedAttachments((prev) =>
           prev.some((a) => a.id === attachment.id)
             ? prev
-            : [{ ...attachment, deletedAt: new Date().toISOString() }, ...prev],
+            : [{
+                ...attachment,
+                deletedAt: new Date().toISOString(),
+                deletedById: currentUser?.id ?? null,
+                deletedBy: currentUser
+                  ? { id: currentUser.id, name: currentUser.name, role: currentUser.role as Role }
+                  : null,
+              }, ...prev],
         );
       }
       await refreshJobAttachments();
@@ -3742,7 +3751,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                   <div className="px-6 py-4 border-b border-gray-100 bg-rose-50/40 flex items-center justify-between">
                     <div>
                       <h3 className="font-bold text-gray-900">Deleted Files</h3>
-                      <p className="text-[11px] text-gray-500 mt-0.5">Hidden from the job. Restore to put a file back in its original section. Only admin and super-admin can see this.</p>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Hidden from the job. Restore to put a file back in its original section. Files are permanently deleted after 1 week. Only admin and super-admin can see this.</p>
                     </div>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 uppercase">{filteredDeleted.length} Files</span>
                   </div>
@@ -3754,15 +3763,17 @@ export default function JobDetail({ role = "user", id }: Props) {
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Section</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Uploaded By</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Removed</th>
+                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Deleted By</th>
                           <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
                         {filteredDeleted.length === 0 ? (
-                          <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-gray-400">No deleted files</td></tr>
+                          <tr><td colSpan={6} className="px-6 py-10 text-center text-xs text-gray-400">No deleted files</td></tr>
                         ) : (
                           filteredDeleted.map((a) => {
                             const who = a.uploadedBy?.name ?? "—";
+                            const deletedBy = a.deletedBy?.name ?? "—";
                             const when = a.deletedAt ? new Date(a.deletedAt).toLocaleString() : "—";
                             return (
                               <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
@@ -3775,6 +3786,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                                 <td className="px-6 py-2.5 text-xs text-gray-600">{deletedFileSectionLabel(a)}</td>
                                 <td className="px-6 py-2.5 text-xs text-gray-600">{who}</td>
                                 <td className="px-6 py-2.5 text-xs text-gray-600">{when}</td>
+                                <td className="px-6 py-2.5 text-xs text-gray-600">{deletedBy}</td>
                                 <td className="px-6 py-2.5 text-right">
                                   <div className="flex items-center justify-end gap-2">
                                     <button onMouseEnter={() => warmAttachmentPreview(a)} onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
