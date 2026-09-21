@@ -29,12 +29,18 @@ function parseDueAt(value: unknown): Date | null {
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
-async function nextCycleNumber(jobId: string, userId: string): Promise<number> {
-  const rows = await db.execute(sql`
-    SELECT COALESCE(MAX(cycle_number), 0)::int AS max_cycle
-    FROM job_reworks
-    WHERE job_id = ${jobId} AND user_id = ${userId}
-  `);
+async function nextCycleNumber(jobId: string, userId: string, origin: ReworkOrigin | null): Promise<number> {
+  const rows = origin
+    ? await db.execute(sql`
+        SELECT COALESCE(MAX(cycle_number), 0)::int AS max_cycle
+        FROM job_reworks
+        WHERE job_id = ${jobId} AND user_id = ${userId} AND rework_origin = ${origin}
+      `)
+    : await db.execute(sql`
+        SELECT COALESCE(MAX(cycle_number), 0)::int AS max_cycle
+        FROM job_reworks
+        WHERE job_id = ${jobId} AND user_id = ${userId} AND rework_origin IS NULL
+      `);
   const raw = ((rows as any).rows ?? [])[0]?.max_cycle;
   const max = typeof raw === "number" ? raw : Number(raw ?? 0);
   return Number.isFinite(max) ? max + 1 : 1;
@@ -68,7 +74,7 @@ export async function createRework(opts: {
   const severity = normalizeSeverity(opts.severity);
   const comments = opts.comments?.trim() ? opts.comments.trim() : null;
   const dueAt = parseDueAt(opts.dueAt);
-  const cycleNumber = await nextCycleNumber(opts.job.id, userId);
+  const cycleNumber = await nextCycleNumber(opts.job.id, userId, opts.reworkOrigin ?? null);
 
   const [rework] = await db
     .insert(jobReworks)

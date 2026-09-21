@@ -53,8 +53,14 @@ export function completedAttachmentStatusLabel(a: {
   fileCategory?: string | null;
   reworkId?: string | null;
   uploadedBy?: { role?: string | null } | null;
-}, cycleNumber?: number | null): { label: string; tone: "submitted" | "rework" } {
+}, cycleNumber?: number | null, reworkOrigin?: string | null): { label: string; tone: "submitted" | "rework" } {
   if (isReworkCompletedAttachment(a)) {
+    if (reworkOrigin === "internal") {
+      return { label: cycleNumber != null ? `Internal completed #${cycleNumber}` : "Internal completed", tone: "rework" };
+    }
+    if (reworkOrigin === "external") {
+      return { label: cycleNumber != null ? `External completed #${cycleNumber}` : "External completed", tone: "rework" };
+    }
     const cycle = cycleNumber != null ? ` #${cycleNumber}` : "";
     return { label: `Rework completed${cycle}`, tone: "rework" };
   }

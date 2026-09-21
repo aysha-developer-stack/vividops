@@ -87,6 +87,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import FileDropzone from "@/components/FileDropzone";
 import { CHECKLIST_FILE_ACCEPT, filterJobFiles, filterChecklistInstructionFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE, CHECKLIST_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
 import { isCompletedAttachment, isJobAttachment, isNoteAttachment, isReworkAttachment, isReviewAttachment, fileCategoryFromUploadTag, completedAttachmentStatusLabel, checklistItemHasCompletedUpload, jobLevelHasCompletedDeliverables, reworkInstructionBadges, type ReworkOrigin } from "@/lib/attachmentCategories";
+import { originSequenceByReworkId, reworkSequenceLabel } from "@/lib/reworkOriginSequence";
 import { hideJobFileConfirm } from "@/lib/hideJobFileConfirm";
 import { refreshSidebarBadges } from "@/lib/sidebarBadgesApi";
 import { useDashboardSearch } from "@/lib/pageSearch";
@@ -1576,6 +1577,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const progress = checklist.length > 0 ? checklistProgress : (job?.progress ?? 0);
 
   const activeReworks = reworks.filter((r) => r.status === "open" || r.status === "awaiting_review" || r.status === "needs_correction");
+  const reworkOriginSequenceById = useMemo(() => originSequenceByReworkId(reworks), [reworks]);
   const selectedItemRework = selectedChecklistItem
     ? activeReworks
         .filter((r) => r.checklistItemId === selectedChecklistItem.id)
@@ -1606,14 +1608,22 @@ export default function JobDetail({ role = "user", id }: Props) {
     [jobTimeLogs],
   );
 
-  const activeReworkCycle = useMemo(() => {
-    const open = reworks
-      .filter((r) => r.status === "open" || r.status === "needs_correction" || r.status === "awaiting_review")
-      .map((r) => r.cycleNumber)
-      .filter((n): n is number => typeof n === "number");
+  const activeReworkCycleLabel = useMemo(() => {
+    const open = reworks.filter(
+      (r) => r.status === "open" || r.status === "needs_correction" || r.status === "awaiting_review",
+    );
     if (open.length === 0) return null;
-    return Math.max(...open);
-  }, [reworks]);
+    const latest = [...open].sort((a, b) => {
+      const at = Date.parse(a.assignedAt) || 0;
+      const bt = Date.parse(b.assignedAt) || 0;
+      if (bt !== at) return bt - at;
+      return b.cycleNumber - a.cycleNumber;
+    })[0];
+    return reworkSequenceLabel(
+      latest.reworkOrigin,
+      reworkOriginSequenceById.get(latest.id) ?? latest.cycleNumber,
+    );
+  }, [reworks, reworkOriginSequenceById]);
 
   const displaySeconds = totalLoggedSeconds + seconds + juniorTotalSeconds;
   const activeTimerTask = serverTimerTask.trim();
@@ -2604,7 +2614,7 @@ export default function JobDetail({ role = "user", id }: Props) {
             {activeReworks.slice(0, 4).map((rw) => (
               <div key={rw.id} className="rounded-xl bg-white border border-amber-100 p-3">
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="text-xs font-bold text-gray-900">Rework #{rw.cycleNumber}{rw.checklistItemId ? ` · Item ${rw.checklistItemId}` : ""}</span>
+                  <span className="text-xs font-bold text-gray-900">{reworkSequenceLabel(rw.reworkOrigin, reworkOriginSequenceById.get(rw.id) ?? rw.cycleNumber)}{rw.checklistItemId ? ` · Item ${rw.checklistItemId}` : ""}</span>
                   <div className="flex items-center gap-2">
                     {canEditRework && (
                       <button
@@ -2728,7 +2738,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 <div className={`h-2 w-2 shrink-0 rounded-full ${running ? "bg-emerald-300 animate-pulse" : "bg-white/40"}`} />
                 <span className="text-xs font-bold uppercase tracking-wider text-white/80">
                   {running ? "Tracking time" : seconds > 0 ? "Paused" : "Ready to work"}
-                  {activeReworkCycle != null ? ` · ${reworkCycleLabel(activeReworkCycle)}` : ""}
+                  {activeReworkCycleLabel ? ` · ${activeReworkCycleLabel}` : ""}
                 </span>
               </div>
               <div className="font-mono text-4xl font-bold tabular-nums leading-none text-white md:text-5xl">
@@ -3127,7 +3137,11 @@ export default function JobDetail({ role = "user", id }: Props) {
                         );
                         const renderFileRow = (f: ChecklistFileApi) => {
                           const meta = f.reworkId ? reworks.find((r) => r.id === f.reworkId) : undefined;
-                          const status = completedAttachmentStatusLabel(f, meta?.cycleNumber);
+                          const status = completedAttachmentStatusLabel(
+                            f,
+                            f.reworkId ? reworkOriginSequenceById.get(f.reworkId) ?? meta?.cycleNumber : meta?.cycleNumber,
+                            meta?.reworkOrigin,
+                          );
                           const isCompletedRow = isCompletedAttachment({ fileCategory: f.fileCategory, uploadedBy: f.uploadedBy });
                           return (
                           <div key={f.id} className="flex items-start gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
@@ -3657,7 +3671,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                                 </td>
                                 <td className="px-6 py-2.5 text-xs text-gray-600">{who}</td>
                                 <td className="px-6 py-2.5 text-xs text-gray-600">
-                                  {meta?.cycleNumber != null ? `Rework #${meta.cycleNumber}` : "—"}
+                                  {meta ? reworkSequenceLabel(meta.reworkOrigin, reworkOriginSequenceById.get(a.reworkId ?? "") ?? meta.cycleNumber) : "—"}
                                 </td>
                                 <td className="px-6 py-2.5">
                                   {reworkBadges}
@@ -3710,7 +3724,11 @@ export default function JobDetail({ role = "user", id }: Props) {
                             const who = a.uploadedBy?.name ?? "—";
                             const when = a.createdAt ? new Date(a.createdAt).toLocaleString() : "—";
                             const meta = a.reworkId ? reworkMetaById.get(a.reworkId) : undefined;
-                            const status = completedAttachmentStatusLabel(a, meta?.cycleNumber);
+                            const status = completedAttachmentStatusLabel(
+                              a,
+                              a.reworkId ? reworkOriginSequenceById.get(a.reworkId) ?? meta?.cycleNumber : meta?.cycleNumber,
+                              meta?.reworkOrigin,
+                            );
                             return (
                             <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-6 py-2.5 align-top">
