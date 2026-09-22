@@ -27,9 +27,10 @@ const mistakeJobColumns = {
   serial: jobs.serial,
   jobNumber: jobs.jobNumber,
   title: jobs.title,
+  address: jobs.address,
 } as const;
 
-type MistakeJobRef = Pick<JobRow, "id" | "serial" | "jobNumber" | "title">;
+type MistakeJobRef = Pick<JobRow, "id" | "serial" | "jobNumber" | "title" | "address">;
 
 /** Only manually logged mistakes — never rework-linked or auto-generated records. */
 const manualMistakeOnly = and(
@@ -100,6 +101,7 @@ export type PublicMistake = {
   updatedAt: string;
   jobNumber: string | null;
   jobTitle: string | null;
+  jobAddress: string | null;
   user: { id: string; name: string; role: UserRow["role"] } | null;
   createdBy: { id: string; name: string; role: UserRow["role"] } | null;
 };
@@ -125,6 +127,7 @@ function toPublic(row: {
     updatedAt: row.report.updatedAt.toISOString(),
     jobNumber: row.job ? jobDisplayNumber(row.job) : null,
     jobTitle: row.job?.title ?? null,
+    jobAddress: row.job?.address?.trim() ? row.job.address.trim() : null,
     user: row.user?.id ? row.user : null,
     createdBy: row.createdBy?.id ? row.createdBy : null,
   };
@@ -528,7 +531,13 @@ router.post("/mistakes", requireAuth, async (req, res) => {
     toPublic({
       report: created,
       job: jobRow
-        ? { id: jobRow.id, serial: jobRow.serial, jobNumber: jobRow.jobNumber, title: jobRow.title }
+        ? {
+            id: jobRow.id,
+            serial: jobRow.serial,
+            jobNumber: jobRow.jobNumber,
+            title: jobRow.title,
+            address: jobRow.address,
+          }
         : null,
       user: userRow,
       createdBy: { id: actor.id, name: actor.name, role: actor.role },

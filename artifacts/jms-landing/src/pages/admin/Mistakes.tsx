@@ -28,6 +28,7 @@ type MistakeRecord = {
   createdAt: string;
   jobNumber: string | null;
   jobTitle: string | null;
+  jobAddress?: string | null;
   user: { id: string; name: string } | null;
   createdBy: { id: string; name: string } | null;
 };
@@ -166,7 +167,8 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
         (r.user?.name ?? "").toLowerCase().includes(q) ||
         formatMistakeCategory(r.category).toLowerCase().includes(q) ||
         (r.jobNumber ?? "").toLowerCase().includes(q) ||
-        (r.jobTitle ?? "").toLowerCase().includes(q)
+        (r.jobTitle ?? "").toLowerCase().includes(q) ||
+        (r.jobAddress ?? "").toLowerCase().includes(q)
       );
     });
   }, [records, search, severityFilter, statusFilter]);
@@ -495,6 +497,7 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                     {r.user?.name ?? "Unknown"} · {formatMistakeCategory(r.category)}
                     {r.jobNumber ? ` · ${r.jobNumber}` : ""}
                     {r.jobTitle ? ` · ${r.jobTitle}` : ""}
+                    {r.jobAddress ? ` · ${r.jobAddress}` : ""}
                     {" · "}{new Date(r.createdAt).toLocaleDateString()}
                   </p>
                 </div>
@@ -550,12 +553,15 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                 <div>Logged by: {selected.createdBy?.name ?? "—"}</div>
                 <div>Date: {new Date(selected.createdAt).toLocaleString()}</div>
                 {selected.jobId && (
-                  <div>
-                    Job:{" "}
-                    <Link href={`${jobBase}/${selected.jobId}`} className="text-primary font-semibold hover:underline">
-                      {[selected.jobNumber, selected.jobTitle].filter(Boolean).join(" · ") || selected.jobId}
-                    </Link>
-                  </div>
+                  <>
+                    <div>
+                      Job:{" "}
+                      <Link href={`${jobBase}/${selected.jobId}`} className="text-primary font-semibold hover:underline">
+                        {[selected.jobNumber, selected.jobTitle].filter(Boolean).join(" · ") || selected.jobId}
+                      </Link>
+                    </div>
+                    {selected.jobAddress ? <div>Address: {selected.jobAddress}</div> : null}
+                  </>
                 )}
               </div>
               <div className="flex gap-2 flex-wrap">
@@ -644,9 +650,14 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                     className={FORM_SELECT}
                   >
                     <option value="" className="text-gray-500">No job link</option>
-                    {jobOptions.map((j) => (
-                      <option key={j.id} value={j.id}>{j.number} — {j.title}</option>
-                    ))}
+                    {jobOptions.map((j) => {
+                      const address = (j.address ?? "").trim();
+                      return (
+                        <option key={j.id} value={j.id}>
+                          {j.number} — {j.title}{address ? ` — ${address}` : ""}
+                        </option>
+                      );
+                    })}
                   </select>
                   {draft.jobId && workerOptions.length === 0 ? (
                     <p className="text-xs text-amber-700 mt-1">This job has no assigned workers. Pick a different job or leave job unlinked.</p>
