@@ -295,34 +295,35 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
     }
 
     const now = new Date();
-    const [session] = await db
-      .insert(activeTimerSessions)
-      .values({
-        id: randomUUID(),
-        userId: actor.id,
-        jobId,
-        task,
-        accumulatedSeconds: 0,
-        segmentStartedAt: now,
-        lastHeartbeatAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: activeTimerSessions.userId,
-        set: {
-          jobId,
-          task,
-          accumulatedSeconds: 0,
-          segmentStartedAt: now,
-          lastHeartbeatAt: now,
-          updatedAt: now,
-        },
-      })
-      .returning();
+    const insertValues = {
+      id: randomUUID(),
+      userId: actor.id,
+      jobId,
+      task,
+      accumulatedSeconds: 0,
+      segmentStartedAt: now,
+      lastHeartbeatAt: now,
+      updatedAt: now,
+    };
 
-    return res.json(
-      publicTimerSession(session, { jobNumber: job.jobNumber, title: job.title }),
-    );
+    try {
+      const [session] = await db.insert(activeTimerSessions).values(insertValues).returning();
+      return res.json(
+        publicTimerSession(session, { jobNumber: job.jobNumber, title: job.title }),
+      );
+    } catch (err) {
+      const code = typeof err === "object" && err && "code" in err ? String((err as { code: unknown }).code) : "";
+      if (code !== "23505") throw err;
+      const raced = await loadSessionForUser(actor.id);
+      if (raced) await stopSessionAndSaveLog(raced, actor);
+      const [session] = await db
+        .insert(activeTimerSessions)
+        .values({ ...insertValues, id: randomUUID() })
+        .returning();
+      return res.json(
+        publicTimerSession(session, { jobNumber: job.jobNumber, title: job.title }),
+      );
+    }
   } catch (err) {
     logger.error({ err }, "Failed to start timer session");
     return res.status(500).json({ error: "Internal server error" });
@@ -389,7 +390,20 @@ router.post("/timer-sessions/heartbeat", requireAuth, async (req, res) => {
     const session = await loadSessionForUser(actor.id);
     if (!session) return res.status(404).json({ error: "No active timer session" });
     if (!session.segmentStartedAt) {
-      return res.status(400).json({ error: "Timer is paused" });
+      let job: Pick<JobRow, "jobNumber" | "title"> | null = null;
+      if (session.jobId) {
+        const [j] = await db
+          .select({ jobNumber: jobs.jobNumber, title: jobs.title })
+          .from(jobs)
+          .where(eq(jobs.id, session.jobId))
+          .limit(1);
+        job = j ?? null;
+      }
+      return res.json({
+        ...publicTimerSession(session, job),
+        autoPaused: true,
+        reason: "paused",
+      });
     }
 
     const now = new Date();

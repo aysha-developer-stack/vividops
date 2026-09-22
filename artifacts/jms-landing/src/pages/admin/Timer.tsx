@@ -148,7 +148,10 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
 
   useTimerHeartbeatOnVisible(running, (payload) => {
     void handleTimerHeartbeatSideEffects(payload, {
-      onAutoPaused: syncPausedFromServer,
+      onAutoPaused: (session) => {
+        syncPausedFromServer(session);
+        void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+      },
       onAutoStopped: (duration) => {
         setRunning(false);
         setSeconds(0);
@@ -330,10 +333,20 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     if (!running) return;
     const runHeartbeat = () => {
       void heartbeatTimerSession()
-        .then((payload) => {
-          if (!payload) return;
+        .then(async (payload) => {
+          if (!payload) {
+            const mine = await fetchMyActiveTimerSession();
+            if (mine) syncPausedFromServer(mine);
+            else {
+              setRunning(false);
+            }
+            return;
+          }
           return handleTimerHeartbeatSideEffects(payload, {
-            onAutoPaused: syncPausedFromServer,
+            onAutoPaused: (session) => {
+              syncPausedFromServer(session);
+              void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+            },
             onAutoStopped: (duration) => {
               setRunning(false);
               setSeconds(0);

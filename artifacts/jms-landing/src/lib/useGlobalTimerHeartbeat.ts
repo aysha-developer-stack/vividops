@@ -62,8 +62,10 @@ export function useGlobalTimerHeartbeat(enabled: boolean): void {
 
     const sendHeartbeat = async () => {
       const payload = await heartbeatTimerSession().catch(() => null);
-      if (cancelled || !payload) {
-        if (!payload) publishSession(null);
+      if (cancelled) return;
+      if (!payload) {
+        // 404/network/pause-as-error: never assume the session vanished — re-read it.
+        await refreshSessionState();
         return;
       }
 

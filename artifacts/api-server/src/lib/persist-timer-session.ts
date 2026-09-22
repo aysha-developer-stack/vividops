@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import {
   activeTimerSessions,
   db,
@@ -203,29 +203,63 @@ export async function clearAllActiveTimersOnJob(jobId: string): Promise<number> 
   return stopAllActiveTimersOnJob(jobId);
 }
 
-/** Pause a running segment after sleep/offline — keep billable time in session for resume. */
+/**
+ * Pause a running segment after sleep/offline.
+ * Claim the running row first so concurrent pause/heartbeat cannot double-write,
+ * then persist billed time so Timer Logs still show it.
+ */
 export async function pauseTimerSessionAfterGap(
   session: ActiveTimerSessionRow,
 ): Promise<ActiveTimerSessionRow> {
+  if (!session.segmentStartedAt) return session;
   const now = new Date();
-  const billable = timerSessionBillableSeconds(session, now.getTime());
   const [updated] = await db
     .update(activeTimerSessions)
     .set({
-      accumulatedSeconds: billable,
+      accumulatedSeconds: 0,
       segmentStartedAt: null,
       lastHeartbeatAt: now,
       updatedAt: now,
     })
-    .where(eq(activeTimerSessions.id, session.id))
+    .where(and(eq(activeTimerSessions.id, session.id), isNotNull(activeTimerSessions.segmentStartedAt)))
     .returning();
+  if (!updated) {
+    const [current] = await db
+      .select()
+      .from(activeTimerSessions)
+      .where(eq(activeTimerSessions.id, session.id))
+      .limit(1);
+    return current ?? session;
+  }
+
+  let rawDuration = resolveTimerSaveDuration(session, now.getTime());
+  if (session.jobId) {
+    const [job] = await db
+      .select({ status: jobs.status, completedAt: jobs.completedAt })
+      .from(jobs)
+      .where(eq(jobs.id, session.jobId))
+      .limit(1);
+    if (job) rawDuration = capDurationForClosedJob(session, job, rawDuration);
+  }
+  const duration = Math.min(Math.max(0, rawDuration), MAX_TIMER_SEGMENT_SECONDS);
+  if (duration > 0 && session.jobId) {
+    const reworkCycleNumber = await resolveReworkCycleForTimeLog(session.jobId, session.userId);
+    await db.insert(timeLogs).values({
+      id: randomUUID(),
+      task: session.task,
+      duration,
+      jobId: session.jobId,
+      userId: session.userId,
+      reworkCycleNumber,
+    });
+  }
   logger.info(
     {
       sessionId: session.id,
       jobId: session.jobId,
       userId: session.userId,
       gapMs: now.getTime() - session.lastHeartbeatAt.getTime(),
-      billable,
+      duration,
     },
     "Auto-paused timer after heartbeat gap (sleep/offline)",
   );

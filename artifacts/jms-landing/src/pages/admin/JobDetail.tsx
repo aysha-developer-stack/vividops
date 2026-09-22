@@ -1199,7 +1199,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       if (wasRunning && job?.id) {
         void postTimerNotification(
           "Timer paused",
-          `Your timer was paused for ${job.number ?? "this job"}. Tap Start Work to keep tracking time.`,
+          `Your timer was paused for ${job.number ?? "this job"}. Time so far was saved. Tap Start Work to keep tracking.`,
           job.id,
         );
       }
@@ -1207,9 +1207,15 @@ export default function JobDetail({ role = "user", id }: Props) {
     const runHeartbeat = () => {
       void heartbeatTimerSession()
         .then((payload) => {
-          if (!payload) return;
+          if (!payload) {
+            void refreshServerTimer();
+            return;
+          }
           return handleTimerHeartbeatSideEffects(payload, {
-            onAutoPaused: syncPaused,
+            onAutoPaused: (session) => {
+              syncPaused(session);
+              void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+            },
             onAutoStopped: () => {
               setShowActivityPing(false);
               if (job?.id) clearJobTimerState(job.id);
@@ -1231,10 +1237,11 @@ export default function JobDetail({ role = "user", id }: Props) {
         const wasRunning = timerWasRunningRef.current;
         setShowActivityPing(false);
         void refreshServerTimer();
+        void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
         if (wasRunning && job?.id) {
           void postTimerNotification(
             "Timer paused",
-            `Your timer was paused for ${job.number ?? "this job"}. Tap Start Work to keep tracking time.`,
+            `Your timer was paused for ${job.number ?? "this job"}. Time so far was saved. Tap Start Work to keep tracking.`,
             job.id,
           );
         }
