@@ -132,6 +132,25 @@ export async function stampJobStartDateIfEmpty(jobId: string): Promise<void> {
   `);
 }
 
+/** Move a pending job to in progress the first time work is actually tracked. */
+export async function markJobInProgressIfPending(jobId: string, actor: UserRow): Promise<void> {
+  const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  if (!job || job.status !== "pending") return;
+  const previousStatus = job.status;
+  const nextStatus: ReviewableStatus = "in_progress";
+  const patch = {
+    ...jobStatusPatchFields({
+      nextStatus,
+      previousStatus,
+      currentProgress: job.progress,
+      currentStartDate: job.startDate,
+    }),
+    updatedAt: new Date(),
+  };
+  await db.update(jobs).set(patch).where(eq(jobs.id, jobId));
+  await notifyStatusTransition({ actor, job, previousStatus, nextStatus });
+}
+
 export function jobStatusPatchFields(opts: {
   nextStatus: ReviewableStatus;
   previousStatus?: string;

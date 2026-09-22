@@ -6,6 +6,7 @@ import { logger } from "../lib/logger";
 import { ensureJobWriteSchema } from "../lib/schema-init";
 import { canMutateCompletedJob } from "../lib/job-edit-permissions";
 import { actorCanViewJobStakeholder } from "../lib/job-access";
+import { markJobInProgressIfPending, stampJobStartDateIfEmpty } from "../lib/job-review";
 
 const router: IRouter = Router();
 
@@ -157,6 +158,11 @@ router.patch("/jobs/:jobId/juniors/:id", requireAuth, async (req, res) => {
     }
 
     const [updated] = await db.update(jobJuniors).set(patch).where(eq(jobJuniors.id, id)).returning();
+    const addedTime = Number.isFinite(addSeconds) && addSeconds > 0;
+    if (addedTime || patch.status === "in_progress") {
+      await markJobInProgressIfPending(jobId, actor);
+      await stampJobStartDateIfEmpty(jobId);
+    }
     return res.json((await enrich([updated]))[0]);
   } catch (err) {
     logger.error({ err }, "Failed to update job junior");
@@ -186,6 +192,8 @@ router.post("/jobs/:jobId/juniors/:id/timer", requireAuth, async (req, res) => {
     const now = new Date();
     if (action === "start") {
       if (row.segmentStartedAt) {
+        await markJobInProgressIfPending(jobId, actor);
+        await stampJobStartDateIfEmpty(jobId);
         return res.json((await enrich([row]))[0]);
       }
       const others = await db.select().from(jobJuniors).where(eq(jobJuniors.jobId, jobId));
@@ -210,6 +218,8 @@ router.post("/jobs/:jobId/juniors/:id/timer", requireAuth, async (req, res) => {
         })
         .where(eq(jobJuniors.id, id))
         .returning();
+      await markJobInProgressIfPending(jobId, actor);
+      await stampJobStartDateIfEmpty(jobId);
       return res.json((await enrich([updated]))[0]);
     }
 

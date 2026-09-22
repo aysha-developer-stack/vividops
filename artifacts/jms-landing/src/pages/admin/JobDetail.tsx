@@ -2830,7 +2830,15 @@ export default function JobDetail({ role = "user", id }: Props) {
 
       {job?.id && (role === "user" || canUseJobTimer) && (
         <div className="mb-5">
-          <JobJuniorsPanel jobId={job.id} canEdit={canEditJuniors} onChanged={loadJobJuniors} />
+          <JobJuniorsPanel
+            jobId={job.id}
+            canEdit={canEditJuniors}
+            onChanged={() => {
+              void loadJobJuniors();
+              void qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+              void qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+            }}
+          />
         </div>
       )}
 
@@ -2891,7 +2899,15 @@ export default function JobDetail({ role = "user", id }: Props) {
             </div>
             </div>
             {job?.id && !(role === "user" || canUseJobTimer) && (
-              <JobJuniorsPanel jobId={job.id} canEdit={canEditJuniors} onChanged={loadJobJuniors} />
+              <JobJuniorsPanel
+                jobId={job.id}
+                canEdit={canEditJuniors}
+                onChanged={() => {
+                  void loadJobJuniors();
+                  void qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
+                  void qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                }}
+              />
             )}
           </motion.div>
         )}

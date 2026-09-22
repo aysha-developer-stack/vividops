@@ -29,10 +29,8 @@ import {
 } from "../lib/persist-timer-session";
 import { flushReviewCheckSegment } from "../lib/persist-review-check-session";
 import {
-  jobStatusPatchFields,
-  notifyStatusTransition,
   stampJobStartDateIfEmpty,
-  type ReviewableStatus,
+  markJobInProgressIfPending,
 } from "../lib/job-review";
 
 const router: IRouter = Router();
@@ -67,24 +65,6 @@ async function canViewJob(actor: UserRow, job: JobRow): Promise<boolean> {
   if (actor.role === "coordinator") return job.coordinatorId === actor.id;
   if (job.assigneeId === actor.id) return true;
   return isAdditionalJobMember(job.id, actor.id);
-}
-
-async function markJobInProgressIfPending(jobId: string, actor: UserRow): Promise<void> {
-  const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
-  if (!job || job.status !== "pending") return;
-  const previousStatus = job.status;
-  const nextStatus: ReviewableStatus = "in_progress";
-  const patch = {
-    ...jobStatusPatchFields({
-      nextStatus,
-      previousStatus,
-      currentProgress: job.progress,
-      currentStartDate: job.startDate,
-    }),
-    updatedAt: new Date(),
-  };
-  await db.update(jobs).set(patch).where(eq(jobs.id, jobId));
-  await notifyStatusTransition({ actor, job, previousStatus, nextStatus });
 }
 
 async function stopSessionAndSaveLog(
