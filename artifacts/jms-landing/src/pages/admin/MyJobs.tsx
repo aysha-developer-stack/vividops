@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -14,7 +14,8 @@ import {
   statusToUi, priorityToUi, formatShortDate, daysUntil,
   type UiStatus,
 } from "@/lib/jobMappers";
-import { sortJobs } from "@/lib/jobListSort";
+import JobListSortControl from "@/components/JobListSortControl";
+import { readStoredJobListSort, sortJobs, type JobListSortMode } from "@/lib/jobListSort";
 
 function isJobForUser(j: ApiJob, userId: string): boolean {
   if (j.assignee?.id === userId) return true;
@@ -33,6 +34,8 @@ interface UiJob {
   daysLeft: number;
   priority: "Low" | "Medium" | "High";
   createdAt: string;
+  updatedAt?: string;
+  lastMessageAt?: string | null;
 }
 
 function mapJob(j: ApiJob): UiJob {
@@ -55,6 +58,8 @@ function mapJob(j: ApiJob): UiJob {
     daysLeft: days,
     priority: priorityToUi(j.priority),
     createdAt: j.createdAt,
+    updatedAt: j.updatedAt,
+    lastMessageAt: (j as ApiJob & { lastMessageAt?: string | null }).lastMessageAt ?? null,
   };
 }
 
@@ -86,6 +91,7 @@ const FILTERS: ("All" | UiStatus)[] = [
 
 export default function MyJobs() {
   const [filter, setFilter] = useState<"All" | UiStatus>("All");
+  const [sortMode, setSortMode] = useState<JobListSortMode>(() => readStoredJobListSort());
   const { search, setSearch, headerSearch } = useDashboardSearch("Search by job, client…");
   const { user } = useAuth();
   const jobsQuery = useListJobs({
@@ -109,13 +115,19 @@ export default function MyJobs() {
         (j.title.toLowerCase().includes(search.toLowerCase()) ||
           j.client.toLowerCase().includes(search.toLowerCase())),
     );
-    return sortJobs(matches, "recent", (j) => ({
+    return sortJobs(matches, sortMode, (j) => ({
       number: j.number,
       status: j.status,
       createdAt: j.createdAt,
+      updatedAt: j.updatedAt,
+      lastMessageAt: j.lastMessageAt,
     }));
-  }, [jobs, filter, search]);
+  }, [jobs, filter, search, sortMode]);
   const { page, setPage, totalPages, pageItems, total, pageSize } = usePagination(filtered, 5);
+
+  useEffect(() => {
+    setPage(1);
+  }, [sortMode, filter, setPage]);
 
   return (
     <DashboardLayout title="My Jobs" role="user" headerSearch={headerSearch}>
@@ -148,7 +160,8 @@ export default function MyJobs() {
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-end mb-5">
+      <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between mb-5">
+        <JobListSortControl value={sortMode} onChange={setSortMode} variant="toolbar" />
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto">
           {FILTERS.map((f) => (
             <motion.button

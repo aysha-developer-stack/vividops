@@ -132,8 +132,10 @@ async function loadLastMessageAtByJobIds(jobIds: string[]): Promise<Map<string, 
     WHERE job_id IN (${sql.join(jobIds.map((id) => sql`${id}`), sql`, `)})
     GROUP BY job_id
   `);
-  const rawRows = ((rows as unknown as { rows?: Array<{ job_id: string; last_message_at: string }> }).rows ?? []);
-  for (const row of rawRows) {
+  const rawRows = Array.isArray(rows)
+    ? rows
+    : (((rows as { rows?: Array<{ job_id: string; last_message_at: string | Date }> } | null)?.rows) ?? []);
+  for (const row of rawRows as Array<{ job_id?: string; last_message_at?: string | Date }>) {
     if (row.job_id && row.last_message_at) {
       map.set(row.job_id, new Date(row.last_message_at).toISOString());
     }
@@ -1935,12 +1937,10 @@ router.get("/jobs", requireAuth, async (req, res) => {
     logger.warn({ err }, "Failed to load job members for list");
   }
   let lastMessageAtByJob = new Map<string, string>();
-  if (forCommunication) {
-    try {
-      lastMessageAtByJob = await loadLastMessageAtByJobIds(jobIds);
-    } catch (err) {
-      logger.warn({ err }, "Failed to load last message timestamps for communication jobs");
-    }
+  try {
+    lastMessageAtByJob = await loadLastMessageAtByJobIds(jobIds);
+  } catch (err) {
+    logger.warn({ err }, "Failed to load last message timestamps for jobs");
   }
   return res.json(
     rows.map((r: any) => {
@@ -1951,7 +1951,6 @@ router.get("/jobs", requireAuth, async (req, res) => {
         { job: r.job, assignee, supervisor, coordinator },
         membersByJob.get(r.job.id) ?? [],
       );
-      if (!forCommunication) return pub;
       const lastMessageAt = lastMessageAtByJob.get(r.job.id) ?? null;
       return lastMessageAt ? { ...pub, lastMessageAt } : pub;
     }),

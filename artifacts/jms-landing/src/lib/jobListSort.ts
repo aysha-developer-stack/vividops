@@ -89,10 +89,6 @@ function activityPriority(status: string): number {
   return jobStatusSortPriority(status);
 }
 
-function compareStatusPriority(a: JobSortFields, b: JobSortFields): number {
-  return activityPriority(a.status) - activityPriority(b.status);
-}
-
 function timestampMs(iso: string | null | undefined): number {
   if (!iso) return 0;
   const t = Date.parse(iso);
@@ -110,8 +106,6 @@ function latestActivityMs(fields: JobSortFields): number {
 }
 
 export function compareJobsByRecentlyUpdated(a: JobSortFields, b: JobSortFields): number {
-  const statusDiff = compareStatusPriority(a, b);
-  if (statusDiff !== 0) return statusDiff;
   const activityDiff = latestActivityMs(b) - latestActivityMs(a);
   if (activityDiff !== 0) return activityDiff;
   const numDiff = parseJobNumberSortKey(b.number) - parseJobNumberSortKey(a.number);
@@ -150,8 +144,6 @@ export function compareJobsByActivity(a: JobSortFields, b: JobSortFields): numbe
 }
 
 export function compareJobsByJobNumber(a: JobSortFields, b: JobSortFields): number {
-  const statusDiff = compareStatusPriority(a, b);
-  if (statusDiff !== 0) return statusDiff;
   const numDiff = parseJobNumberSortKey(b.number) - parseJobNumberSortKey(a.number);
   if (numDiff !== 0) return numDiff;
   return b.number.localeCompare(a.number);

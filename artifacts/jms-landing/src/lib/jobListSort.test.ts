@@ -26,7 +26,7 @@ describe("jobStatusSortPriority", () => {
 });
 
 describe("sortJobs", () => {
-  it("puts active jobs before done regardless of job number sort", () => {
+  it("sorts highest job number first, including done jobs", () => {
     const jobs = [
       { id: "done-high", ...fields("Done", "JOB-999999", "2026-08-01T00:00:00.000Z") },
       { id: "rework-low", ...fields("Rework", "JOB-000100", "2026-01-01T00:00:00.000Z") },
@@ -37,7 +37,7 @@ describe("sortJobs", () => {
     const sorted = sortJobs(jobs, "jobNumber", (j) => j);
     assert.deepEqual(
       sorted.map((j) => j.id),
-      ["rework-low", "progress-mid", "pending-old", "done-high"],
+      ["done-high", "progress-mid", "rework-low", "pending-old"],
     );
   });
 
@@ -50,5 +50,26 @@ describe("sortJobs", () => {
 
     const sorted = sortJobs(jobs, "recent", (j) => j);
     assert.deepEqual(sorted.map((j) => j.id), ["newer-pending", "mid-rework", "older-progress"]);
+  });
+
+  it("sorts recently updated by latest message even when the job is done", () => {
+    const jobs = [
+      {
+        id: "old-rework",
+        status: "Rework",
+        number: "JOB-000200",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        lastMessageAt: "2026-01-02T00:00:00.000Z",
+      },
+      {
+        id: "new-done-chat",
+        status: "Done",
+        number: "JOB-000100",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        lastMessageAt: "2026-08-01T00:00:00.000Z",
+      },
+    ];
+    const sorted = sortJobs(jobs, "recentlyUpdated", (j) => j);
+    assert.deepEqual(sorted.map((j) => j.id), ["new-done-chat", "old-rework"]);
   });
 });

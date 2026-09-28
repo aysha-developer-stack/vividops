@@ -150,42 +150,35 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
     [role],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/jobs?for=communication", { credentials: "include" });
-        if (!res.ok) return;
-        const data = (await res.json()) as unknown;
-        if (!Array.isArray(data)) return;
-        const next = (data as any[])
-          .map((j) => {
-            if (!j || typeof j !== "object") return null;
-            const obj = j as Partial<JobApi>;
-            if (!obj.id || !obj.number || !obj.title || !obj.status || !obj.client) return null;
-            return {
-              id: obj.id,
-              number: obj.number,
-              title: obj.title,
-              status: obj.status,
-              client: obj.client,
-              address: obj.address ?? null,
-              createdAt: typeof obj.createdAt === "string" ? obj.createdAt : undefined,
-              updatedAt: typeof obj.updatedAt === "string" ? obj.updatedAt : undefined,
-              lastMessageAt: typeof obj.lastMessageAt === "string" ? obj.lastMessageAt : null,
-            };
-          })
-          .filter(Boolean) as JobApi[];
-        if (!cancelled) {
-          setJobs(next);
-          if (!activeJobId && next[0]?.id) setActiveJobId(next[0].id);
-        }
-      } catch {
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const loadJobs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/jobs?for=communication", { credentials: "include" });
+      if (!res.ok) return;
+      const data = (await res.json()) as unknown;
+      if (!Array.isArray(data)) return;
+      const next = (data as any[])
+        .map((j) => {
+          if (!j || typeof j !== "object") return null;
+          const obj = j as Partial<JobApi>;
+          if (!obj.id || !obj.number || !obj.title || !obj.status || !obj.client) return null;
+          return {
+            id: obj.id,
+            number: obj.number,
+            title: obj.title,
+            status: obj.status,
+            client: obj.client,
+            address: obj.address ?? null,
+            createdAt: typeof obj.createdAt === "string" ? obj.createdAt : undefined,
+            updatedAt: typeof obj.updatedAt === "string" ? obj.updatedAt : undefined,
+            lastMessageAt: typeof obj.lastMessageAt === "string" ? obj.lastMessageAt : null,
+          };
+        })
+        .filter(Boolean) as JobApi[];
+      setJobs(next);
+      setActiveJobId((current) => current || next[0]?.id || "");
+    } catch {
+      // ignore list refresh errors
+    }
   }, []);
 
   const loadUnreadCounts = useCallback(async () => {
@@ -243,9 +236,13 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
 
   useEffect(() => {
     void loadUnreadCounts();
-    const interval = window.setInterval(() => void loadUnreadCounts(), 15000);
+    void loadJobs();
+    const interval = window.setInterval(() => {
+      void loadUnreadCounts();
+      void loadJobs();
+    }, 15000);
     return () => window.clearInterval(interval);
-  }, [loadUnreadCounts]);
+  }, [loadUnreadCounts, loadJobs]);
 
   const filteredJobs = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -320,6 +317,20 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
           }));
         if (!cancelled) {
           setMessages((prev) => (sameMessages(prev, next) ? prev : next));
+          const latestAt = (data as JobMessageApi[])
+            .map((m) => m.createdAt)
+            .filter((iso): iso is string => typeof iso === "string")
+            .sort()
+            .at(-1);
+          if (latestAt) {
+            setJobs((prev) =>
+              prev.map((j) =>
+                j.id === activeJobId && (j.lastMessageAt ?? "") < latestAt
+                  ? { ...j, lastMessageAt: latestAt, updatedAt: latestAt }
+                  : j,
+              ),
+            );
+          }
           void markJobRead(activeJobId);
         }
       } catch {
