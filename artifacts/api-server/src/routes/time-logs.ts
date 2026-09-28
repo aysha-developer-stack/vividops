@@ -96,10 +96,11 @@ router.post("/time-logs", requireAuth, async (req, res) => {
       }
     }
 
-    const reworkCycleNumber =
-      body.reworkCycleNumber !== undefined
+    const reworkCycleNumber = body.jobId
+      ? await resolveReworkCycleForTimeLog(body.jobId, actor.id)
+      : body.reworkCycleNumber !== undefined
         ? body.reworkCycleNumber
-        : await resolveReworkCycleForTimeLog(body.jobId ?? null, actor.id);
+        : null;
 
     const [newLog] = await db
       .insert(timeLogs)

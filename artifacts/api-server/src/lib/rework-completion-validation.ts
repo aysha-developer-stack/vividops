@@ -43,7 +43,7 @@ export async function findActiveJobLevelReworkId(
         inArray(jobReworks.status, [...ACTIVE_REWORK_STATUSES]),
       ),
     )
-    .orderBy(desc(jobReworks.cycleNumber))
+    .orderBy(desc(jobReworks.assignedAt), desc(jobReworks.createdAt), desc(jobReworks.cycleNumber))
     .limit(1);
 
   return row?.id ?? null;

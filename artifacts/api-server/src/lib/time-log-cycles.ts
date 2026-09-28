@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, jobReworks } from "@workspace/db";
+import { healDuplicateReworkCyclesForJob } from "./reworks";
 
 const ACTIVE_REWORK_STATUSES = ["open", "needs_correction", "awaiting_review"] as const;
 
@@ -9,6 +10,8 @@ export async function resolveReworkCycleForTimeLog(
   userId: string,
 ): Promise<number | null> {
   if (!jobId) return null;
+
+  await healDuplicateReworkCyclesForJob(jobId);
 
   const rows = await db
     .select({ cycleNumber: jobReworks.cycleNumber })
@@ -20,7 +23,7 @@ export async function resolveReworkCycleForTimeLog(
         inArray(jobReworks.status, [...ACTIVE_REWORK_STATUSES]),
       ),
     )
-    .orderBy(desc(jobReworks.cycleNumber))
+    .orderBy(desc(jobReworks.assignedAt), desc(jobReworks.createdAt), desc(jobReworks.cycleNumber))
     .limit(1);
 
   return rows[0]?.cycleNumber ?? null;

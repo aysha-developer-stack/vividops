@@ -1,9 +1,10 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   db,
   jobChecklistState,
   jobReworks,
   jobs,
+  timeLogs,
   MISTAKE_CATEGORIES,
   type JobRow,
   type MistakeCategory,
@@ -29,21 +30,70 @@ function parseDueAt(value: unknown): Date | null {
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
-async function nextCycleNumber(jobId: string, userId: string, origin: ReworkOrigin | null): Promise<number> {
-  const rows = origin
-    ? await db.execute(sql`
-        SELECT COALESCE(MAX(cycle_number), 0)::int AS max_cycle
-        FROM job_reworks
-        WHERE job_id = ${jobId} AND user_id = ${userId} AND rework_origin = ${origin}
-      `)
-    : await db.execute(sql`
-        SELECT COALESCE(MAX(cycle_number), 0)::int AS max_cycle
-        FROM job_reworks
-        WHERE job_id = ${jobId} AND user_id = ${userId} AND rework_origin IS NULL
-      `);
-  const raw = ((rows as any).rows ?? [])[0]?.max_cycle;
-  const max = typeof raw === "number" ? raw : Number(raw ?? 0);
+/** Unique job+worker cycle. Origin (internal/external) is display-only and must not reuse numbers. */
+async function nextCycleNumber(jobId: string, userId: string): Promise<number> {
+  const [row] = await db
+    .select({
+      maxCycle: sql<number>`coalesce(max(${jobReworks.cycleNumber}), 0)::int`,
+    })
+    .from(jobReworks)
+    .where(and(eq(jobReworks.jobId, jobId), eq(jobReworks.userId, userId)));
+  const max = Number(row?.maxCycle ?? 0);
   return Number.isFinite(max) ? max + 1 : 1;
+}
+
+/**
+ * If two reworks for the same worker share a cycle number, bump the later one
+ * and move time logs saved after it was assigned onto that unique cycle.
+ */
+export async function healDuplicateReworkCyclesForJob(jobId: string): Promise<number> {
+  const rows = await db
+    .select()
+    .from(jobReworks)
+    .where(eq(jobReworks.jobId, jobId))
+    .orderBy(asc(jobReworks.assignedAt), asc(jobReworks.createdAt), asc(jobReworks.id));
+
+  const usedByUser = new Map<string, Set<number>>();
+  const maxByUser = new Map<string, number>();
+  let healed = 0;
+
+  for (const row of rows) {
+    maxByUser.set(row.userId, Math.max(maxByUser.get(row.userId) ?? 0, row.cycleNumber));
+  }
+
+  for (const row of rows) {
+    const used = usedByUser.get(row.userId) ?? new Set<number>();
+    usedByUser.set(row.userId, used);
+
+    if (!used.has(row.cycleNumber)) {
+      used.add(row.cycleNumber);
+      continue;
+    }
+
+    const next = (maxByUser.get(row.userId) ?? row.cycleNumber) + 1;
+    maxByUser.set(row.userId, next);
+    used.add(next);
+
+    await db
+      .update(jobReworks)
+      .set({ cycleNumber: next, updatedAt: new Date() })
+      .where(eq(jobReworks.id, row.id));
+
+    await db
+      .update(timeLogs)
+      .set({ reworkCycleNumber: next })
+      .where(
+        and(
+          eq(timeLogs.jobId, jobId),
+          eq(timeLogs.userId, row.userId),
+          eq(timeLogs.reworkCycleNumber, row.cycleNumber),
+          gte(timeLogs.createdAt, row.assignedAt),
+        ),
+      );
+    healed += 1;
+  }
+
+  return healed;
 }
 
 export async function createRework(opts: {
@@ -74,7 +124,7 @@ export async function createRework(opts: {
   const severity = normalizeSeverity(opts.severity);
   const comments = opts.comments?.trim() ? opts.comments.trim() : null;
   const dueAt = parseDueAt(opts.dueAt);
-  const cycleNumber = await nextCycleNumber(opts.job.id, userId, opts.reworkOrigin ?? null);
+  const cycleNumber = await nextCycleNumber(opts.job.id, userId);
 
   const [rework] = await db
     .insert(jobReworks)
@@ -180,7 +230,7 @@ export async function findActiveReworkForCompletedUpload(opts: {
         inArray(jobReworks.status, [...ACTIVE_REWORK_STATUSES]),
       ),
     )
-    .orderBy(desc(jobReworks.cycleNumber));
+    .orderBy(desc(jobReworks.assignedAt), desc(jobReworks.createdAt), desc(jobReworks.cycleNumber));
 
   if (rows.length === 0) return null;
 

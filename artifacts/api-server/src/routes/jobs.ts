@@ -67,7 +67,7 @@ import {
   stopAllActiveTimersOnJob,
   shouldAutoStopWorkerTimersForJobStatus,
 } from "../lib/persist-timer-session";
-import { updateRework } from "../lib/reworks";
+import { healDuplicateReworkCyclesForJob, updateRework } from "../lib/reworks";
 import { isReworkOrigin, type ReworkOrigin } from "../lib/rework-origin";
 import { finalizeReviewCheckForJob } from "../lib/persist-review-check-session";
 import { supabase } from "../lib/storage";
@@ -2602,6 +2602,8 @@ router.get("/jobs/:id/reworks", requireAuth, async (req, res) => {
     if (!(await canViewJob(actor, full.job))) {
       return res.status(403).json({ error: "Forbidden" });
     }
+
+    await healDuplicateReworkCyclesForJob(id);
 
     const rows = await db
       .select({

@@ -32,7 +32,7 @@ import {
   ApiError,
 } from "@workspace/api-client-react";
 import { statusToUi, priorityToUi, formatShortDate } from "@/lib/jobMappers";
-import { buildTimeLogCycleBreakdown, reworkCycleKey, reworkCycleLabel } from "@/lib/timeLogBreakdown";
+import { buildTimeLogCycleBreakdown, timeLogReworkLabel } from "@/lib/timeLogBreakdown";
 import {
   buildCliqChannelDisplayName,
   buildFallbackCliqChannelName,
@@ -87,7 +87,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import FileDropzone from "@/components/FileDropzone";
 import { CHECKLIST_FILE_ACCEPT, filterJobFiles, filterChecklistInstructionFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE, CHECKLIST_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
 import { isCompletedAttachment, isJobAttachment, isNoteAttachment, isReworkAttachment, isReviewAttachment, fileCategoryFromUploadTag, completedAttachmentStatusLabel, checklistItemHasCompletedUpload, jobLevelHasCompletedDeliverables, reworkInstructionBadges, type ReworkOrigin } from "@/lib/attachmentCategories";
-import { originSequenceByReworkId, reworkSequenceLabel } from "@/lib/reworkOriginSequence";
+import { originSequenceByReworkId, pickLatestRework, reworkSequenceLabel } from "@/lib/reworkOriginSequence";
 import { hideJobFileConfirm } from "@/lib/hideJobFileConfirm";
 import { refreshSidebarBadges } from "@/lib/sidebarBadgesApi";
 import { useDashboardSearch } from "@/lib/pageSearch";
@@ -196,6 +196,7 @@ type JobCliqChannelApi = {
 
 type JobReworkApi = {
   id: string;
+  userId?: string | null;
   checklistItemId: number | null;
   cycleNumber: number;
   reason: string;
@@ -1456,18 +1457,14 @@ export default function JobDetail({ role = "user", id }: Props) {
     if (active.length === 0) return null;
 
     if (checklistItemId != null && checklistItemId > 0) {
-      const itemRework = active
-        .filter((r) => r.checklistItemId === checklistItemId)
-        .sort((a, b) => b.cycleNumber - a.cycleNumber)[0];
+      const itemRework = pickLatestRework(active.filter((r) => r.checklistItemId === checklistItemId));
       if (itemRework) return itemRework.id;
     }
 
-    const jobRework = active
-      .filter((r) => r.checklistItemId == null)
-      .sort((a, b) => b.cycleNumber - a.cycleNumber)[0];
+    const jobRework = pickLatestRework(active.filter((r) => r.checklistItemId == null));
     if (jobRework) return jobRework.id;
 
-    return active.sort((a, b) => b.cycleNumber - a.cycleNumber)[0]?.id ?? null;
+    return pickLatestRework(active)?.id ?? null;
   };
 
   const activeJobLevelReworkId = useMemo(() => {
@@ -1476,8 +1473,7 @@ export default function JobDetail({ role = "user", id }: Props) {
         (r.status === "open" || r.status === "needs_correction" || r.status === "awaiting_review") &&
         r.checklistItemId == null,
     );
-    if (active.length === 0) return null;
-    return active.sort((a, b) => b.cycleNumber - a.cycleNumber)[0]?.id ?? null;
+    return pickLatestRework(active)?.id ?? null;
   }, [reworks]);
 
   const jobLevelCompletedFiles = useMemo(
@@ -1586,9 +1582,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const activeReworks = reworks.filter((r) => r.status === "open" || r.status === "awaiting_review" || r.status === "needs_correction");
   const reworkOriginSequenceById = useMemo(() => originSequenceByReworkId(reworks), [reworks]);
   const selectedItemRework = selectedChecklistItem
-    ? activeReworks
-        .filter((r) => r.checklistItemId === selectedChecklistItem.id)
-        .sort((a, b) => b.cycleNumber - a.cycleNumber)[0] ?? null
+    ? pickLatestRework(activeReworks.filter((r) => r.checklistItemId === selectedChecklistItem.id)) ?? null
     : null;
 
   const jobTimeLogs = useMemo(() => {
@@ -1610,9 +1604,21 @@ export default function JobDetail({ role = "user", id }: Props) {
       .reduce((acc, l) => acc + (typeof l.duration === "number" ? l.duration : 0), 0);
   }, [jobTimeLogs, currentUser?.id]);
 
+  const reworksForTimeLogs = useMemo(
+    () =>
+      reworks.map((r) => ({
+        id: r.id,
+        userId: r.userId ?? r.user?.id ?? null,
+        cycleNumber: r.cycleNumber,
+        reworkOrigin: r.reworkOrigin ?? null,
+        assignedAt: r.assignedAt,
+      })),
+    [reworks],
+  );
+
   const timeBreakdown = useMemo(
-    () => buildTimeLogCycleBreakdown(jobTimeLogs),
-    [jobTimeLogs],
+    () => buildTimeLogCycleBreakdown(jobTimeLogs, reworksForTimeLogs),
+    [jobTimeLogs, reworksForTimeLogs],
   );
 
   const activeReworkCycleLabel = useMemo(() => {
@@ -1660,12 +1666,12 @@ export default function JobDetail({ role = "user", id }: Props) {
         id: l.id,
         user: userName,
         duration: formatTime(l.duration ?? 0),
-        cycleLabel: reworkCycleLabel(reworkCycleKey(l.reworkCycleNumber)),
+        cycleLabel: timeLogReworkLabel(l, reworksForTimeLogs, reworkOriginSequenceById),
         task: l.task ?? "Work",
         date: l.createdAt ? new Date(l.createdAt as any).toLocaleString() : "—",
       };
     });
-  }, [jobTimeLogs, timeLogUserNameById]);
+  }, [jobTimeLogs, timeLogUserNameById, reworksForTimeLogs, reworkOriginSequenceById]);
 
   const jobLogsP = usePagination(jobLogRows, 20);
 

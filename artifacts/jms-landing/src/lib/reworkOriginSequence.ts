@@ -13,9 +13,20 @@ type ReworkSequenceRow = {
   cycleNumber?: number | null;
 };
 
-function rowTimeMs(row: ReworkSequenceRow): number {
+export function reworkRowTimeMs(row: { assignedAt?: string | null; createdAt?: string | null }): number {
   const raw = Date.parse(row.assignedAt || row.createdAt || "");
   return Number.isFinite(raw) ? raw : 0;
+}
+
+export function pickLatestRework<
+  T extends { assignedAt?: string | null; createdAt?: string | null; cycleNumber?: number | null },
+>(rows: T[]): T | undefined {
+  if (rows.length === 0) return undefined;
+  return [...rows].sort((a, b) => {
+    const time = reworkRowTimeMs(b) - reworkRowTimeMs(a);
+    if (time !== 0) return time;
+    return (b.cycleNumber ?? 0) - (a.cycleNumber ?? 0);
+  })[0];
 }
 
 /** 1-based cycle number within internal, external, and supervisor rework separately. */
@@ -31,7 +42,7 @@ export function originSequenceByReworkId(reworks: ReworkSequenceRow[]): Map<stri
   const out = new Map<string, number>();
   for (const list of buckets.values()) {
     list.sort((a, b) => {
-      const time = rowTimeMs(a) - rowTimeMs(b);
+      const time = reworkRowTimeMs(a) - reworkRowTimeMs(b);
       if (time !== 0) return time;
       return (a.cycleNumber ?? 0) - (b.cycleNumber ?? 0) || a.id.localeCompare(b.id);
     });
