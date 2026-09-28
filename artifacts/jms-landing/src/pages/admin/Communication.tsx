@@ -85,6 +85,24 @@ function formatMsgTime(iso: string) {
   }
 }
 
+function sameMessages(a: JobMessageUi[], b: JobMessageUi[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every(
+    (m, i) =>
+      m.id === b[i].id &&
+      m.text === b[i].text &&
+      m.user === b[i].user &&
+      m.time === b[i].time &&
+      m.isMe === b[i].isMe,
+  );
+}
+
+const NEAR_BOTTOM_PX = 96;
+
+function isNearBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX;
+}
+
 function formatReplyQuote(message: JobMessageUi): string {
   const preview = message.text.split("\n")[0]?.trim() || message.text.trim();
   const clipped = preview.length > 120 ? `${preview.slice(0, 120)}…` : preview;
@@ -109,6 +127,8 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
   const [cliqChannel, setCliqChannel] = useState<JobCliqChannelApi | null>(null);
   const pollRef = useRef<number | null>(null);
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+  const stickToBottomRef = useRef(true);
+  const scrolledJobIdRef = useRef<string>("");
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
   const attachMenuRef = useRef<HTMLDivElement | null>(null);
@@ -250,7 +270,18 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
     el.scrollTo({ top: el.scrollHeight, behavior });
   }, []);
 
+  const onMessagesScroll = () => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    stickToBottomRef.current = isNearBottom(el);
+  };
+
   useEffect(() => {
+    if (scrolledJobIdRef.current !== activeJobId) {
+      scrolledJobIdRef.current = activeJobId;
+      stickToBottomRef.current = true;
+    }
+    if (!stickToBottomRef.current) return;
     const frame = requestAnimationFrame(() => scrollToLatestMessages("auto"));
     return () => cancelAnimationFrame(frame);
   }, [messages, activeJobId, scrollToLatestMessages]);
@@ -288,7 +319,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
             isMe: !!m.isMe,
           }));
         if (!cancelled) {
-          setMessages(next);
+          setMessages((prev) => (sameMessages(prev, next) ? prev : next));
           void markJobRead(activeJobId);
         }
       } catch {
@@ -353,6 +384,7 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
   };
 
   const appendMessage = (m: JobMessageApi) => {
+    stickToBottomRef.current = true;
     setMessages((prev) => [
       ...prev,
       {
@@ -692,12 +724,15 @@ export default function Communication({ role = "super-admin" as Role }: { role?:
               </div>
             </div>
 
-            <div ref={messagesScrollRef} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
+            <div
+              ref={messagesScrollRef}
+              onScroll={onMessagesScroll}
+              className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4"
+            >
               <AnimatePresence>
                 {messages.map((m, i) => (
                   <motion.div
                     key={m.id}
-                    layout
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: Math.min(i * 0.04, 0.4), duration: 0.25 }}
