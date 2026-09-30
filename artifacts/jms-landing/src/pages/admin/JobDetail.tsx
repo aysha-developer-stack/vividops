@@ -247,6 +247,49 @@ function renderReworkInstructionBadges(
   );
 }
 
+type CompletedFileStatusMeta = { cycleNumber?: number | null; reworkOrigin?: string | null };
+
+function completedFileStatus(
+  file: { reworkId?: string | null; fileCategory?: string | null; uploadedBy?: { role?: string | null } | null },
+  sequenceByReworkId: { get(id: string): number | undefined },
+  reworkMetaById: { get(id: string): CompletedFileStatusMeta | undefined },
+) {
+  const meta = file.reworkId ? reworkMetaById.get(file.reworkId) : undefined;
+  return completedAttachmentStatusLabel(
+    file,
+    file.reworkId ? sequenceByReworkId.get(file.reworkId) ?? meta?.cycleNumber : meta?.cycleNumber,
+    meta?.reworkOrigin,
+  );
+}
+
+function groupCompletedFilesByStatus<T extends {
+  createdAt?: string | null;
+  reworkId?: string | null;
+  fileCategory?: string | null;
+  uploadedBy?: { role?: string | null } | null;
+}>(
+  files: T[],
+  sequenceByReworkId: { get(id: string): number | undefined },
+  reworkMetaById: { get(id: string): CompletedFileStatusMeta | undefined },
+) {
+  const groups = new Map<string, {
+    key: string;
+    label: string;
+    tone: "submitted" | "rework";
+    files: T[];
+  }>();
+  for (const file of files) {
+    const status = completedFileStatus(file, sequenceByReworkId, reworkMetaById);
+    const existing = groups.get(status.label);
+    if (existing) existing.files.push(file);
+    else groups.set(status.label, { key: status.label, label: status.label, tone: status.tone, files: [file] });
+  }
+  return [...groups.values()].sort((a, b) => {
+    const latest = (group: typeof a) => Math.max(0, ...group.files.map((f) => (f.createdAt ? Date.parse(f.createdAt) : 0)));
+    return latest(b) - latest(a);
+  });
+}
+
 const CLIQ_WEB_ROOT = "https://cliq.zoho.com.au";
 
 function cliqChatUrl(chatId: string | null | undefined): string | null {
@@ -457,6 +500,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [attachments, setAttachments] = useState<AttachmentApi[]>([]);
   const [deletedAttachments, setDeletedAttachments] = useState<AttachmentApi[]>([]);
   const [deletedFilesOpen, setDeletedFilesOpen] = useState(false);
+  const [completedFileGroupsOpen, setCompletedFileGroupsOpen] = useState<Record<string, boolean>>({});
   const [jobMembers, setJobMembers] = useState<
     Array<{
       id: string;
@@ -2979,6 +3023,18 @@ export default function JobDetail({ role = "user", id }: Props) {
           const filteredOutputServer = outputFiles.filter((a) => a.fileName.toLowerCase().includes(q));
           const filteredDeleted = deletedAttachments.filter((a) => a.fileName.toLowerCase().includes(q));
           const reworkMetaById = new Map(reworks.map((r) => [r.id, r]));
+          const completedStatusGroups = groupCompletedFilesByStatus(
+            filteredOutputServer,
+            reworkOriginSequenceById,
+            reworkMetaById,
+          );
+          const searchingCompletedFiles = q.length > 0;
+          const isCompletedGroupOpen = (key: string, index: number) => {
+            if (searchingCompletedFiles) return true;
+            if (completedFileGroupsOpen[key] !== undefined) return completedFileGroupsOpen[key];
+            return index === 0;
+          };
+          const allCompletedGroupsOpen = completedStatusGroups.every((g, i) => isCompletedGroupOpen(g.key, i));
           const inputFileIds = filteredInput.map((a) => a.id);
           const allInputSelected =
             filteredInput.length > 0 && filteredInput.every((a) => selectedJobFileIds.includes(a.id));
@@ -3773,72 +3829,109 @@ export default function JobDetail({ role = "user", id }: Props) {
 
                 {/* Completed Files Section (Output) */}
                 <div ref={completedFilesSectionRef} id="completed-files-section" className="bg-white rounded-2xl border border-gray-100 overflow-hidden scroll-mt-6">
-                  <div className="px-6 py-4 border-b border-gray-100 bg-emerald-50/30 flex items-center justify-between">
+                  <div className="px-6 py-4 border-b border-gray-100 bg-emerald-50/30 flex items-center justify-between gap-3">
                     <div>
                       <h3 className="font-bold text-gray-900">Completed Files</h3>
-                      <p className="text-[11px] text-gray-500 mt-0.5">Deliverables uploaded after task completion. Rework fixes are labeled with their cycle number.</p>
+                      <p className="text-[11px] text-gray-500 mt-0.5">Grouped by status so each cycle stays together. Open a group to preview, download, or delete files.</p>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 uppercase">{filteredOutputServer.length} Files</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {completedStatusGroups.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next: Record<string, boolean> = {};
+                            for (const group of completedStatusGroups) next[group.key] = !allCompletedGroupsOpen;
+                            setCompletedFileGroupsOpen(next);
+                          }}
+                          className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 hover:text-emerald-900 px-2 py-1 rounded-lg hover:bg-emerald-100/80 transition-colors"
+                        >
+                          {allCompletedGroupsOpen ? "Collapse all" : "Expand all"}
+                        </button>
+                      )}
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 uppercase">{filteredOutputServer.length} Files</span>
+                    </div>
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="border-b border-gray-50">
-                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider min-w-[280px]">File Name</th>
-                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Uploaded By</th>
-                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Completion Date</th>
-                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status</th>
-                          <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {filteredOutputServer.length === 0 ? (
-                          <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-gray-400">No completed files found</td></tr>
-                        ) : (
-                          <>
-                          {filteredOutputServer.map((a) => {
-                            const who = a.uploadedBy?.name ?? "—";
-                            const when = a.createdAt ? new Date(a.createdAt).toLocaleString() : "—";
-                            const meta = a.reworkId ? reworkMetaById.get(a.reworkId) : undefined;
-                            const status = completedAttachmentStatusLabel(
-                              a,
-                              a.reworkId ? reworkOriginSequenceById.get(a.reworkId) ?? meta?.cycleNumber : meta?.cycleNumber,
-                              meta?.reworkOrigin,
-                            );
-                            return (
-                            <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-6 py-2.5 align-top">
-                              <div className="flex items-start gap-2 min-w-0">
-                                <FileExtensionIcon fileName={a.fileName} size="sm" className="mt-0.5" />
-                                <span className="text-sm font-medium text-gray-900 break-words whitespace-normal leading-snug min-w-0">{a.fileName}</span>
+                  {filteredOutputServer.length === 0 ? (
+                    <div className="px-6 py-10 text-center text-xs text-gray-400">No completed files found</div>
+                  ) : (
+                    <div className="divide-y divide-gray-100">
+                      {completedStatusGroups.map((group, groupIndex) => {
+                        const open = isCompletedGroupOpen(group.key, groupIndex);
+                        const isRework = group.tone === "rework";
+                        return (
+                          <div key={group.key} className={isRework ? "bg-purple-50/25" : "bg-emerald-50/20"}>
+                            <button
+                              type="button"
+                              onClick={() => setCompletedFileGroupsOpen((prev) => ({ ...prev, [group.key]: !open }))}
+                              className="w-full px-5 py-3.5 flex items-center gap-3 text-left hover:bg-white/80 transition-colors"
+                              aria-expanded={open}
+                            >
+                              <span className={`flex h-8 w-8 items-center justify-center rounded-xl border shrink-0 ${
+                                isRework
+                                  ? "bg-purple-50 border-purple-100 text-purple-600"
+                                  : "bg-emerald-50 border-emerald-100 text-emerald-600"
+                              }`}>
+                                <ChevronDown size={16} className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${
+                                    isRework
+                                      ? "bg-purple-50 text-purple-700 border-purple-100"
+                                      : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                  }`}>{group.label}</span>
+                                  <span className="text-[11px] text-gray-500">
+                                    {group.files.length} {group.files.length === 1 ? "file" : "files"}
+                                  </span>
+                                </div>
                               </div>
-                            </td>
-                            <td className="px-6 py-2.5 text-xs text-gray-600">{who}</td>
-                            <td className="px-6 py-2.5 text-xs text-gray-600">{when}</td>
-                            <td className="px-6 py-2.5">
-                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
-                                status.tone === "rework"
-                                  ? "bg-purple-50 text-purple-700 border-purple-100"
-                                  : "bg-emerald-50 text-emerald-600 border-emerald-100"
-                              }`}>{status.label}</span>
-                            </td>
-                            <td className="px-6 py-2.5 text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <button onMouseEnter={() => warmAttachmentPreview(a)} onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
-                                <button onClick={() => downloadAttachment(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
-                                {canDeleteAttachment(a) && (
-                                  <button onClick={() => void deleteAttachment(a)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
-                                )}
+                            </button>
+                            {open && (
+                              <div className="overflow-x-auto bg-white border-t border-gray-50">
+                                <table className="w-full text-left border-collapse">
+                                  <thead>
+                                    <tr className="border-b border-gray-50">
+                                      <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider min-w-[280px]">File Name</th>
+                                      <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Uploaded By</th>
+                                      <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Completion Date</th>
+                                      <th className="px-6 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Actions</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-50">
+                                    {group.files.map((a) => {
+                                      const who = a.uploadedBy?.name ?? "—";
+                                      const when = a.createdAt ? new Date(a.createdAt).toLocaleString() : "—";
+                                      return (
+                                        <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
+                                          <td className="px-6 py-2.5 align-top">
+                                            <div className="flex items-start gap-2 min-w-0">
+                                              <FileExtensionIcon fileName={a.fileName} size="sm" className="mt-0.5" />
+                                              <span className="text-sm font-medium text-gray-900 break-words whitespace-normal leading-snug min-w-0">{a.fileName}</span>
+                                            </div>
+                                          </td>
+                                          <td className="px-6 py-2.5 text-xs text-gray-600">{who}</td>
+                                          <td className="px-6 py-2.5 text-xs text-gray-600">{when}</td>
+                                          <td className="px-6 py-2.5 text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                              <button onMouseEnter={() => warmAttachmentPreview(a)} onClick={() => openAttachmentPreview(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Preview"><Eye size={14} /></button>
+                                              <button onClick={() => downloadAttachment(a)} className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors" title="Download"><Download size={14} /></button>
+                                              {canDeleteAttachment(a) && (
+                                                <button onClick={() => void deleteAttachment(a)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete"><Trash2 size={14} /></button>
+                                              )}
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
                               </div>
-                            </td>
-                          </tr>
-                            );
-                          })}
-                          </>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 
