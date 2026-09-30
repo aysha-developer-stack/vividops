@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, inArray, sql, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   db,
@@ -13,7 +13,13 @@ import {
   type UserRow,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
-import { jobHasCompletedDeliverables } from "../lib/job-review";
+import {
+  combinedChecklistProgress,
+  jobHasCompletedDeliverables,
+  jobStatusPatchFields,
+  loadAssignedWorkerChecklistProgress,
+  type ReviewableStatus,
+} from "../lib/job-review";
 import { logger } from "../lib/logger";
 import { createNotification, notifyAllJobMembers, notifyJobManagers, previewText } from "../lib/notifications";
 import { announceCliqJobStatusChange } from "../lib/cliq-job-status";
@@ -24,13 +30,11 @@ import {
   validateReworkUploadsBeforeChecklistComplete,
 } from "../lib/rework-completion-validation";
 import { stopAllActiveTimersOnJob, clearAllActiveTimersOnJob } from "../lib/persist-timer-session";
-import { jobStatusPatchFields, type ReviewableStatus } from "../lib/job-review";
 import {
   isOwnChecklistWork,
   isWorkingSupervisor,
   resolveChecklistTargetUserId,
 } from "../lib/working-supervisor";
-import { listJobAssignedWorkerIds } from "../lib/job-access";
 
 const router: IRouter = Router();
 
@@ -91,10 +95,6 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    const assignedWorkerIds = new Set(await listJobAssignedWorkerIds(job));
-    const sharedOwnerId = job.assigneeId ?? targetUserId;
-    const includeAllAssignedUploads = targetUserId === sharedOwnerId;
-
     const rows = await db
       .select()
       .from(jobChecklistState)
@@ -138,12 +138,7 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         (row.uploadedBy?.role != null &&
           row.uploadedBy.role !== "user" &&
           row.attachment.fileCategory !== "completed");
-      const isAssignedWorkerUpload = assignedWorkerIds.has(linkUserId);
-      if (
-        !isInstructionFile &&
-        linkUserId !== targetUserId &&
-        !(includeAllAssignedUploads && isAssignedWorkerUpload)
-      ) {
+      if (!isInstructionFile && linkUserId !== targetUserId) {
         continue;
       }
 
@@ -164,7 +159,7 @@ router.get("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
         (!row.attachment.fileCategory && row.uploadedBy?.role === "user");
       if (
         isCompleted &&
-        (linkUserId === targetUserId || (includeAllAssignedUploads && isAssignedWorkerUpload))
+        linkUserId === targetUserId
       ) {
         countByItem[itemId] = (countByItem[itemId] ?? 0) + 1;
       }
@@ -330,10 +325,9 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
           return res.status(400).json({ error: reworkUploadError });
         }
       } else {
-      const assignedWorkerIds = new Set(await listJobAssignedWorkerIds(job));
       const hasCompletedChecklistUpload = linked.some(
         (r) =>
-          (r.linkUserId === targetUserId || assignedWorkerIds.has(r.linkUserId)) &&
+          (r.linkUserId === targetUserId) &&
           (r.fileCategory === "completed" ||
             (!r.fileCategory && (r.uploaderRole === "user" || r.uploaderRole === "supervisor"))),
       );
@@ -343,7 +337,7 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
             "Completed checklist not uploaded. Upload your completed Word/PDF checklist before marking this item complete.",
         });
       }
-      const hasJobCompletedFiles = await jobHasCompletedDeliverables(jobId);
+      const hasJobCompletedFiles = await jobHasCompletedDeliverables(jobId, targetUserId);
       if (!hasJobCompletedFiles) {
         return res.status(400).json({
           error:
@@ -494,24 +488,31 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
       const total = checklistList.length;
 
       if (total > 0) {
-        const rows = await db
-          .select({ itemId: jobChecklistState.itemId, status: jobChecklistState.status })
+        const workerProgress = await loadAssignedWorkerChecklistProgress(job);
+        const { progress: nextProgress, allComplete } = combinedChecklistProgress(workerProgress);
+        const thisWorker = workerProgress.find((row) => row.userId === targetUserId);
+        const thisWorkerDone = (thisWorker?.completedItems ?? 0) >= total;
+        const hasRework = (await db
+          .select({ status: jobChecklistState.status })
           .from(jobChecklistState)
-          .where(and(eq(jobChecklistState.jobId, jobId), eq(jobChecklistState.userId, targetUserId)));
-        const done = rows.filter((r) => r.status === "completed").length;
-        const nextProgress = Math.round((done / total) * 100);
-        const hasRework = rows.some((r) => r.status === "rework");
+          .where(and(eq(jobChecklistState.jobId, jobId), eq(jobChecklistState.userId, targetUserId)))
+        ).some((r) => r.status === "rework");
 
         let nextStatus: ReviewableStatus =
-          hasRework ? "rework" : nextProgress > 0 ? "in_progress" : "pending";
+          hasRework ? "rework" : nextProgress > 0 || thisWorkerDone ? "in_progress" : "pending";
 
-        // Keep job in progress at 100% until worker/supervisor explicitly submits for review (with comment).
-        if (!hasRework && nextProgress >= 100) {
+        if (!hasRework && thisWorkerDone) {
           const { assertWorkerChecklistReady } = await import("../lib/job-review");
           const checklistError = await assertWorkerChecklistReady(job, targetUserId);
           if (!checklistError) {
             await markOpenReworksAwaitingReview(job.id, targetUserId, { actor, announceCliq: false });
           }
+        }
+
+        if (hasRework) {
+          nextStatus = "rework";
+        } else if (!allComplete) {
+          nextStatus = "in_progress";
         }
 
         const previousStatus = job.status;

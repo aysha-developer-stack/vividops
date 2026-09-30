@@ -272,7 +272,17 @@ function parseJobChecklist(job: JobRow): ChecklistTemplateItem[] {
 }
 
 /** Job-level completed deliverables (Files tab, not checklist-linked). */
-export async function jobHasCompletedDeliverables(jobId: string): Promise<boolean> {
+export async function jobHasCompletedDeliverables(
+  jobId: string,
+  uploadedById?: string | null,
+): Promise<boolean> {
+  const conditions = [
+    eq(jobAttachments.jobId, jobId),
+    isNull(jobChecklistAttachments.attachmentId),
+    isNull(jobAttachments.deletedAt),
+  ];
+  if (uploadedById) conditions.push(eq(jobAttachments.uploadedById, uploadedById));
+
   const rows = await db
     .select({
       id: jobAttachments.id,
@@ -282,13 +292,7 @@ export async function jobHasCompletedDeliverables(jobId: string): Promise<boolea
     .from(jobAttachments)
     .innerJoin(users, eq(users.id, jobAttachments.uploadedById))
     .leftJoin(jobChecklistAttachments, eq(jobChecklistAttachments.attachmentId, jobAttachments.id))
-    .where(
-      and(
-        eq(jobAttachments.jobId, jobId),
-        isNull(jobChecklistAttachments.attachmentId),
-        isNull(jobAttachments.deletedAt),
-      ),
-    );
+    .where(and(...conditions));
 
   return rows.some(
     (r) =>
@@ -329,8 +333,7 @@ export async function assertWorkerChecklistReady(
   const requiredIds = list.map((_item, idx) => idx + 1);
   const missingChecklist: number[] = [];
   const missingCompletedChecklist: number[] = [];
-  const assignedWorkerIds = await listJobAssignedWorkerIds(job);
-  const completedLinkUserIds = assignedWorkerIds.length > 0 ? assignedWorkerIds : [workerUserId];
+  const completedLinkUserIds = [workerUserId];
 
   if (requiredIds.length > 0) {
     const linked = await db
@@ -403,11 +406,91 @@ export async function assertWorkerChecklistReady(
     return reworkSubmitError;
   }
 
-  const hasJobCompletedFiles = await jobHasCompletedDeliverables(job.id);
+  const hasJobCompletedFiles = await jobHasCompletedDeliverables(job.id, workerUserId);
   if (!hasJobCompletedFiles) {
     return "Completed files not uploaded. Upload completed deliverables on the Files tab before submitting.";
   }
 
+  return null;
+}
+
+export type WorkerChecklistProgress = {
+  userId: string;
+  name: string;
+  completedItems: number;
+  totalItems: number;
+};
+
+export async function loadAssignedWorkerChecklistProgress(job: JobRow): Promise<WorkerChecklistProgress[]> {
+  const totalItems = parseJobChecklist(job).length;
+  const ids = await listJobAssignedWorkerIds(job);
+  if (ids.length === 0) return [];
+
+  const nameRows = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(inArray(users.id, ids));
+  const nameById = new Map(nameRows.map((row) => [row.id, row.name]));
+
+  const stateRows = await db
+    .select({
+      userId: jobChecklistState.userId,
+      itemId: jobChecklistState.itemId,
+      status: jobChecklistState.status,
+    })
+    .from(jobChecklistState)
+    .where(and(eq(jobChecklistState.jobId, job.id), inArray(jobChecklistState.userId, ids)));
+
+  const completedByUser = new Map<string, Set<number>>();
+  for (const row of stateRows) {
+    if (row.status !== "completed") continue;
+    const set = completedByUser.get(row.userId) ?? new Set<number>();
+    set.add(row.itemId);
+    completedByUser.set(row.userId, set);
+  }
+
+  return ids.map((id) => ({
+    userId: id,
+    name: nameById.get(id) ?? "Worker",
+    completedItems: completedByUser.get(id)?.size ?? 0,
+    totalItems,
+  }));
+}
+
+export function combinedChecklistProgress(rows: WorkerChecklistProgress[]): {
+  progress: number;
+  allComplete: boolean;
+} {
+  if (rows.length === 0) return { progress: 0, allComplete: false };
+  const total = rows.reduce((sum, row) => sum + row.totalItems, 0);
+  const done = rows.reduce((sum, row) => sum + row.completedItems, 0);
+  const allComplete = rows.every((row) => row.totalItems > 0 && row.completedItems >= row.totalItems);
+  return { progress: total > 0 ? Math.round((done / total) * 100) : 0, allComplete };
+}
+
+export async function assertAllAssignedWorkersChecklistReady(job: JobRow): Promise<string | null> {
+  const ids = await listJobAssignedWorkerIds(job);
+  const workerIds = ids.length > 0 ? ids : job.assigneeId ? [job.assigneeId] : [];
+  if (workerIds.length === 0) {
+    return "An assigned worker is required before submitting this job.";
+  }
+
+  const nameRows =
+    workerIds.length > 1
+      ? await db
+          .select({ id: users.id, name: users.name })
+          .from(users)
+          .where(inArray(users.id, workerIds))
+      : [];
+  const nameById = new Map(nameRows.map((row) => [row.id, row.name]));
+
+  for (const id of workerIds) {
+    const error = await assertWorkerChecklistReady(job, id);
+    if (!error) continue;
+    if (workerIds.length === 1) return error;
+    const name = nameById.get(id) ?? "Another assigned worker";
+    return `${name} still has work remaining. ${error}`;
+  }
   return null;
 }
 
@@ -783,12 +866,11 @@ export async function applyJobReview(opts: {
     if (job.status === "completed" || job.status === "cancelled") {
       return { ok: false, status: 400, error: "This job cannot be submitted for review" };
     }
-    const workerId = job.assigneeId ?? actor.id;
-    const checklistError = await assertWorkerChecklistReady(job, workerId);
+    const checklistError = await assertAllAssignedWorkersChecklistReady(job);
     if (checklistError) {
       return { ok: false, status: 400, error: checklistError };
     }
-    await markOpenReworksAwaitingReview(job.id, workerId, { actor, announceCliq: false });
+    await markOpenReworksAwaitingReview(job.id, undefined, { actor, announceCliq: false });
     nextStatus = job.supervisorId ? "awaiting_supervisor" : "awaiting_admin";
   } else if (action === "supervisor_approve") {
     const canApprove =

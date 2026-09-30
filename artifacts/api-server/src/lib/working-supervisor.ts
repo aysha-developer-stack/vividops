@@ -19,9 +19,7 @@ export function resolveChecklistTargetUserId(
   job: JobRow,
   userIdParam: string | null,
 ): string {
-  // Extra assignees share the primary worker's checklist so any assigned
-  // worker can complete the same tasks.
-  if (actor.role === "user") return job.assigneeId ?? actor.id;
+  if (actor.role === "user") return actor.id;
   if (userIdParam === actor.id) return actor.id;
   if (userIdParam) return userIdParam;
   return job.assigneeId ?? actor.id;
@@ -37,9 +35,6 @@ export function resolveReworkUserId(job: JobRow, userId?: string | null): string
 
 /** Worker completing their own checklist (user or supervising supervisor). */
 export function isOwnChecklistWork(actor: UserRow, job: JobRow, targetUserId: string): boolean {
-  if (actor.role === "user") {
-    const sharedId = job.assigneeId ?? actor.id;
-    return targetUserId === actor.id || targetUserId === sharedId;
-  }
+  if (actor.role === "user") return targetUserId === actor.id;
   return isWorkingSupervisor(actor, job) && targetUserId === actor.id;
 }

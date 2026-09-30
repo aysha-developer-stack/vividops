@@ -270,8 +270,8 @@ type LocalChecklistState = {
   uploads: Record<string, number>;
 };
 
-function checklistStorageKey(jobId: string) {
-  return `jfm_job_${jobId}_checklist_v1`;
+function checklistStorageKey(jobId: string, userId?: string | null) {
+  return userId ? `jfm_job_${jobId}_checklist_${userId}_v1` : `jfm_job_${jobId}_checklist_v1`;
 }
 
 function readChecklistState(jobId: string): LocalChecklistState | null {
@@ -302,9 +302,9 @@ function readChecklistState(jobId: string): LocalChecklistState | null {
   }
 }
 
-function writeChecklistState(jobId: string, state: LocalChecklistState) {
+function writeChecklistState(jobId: string, state: LocalChecklistState, userId?: string | null) {
   try {
-    localStorage.setItem(checklistStorageKey(jobId), JSON.stringify(state));
+    localStorage.setItem(checklistStorageKey(jobId, userId), JSON.stringify(state));
   } catch {
   }
 }
@@ -1499,12 +1499,39 @@ export default function JobDetail({ role = "user", id }: Props) {
       }),
     [checklist, reworks],
   );
+  const workerChecklistProgress = useMemo(() => {
+    const rows = (job as ApiJob & {
+      workerChecklistProgress?: Array<{
+        userId: string;
+        name: string;
+        completedItems: number;
+        totalItems: number;
+      }>;
+    })?.workerChecklistProgress;
+    return Array.isArray(rows) ? rows : [];
+  }, [job]);
+  const allAssignedWorkersChecklistReady =
+    workerChecklistProgress.length <= 1 ||
+    workerChecklistProgress.every((row) => row.totalItems > 0 && row.completedItems >= row.totalItems);
+  const hasOwnCompletedDeliverables = useMemo(() => {
+    const uid = currentUser?.id;
+    if (!uid || (role !== "user" && !canUseJobTimer)) {
+      return hasJobLevelCompletedFiles;
+    }
+    return attachments.some(
+      (a) =>
+        a.checklistItemId == null &&
+        isCompletedAttachment(a) &&
+        (a.uploadedBy?.id === uid || a.uploadedById === uid) &&
+        (!activeJobLevelReworkId || a.reworkId === activeJobLevelReworkId),
+    );
+  }, [attachments, currentUser?.id, role, canUseJobTimer, hasJobLevelCompletedFiles, activeJobLevelReworkId]);
   const canCompleteChecklistItem = (item: ChecklistItem) => {
     const activeReworkId =
       item.status === "rework" ? resolveActiveReworkIdForUpload(item.id) : null;
     return (
       checklistItemHasInstructionFile(item.files) &&
-      jobLevelHasCompletedDeliverables(attachments, { activeJobReworkId: activeJobLevelReworkId }) &&
+      hasOwnCompletedDeliverables &&
       checklistItemHasCompletedUpload(item.files, { activeReworkId: activeReworkId ?? undefined })
     );
   };
@@ -1513,8 +1540,20 @@ export default function JobDetail({ role = "user", id }: Props) {
     job?.status === "in_progress" &&
     checklist.length > 0 &&
     completedCount === checklist.length &&
-    hasJobLevelCompletedFiles &&
-    allChecklistItemsHaveCompletedUploads;
+    hasOwnCompletedDeliverables &&
+    allChecklistItemsHaveCompletedUploads &&
+    allAssignedWorkersChecklistReady;
+  const pendingTeammates = workerChecklistProgress.filter(
+    (row) => row.totalItems > 0 && row.completedItems < row.totalItems && row.userId !== currentUser?.id,
+  );
+  const waitingOnTeammates =
+    (role === "user" || canUseJobTimer) &&
+    job?.status === "in_progress" &&
+    checklist.length > 0 &&
+    completedCount === checklist.length &&
+    hasOwnCompletedDeliverables &&
+    allChecklistItemsHaveCompletedUploads &&
+    pendingTeammates.length > 0;
   const hasJobSupervisor = !!(job?.supervisor?.id ?? (job as { supervisorId?: string | null })?.supervisorId);
   const adminBypassesSupervisorReview =
     !hasJobSupervisor &&
@@ -1754,7 +1793,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       v: 1,
       items: nextChecklist.map((c) => ({ id: c.id, done: c.done, status: c.status, ...(c.reworkReason ? { reworkReason: c.reworkReason } : {}) })),
       uploads: Object.fromEntries(Object.entries(nextUploads).map(([k, v]) => [String(k), v])),
-    });
+    }, currentUser?.id);
   };
 
   const toggleCheck = (id: number) => {
@@ -2194,43 +2233,25 @@ export default function JobDetail({ role = "user", id }: Props) {
     if (job.status === "on_hold") return;
     const total = nextChecklist.length;
     const done = nextChecklist.filter((c) => c.status === "completed").length;
-    const nextProgress = total > 0 ? Math.round((done / total) * 100) : 0;
-    const hasCompletedFiles = attachments.some(
-      (a) => a.checklistItemId == null && isCompletedAttachment(a),
-    );
     const allHaveChecklistUploads =
       total > 0 &&
       nextChecklist.every((c) => checklistItemHasCompletedUpload(c.files));
     const shouldSubmitReview =
-      total > 0 && done === total && hasCompletedFiles && allHaveChecklistUploads;
-    const shouldAutoStart =
-      job.status === "pending" && total > 0 && done > 0;
-    const shouldUpdateProgress = (job.progress ?? 0) !== nextProgress;
-    const nextStatus =
-      shouldSubmitReview
-        ? (job.supervisor?.id ? ("awaiting_supervisor" as const) : ("awaiting_admin" as const))
-      : shouldAutoStart ? ("in_progress" as const)
-      : null;
-    const shouldUpdateStatus = nextStatus != null && job.status !== nextStatus;
-    if (!shouldUpdateProgress && !shouldUpdateStatus) return;
+      total > 0 &&
+      done === total &&
+      hasOwnCompletedDeliverables &&
+      allHaveChecklistUploads &&
+      allAssignedWorkersChecklistReady;
+    const shouldAutoStart = job.status === "pending" && total > 0 && done > 0;
+    if (shouldSubmitReview) {
+      setSubmitReviewOpen(true);
+    }
+    if (!shouldAutoStart) return;
     try {
-      if (shouldSubmitReview) {
-        setSubmitReviewOpen(true);
-        if (shouldUpdateProgress) {
-          await updateJobMutation.mutateAsync({
-            id: job.id,
-            data: { progress: nextProgress },
-          });
-        }
-      } else {
-        await updateJobMutation.mutateAsync({
-          id: job.id,
-          data: {
-            ...(shouldUpdateProgress ? { progress: nextProgress } : {}),
-            ...(shouldUpdateStatus ? { status: nextStatus as any } : {}),
-          },
-        });
-      }
+      await updateJobMutation.mutateAsync({
+        id: job.id,
+        data: { status: "in_progress" as any },
+      });
       await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
       await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
     } catch (err) {
@@ -2810,6 +2831,23 @@ export default function JobDetail({ role = "user", id }: Props) {
         </motion.div>
       ) : null}
 
+      {waitingOnTeammates && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5"
+        >
+          <div className="text-sm font-bold text-amber-900">Your work is done — teammates still have remaining tasks</div>
+          <p className="text-xs text-amber-800/90 mt-1">
+            This job stays in progress until every assigned worker finishes their own checklist. Waiting on{" "}
+            {pendingTeammates
+              .map((row) => `${row.name} (${row.completedItems}/${row.totalItems})`)
+              .join(", ")}
+            .
+          </p>
+        </motion.div>
+      )}
+
       {readyToSubmitReview && (
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -2896,6 +2934,15 @@ export default function JobDetail({ role = "user", id }: Props) {
                         {jobMemberRoleLabel(w, job)}
                         <span className="mx-1">·</span>
                         <span className={liveStatusTextClass(liveStatus)}>{formatLiveStatusLabel(liveStatus)}</span>
+                        {(() => {
+                          const progress = workerChecklistProgress.find((row) => row.userId === w.id);
+                          if (!progress || progress.totalItems <= 0 || w.role !== "user") return null;
+                          return (
+                            <span className="ml-1 text-gray-400">
+                              · Checklist {progress.completedItems}/{progress.totalItems}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   </motion.div>

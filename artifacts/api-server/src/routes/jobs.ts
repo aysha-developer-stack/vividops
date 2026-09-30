@@ -48,9 +48,10 @@ import {
 } from "../lib/schema-init";
 import {
   applyJobReview,
-  assertWorkerChecklistReady,
+  assertAllAssignedWorkersChecklistReady,
   coerceCompletionStatus,
   jobStatusPatchFields,
+  loadAssignedWorkerChecklistProgress,
   notifyStatusTransition,
   type JobReviewAction,
   type ReviewableStatus,
@@ -177,6 +178,14 @@ async function toPublicWithAssignees(full: JobWithRefs) {
   try {
     const membersByJob = await loadExtraMembersByJobIds([full.job.id]);
     let pub = rowToPublic(full, membersByJob.get(full.job.id) ?? []);
+    try {
+      const workerChecklistProgress = await loadAssignedWorkerChecklistProgress(full.job);
+      if (workerChecklistProgress.length > 0) {
+        Object.assign(pub, { workerChecklistProgress });
+      }
+    } catch (err) {
+      logger.warn({ err, jobId: full.job.id }, "Failed to load worker checklist progress");
+    }
 
     // Recover checklist from uploaded checklist files when job meta has none
     if (!Array.isArray(pub.checklist) || pub.checklist.length === 0) {
@@ -2319,8 +2328,8 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     if (full.job.status === "awaiting_supervisor") {
       nextStatus = "awaiting_admin";
     } else if (full.job.status === "in_progress" && full.job.assigneeId) {
-      const checklistReady = await assertWorkerChecklistReady(full.job, full.job.assigneeId);
-      if (!checklistReady) {
+      const checklistError = await assertAllAssignedWorkersChecklistReady(full.job);
+      if (!checklistError) {
         nextStatus = "awaiting_admin";
       }
     }
