@@ -11,6 +11,7 @@ type ReworkSequenceRow = {
   assignedAt?: string | null;
   createdAt?: string | null;
   cycleNumber?: number | null;
+  status?: string | null;
 };
 
 export function reworkRowTimeMs(row: { assignedAt?: string | null; createdAt?: string | null }): number {
@@ -33,6 +34,7 @@ export function pickLatestRework<
 export function originSequenceByReworkId(reworks: ReworkSequenceRow[]): Map<string, number> {
   const buckets = new Map<ReworkOriginSequenceKey, ReworkSequenceRow[]>();
   for (const row of reworks) {
+    if (row.status === "cancelled") continue;
     const key = reworkOriginSequenceKey(row.reworkOrigin);
     const list = buckets.get(key) ?? [];
     list.push(row);

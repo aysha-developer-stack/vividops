@@ -7,6 +7,7 @@ export type CliqJobStatusEvent =
   | "completed"
   | "rework"
   | "rework_completed"
+  | "rework_cancelled"
   | "awaiting_supervisor"
   | "awaiting_admin"
   | "awaiting_super_admin"
@@ -85,6 +86,14 @@ export function buildCliqJobStatusText(opts: {
   if (event === "rework_completed") {
     // Worker finishing supervisor rework stays in OPS.
     return null;
+  }
+
+  if (event === "rework_cancelled") {
+    if (!reworkOrigin) return null;
+    const origin = reworkOriginLabel(reworkOrigin);
+    const originTag = origin ? `${origin} · ` : "";
+    const itemTag = checklistItemId ? ` (checklist item #${checklistItemId})` : "";
+    return `↩️ ${originTag}Rework cancelled on ${label}${itemTag} by ${actorName} — added in error · ${time}`;
   }
 
   if (event === "on_hold") {

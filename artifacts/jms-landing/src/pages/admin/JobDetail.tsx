@@ -679,6 +679,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [draft, setDraft] = useState("");
   const [reworkOpen, setReworkOpen] = useState(false);
   const [editingRework, setEditingRework] = useState<JobReworkApi | null>(null);
+  const [cancellingReworkId, setCancellingReworkId] = useState<string | null>(null);
   const [reworkTargetItem, setReworkTargetItem] = useState<ChecklistItem | null>(null);
   const [reworkReason, setReworkReason] = useState("");
   const [reworkCategory, setReworkCategory] = useState("rework");
@@ -767,6 +768,38 @@ export default function JobDetail({ role = "user", id }: Props) {
   useEffect(() => {
     void loadReworks();
   }, [job?.id]);
+
+  const cancelActiveRework = async (rw: JobReworkApi) => {
+    if (!job?.id) return;
+    const label = reworkSequenceLabel(rw.reworkOrigin, originSequenceByReworkId(reworks).get(rw.id) ?? rw.cycleNumber);
+    if (
+      !window.confirm(
+        `Cancel ${label}? Use this when rework was added by mistake. If this is the only active rework, the job leaves Rework status. A cancellation note is posted to the job channel.`,
+      )
+    ) {
+      return;
+    }
+    setCancellingReworkId(rw.id);
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/reworks/${rw.id}/cancel`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error || "Failed to cancel rework");
+      }
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) }),
+        qc.invalidateQueries({ queryKey: getListJobsQueryKey() }),
+        loadReworks(),
+      ]);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to cancel rework");
+    } finally {
+      setCancellingReworkId(null);
+    }
+  };
 
   useEffect(() => {
     setRemarksDraft(((job as any)?.remarks as string | null | undefined) ?? "");
@@ -2689,7 +2722,7 @@ export default function JobDetail({ role = "user", id }: Props) {
             </span>
           </div>
           <div className="grid md:grid-cols-2 gap-3">
-            {activeReworks.slice(0, 4).map((rw) => (
+            {activeReworks.map((rw) => (
               <div key={rw.id} className="rounded-xl bg-white border border-amber-100 p-3">
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <span className="text-xs font-bold text-gray-900">{reworkSequenceLabel(rw.reworkOrigin, reworkOriginSequenceById.get(rw.id) ?? rw.cycleNumber)}{rw.checklistItemId ? ` · Item ${rw.checklistItemId}` : ""}</span>
@@ -2701,6 +2734,16 @@ export default function JobDetail({ role = "user", id }: Props) {
                         className="text-[10px] font-bold uppercase text-indigo-700 hover:text-indigo-900 flex items-center gap-1"
                       >
                         <Edit2 size={11} /> Edit
+                      </button>
+                    )}
+                    {canEditRework && (
+                      <button
+                        type="button"
+                        disabled={cancellingReworkId === rw.id}
+                        onClick={() => void cancelActiveRework(rw)}
+                        className="text-[10px] font-bold uppercase text-rose-700 hover:text-rose-900 disabled:opacity-50 flex items-center gap-1"
+                      >
+                        <X size={11} /> {cancellingReworkId === rw.id ? "Cancelling…" : "Cancel"}
                       </button>
                     )}
                     <span className="text-[10px] uppercase font-bold text-amber-700">{rw.status.replace("_", " ")}</span>
@@ -3215,13 +3258,23 @@ export default function JobDetail({ role = "user", id }: Props) {
                             <AlertTriangle size={12} /> Rework Reason
                           </div>
                           {canEditRework && selectedItemRework && (
-                            <button
-                              type="button"
-                              onClick={() => openEditReworkModal(selectedItemRework)}
-                              className="text-[10px] font-bold uppercase text-indigo-700 hover:text-indigo-900 flex items-center gap-1"
-                            >
-                              <Edit2 size={11} /> Edit
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openEditReworkModal(selectedItemRework)}
+                                className="text-[10px] font-bold uppercase text-indigo-700 hover:text-indigo-900 flex items-center gap-1"
+                              >
+                                <Edit2 size={11} /> Edit
+                              </button>
+                              <button
+                                type="button"
+                                disabled={cancellingReworkId === selectedItemRework.id}
+                                onClick={() => void cancelActiveRework(selectedItemRework)}
+                                className="text-[10px] font-bold uppercase text-rose-700 hover:text-rose-900 disabled:opacity-50 flex items-center gap-1"
+                              >
+                                <X size={11} /> {cancellingReworkId === selectedItemRework.id ? "Cancelling…" : "Cancel"}
+                              </button>
+                            </div>
                           )}
                         </div>
                         <p className="text-xs text-purple-900 mb-2">{selectedItemRework?.reason ?? selectedChecklistItem.reworkReason ?? "Please review the requirements and resubmit."}</p>

@@ -68,7 +68,7 @@ import {
   stopAllActiveTimersOnJob,
   shouldAutoStopWorkerTimersForJobStatus,
 } from "../lib/persist-timer-session";
-import { healDuplicateReworkCyclesForJob, updateRework } from "../lib/reworks";
+import { healDuplicateReworkCyclesForJob, updateRework, cancelRework } from "../lib/reworks";
 import { isReworkOrigin, type ReworkOrigin } from "../lib/rework-origin";
 import { finalizeReviewCheckForJob } from "../lib/persist-review-check-session";
 import { supabase } from "../lib/storage";
@@ -2732,6 +2732,38 @@ router.patch("/jobs/:id/reworks/:reworkId", requireAuth, async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to update rework";
     logger.error({ err, message }, "Failed to update job rework");
+    return res.status(400).json({ error: message });
+  }
+});
+
+router.post("/jobs/:id/reworks/:reworkId/cancel", requireAuth, async (req, res) => {
+  try {
+    await ensureJobWriteSchema();
+    const jobId = req.params.id as string;
+    const reworkId = req.params.reworkId as string;
+    const actor = req.session!.user;
+    const full = await loadJob(jobId);
+    if (!full) return res.status(404).json({ error: "Job not found" });
+    if (!(await canViewJob(actor, full.job))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    if (!canManageJob(actor, full.job)) {
+      return res.status(403).json({ error: "Only supervisor, admin, or super-admin can cancel rework" });
+    }
+
+    const { rework, jobStatus } = await cancelRework({
+      actor,
+      job: full.job,
+      reworkId,
+    });
+
+    return res.json({
+      ...serializeJobReworkRow(rework),
+      jobStatus,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to cancel rework";
+    logger.error({ err, message }, "Failed to cancel job rework");
     return res.status(400).json({ error: message });
   }
 });
