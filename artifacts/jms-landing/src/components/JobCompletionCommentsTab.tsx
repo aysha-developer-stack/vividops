@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, History } from "lucide-react";
 import type { Role } from "@/lib/roles";
 import type { JobNoteApi } from "@/components/JobNotesTab";
+import { ReworkCycleCard, type ReworkHistoryRecord } from "@/components/JobReworkHistory";
+import {
+  originSequenceByReworkId,
+} from "@/lib/reworkOriginSequence";
 import {
   downloadNamedFile,
   jobAttachmentDownloadUrl,
@@ -41,11 +45,19 @@ function stageLabel(text: string): string {
   if (text.startsWith("Worker submission:")) return "Worker submission";
   if (text.startsWith("Supervisor review:")) return "Supervisor review";
   if (text.startsWith("Admin completion:")) return "Admin completion";
+  if (text.startsWith("Admin final completion:")) return "Admin final completion";
+  if (text.startsWith("Rework requested:")) return "Rework requested";
   return "Completion";
 }
 
 function stageBody(text: string): string {
-  const prefixes = ["Worker submission:", "Supervisor review:", "Admin completion:"];
+  const prefixes = [
+    "Worker submission:",
+    "Supervisor review:",
+    "Admin completion:",
+    "Admin final completion:",
+    "Rework requested:",
+  ];
   for (const prefix of prefixes) {
     if (text.startsWith(prefix)) return text.slice(prefix.length).trim();
   }
@@ -55,9 +67,10 @@ function stageBody(text: string): string {
 type Props = {
   jobId: string;
   refreshKey?: number;
+  reworks?: ReworkHistoryRecord[];
 };
 
-export default function JobCompletionCommentsTab({ jobId, refreshKey = 0 }: Props) {
+export default function JobCompletionCommentsTab({ jobId, refreshKey = 0, reworks = [] }: Props) {
   const [notes, setNotes] = useState<JobNoteApi[]>([]);
   const [reviewPhotos, setReviewPhotos] = useState<ReviewAttachment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -151,7 +164,7 @@ export default function JobCompletionCommentsTab({ jobId, refreshKey = 0 }: Prop
               <h3 className="font-bold text-gray-900">Completion comments</h3>
             </div>
             <p className="text-xs text-gray-500">
-              Notes and photos added when work is submitted, approved, or completed — newest first.
+              Notes, photos, and rework-cycle comments stay on this job — including earlier cycles after a new rework is opened.
             </p>
           </div>
 
@@ -160,12 +173,33 @@ export default function JobCompletionCommentsTab({ jobId, refreshKey = 0 }: Prop
               <div className="py-10 text-center text-sm text-gray-400">Loading completion comments…</div>
             ) : loadError ? (
               <div className="py-10 text-center text-sm text-red-600">{loadError}</div>
-            ) : notes.length === 0 ? (
+            ) : notes.length === 0 && reworks.length === 0 ? (
               <div className="py-10 text-center text-sm text-gray-400">
                 No completion comments yet. They appear here when a worker submits, a supervisor approves, or an admin completes the job.
               </div>
             ) : (
-              notes.map((note) => {
+              <>
+              {reworks.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-gray-500">
+                    <History size={14} /> Rework cycle comments
+                  </div>
+                  {(() => {
+                    const sequenceById = originSequenceByReworkId(reworks.map(({ status: _status, ...row }) => row));
+                    return [...reworks]
+                      .sort((a, b) => (Date.parse(b.assignedAt) || 0) - (Date.parse(a.assignedAt) || 0))
+                      .map((rw) => (
+                        <ReworkCycleCard
+                          key={rw.id}
+                          rework={rw}
+                          sequence={sequenceById.get(rw.id) ?? rw.cycleNumber}
+                          compact
+                        />
+                      ));
+                  })()}
+                </div>
+              )}
+              {notes.map((note) => {
                 const photos = photosByNoteId.get(note.id) ?? [];
                 const body = stageBody(note.text);
                 return (
@@ -220,7 +254,8 @@ export default function JobCompletionCommentsTab({ jobId, refreshKey = 0 }: Prop
                     <p className="text-[10px] text-gray-400 mt-2">{new Date(note.createdAt).toLocaleString()}</p>
                   </div>
                 );
-              })
+              })}
+              </>
             )}
           </div>
         </div>

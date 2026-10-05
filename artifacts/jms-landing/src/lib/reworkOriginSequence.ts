@@ -69,3 +69,18 @@ export function reworkSequenceLabel(
   if (key === "external") return `External #${sequence}`;
   return `Rework #${sequence}`;
 }
+
+export const ACTIVE_REWORK_STATUSES = ["open", "needs_correction", "awaiting_review"] as const;
+
+export function isActiveReworkStatus(status: string | null | undefined): boolean {
+  return !!status && (ACTIVE_REWORK_STATUSES as readonly string[]).includes(status);
+}
+
+export function reworkHistoryStatusLabel(status: string | null | undefined): string {
+  if (status === "approved") return "Completed";
+  if (status === "cancelled") return "Cancelled";
+  if (status === "awaiting_review") return "Awaiting review";
+  if (status === "needs_correction") return "Needs correction";
+  if (status === "open") return "Active";
+  return (status ?? "unknown").replace(/_/g, " ");
+}

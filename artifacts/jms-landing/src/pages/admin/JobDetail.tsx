@@ -87,7 +87,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import FileDropzone from "@/components/FileDropzone";
 import { CHECKLIST_FILE_ACCEPT, filterJobFiles, filterChecklistInstructionFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE, CHECKLIST_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
 import { isCompletedAttachment, isJobAttachment, isNoteAttachment, isReworkAttachment, isReviewAttachment, fileCategoryFromUploadTag, completedAttachmentStatusLabel, checklistItemHasCompletedUpload, jobLevelHasCompletedDeliverables, reworkInstructionBadges, type ReworkOrigin } from "@/lib/attachmentCategories";
-import { originSequenceByReworkId, pickLatestRework, reworkSequenceLabel } from "@/lib/reworkOriginSequence";
+import { originSequenceByReworkId, pickLatestRework, reworkSequenceLabel, isActiveReworkStatus } from "@/lib/reworkOriginSequence";
 import { hideJobFileConfirm } from "@/lib/hideJobFileConfirm";
 import { refreshSidebarBadges } from "@/lib/sidebarBadgesApi";
 import { useDashboardSearch } from "@/lib/pageSearch";
@@ -102,6 +102,7 @@ import {
 import UploadProgressPanel from "@/components/UploadProgressPanel";
 import JobNotesTab from "@/components/JobNotesTab";
 import JobCompletionCommentsTab from "@/components/JobCompletionCommentsTab";
+import JobReworkHistory from "@/components/JobReworkHistory";
 import ReviewCompletionForm from "@/components/ReviewCompletionForm";
 import JobFormModal from "@/components/JobFormModal";
 import PutJobOnHoldDialog from "@/components/PutJobOnHoldDialog";
@@ -1528,9 +1529,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const checklistProgress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
 
   const resolveActiveReworkIdForUpload = (checklistItemId?: number | null): string | null => {
-    const active = reworks.filter(
-      (r) => r.status === "open" || r.status === "needs_correction" || r.status === "awaiting_review",
-    );
+    const active = reworks.filter((r) => isActiveReworkStatus(r.status));
     if (active.length === 0) return null;
 
     if (checklistItemId != null && checklistItemId > 0) {
@@ -1546,9 +1545,7 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   const activeJobLevelReworkId = useMemo(() => {
     const active = reworks.filter(
-      (r) =>
-        (r.status === "open" || r.status === "needs_correction" || r.status === "awaiting_review") &&
-        r.checklistItemId == null,
+      (r) => isActiveReworkStatus(r.status) && r.checklistItemId == null,
     );
     return pickLatestRework(active)?.id ?? null;
   }, [reworks]);
@@ -1695,7 +1692,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   }, [submitReviewOpen]);
   const progress = checklist.length > 0 ? checklistProgress : (job?.progress ?? 0);
 
-  const activeReworks = reworks.filter((r) => r.status === "open" || r.status === "awaiting_review" || r.status === "needs_correction");
+  const activeReworks = reworks.filter((r) => isActiveReworkStatus(r.status));
   const reworkOriginSequenceById = useMemo(() => originSequenceByReworkId(reworks), [reworks]);
   const selectedItemRework = selectedChecklistItem
     ? pickLatestRework(activeReworks.filter((r) => r.checklistItemId === selectedChecklistItem.id)) ?? null
@@ -1738,9 +1735,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   );
 
   const activeReworkCycleLabel = useMemo(() => {
-    const open = reworks.filter(
-      (r) => r.status === "open" || r.status === "needs_correction" || r.status === "awaiting_review",
-    );
+    const open = reworks.filter((r) => isActiveReworkStatus(r.status));
     if (open.length === 0) return null;
     const latest = [...open].sort((a, b) => {
       const at = Date.parse(a.assignedAt) || 0;
@@ -2762,6 +2757,8 @@ export default function JobDetail({ role = "user", id }: Props) {
         </motion.div>
       )}
 
+      {reworks.length > 0 && <JobReworkHistory reworks={reworks} />}
+
       {/* Job timer banner — review check OR field work, never both */}
       {canShowReviewCheck ? (
         <motion.div
@@ -3251,6 +3248,18 @@ export default function JobDetail({ role = "user", id }: Props) {
                   </div>
                   
                   <div className="p-5 space-y-5">
+                    {(() => {
+                      const itemReworkHistory = reworks
+                        .filter(
+                          (r) =>
+                            r.checklistItemId === selectedChecklistItem.id ||
+                            (r.checklistItemId == null && !isActiveReworkStatus(r.status)),
+                        )
+                        .sort((a, b) => (Date.parse(b.assignedAt) || 0) - (Date.parse(a.assignedAt) || 0));
+                      const pastItemReworks = itemReworkHistory.filter((r) => r.id !== selectedItemRework?.id);
+                      if (!selectedItemRework && pastItemReworks.length === 0) return null;
+                      return (
+                    <div className="space-y-3">
                     {selectedChecklistItem.status === "rework" && (
                       <div className="p-3 rounded-xl bg-purple-50 border border-purple-100">
                         <div className="flex items-center justify-between gap-2 mb-1">
@@ -3296,6 +3305,26 @@ export default function JobDetail({ role = "user", id }: Props) {
                         </p>
                       </div>
                     )}
+                    {pastItemReworks.length > 0 && (
+                      <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                        <div className="text-[10px] font-bold uppercase text-gray-500 mb-2">Previous rework on this task</div>
+                        <div className="space-y-2">
+                          {pastItemReworks.map((rw) => (
+                            <div key={rw.id} className="text-xs text-gray-700">
+                              <div className="font-semibold text-gray-900">
+                                {reworkSequenceLabel(rw.reworkOrigin, reworkOriginSequenceById.get(rw.id) ?? rw.cycleNumber)}
+                                <span className="ml-2 text-[10px] font-bold uppercase text-gray-400">{rw.status.replace(/_/g, " ")}</span>
+                              </div>
+                              <p className="mt-0.5 whitespace-pre-wrap">{rw.reason}</p>
+                              {rw.comments ? <p className="mt-0.5 text-gray-500">Instructions: {rw.comments}</p> : null}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    </div>
+                      );
+                    })()}
 
                     <div>
                       <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Task Details</div>
@@ -4278,7 +4307,7 @@ export default function JobDetail({ role = "user", id }: Props) {
         )}
 
         {tab === "completion" && job?.id && (
-          <JobCompletionCommentsTab jobId={job.id} refreshKey={notesRefreshKey} />
+          <JobCompletionCommentsTab jobId={job.id} refreshKey={notesRefreshKey} reworks={reworks} />
         )}
 
         {tab === "mistakes" && job?.id && (
