@@ -158,6 +158,14 @@ export async function ensureJobWriteSchema() {
       ALTER TABLE jobs
       ADD COLUMN IF NOT EXISTS hold_reason text
     `);
+    try {
+      await db.execute(sql`
+        ALTER TABLE job_reworks
+        ADD COLUMN IF NOT EXISTS previous_job_state text
+      `);
+    } catch (err) {
+      logger.warn({ err }, "job_reworks.previous_job_state may not be ready");
+    }
     await db.execute(sql`
       ALTER TABLE jobs
       ADD COLUMN IF NOT EXISTS estimated_time text
@@ -545,6 +553,7 @@ export async function ensureAllSchemas() {
       ALTER TABLE job_reworks ADD COLUMN IF NOT EXISTS completed_at timestamptz;
       ALTER TABLE job_reworks ADD COLUMN IF NOT EXISTS approved_at timestamptz;
       ALTER TABLE job_reworks ADD COLUMN IF NOT EXISTS rework_origin text;
+      ALTER TABLE job_reworks ADD COLUMN IF NOT EXISTS previous_job_state text;
       CREATE INDEX IF NOT EXISTS job_reworks_job_idx ON job_reworks(job_id);
       CREATE INDEX IF NOT EXISTS job_reworks_user_idx ON job_reworks(user_id);
       CREATE INDEX IF NOT EXISTS job_reworks_status_idx ON job_reworks(status);

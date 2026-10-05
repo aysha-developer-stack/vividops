@@ -1,9 +1,10 @@
-import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import {
   db,
   jobAttachments,
   jobChecklistAttachments,
   jobChecklistState,
+  jobNotes,
   jobReworks,
   jobs,
   timeLogs,
@@ -131,6 +132,7 @@ export async function createRework(opts: {
   const comments = opts.comments?.trim() ? opts.comments.trim() : null;
   const dueAt = parseDueAt(opts.dueAt);
   const cycleNumber = await nextCycleNumber(opts.job.id, userId);
+  const previousJobState = JSON.stringify(await resolvePreviousJobState(opts.job));
 
   const [rework] = await db
     .insert(jobReworks)
@@ -146,6 +148,7 @@ export async function createRework(opts: {
       severity,
       status: "open",
       reworkOrigin: opts.reworkOrigin ?? null,
+      previousJobState,
       dueAt,
       updatedAt: new Date(),
     })
@@ -299,6 +302,162 @@ export async function resolveJobReworks(jobId: string) {
     .where(and(eq(jobReworks.jobId, jobId), inArray(jobReworks.status, ["open", "awaiting_review", "needs_correction"])));
 }
 
+const RESTORABLE_JOB_STATUSES = new Set([
+  "pending",
+  "in_progress",
+  "awaiting_supervisor",
+  "awaiting_admin",
+  "awaiting_super_admin",
+  "completed",
+  "on_hold",
+]);
+
+type PreviousJobState = {
+  status: string;
+  progress: number;
+  completedAt: string | null;
+  checkedById: string | null;
+  checkedByLabel: string | null;
+  checkedAt: string | null;
+  heldFromStatus: string | null;
+  holdReason: string | null;
+};
+
+function emptyCheckerHold(): Pick<
+  PreviousJobState,
+  "checkedById" | "checkedByLabel" | "checkedAt" | "heldFromStatus" | "holdReason"
+> {
+  return {
+    checkedById: null,
+    checkedByLabel: null,
+    checkedAt: null,
+    heldFromStatus: null,
+    holdReason: null,
+  };
+}
+
+function snapshotFromJob(job: JobRow): PreviousJobState {
+  return {
+    status: job.status,
+    progress: job.progress ?? 0,
+    completedAt: job.completedAt ? job.completedAt.toISOString() : null,
+    checkedById: job.checkedById ?? null,
+    checkedByLabel: job.checkedByLabel ?? null,
+    checkedAt: job.checkedAt ? job.checkedAt.toISOString() : null,
+    heldFromStatus: job.heldFromStatus ?? null,
+    holdReason: job.holdReason ?? null,
+  };
+}
+
+function parsePreviousJobState(raw: string | null | undefined): PreviousJobState | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<PreviousJobState>;
+    if (!parsed || typeof parsed.status !== "string" || !RESTORABLE_JOB_STATUSES.has(parsed.status)) {
+      return null;
+    }
+    return {
+      status: parsed.status,
+      progress: typeof parsed.progress === "number" && Number.isFinite(parsed.progress) ? parsed.progress : 0,
+      completedAt: typeof parsed.completedAt === "string" ? parsed.completedAt : null,
+      checkedById: typeof parsed.checkedById === "string" ? parsed.checkedById : null,
+      checkedByLabel: typeof parsed.checkedByLabel === "string" ? parsed.checkedByLabel : null,
+      checkedAt: typeof parsed.checkedAt === "string" ? parsed.checkedAt : null,
+      heldFromStatus: typeof parsed.heldFromStatus === "string" ? parsed.heldFromStatus : null,
+      holdReason: typeof parsed.holdReason === "string" ? parsed.holdReason : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function inferPreviousStateFromNotes(
+  jobId: string,
+  before: Date,
+  fallbackProgress: number,
+): Promise<PreviousJobState | null> {
+  const rows = await db
+    .select({ text: jobNotes.text })
+    .from(jobNotes)
+    .where(
+      and(
+        eq(jobNotes.jobId, jobId),
+        eq(jobNotes.noteType, "completion"),
+        lt(jobNotes.createdAt, before),
+      ),
+    )
+    .orderBy(desc(jobNotes.createdAt))
+    .limit(12);
+
+  for (const row of rows) {
+    const text = row.text ?? "";
+    if (text.startsWith("Rework requested:")) continue;
+    if (text.startsWith("Admin final completion:")) {
+      return {
+        status: "completed",
+        progress: 100,
+        completedAt: before.toISOString(),
+        ...emptyCheckerHold(),
+      };
+    }
+    if (text.startsWith("Admin completion:")) {
+      return {
+        status: "awaiting_super_admin",
+        progress: 100,
+        completedAt: null,
+        ...emptyCheckerHold(),
+      };
+    }
+    if (text.startsWith("Supervisor review:")) {
+      return {
+        status: "awaiting_admin",
+        progress: 100,
+        completedAt: null,
+        ...emptyCheckerHold(),
+      };
+    }
+    if (text.startsWith("Worker submission:")) {
+      return {
+        status: "awaiting_supervisor",
+        progress: fallbackProgress > 0 ? fallbackProgress : 100,
+        completedAt: null,
+        ...emptyCheckerHold(),
+      };
+    }
+  }
+  return null;
+}
+
+async function resolvePreviousJobState(job: JobRow): Promise<PreviousJobState> {
+  if (job.status !== "rework") {
+    return snapshotFromJob(job);
+  }
+
+  const rows = await db
+    .select({
+      previousJobState: jobReworks.previousJobState,
+      status: jobReworks.status,
+    })
+    .from(jobReworks)
+    .where(eq(jobReworks.jobId, job.id))
+    .orderBy(asc(jobReworks.assignedAt), asc(jobReworks.createdAt));
+
+  for (const row of rows) {
+    if (!(ACTIVE_REWORK_STATUSES as readonly string[]).includes(row.status)) continue;
+    const parsed = parsePreviousJobState(row.previousJobState);
+    if (parsed) return parsed;
+  }
+  for (const row of [...rows].reverse()) {
+    const parsed = parsePreviousJobState(row.previousJobState);
+    if (parsed) return parsed;
+  }
+
+  const inferred = await inferPreviousStateFromNotes(job.id, new Date(), job.progress ?? 0);
+  if (inferred) return inferred;
+
+  return snapshotFromJob(job);
+}
+
 function parseChecklistLength(job: JobRow): number {
   try {
     const parsed = JSON.parse(typeof job.description === "string" ? job.description : "{}") as { checklist?: unknown };
@@ -402,8 +561,8 @@ async function restoreChecklistAfterCancel(job: JobRow, rework: JobReworkRow) {
   }
 }
 
-async function syncJobAfterReworkCancel(job: JobRow): Promise<string> {
-  if (job.status === "on_hold" || job.status === "cancelled" || job.status === "completed") {
+async function syncJobAfterReworkCancel(job: JobRow, cancelled: JobReworkRow): Promise<string> {
+  if (job.status === "cancelled") {
     return job.status;
   }
 
@@ -462,14 +621,41 @@ async function syncJobAfterReworkCancel(job: JobRow): Promise<string> {
     });
   }
 
-  const nextStatus = allComplete ? "awaiting_supervisor" : progress > 0 ? "in_progress" : "pending";
+  const snapshot =
+    parsePreviousJobState(cancelled.previousJobState) ??
+    (await inferPreviousStateFromNotes(job.id, cancelled.assignedAt, progress));
+
+  const heuristicStatus = allComplete ? "awaiting_supervisor" : progress > 0 ? "in_progress" : "pending";
+  const nextStatus =
+    snapshot?.status && RESTORABLE_JOB_STATUSES.has(snapshot.status) ? snapshot.status : heuristicStatus;
+
+  const restoredProgress =
+    nextStatus === "completed" || nextStatus === "awaiting_admin" || nextStatus === "awaiting_super_admin"
+      ? 100
+      : snapshot
+        ? snapshot.progress
+        : progress;
+
+  const completedAt = snapshot?.completedAt
+    ? new Date(snapshot.completedAt)
+    : nextStatus === "completed"
+      ? cancelled.assignedAt
+      : null;
+
+  const restoringHold = nextStatus === "on_hold";
+
   await db
     .update(jobs)
     .set({
       status: nextStatus as JobRow["status"],
-      progress,
-      completedAt: null,
+      progress: restoredProgress,
+      completedAt,
+      checkedById: snapshot?.checkedById ?? null,
+      checkedByLabel: snapshot?.checkedByLabel ?? null,
+      checkedAt: snapshot?.checkedAt ? new Date(snapshot.checkedAt) : null,
       reviewStartedAt: null,
+      heldFromStatus: restoringHold ? (snapshot?.heldFromStatus ?? job.heldFromStatus ?? null) : null,
+      holdReason: restoringHold ? (snapshot?.holdReason ?? job.holdReason ?? null) : null,
       updatedAt: new Date(),
     })
     .where(eq(jobs.id, job.id));
@@ -507,7 +693,7 @@ export async function cancelRework(opts: {
   }
 
   await restoreChecklistAfterCancel(opts.job, existing);
-  const jobStatus = await syncJobAfterReworkCancel(opts.job);
+  const jobStatus = await syncJobAfterReworkCancel(opts.job, existing);
 
   const originLabel = reworkOriginLabel(existing.reworkOrigin);
   const title = originLabel ? `${originLabel} cancelled: ${opts.job.title}` : `Rework cancelled: ${opts.job.title}`;

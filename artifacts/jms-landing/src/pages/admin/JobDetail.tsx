@@ -775,7 +775,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     const label = reworkSequenceLabel(rw.reworkOrigin, originSequenceByReworkId(reworks).get(rw.id) ?? rw.cycleNumber);
     if (
       !window.confirm(
-        `Cancel ${label}? Use this when rework was added by mistake. If this is the only active rework, the job leaves Rework status. A cancellation note is posted to the job channel.`,
+        `Cancel ${label}? The job will return to the step it was on before this rework (with the worker, supervisor, admin, or super admin). A cancellation note is posted to the job channel.`,
       )
     ) {
       return;
