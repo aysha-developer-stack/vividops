@@ -27,6 +27,7 @@ import UserDashboard from "@/pages/admin/UserDashboard";
 import FilesChecklists from "@/pages/admin/FilesChecklists";
 import SuperAdminFiles from "./pages/admin/SuperAdminFiles";
 import SuperAdminRolesPermissions from "./pages/admin/SuperAdminRolesPermissions";
+import BuilderSpecs from "@/pages/admin/BuilderSpecs";
 import MyJobs from "@/pages/admin/MyJobs";
 import JobDetail from "@/pages/admin/JobDetail";
 import Notifications from "@/pages/admin/Notifications";
@@ -163,6 +164,7 @@ function AppRouter() {
         <Route path="/super-admin/files"><RequireSignedIn><SuperAdminFiles /></RequireSignedIn></Route>
         <Route path="/super-admin/jobs/:id">{(params) => <RequireSignedIn><JobDetail id={params.id} role="super-admin" /></RequireSignedIn>}</Route>
         <Route path="/super-admin/jobs"><RequireSignedIn><JobManagement role="super-admin" /></RequireSignedIn></Route>
+        <Route path="/super-admin/builder-specs"><RequireSignedIn><BuilderSpecs role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/monitoring"><RequireSignedIn><SystemMonitoring role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/reports"><RequireSignedIn><Reports role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/mistakes"><RequireSignedIn><Mistakes role="super-admin" /></RequireSignedIn></Route>
@@ -178,6 +180,7 @@ function AppRouter() {
         <Route path="/admin/users"><RequireSignedIn><UserManagement role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/jobs/:id">{(params) => <RequireSignedIn><JobDetail id={params.id} role="admin" /></RequireSignedIn>}</Route>
         <Route path="/admin/jobs"><RequireSignedIn><JobManagement role="admin" /></RequireSignedIn></Route>
+        <Route path="/admin/builder-specs"><RequireSignedIn><BuilderSpecs role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/supervisors"><RequireSignedIn><SupervisorMonitoring role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/monitoring"><RequireSignedIn><UserMonitoring role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/reports"><RequireSignedIn><Reports role="admin" /></RequireSignedIn></Route>

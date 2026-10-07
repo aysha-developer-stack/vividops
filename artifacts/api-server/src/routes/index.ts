@@ -23,6 +23,7 @@ import mistakesRouter from "./mistakes";
 import pushRouter from "./push";
 import reportsRouter from "./reports";
 import sidebarBadgesRouter from "./sidebar-badges";
+import builderSpecsRouter from "./builder-specs";
 
 const router: IRouter = Router();
 
@@ -50,5 +51,6 @@ router.use(mistakesRouter);
 router.use(pushRouter);
 router.use(reportsRouter);
 router.use(sidebarBadgesRouter);
+router.use(builderSpecsRouter);
 
 export default router;

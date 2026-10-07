@@ -314,6 +314,7 @@ export default function DashboardLayout({
     if (path.includes("/communication")) void import("@/pages/admin/Communication");
     if (path.includes("/training")) void import("@/pages/admin/Training");
     if (path.includes("/settings")) void import("@/pages/admin/Settings");
+    if (path.includes("/builder-specs")) void import("@/pages/admin/BuilderSpecs");
     if (path.startsWith("/user/files")) void import("@/pages/admin/FilesChecklists");
     if (path.startsWith("/super-admin/files")) void import("../pages/admin/SuperAdminFiles");
     if (path.startsWith("/admin/files")) void import("../pages/admin/SuperAdminFiles");

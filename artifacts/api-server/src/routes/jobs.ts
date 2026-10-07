@@ -69,6 +69,7 @@ import {
   shouldAutoStopWorkerTimersForJobStatus,
 } from "../lib/persist-timer-session";
 import { healDuplicateReworkCyclesForJob, updateRework, cancelRework } from "../lib/reworks";
+import { applyBuilderSpecsToJob, builderKeyFromName } from "../lib/builder-specs";
 import { isReworkOrigin, type ReworkOrigin } from "../lib/rework-origin";
 import { finalizeReviewCheckForJob } from "../lib/persist-review-check-session";
 import { supabase } from "../lib/storage";
@@ -2085,6 +2086,8 @@ router.post("/jobs", creatorRole, async (req, res) => {
       return res.status(500).json({ error: "Failed to create job record" });
     }
 
+    await applyBuilderSpecsToJob(created.id, created.client);
+
     const full = await loadJob(created.id);
     if (!full) {
       return res.status(500).json({ error: "Job was created but could not be loaded" });
@@ -2395,6 +2398,13 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
       : null;
 
   await db.update(jobs).set(patch).where(eq(jobs.id, id));
+
+  if (
+    body.client !== undefined &&
+    builderKeyFromName(String(body.client ?? "")) !== builderKeyFromName(full.job.client)
+  ) {
+    await applyBuilderSpecsToJob(id, String(body.client ?? ""));
+  }
 
   if (checklistCountAfterSave != null && checklistCountAfterSave >= 0) {
     await db

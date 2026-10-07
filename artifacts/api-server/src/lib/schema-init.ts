@@ -3,6 +3,7 @@ import { logger } from "./logger";
 
 let initialized = false;
 let pushSubscriptionsSchemaEnsured = false;
+let builderSpecsSchemaEnsured = false;
 let legacySupervisorAssignmentsPromise: Promise<void> | null = null;
 
 /** Idempotent — safe to call at startup and before any Web Push query. */
@@ -27,6 +28,38 @@ export async function ensurePushSubscriptionsSchema(): Promise<void> {
 
   pushSubscriptionsSchemaEnsured = true;
   logger.info("Push subscriptions schema ensured.");
+}
+
+/** Builder spec library and per-job snapshots. */
+export async function ensureBuilderSpecsSchema(): Promise<void> {
+  if (builderSpecsSchemaEnsured) return;
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS builder_specs (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      builder_name text NOT NULL,
+      builder_key text NOT NULL UNIQUE,
+      body text NOT NULL,
+      created_by_id uuid REFERENCES users(id) ON DELETE SET NULL,
+      updated_by_id uuid REFERENCES users(id) ON DELETE SET NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS builder_specs_name_idx ON builder_specs (builder_name)`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS job_builder_specs (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      job_id uuid NOT NULL UNIQUE REFERENCES jobs(id) ON DELETE CASCADE,
+      builder_name text NOT NULL,
+      builder_key text NOT NULL,
+      body text NOT NULL,
+      source_spec_id uuid REFERENCES builder_specs(id) ON DELETE SET NULL,
+      copied_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS job_builder_specs_key_idx ON job_builder_specs (builder_key)`);
+  builderSpecsSchemaEnsured = true;
 }
 
 export async function ensureLegacySupervisorAssignments() {
@@ -675,12 +708,37 @@ export async function ensureAllSchemas() {
       );
       CREATE INDEX IF NOT EXISTS two_factor_trusted_devices_user_idx ON two_factor_trusted_devices (user_id);
       CREATE INDEX IF NOT EXISTS two_factor_trusted_devices_expires_idx ON two_factor_trusted_devices (expires_at);
+
+      CREATE TABLE IF NOT EXISTS builder_specs (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        builder_name text NOT NULL,
+        builder_key text NOT NULL UNIQUE,
+        body text NOT NULL,
+        created_by_id uuid REFERENCES users(id) ON DELETE SET NULL,
+        updated_by_id uuid REFERENCES users(id) ON DELETE SET NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS builder_specs_name_idx ON builder_specs (builder_name);
+
+      CREATE TABLE IF NOT EXISTS job_builder_specs (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        job_id uuid NOT NULL UNIQUE REFERENCES jobs(id) ON DELETE CASCADE,
+        builder_name text NOT NULL,
+        builder_key text NOT NULL,
+        body text NOT NULL,
+        source_spec_id uuid REFERENCES builder_specs(id) ON DELETE SET NULL,
+        copied_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS job_builder_specs_key_idx ON job_builder_specs (builder_key);
     `);
 
     await ensureJobMessageSyncSchema();
     await ensureLegacySupervisorAssignments();
     await ensurePushSubscriptionsSchema();
     twoFactorSchemaEnsured = true;
+    builderSpecsSchemaEnsured = true;
     
     initialized = true;
     logger.info("Database schemas initialized successfully.");

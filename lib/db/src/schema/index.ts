@@ -11,6 +11,8 @@ export * from "./job_juniors";
 export * from "./checklist_state";
 export * from "./checklist_attachments";
 export * from "./checklist_templates";
+export * from "./builder_specs";
+export * from "./job_builder_specs";
 export * from "./posts";
 export * from "./notifications";
 export * from "./time_logs";

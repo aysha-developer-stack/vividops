@@ -8,6 +8,7 @@ import {
   Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock, ListChecks, Eye, Trash2, StickyNote, RotateCcw
 } from "lucide-react";
 import FileExtensionIcon from "@/components/FileExtensionIcon";
+import JobBuilderSpecsCard from "@/components/JobBuilderSpecsCard";
 import { Checkbox } from "@/components/ui/checkbox";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -2700,6 +2701,8 @@ export default function JobDetail({ role = "user", id }: Props) {
           </div>
         </div>
       </motion.div>
+
+      {job?.id ? <JobBuilderSpecsCard jobId={job.id} clientName={job.client} /> : null}
 
       {activeReworks.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
