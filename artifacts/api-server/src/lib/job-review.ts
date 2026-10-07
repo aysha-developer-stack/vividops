@@ -8,6 +8,8 @@ import {
   jobChecklistState,
   jobChecklistAttachments,
   jobNotes,
+  timeLogs,
+  activeTimerSessions,
   sql,
   type JobRow,
   type UserRow,
@@ -419,12 +421,96 @@ export type WorkerChecklistProgress = {
   name: string;
   completedItems: number;
   totalItems: number;
+  /** False when the worker is only listed on the job and is not currently working it. */
+  blocksSubmit: boolean;
 };
+
+/** Teammates idle for this long on this job do not block someone else from submitting. */
+const SUBMIT_PEER_ACTIVITY_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Assigned workers whose unfinished checklists should still block submit:
+ * the person submitting, anyone with open rework here, anyone clocked into this job,
+ * or anyone with recent time / in-progress work here.
+ * Someone only listed from earlier work (or clocked into another job) is skipped.
+ */
+export async function listWorkerIdsRequiredForSubmit(
+  job: JobRow,
+  actorId?: string | null,
+): Promise<string[]> {
+  const ids = await listJobAssignedWorkerIds(job);
+  if (ids.length <= 1) return ids;
+
+  const required = new Set<string>();
+  if (actorId && ids.includes(actorId)) required.add(actorId);
+
+  const since = new Date(Date.now() - SUBMIT_PEER_ACTIVITY_MS);
+
+  const timerRows = await db
+    .select({ userId: activeTimerSessions.userId, jobId: activeTimerSessions.jobId })
+    .from(activeTimerSessions)
+    .where(inArray(activeTimerSessions.userId, ids));
+
+  for (const row of timerRows) {
+    if (row.jobId === job.id) required.add(row.userId);
+  }
+  const workingElsewhere = new Set(
+    timerRows.filter((row) => row.jobId && row.jobId !== job.id).map((row) => row.userId),
+  );
+
+  const stateRows = await db
+    .select({
+      userId: jobChecklistState.userId,
+      status: jobChecklistState.status,
+      updatedAt: jobChecklistState.updatedAt,
+    })
+    .from(jobChecklistState)
+    .where(and(eq(jobChecklistState.jobId, job.id), inArray(jobChecklistState.userId, ids)));
+
+  const reworkUsers = new Set<string>();
+  for (const row of stateRows) {
+    if (row.status === "rework") {
+      required.add(row.userId);
+      reworkUsers.add(row.userId);
+    }
+    if (
+      row.status === "in_progress" &&
+      row.updatedAt &&
+      row.updatedAt.getTime() >= since.getTime()
+    ) {
+      required.add(row.userId);
+    }
+  }
+
+  const logRows = await db
+    .select({
+      userId: timeLogs.userId,
+      createdAt: timeLogs.createdAt,
+      startTime: timeLogs.startTime,
+    })
+    .from(timeLogs)
+    .where(and(eq(timeLogs.jobId, job.id), inArray(timeLogs.userId, ids)));
+
+  for (const row of logRows) {
+    const latest = Math.max(row.createdAt?.getTime() ?? 0, row.startTime?.getTime() ?? 0);
+    if (latest >= since.getTime()) required.add(row.userId);
+  }
+
+  for (const userId of workingElsewhere) {
+    if (userId === actorId) continue;
+    if (reworkUsers.has(userId)) continue;
+    required.delete(userId);
+  }
+
+  return ids.filter((id) => required.has(id));
+}
 
 export async function loadAssignedWorkerChecklistProgress(job: JobRow): Promise<WorkerChecklistProgress[]> {
   const totalItems = parseJobChecklist(job).length;
   const ids = await listJobAssignedWorkerIds(job);
   if (ids.length === 0) return [];
+
+  const blockingIds = new Set(await listWorkerIdsRequiredForSubmit(job));
 
   const nameRows = await db
     .select({ id: users.id, name: users.name })
@@ -454,6 +540,7 @@ export async function loadAssignedWorkerChecklistProgress(job: JobRow): Promise<
     name: nameById.get(id) ?? "Worker",
     completedItems: completedByUser.get(id)?.size ?? 0,
     totalItems,
+    blocksSubmit: blockingIds.has(id),
   }));
 }
 
@@ -468,28 +555,42 @@ export function combinedChecklistProgress(rows: WorkerChecklistProgress[]): {
   return { progress: total > 0 ? Math.round((done / total) * 100) : 0, allComplete };
 }
 
-export async function assertAllAssignedWorkersChecklistReady(job: JobRow): Promise<string | null> {
-  const ids = await listJobAssignedWorkerIds(job);
-  const workerIds = ids.length > 0 ? ids : job.assigneeId ? [job.assigneeId] : [];
-  if (workerIds.length === 0) {
+export async function assertAllAssignedWorkersChecklistReady(
+  job: JobRow,
+  actorId?: string | null,
+): Promise<string | null> {
+  const assigned = await listJobAssignedWorkerIds(job);
+  const allIds = assigned.length > 0 ? assigned : job.assigneeId ? [job.assigneeId] : [];
+  if (allIds.length === 0) {
     return "An assigned worker is required before submitting this job.";
   }
 
+  const workerIds =
+    allIds.length === 1 ? allIds : await listWorkerIdsRequiredForSubmit(job, actorId);
+  const toCheck =
+    workerIds.length > 0
+      ? workerIds
+      : actorId && allIds.includes(actorId)
+        ? [actorId]
+        : [];
+  if (toCheck.length === 0) return null;
+
   const nameRows =
-    workerIds.length > 1
+    toCheck.length > 1
       ? await db
           .select({ id: users.id, name: users.name })
           .from(users)
-          .where(inArray(users.id, workerIds))
+          .where(inArray(users.id, toCheck))
       : [];
   const nameById = new Map(nameRows.map((row) => [row.id, row.name]));
 
-  for (const id of workerIds) {
+  for (const id of toCheck) {
     const error = await assertWorkerChecklistReady(job, id);
     if (!error) continue;
-    if (workerIds.length === 1) return error;
+    if (toCheck.length === 1 && toCheck[0] === actorId) return error;
+    if (allIds.length === 1) return error;
     const name = nameById.get(id) ?? "Another assigned worker";
-    return `${name} still has work remaining. ${error}`;
+    return `${name} is still working this job. ${error}`;
   }
   return null;
 }
@@ -866,7 +967,7 @@ export async function applyJobReview(opts: {
     if (job.status === "completed" || job.status === "cancelled") {
       return { ok: false, status: 400, error: "This job cannot be submitted for review" };
     }
-    const checklistError = await assertAllAssignedWorkersChecklistReady(job);
+    const checklistError = await assertAllAssignedWorkersChecklistReady(job, actor.id);
     if (checklistError) {
       return { ok: false, status: 400, error: checklistError };
     }

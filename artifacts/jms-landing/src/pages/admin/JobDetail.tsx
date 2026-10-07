@@ -1581,13 +1581,21 @@ export default function JobDetail({ role = "user", id }: Props) {
         name: string;
         completedItems: number;
         totalItems: number;
+        blocksSubmit?: boolean;
       }>;
     })?.workerChecklistProgress;
     return Array.isArray(rows) ? rows : [];
   }, [job]);
+  const blockingWorkerProgress = useMemo(
+    () =>
+      workerChecklistProgress.length <= 1
+        ? workerChecklistProgress
+        : workerChecklistProgress.filter((row) => row.blocksSubmit !== false),
+    [workerChecklistProgress],
+  );
   const allAssignedWorkersChecklistReady =
-    workerChecklistProgress.length <= 1 ||
-    workerChecklistProgress.every((row) => row.totalItems > 0 && row.completedItems >= row.totalItems);
+    blockingWorkerProgress.length === 0 ||
+    blockingWorkerProgress.every((row) => row.totalItems > 0 && row.completedItems >= row.totalItems);
   const hasOwnCompletedDeliverables = useMemo(() => {
     const uid = currentUser?.id;
     if (!uid || (role !== "user" && !canUseJobTimer)) {
@@ -1618,7 +1626,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     hasOwnCompletedDeliverables &&
     allChecklistItemsHaveCompletedUploads &&
     allAssignedWorkersChecklistReady;
-  const pendingTeammates = workerChecklistProgress.filter(
+  const pendingTeammates = blockingWorkerProgress.filter(
     (row) => row.totalItems > 0 && row.completedItems < row.totalItems && row.userId !== currentUser?.id,
   );
   const waitingOnTeammates =
@@ -2924,9 +2932,9 @@ export default function JobDetail({ role = "user", id }: Props) {
           animate={{ opacity: 1, y: 0 }}
           className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5"
         >
-          <div className="text-sm font-bold text-amber-900">Your work is done — teammates still have remaining tasks</div>
+          <div className="text-sm font-bold text-amber-900">Your work is done — teammates still working this job</div>
           <p className="text-xs text-amber-800/90 mt-1">
-            This job stays in progress until every assigned worker finishes their own checklist. Waiting on{" "}
+            Submit waits only on people who are still working this job, not someone only listed from earlier. Waiting on{" "}
             {pendingTeammates
               .map((row) => `${row.name} (${row.completedItems}/${row.totalItems})`)
               .join(", ")}
