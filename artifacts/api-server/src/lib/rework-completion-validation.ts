@@ -32,21 +32,19 @@ export async function findActiveJobLevelReworkId(
   jobId: string,
   userId: string,
 ): Promise<string | null> {
-  const [row] = await db
-    .select({ id: jobReworks.id })
+  const rows = await db
+    .select({ id: jobReworks.id, userId: jobReworks.userId })
     .from(jobReworks)
     .where(
       and(
         eq(jobReworks.jobId, jobId),
-        eq(jobReworks.userId, userId),
         isNull(jobReworks.checklistItemId),
         inArray(jobReworks.status, [...ACTIVE_REWORK_STATUSES]),
       ),
     )
-    .orderBy(desc(jobReworks.assignedAt), desc(jobReworks.createdAt), desc(jobReworks.cycleNumber))
-    .limit(1);
+    .orderBy(desc(jobReworks.assignedAt), desc(jobReworks.createdAt), desc(jobReworks.cycleNumber));
 
-  return row?.id ?? null;
+  return rows.find((row) => row.userId === userId)?.id ?? rows[0]?.id ?? null;
 }
 
 export async function jobHasReworkCycleDeliverable(

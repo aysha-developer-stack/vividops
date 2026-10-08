@@ -1620,7 +1620,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   };
   const readyToSubmitReview =
     (role === "user" || canUseJobTimer) &&
-    job?.status === "in_progress" &&
+    (job?.status === "in_progress" || job?.status === "rework") &&
     checklist.length > 0 &&
     completedCount === checklist.length &&
     hasOwnCompletedDeliverables &&
@@ -1631,7 +1631,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   );
   const waitingOnTeammates =
     (role === "user" || canUseJobTimer) &&
-    job?.status === "in_progress" &&
+    (job?.status === "in_progress" || job?.status === "rework") &&
     checklist.length > 0 &&
     completedCount === checklist.length &&
     hasOwnCompletedDeliverables &&

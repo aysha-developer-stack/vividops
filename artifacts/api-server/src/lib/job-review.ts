@@ -430,9 +430,11 @@ const SUBMIT_PEER_ACTIVITY_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Assigned workers whose unfinished checklists should still block submit:
- * the person submitting, anyone with open rework here, anyone clocked into this job,
- * or anyone with recent time / in-progress work here.
- * Someone only listed from earlier work (or clocked into another job) is skipped.
+ * the person submitting, anyone clocked into this job, or anyone with recent
+ * time / in-progress work here.
+ * Someone only listed from earlier work (including an idle teammate whose
+ * checklist was flipped to rework) is skipped so the worker doing the active
+ * rework can submit.
  */
 export async function listWorkerIdsRequiredForSubmit(
   job: JobRow,
@@ -467,12 +469,7 @@ export async function listWorkerIdsRequiredForSubmit(
     .from(jobChecklistState)
     .where(and(eq(jobChecklistState.jobId, job.id), inArray(jobChecklistState.userId, ids)));
 
-  const reworkUsers = new Set<string>();
   for (const row of stateRows) {
-    if (row.status === "rework") {
-      required.add(row.userId);
-      reworkUsers.add(row.userId);
-    }
     if (
       row.status === "in_progress" &&
       row.updatedAt &&
@@ -498,7 +495,6 @@ export async function listWorkerIdsRequiredForSubmit(
 
   for (const userId of workingElsewhere) {
     if (userId === actorId) continue;
-    if (reworkUsers.has(userId)) continue;
     required.delete(userId);
   }
 
@@ -1059,9 +1055,11 @@ export async function applyJobReview(opts: {
         reworkOrigin,
       });
       createdReworkId = rework.id;
-      const reworkUserId = resolveReworkUserId(job);
-      if (reworkUserId) {
-        await reopenChecklistForRework(job, reworkUserId, reason.trim());
+      const workerIds = await listJobAssignedWorkerIds(job);
+      const fallbackId = resolveReworkUserId(job);
+      const reopenIds = workerIds.length > 0 ? workerIds : fallbackId ? [fallbackId] : [];
+      for (const workerId of reopenIds) {
+        await reopenChecklistForRework(job, workerId, reason.trim());
       }
     } catch (err) {
       return {

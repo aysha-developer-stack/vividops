@@ -33,7 +33,7 @@ export async function resolveCompletedUploadReworkId(
     return { reworkId: null, error: null };
   }
 
-  const workerId = jobRow.assigneeId ?? actor.id;
+  const workerId = actor.role === "user" ? actor.id : (jobRow.assigneeId ?? actor.id);
   const resolved = await findActiveReworkForCompletedUpload({
     jobId: jobRow.id,
     userId: workerId,

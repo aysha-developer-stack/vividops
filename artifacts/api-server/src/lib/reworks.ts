@@ -20,6 +20,7 @@ import { resolveReworkUserId } from "./working-supervisor";
 import { announceCliqJobStatusChange } from "./cliq-job-status";
 import { listJobAssignedWorkerIds } from "./job-access";
 import { createNotification, notifyAllJobMembers, notifyJobManagers } from "./notifications";
+import { pickActiveReworkIdForUpload } from "./rework-upload-pick";
 
 type ErrorSeverity = "low" | "medium" | "high";
 
@@ -230,28 +231,25 @@ export async function findActiveReworkForCompletedUpload(opts: {
   checklistItemId?: number;
 }): Promise<string | null> {
   const rows = await db
-    .select({ id: jobReworks.id, checklistItemId: jobReworks.checklistItemId, cycleNumber: jobReworks.cycleNumber })
+    .select({
+      id: jobReworks.id,
+      userId: jobReworks.userId,
+      checklistItemId: jobReworks.checklistItemId,
+      cycleNumber: jobReworks.cycleNumber,
+    })
     .from(jobReworks)
     .where(
       and(
         eq(jobReworks.jobId, opts.jobId),
-        eq(jobReworks.userId, opts.userId),
         inArray(jobReworks.status, [...ACTIVE_REWORK_STATUSES]),
       ),
     )
     .orderBy(desc(jobReworks.assignedAt), desc(jobReworks.createdAt), desc(jobReworks.cycleNumber));
 
-  if (rows.length === 0) return null;
-
-  if (opts.checklistItemId != null && opts.checklistItemId > 0) {
-    const itemMatch = rows.find((r) => r.checklistItemId === opts.checklistItemId);
-    if (itemMatch) return itemMatch.id;
-  }
-
-  const jobLevel = rows.find((r) => r.checklistItemId == null);
-  if (jobLevel) return jobLevel.id;
-
-  return rows[0]?.id ?? null;
+  return pickActiveReworkIdForUpload(rows, {
+    userId: opts.userId,
+    checklistItemId: opts.checklistItemId,
+  });
 }
 
 export async function markOpenReworksAwaitingReview(
