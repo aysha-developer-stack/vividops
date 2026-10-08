@@ -149,13 +149,6 @@ export default function BuilderSpecs({ role = "admin" as Role }: { role?: Role }
 
   return (
     <DashboardLayout title="Builder Specs" role={role} headerSearch={headerSearch}>
-      <div className="mb-6 max-w-3xl">
-        <p className="text-sm text-gray-600">
-          Write each builder’s requirements once. When a job is created or assigned for that builder, these specs are
-          copied onto the job so the worker can follow them.
-        </p>
-      </div>
-
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
         <aside className="rounded-2xl border border-gray-100 bg-white p-4">
           <div className="mb-3 flex items-center justify-between gap-2">
