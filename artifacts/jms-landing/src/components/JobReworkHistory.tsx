@@ -1,6 +1,8 @@
+import { useMemo, useState } from "react";
 import { History } from "lucide-react";
 import { formatMistakeCategory } from "@/lib/mistakeCategories";
 import {
+  isActiveReworkStatus,
   originSequenceByReworkId,
   reworkHistoryStatusLabel,
   reworkSequenceLabel,
@@ -75,38 +77,58 @@ export function ReworkCycleCard({
 
 export default function JobReworkHistory({ reworks }: { reworks: ReworkHistoryRecord[] }) {
   const sequenceById = originSequenceByReworkId(reworks.map(({ status: _status, ...row }) => row));
-  const ordered = [...reworks].sort((a, b) => {
-    const at = Date.parse(a.assignedAt) || 0;
-    const bt = Date.parse(b.assignedAt) || 0;
-    return bt - at;
-  });
+  const past = useMemo(
+    () =>
+      [...reworks]
+        .filter((row) => !isActiveReworkStatus(row.status))
+        .sort((a, b) => (Date.parse(b.assignedAt) || 0) - (Date.parse(a.assignedAt) || 0)),
+    [reworks],
+  );
+  const [openId, setOpenId] = useState("");
+  const selected = past.find((row) => row.id === openId) ?? null;
 
-  if (ordered.length === 0) return null;
+  if (past.length === 0) return null;
 
   return (
     <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5">
       <div className="flex items-start justify-between gap-4 mb-3">
         <div>
           <div className="flex items-center gap-2 text-gray-900 font-bold">
-            <History size={16} className="text-gray-500" /> Rework history
+            <History size={16} className="text-gray-500" /> Previous rework cycles
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            Every rework cycle on this job stays here, including comments and instructions from earlier cycles.
+            Only the active rework stays open above. Pick an earlier cycle here to review it.
           </p>
         </div>
         <span className="text-xs font-bold text-gray-600 bg-gray-50 border border-gray-200 rounded-full px-3 py-1">
-          {ordered.length} {ordered.length === 1 ? "cycle" : "cycles"}
+          {past.length} {past.length === 1 ? "cycle" : "cycles"}
         </span>
       </div>
-      <div className="grid md:grid-cols-2 gap-3">
-        {ordered.map((rw) => (
+      <label className="block text-xs font-semibold text-gray-600 mb-1.5">View a previous cycle</label>
+      <select
+        value={openId}
+        onChange={(e) => setOpenId(e.target.value)}
+        className="w-full rounded-xl border-2 border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 focus:border-primary focus:outline-none"
+      >
+        <option value="">Choose a cycle…</option>
+        {past.map((rw) => {
+          const label = reworkSequenceLabel(rw.reworkOrigin, sequenceById.get(rw.id) ?? rw.cycleNumber);
+          return (
+            <option key={rw.id} value={rw.id}>
+              {label}
+              {rw.checklistItemId ? ` · Item ${rw.checklistItemId}` : ""} · {reworkHistoryStatusLabel(rw.status)}
+            </option>
+          );
+        })}
+      </select>
+      {selected ? (
+        <div className="mt-3">
           <ReworkCycleCard
-            key={rw.id}
-            rework={rw}
-            sequence={sequenceById.get(rw.id) ?? rw.cycleNumber}
+            rework={selected}
+            sequence={sequenceById.get(selected.id) ?? selected.cycleNumber}
           />
-        ))}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
