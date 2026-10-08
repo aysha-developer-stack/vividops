@@ -22,6 +22,7 @@ import {
   hasValidTrustedDevice,
   isTwoFactorEnrolled,
   readTrustCookie,
+  shouldSkipTwoFactor,
   twoFactorChallengePayload,
 } from "../lib/two-factor";
 
@@ -127,7 +128,7 @@ router.post("/auth/login", async (req, res) => {
   try {
     await ensureTwoFactorSchema();
     const trusted = await hasValidTrustedDevice(user.id, readTrustCookie(req));
-    if (isTwoFactorEnrolled(user) && trusted) {
+    if (shouldSkipTwoFactor(user) || (isTwoFactorEnrolled(user) && trusted)) {
       const loggedIn = await completeLoginSession(user, req, res);
       return res.json({ user: publicUser(loggedIn) });
     }
@@ -347,6 +348,9 @@ router.post("/auth/reset-password-with-token", async (req, res) => {
 
   try {
     await ensureTwoFactorSchema();
+    if (shouldSkipTwoFactor(user)) {
+      return res.json({ message: "Password has been reset successfully." });
+    }
     const challengeToken = await createTwoFactorChallenge(user.id);
     return res.json({
       message: "Password has been reset successfully.",

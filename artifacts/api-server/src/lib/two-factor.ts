@@ -26,6 +26,13 @@ import {
 
 export const TWO_FACTOR_TRUST_COOKIE = "vops_2fa_trust";
 
+/** TEMPORARY: set to false to require authenticator codes for super-admin again. */
+export const SKIP_TWO_FACTOR_FOR_SUPER_ADMIN = true;
+
+export function shouldSkipTwoFactor(user: Pick<UserRow, "role">): boolean {
+  return SKIP_TWO_FACTOR_FOR_SUPER_ADMIN && user.role === "super-admin";
+}
+
 export function isTwoFactorEnrolled(user: Pick<UserRow, "totpSecret" | "totpEnrolledAt">): boolean {
   return !!user.totpSecret && !!user.totpEnrolledAt;
 }
