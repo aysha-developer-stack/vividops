@@ -96,9 +96,6 @@ export default function JobReworkHistory({ reworks }: { reworks: ReworkHistoryRe
           <div className="flex items-center gap-2 text-gray-900 font-bold">
             <History size={16} className="text-gray-500" /> Previous rework cycles
           </div>
-          <p className="text-xs text-gray-500 mt-1">
-            Only the active rework stays open above. Pick an earlier cycle here to review it.
-          </p>
         </div>
         <span className="text-xs font-bold text-gray-600 bg-gray-50 border border-gray-200 rounded-full px-3 py-1">
           {past.length} {past.length === 1 ? "cycle" : "cycles"}
