@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { db, jobMembers, type JobRow, type UserRow } from "@workspace/db";
+import { db, jobMembers, jobs, type JobRow, type UserRow } from "@workspace/db";
 
 export function actorIsAdmin(actor: UserRow): boolean {
   return actor.role === "super-admin" || actor.role === "admin";
@@ -17,6 +17,33 @@ export async function listJobAssignedWorkerIds(
     .where(eq(jobMembers.jobId, job.id));
   for (const row of rows) ids.add(row.userId);
   return Array.from(ids);
+}
+
+/**
+ * Drop a worker from the job so it no longer counts as theirs.
+ * If they were the primary assignee, the next extra member is promoted.
+ */
+export async function unassignWorkerFromJob(
+  job: Pick<JobRow, "id" | "assigneeId">,
+  userId: string,
+): Promise<{ assigneeId: string | null }> {
+  await db.delete(jobMembers).where(and(eq(jobMembers.jobId, job.id), eq(jobMembers.userId, userId)));
+
+  let assigneeId = job.assigneeId ?? null;
+  if (assigneeId === userId) {
+    const [next] = await db
+      .select({ userId: jobMembers.userId })
+      .from(jobMembers)
+      .where(eq(jobMembers.jobId, job.id))
+      .limit(1);
+    assigneeId = next?.userId ?? null;
+    await db
+      .update(jobs)
+      .set({ assigneeId, updatedAt: new Date() })
+      .where(eq(jobs.id, job.id));
+  }
+
+  return { assigneeId };
 }
 
 /** True if this user is the primary assignee or an extra assigned worker. */

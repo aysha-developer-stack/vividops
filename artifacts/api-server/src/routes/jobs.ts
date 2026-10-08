@@ -2431,6 +2431,11 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
 
     // Check for reassignment
     if (body.assigneeId !== undefined && body.assigneeId !== oldAssigneeId) {
+      if (oldAssigneeId) {
+        await db
+          .delete(jobMembers)
+          .where(and(eq(jobMembers.jobId, id), eq(jobMembers.userId, oldAssigneeId)));
+      }
       let savedTimerSeconds = 0;
       if (oldAssigneeId) {
         try {

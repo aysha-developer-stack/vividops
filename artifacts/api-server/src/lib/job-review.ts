@@ -8,7 +8,6 @@ import {
   jobChecklistState,
   jobChecklistAttachments,
   jobNotes,
-  timeLogs,
   activeTimerSessions,
   sql,
   type JobRow,
@@ -425,16 +424,10 @@ export type WorkerChecklistProgress = {
   blocksSubmit: boolean;
 };
 
-/** Teammates idle for this long on this job do not block someone else from submitting. */
-const SUBMIT_PEER_ACTIVITY_MS = 7 * 24 * 60 * 60 * 1000;
-
 /**
- * Assigned workers whose unfinished checklists should still block submit:
- * the person submitting, anyone clocked into this job, or anyone with recent
- * time / in-progress work here.
- * Someone only listed from earlier work (including an idle teammate whose
- * checklist was flipped to rework) is skipped so the worker doing the active
- * rework can submit.
+ * Who must finish their own checklist before submit:
+ * the person submitting, plus anyone currently clocked into this job.
+ * Extra assignees who already finished (or are busy elsewhere) do not block.
  */
 export async function listWorkerIdsRequiredForSubmit(
   job: JobRow,
@@ -446,8 +439,6 @@ export async function listWorkerIdsRequiredForSubmit(
   const required = new Set<string>();
   if (actorId && ids.includes(actorId)) required.add(actorId);
 
-  const since = new Date(Date.now() - SUBMIT_PEER_ACTIVITY_MS);
-
   const timerRows = await db
     .select({ userId: activeTimerSessions.userId, jobId: activeTimerSessions.jobId })
     .from(activeTimerSessions)
@@ -455,47 +446,6 @@ export async function listWorkerIdsRequiredForSubmit(
 
   for (const row of timerRows) {
     if (row.jobId === job.id) required.add(row.userId);
-  }
-  const workingElsewhere = new Set(
-    timerRows.filter((row) => row.jobId && row.jobId !== job.id).map((row) => row.userId),
-  );
-
-  const stateRows = await db
-    .select({
-      userId: jobChecklistState.userId,
-      status: jobChecklistState.status,
-      updatedAt: jobChecklistState.updatedAt,
-    })
-    .from(jobChecklistState)
-    .where(and(eq(jobChecklistState.jobId, job.id), inArray(jobChecklistState.userId, ids)));
-
-  for (const row of stateRows) {
-    if (
-      row.status === "in_progress" &&
-      row.updatedAt &&
-      row.updatedAt.getTime() >= since.getTime()
-    ) {
-      required.add(row.userId);
-    }
-  }
-
-  const logRows = await db
-    .select({
-      userId: timeLogs.userId,
-      createdAt: timeLogs.createdAt,
-      startTime: timeLogs.startTime,
-    })
-    .from(timeLogs)
-    .where(and(eq(timeLogs.jobId, job.id), inArray(timeLogs.userId, ids)));
-
-  for (const row of logRows) {
-    const latest = Math.max(row.createdAt?.getTime() ?? 0, row.startTime?.getTime() ?? 0);
-    if (latest >= since.getTime()) required.add(row.userId);
-  }
-
-  for (const userId of workingElsewhere) {
-    if (userId === actorId) continue;
-    required.delete(userId);
   }
 
   return ids.filter((id) => required.has(id));
@@ -1055,11 +1005,9 @@ export async function applyJobReview(opts: {
         reworkOrigin,
       });
       createdReworkId = rework.id;
-      const workerIds = await listJobAssignedWorkerIds(job);
-      const fallbackId = resolveReworkUserId(job);
-      const reopenIds = workerIds.length > 0 ? workerIds : fallbackId ? [fallbackId] : [];
-      for (const workerId of reopenIds) {
-        await reopenChecklistForRework(job, workerId, reason.trim());
+      const reworkUserId = resolveReworkUserId(job);
+      if (reworkUserId) {
+        await reopenChecklistForRework(job, reworkUserId, reason.trim());
       }
     } catch (err) {
       return {

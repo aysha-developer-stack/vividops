@@ -8,6 +8,8 @@ import { announceCliqMemberActivity } from "../lib/cliq-member-activity";
 import { logger } from "../lib/logger";
 import { createNotification, notifyJobManagers } from "../lib/notifications";
 import { canMutateCompletedJob } from "../lib/job-edit-permissions";
+import { unassignWorkerFromJob } from "../lib/job-access";
+import { stopActiveTimerForUserOnJob } from "../lib/persist-timer-session";
 
 const router: IRouter = Router();
 
@@ -207,7 +209,12 @@ router.delete("/jobs/:jobId/members/:userId", requireAuth, async (req, res) => {
       .where(eq(users.id, userId))
       .limit(1);
 
-    await db.delete(jobMembers).where(and(eq(jobMembers.jobId, jobId), eq(jobMembers.userId, userId)));
+    await unassignWorkerFromJob(job, userId);
+    try {
+      await stopActiveTimerForUserOnJob(userId, jobId);
+    } catch (err) {
+      logger.error({ err, jobId, userId }, "Failed to stop timer for removed worker");
+    }
 
     if (removedUser) {
       await createNotification({
