@@ -410,7 +410,7 @@ export default function DashboardLayout({
         </div>
 
         {/* Nav items */}
-        <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
+        <nav className="sidebar-nav-scroll flex-1 py-4 px-3 space-y-1">
           {NAV_ITEMS.map((item, i) => {
             const isActive = location === item.path;
             const Icon = item.icon;

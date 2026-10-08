@@ -149,8 +149,8 @@ export default function BuilderSpecs({ role = "admin" as Role }: { role?: Role }
 
   return (
     <DashboardLayout title="Builder Specs" role={role} headerSearch={headerSearch}>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
-        <aside className="rounded-2xl border border-gray-100 bg-white p-4">
+      <div className="grid min-h-[calc(100vh-9rem)] grid-cols-1 gap-6 lg:grid-cols-[280px_1fr] lg:items-stretch">
+        <aside className="flex min-h-[24rem] flex-col rounded-2xl border border-gray-100 bg-white p-4">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-sm font-bold text-gray-900">Builders</h2>
             <button
@@ -162,15 +162,15 @@ export default function BuilderSpecs({ role = "admin" as Role }: { role?: Role }
             </button>
           </div>
           {loading ? (
-            <div className="flex items-center justify-center py-10 text-gray-400">
+            <div className="flex flex-1 items-center justify-center text-gray-400">
               <Loader2 size={18} className="animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
-            <div className="py-10 text-center text-xs text-gray-400">
+            <div className="flex flex-1 items-center justify-center text-center text-xs text-gray-400">
               {rows.length === 0 ? "No builder specs yet" : "No matches"}
             </div>
           ) : (
-            <div className="max-h-[28rem] space-y-1 overflow-y-auto">
+            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
               {filtered.map((row) => {
                 const active = selectedId === row.id;
                 return (
@@ -211,9 +211,9 @@ export default function BuilderSpecs({ role = "admin" as Role }: { role?: Role }
           )}
         </aside>
 
-        <section className="rounded-2xl border border-gray-100 bg-white p-6">
+        <section className="flex min-h-[24rem] flex-col rounded-2xl border border-gray-100 bg-white p-6">
           {!selectedId ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="flex flex-1 flex-col items-center justify-center text-center">
               <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-sky-700">
                 <ScrollText size={22} />
               </div>
@@ -230,7 +230,7 @@ export default function BuilderSpecs({ role = "admin" as Role }: { role?: Role }
               </button>
             </div>
           ) : (
-            <div>
+            <div className="flex min-h-0 flex-1 flex-col">
               <div className="mb-5 flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-bold text-gray-900">
