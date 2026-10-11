@@ -1586,13 +1586,14 @@ export default function JobDetail({ role = "user", id }: Props) {
     })?.workerChecklistProgress;
     return Array.isArray(rows) ? rows : [];
   }, [job]);
-  const blockingWorkerProgress = useMemo(
-    () =>
-      workerChecklistProgress.length <= 1
-        ? workerChecklistProgress
-        : workerChecklistProgress.filter((row) => row.blocksSubmit !== false),
-    [workerChecklistProgress],
-  );
+  const blockingWorkerProgress = useMemo(() => {
+    if (workerChecklistProgress.length <= 1) return workerChecklistProgress;
+    const me = currentUser?.id;
+    if (me && (role === "user" || canUseJobTimer)) {
+      return workerChecklistProgress.filter((row) => row.userId === me);
+    }
+    return workerChecklistProgress.filter((row) => row.blocksSubmit === true);
+  }, [workerChecklistProgress, currentUser?.id, role, canUseJobTimer]);
   const allAssignedWorkersChecklistReady =
     blockingWorkerProgress.length === 0 ||
     blockingWorkerProgress.every((row) => row.totalItems > 0 && row.completedItems >= row.totalItems);

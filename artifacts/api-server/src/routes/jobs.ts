@@ -2331,7 +2331,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
     if (full.job.status === "awaiting_supervisor") {
       nextStatus = "awaiting_admin";
     } else if (full.job.status === "in_progress" && full.job.assigneeId) {
-      const checklistError = await assertAllAssignedWorkersChecklistReady(full.job);
+      const checklistError = await assertAllAssignedWorkersChecklistReady(full.job, actor.id);
       if (!checklistError) {
         nextStatus = "awaiting_admin";
       }

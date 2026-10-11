@@ -8,7 +8,6 @@ import {
   jobChecklistState,
   jobChecklistAttachments,
   jobNotes,
-  activeTimerSessions,
   sql,
   type JobRow,
   type UserRow,
@@ -420,35 +419,30 @@ export type WorkerChecklistProgress = {
   name: string;
   completedItems: number;
   totalItems: number;
-  /** False when the worker is only listed on the job and is not currently working it. */
+  /** True only when this worker's own checklist is required for submit. Extra listed people stay false. */
   blocksSubmit: boolean;
 };
 
 /**
- * Who must finish their own checklist before submit:
- * the person submitting, plus anyone currently clocked into this job.
- * Extra assignees who already finished (or are busy elsewhere) do not block.
+ * Who must finish their own checklist before the file reaches review:
+ * only the worker handing the job in. Extra people added later never block.
  */
+export function pickWorkerIdsRequiredForSubmit(
+  assignedIds: string[],
+  actorId?: string | null,
+): string[] {
+  if (assignedIds.length === 0) return [];
+  if (assignedIds.length === 1) return assignedIds;
+  if (actorId && assignedIds.includes(actorId)) return [actorId];
+  return [];
+}
+
 export async function listWorkerIdsRequiredForSubmit(
   job: JobRow,
   actorId?: string | null,
 ): Promise<string[]> {
   const ids = await listJobAssignedWorkerIds(job);
-  if (ids.length <= 1) return ids;
-
-  const required = new Set<string>();
-  if (actorId && ids.includes(actorId)) required.add(actorId);
-
-  const timerRows = await db
-    .select({ userId: activeTimerSessions.userId, jobId: activeTimerSessions.jobId })
-    .from(activeTimerSessions)
-    .where(inArray(activeTimerSessions.userId, ids));
-
-  for (const row of timerRows) {
-    if (row.jobId === job.id) required.add(row.userId);
-  }
-
-  return ids.filter((id) => required.has(id));
+  return pickWorkerIdsRequiredForSubmit(ids, actorId);
 }
 
 export async function loadAssignedWorkerChecklistProgress(job: JobRow): Promise<WorkerChecklistProgress[]> {
@@ -495,9 +489,12 @@ export function combinedChecklistProgress(rows: WorkerChecklistProgress[]): {
   allComplete: boolean;
 } {
   if (rows.length === 0) return { progress: 0, allComplete: false };
-  const total = rows.reduce((sum, row) => sum + row.totalItems, 0);
-  const done = rows.reduce((sum, row) => sum + row.completedItems, 0);
-  const allComplete = rows.every((row) => row.totalItems > 0 && row.completedItems >= row.totalItems);
+  const blocking = rows.filter((row) => row.blocksSubmit);
+  const started = rows.filter((row) => row.completedItems > 0);
+  const use = blocking.length > 0 ? blocking : started.length > 0 ? started : rows;
+  const total = use.reduce((sum, row) => sum + row.totalItems, 0);
+  const done = use.reduce((sum, row) => sum + row.completedItems, 0);
+  const allComplete = use.every((row) => row.totalItems > 0 && row.completedItems >= row.totalItems);
   return { progress: total > 0 ? Math.round((done / total) * 100) : 0, allComplete };
 }
 
@@ -511,13 +508,12 @@ export async function assertAllAssignedWorkersChecklistReady(
     return "An assigned worker is required before submitting this job.";
   }
 
-  const workerIds =
-    allIds.length === 1 ? allIds : await listWorkerIdsRequiredForSubmit(job, actorId);
+  const requested = pickWorkerIdsRequiredForSubmit(allIds, actorId);
   const toCheck =
-    workerIds.length > 0
-      ? workerIds
-      : actorId && allIds.includes(actorId)
-        ? [actorId]
+    requested.length > 0
+      ? requested
+      : job.assigneeId && allIds.includes(job.assigneeId)
+        ? [job.assigneeId]
         : [];
   if (toCheck.length === 0) return null;
 
