@@ -112,6 +112,57 @@ export function collectFilesFromList(list: FileList | File[] | null | undefined)
   return Array.from(list).filter((f) => f && typeof f.name === "string" && f.size >= 0);
 }
 
+const CLIPBOARD_IMAGE_EXT: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+  "image/bmp": "bmp",
+  "image/svg+xml": "svg",
+};
+
+function isGenericClipboardImageName(name: string): boolean {
+  const base = (name || "").trim().toLowerCase();
+  return !base || /^image\.(png|jpe?g|gif|webp|bmp)$/.test(base);
+}
+
+function pastedScreenshotName(file: File, index: number): string {
+  if (!isGenericClipboardImageName(file.name) && file.name.includes(".")) return file.name;
+  const ext =
+    CLIPBOARD_IMAGE_EXT[(file.type || "").toLowerCase()] ||
+    (file.name.includes(".") ? file.name.split(".").pop() : "png") ||
+    "png";
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  return `screenshot-${stamp}${index > 0 ? `-${index + 1}` : ""}.${ext}`;
+}
+
+/** Screenshots from Win+Shift+S / Print Screen land as clipboard image items, not Finder files. */
+export function collectFilesFromClipboard(clipboardData: DataTransfer | null | undefined): File[] {
+  if (!clipboardData) return [];
+  const fromItems: File[] = [];
+  const items = clipboardData.items;
+  if (items) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind !== "file") continue;
+      const file = item.getAsFile();
+      if (file && file.size > 0) fromItems.push(file);
+    }
+  }
+  const combined = dedupeFiles(
+    fromItems.length > 0 ? fromItems : flatFilesFromDataTransfer(clipboardData),
+  );
+  return combined.map((file, index) => {
+    const nextName = pastedScreenshotName(file, index);
+    if (nextName === file.name) return file;
+    return new File([file], nextName, {
+      type: file.type || "image/png",
+      lastModified: file.lastModified || Date.now(),
+    });
+  });
+}
+
 export {
   CHECKLIST_FILE_ACCEPT,
   CHECKLIST_FILE_REJECTED_MESSAGE,

@@ -1,6 +1,11 @@
-import { useCallback, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { FolderOpen, Loader2, Upload } from "lucide-react";
-import { collectFilesFromDataTransfer, collectFilesFromList, filterFilesByAccept } from "@/lib/collectDroppedFiles";
+import {
+  collectFilesFromClipboard,
+  collectFilesFromDataTransfer,
+  collectFilesFromList,
+  filterFilesByAccept,
+} from "@/lib/collectDroppedFiles";
 
 type FileDropzoneProps = {
   onFiles: (files: File[]) => void | Promise<void>;
@@ -14,6 +19,8 @@ type FileDropzoneProps = {
   compact?: boolean;
   className?: string;
   busy?: boolean;
+  /** Take Ctrl+V screenshots even if this box is not focused (use on a modal attach field). */
+  capturePaste?: boolean;
   children?: ReactNode;
 };
 
@@ -28,10 +35,13 @@ export default function FileDropzone({
   compact = false,
   className = "",
   busy = false,
+  capturePaste = false,
   children,
 }: FileDropzoneProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const hoveredRef = useRef(false);
   const [dragging, setDragging] = useState(false);
   const [localBusy, setLocalBusy] = useState(false);
   const isBusy = busy || localBusy;
@@ -59,6 +69,32 @@ export default function FileDropzone({
     },
     [accept, isDisabled, multiple, onFiles],
   );
+
+  const emitFilesRef = useRef(emitFiles);
+  emitFilesRef.current = emitFiles;
+  const disabledRef = useRef(isDisabled);
+  disabledRef.current = isDisabled;
+
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (disabledRef.current) return;
+      const files = collectFilesFromClipboard(e.clipboardData);
+      if (files.length === 0) return;
+      const root = rootRef.current;
+      const target = e.target as Node | null;
+      const inside = !!(root && target && root.contains(target));
+      const focused = !!(
+        root &&
+        document.activeElement &&
+        (document.activeElement === root || root.contains(document.activeElement))
+      );
+      if (!capturePaste && !inside && !focused && !hoveredRef.current) return;
+      e.preventDefault();
+      void emitFilesRef.current(files);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [capturePaste]);
 
   const onDragEnter = (e: DragEvent) => {
     e.preventDefault();
@@ -103,11 +139,20 @@ export default function FileDropzone({
   const subtitle =
     hint ??
     (multiple
-      ? "Click to browse files, or use Upload folder · multiple files and folders supported"
-      : "Click to browse");
+      ? "Paste a screenshot (Ctrl+V), click to browse, or use Upload folder"
+      : "Paste a screenshot (Ctrl+V) or click to browse");
 
   return (
-    <div className={className}>
+    <div
+      ref={rootRef}
+      className={className}
+      onMouseEnter={() => {
+        hoveredRef.current = true;
+      }}
+      onMouseLeave={() => {
+        hoveredRef.current = false;
+      }}
+    >
       <input
         ref={fileInputRef}
         type="file"

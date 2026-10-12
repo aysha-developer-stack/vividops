@@ -4669,6 +4669,8 @@ export default function JobDetail({ role = "user", id }: Props) {
               <FileDropzone
                 accept={JOB_FILE_ACCEPT}
                 label="Drop rework instruction files or folders"
+                hint="Paste a screenshot (Ctrl+V), click to browse, or use Upload folder"
+                capturePaste
                 onFiles={(files) => appendReworkPendingFiles(files)}
                 className="mb-3"
               />
