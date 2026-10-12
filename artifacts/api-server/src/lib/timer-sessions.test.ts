@@ -37,7 +37,8 @@ describe("timer session duration math", () => {
     const saved = resolveTimerSaveDuration(row, nowMs);
 
     assert.equal(elapsed, 3 * 3600);
-    assert.ok(billable <= 29 * 60, "billable must cap at last heartbeat + grace (~26m + 3m)");
+    const graceSeconds = TIMER_HEARTBEAT_GAP_PAUSE_MS / 1000;
+    assert.ok(billable <= 26 * 60 + graceSeconds + 1, "billable must cap at last heartbeat + sleep grace");
     assert.equal(saved, billable, "stop / pause / on-hold must save billed time only");
     assert.ok(saved < elapsed, "idle gap after last heartbeat is not billed");
   });
@@ -68,6 +69,15 @@ describe("timer session duration math", () => {
     const row = session({
       segmentStartedAt: new Date(nowMs - 60_000),
       lastHeartbeatAt: new Date(nowMs - 30_000),
+    });
+    assert.equal(isTimerSessionStale(row, nowMs), false);
+  });
+
+  it("does not treat a few minutes in a background tab as sleep", () => {
+    const nowMs = 1_700_000_000_000;
+    const row = session({
+      segmentStartedAt: new Date(nowMs - 10 * 60 * 1000),
+      lastHeartbeatAt: new Date(nowMs - 3 * 60 * 1000),
     });
     assert.equal(isTimerSessionStale(row, nowMs), false);
   });

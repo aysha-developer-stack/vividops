@@ -90,6 +90,10 @@ export function useGlobalTimerHeartbeat(enabled: boolean): void {
     };
 
     const tick = async () => {
+      if (sessionRef.current?.segmentStartedAt) {
+        await sendHeartbeat();
+        return;
+      }
       const session = await refreshSessionState();
       if (session?.segmentStartedAt) {
         await sendHeartbeat();

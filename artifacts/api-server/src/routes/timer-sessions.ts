@@ -23,7 +23,6 @@ import {
 import {
   stopTimerSessionAndSaveLog,
   pauseTimerSessionAfterGap,
-  reconcileStaleRunningTimerSession,
   TIMER_HEARTBEAT_GAP_PAUSE_MS,
   workerMayStartTimerOnJobStatus,
 } from "../lib/persist-timer-session";
@@ -84,11 +83,8 @@ async function loadSessionForUser(userId: string) {
 }
 
 async function listOwnActiveSessions(userId: string, nowMs: number) {
-  let session = await loadSessionForUser(userId);
+  const session = await loadSessionForUser(userId);
   if (!session) return [];
-  if (session.segmentStartedAt) {
-    session = await reconcileStaleRunningTimerSession(session);
-  }
   let job: Pick<JobRow, "jobNumber" | "title"> | null = null;
   if (session.jobId) {
     const [j] = await db
@@ -220,7 +216,7 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
       if (existing.jobId === jobId) {
         const now = new Date();
         const nowMs = now.getTime();
-        if (isLiveRunningTimerSession(existing, nowMs)) {
+        if (existing.segmentStartedAt && !isTimerSessionStale(existing, nowMs)) {
           const [updated] = await db
             .update(activeTimerSessions)
             .set({

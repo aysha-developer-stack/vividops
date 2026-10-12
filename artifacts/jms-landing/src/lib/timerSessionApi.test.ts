@@ -20,6 +20,15 @@ describe("isActiveTimerSessionRunning", () => {
       }),
       true,
     );
+    assert.equal(
+      isActiveTimerSessionRunning({
+        segmentStartedAt: "2024-01-01T00:00:00.000Z",
+        trackingPaused: false,
+        isLive: false,
+      }),
+      true,
+      "background tab with a delayed heartbeat is still running",
+    );
   });
 });
 

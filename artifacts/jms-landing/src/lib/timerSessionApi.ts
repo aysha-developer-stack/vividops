@@ -18,7 +18,7 @@ export type ActiveTimerSession = {
 export function isActiveTimerSessionRunning(
   session: Pick<ActiveTimerSession, "segmentStartedAt" | "trackingPaused" | "isLive"> | null | undefined,
 ): boolean {
-  return !!(session?.segmentStartedAt && !session.trackingPaused && session.isLive);
+  return !!(session?.segmentStartedAt && session.trackingPaused !== true);
 }
 
 export function liveSessionElapsedSeconds(

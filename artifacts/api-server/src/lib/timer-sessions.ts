@@ -1,8 +1,8 @@
 import type { JobRow, UserRow, ActiveTimerSessionRow } from "@workspace/db";
 
 export const TIMER_HEARTBEAT_LIVE_MS = 5 * 60 * 1000;
-/** If no heartbeat within this window, treat the segment as paused (sleep / lid closed / throttled tab). */
-export const TIMER_HEARTBEAT_GAP_PAUSE_MS = 3 * 60 * 1000;
+/** Pause only after a real sleep/offline gap — not a background CAD tab (Chrome can freeze JS for minutes). */
+export const TIMER_HEARTBEAT_GAP_PAUSE_MS = 2 * 60 * 60 * 1000;
 
 export function timerSessionElapsedSeconds(
   session: Pick<ActiveTimerSessionRow, "accumulatedSeconds" | "segmentStartedAt">,
@@ -100,7 +100,7 @@ export function publicTimerSession(
   nowMs = Date.now(),
 ): PublicTimerSession {
   const stale = isTimerSessionStale(session, nowMs);
-  const trackingPaused = !session.segmentStartedAt || stale;
+  const trackingPaused = !session.segmentStartedAt;
   return {
     id: session.id,
     userId: session.userId,
