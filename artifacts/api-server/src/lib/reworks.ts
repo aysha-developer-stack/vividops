@@ -4,6 +4,7 @@ import {
   jobAttachments,
   jobChecklistAttachments,
   jobChecklistState,
+  jobMembers,
   jobNotes,
   jobReworks,
   jobs,
@@ -18,7 +19,8 @@ import {
 import { reworkOriginLabel, type ReworkOrigin } from "./rework-origin";
 import { resolveReworkUserId } from "./working-supervisor";
 import { announceCliqJobStatusChange } from "./cliq-job-status";
-import { listJobAssignedWorkerIds } from "./job-access";
+import { listExtraAssigneeIdsNewestFirst, listJobAssignedWorkerIds } from "./job-access";
+import { pickInferredReworkWorkerId, pickLatestExtraAssigneeId } from "./rework-assigned-worker";
 import { createNotification, notifyAllJobMembers, notifyJobManagers } from "./notifications";
 import { pickActiveReworkIdForUpload } from "./rework-upload-pick";
 
@@ -134,12 +136,15 @@ export async function createRework(opts: {
   const dueAt = parseDueAt(opts.dueAt);
   const cycleNumber = await nextCycleNumber(opts.job.id, userId);
   const previousJobState = JSON.stringify(await resolvePreviousJobState(opts.job));
+  const extrasNewest = await listExtraAssigneeIdsNewestFirst(opts.job);
+  const assignedWorkerId = pickLatestExtraAssigneeId(opts.job.assigneeId, extrasNewest) ?? userId;
 
   const [rework] = await db
     .insert(jobReworks)
     .values({
       jobId: opts.job.id,
       userId,
+      assignedWorkerId,
       createdById: opts.actor.id,
       checklistItemId: opts.checklistItemId ?? null,
       cycleNumber,
@@ -263,17 +268,18 @@ export async function markOpenReworksAwaitingReview(
   ];
   if (userId) conditions.push(eq(jobReworks.userId, userId));
 
+  const actor = opts?.actor;
   const updated = await db
     .update(jobReworks)
     .set({
       status: "awaiting_review",
       completedAt: new Date(),
       updatedAt: new Date(),
+      ...(actor?.role === "user" ? { assignedWorkerId: actor.id } : {}),
     })
     .where(and(...conditions))
     .returning({ id: jobReworks.id });
 
-  const actor = opts?.actor;
   if (updated.length > 0 && actor && opts?.announceCliq !== false) {
     const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
     if (job) {
@@ -287,6 +293,104 @@ export async function markOpenReworksAwaitingReview(
   }
 
   return updated.length;
+}
+
+/** Point open reworks at the extra worker who was just added to do them. */
+export async function assignOpenReworksToWorker(jobId: string, workerId: string): Promise<number> {
+  const updated = await db
+    .update(jobReworks)
+    .set({ assignedWorkerId: workerId, updatedAt: new Date() })
+    .where(and(eq(jobReworks.jobId, jobId), inArray(jobReworks.status, [...ACTIVE_REWORK_STATUSES])))
+    .returning({ id: jobReworks.id });
+  return updated.length;
+}
+
+const REWORK_HEAL_AFTER_COMPLETE_MS = 20 * 60 * 1000;
+
+/** Fill assigned_worker_id on older cycles so "Assigned to" is who actually did the work. */
+export async function healReworkAssignedWorkersForJob(jobId: string): Promise<number> {
+  const rows = await db.select().from(jobReworks).where(eq(jobReworks.jobId, jobId));
+  const needs = rows.filter((row) => !row.assignedWorkerId);
+  if (needs.length === 0) return 0;
+
+  const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  if (!job) return 0;
+
+  const workerIds = await listJobAssignedWorkerIds(job);
+  const extrasNewest = await listExtraAssigneeIdsNewestFirst(job);
+  const latestExtra = pickLatestExtraAssigneeId(job.assigneeId, extrasNewest);
+
+  const notes = await db
+    .select({ userId: jobNotes.userId, createdAt: jobNotes.createdAt, text: jobNotes.text })
+    .from(jobNotes)
+    .where(and(eq(jobNotes.jobId, jobId), eq(jobNotes.noteType, "completion")));
+
+  const files = await db
+    .select({
+      uploadedById: jobAttachments.uploadedById,
+      createdAt: jobAttachments.createdAt,
+      reworkId: jobAttachments.reworkId,
+    })
+    .from(jobAttachments)
+    .where(and(eq(jobAttachments.jobId, jobId), isNull(jobAttachments.deletedAt)));
+
+  const logs = await db
+    .select({ userId: timeLogs.userId, createdAt: timeLogs.createdAt, startTime: timeLogs.startTime })
+    .from(timeLogs)
+    .where(eq(timeLogs.jobId, jobId));
+
+  const members = await db
+    .select({ userId: jobMembers.userId, createdAt: jobMembers.createdAt })
+    .from(jobMembers)
+    .where(eq(jobMembers.jobId, jobId));
+
+  let healed = 0;
+  for (const row of needs) {
+    const windowStart = row.assignedAt.getTime();
+    const windowEnd = row.completedAt
+      ? row.completedAt.getTime() + REWORK_HEAL_AFTER_COMPLETE_MS
+      : Date.now();
+    const inWindow = (at: Date | null | undefined) => {
+      const ms = at?.getTime() ?? 0;
+      return ms >= windowStart && ms <= windowEnd;
+    };
+
+    const events: Array<{ userId: string; at: number }> = [];
+    for (const note of notes) {
+      if (!inWindow(note.createdAt)) continue;
+      if (!(note.text ?? "").startsWith("Worker submission:")) continue;
+      events.push({ userId: note.userId, at: note.createdAt.getTime() });
+    }
+    for (const file of files) {
+      if (file.reworkId !== row.id || !inWindow(file.createdAt)) continue;
+      events.push({ userId: file.uploadedById, at: file.createdAt.getTime() });
+    }
+    for (const log of logs) {
+      const at = log.createdAt ?? log.startTime;
+      if (!inWindow(at)) continue;
+      events.push({ userId: log.userId, at: at.getTime() });
+    }
+    for (const member of members) {
+      if (member.userId === row.userId || !inWindow(member.createdAt)) continue;
+      events.push({ userId: member.userId, at: member.createdAt.getTime() });
+    }
+
+    let inferred = pickInferredReworkWorkerId({
+      cycleOwnerId: row.userId,
+      workerIds,
+      events,
+    });
+    if (!inferred && !row.completedAt) inferred = latestExtra;
+    if (!inferred || inferred === row.assignedWorkerId) continue;
+
+    await db
+      .update(jobReworks)
+      .set({ assignedWorkerId: inferred, updatedAt: new Date() })
+      .where(eq(jobReworks.id, row.id));
+    healed += 1;
+  }
+
+  return healed;
 }
 
 export async function resolveJobReworks(jobId: string) {

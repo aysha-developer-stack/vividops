@@ -1,6 +1,9 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, jobReworks } from "@workspace/db";
 import { healDuplicateReworkCyclesForJob } from "./reworks";
+import { pickReworkCycleForTimeLog } from "./time-log-cycle-pick";
+
+export { pickReworkCycleForTimeLog };
 
 const ACTIVE_REWORK_STATUSES = ["open", "needs_correction", "awaiting_review"] as const;
 
@@ -14,19 +17,12 @@ export async function resolveReworkCycleForTimeLog(
   await healDuplicateReworkCyclesForJob(jobId);
 
   const rows = await db
-    .select({ cycleNumber: jobReworks.cycleNumber })
+    .select({ cycleNumber: jobReworks.cycleNumber, userId: jobReworks.userId })
     .from(jobReworks)
-    .where(
-      and(
-        eq(jobReworks.jobId, jobId),
-        eq(jobReworks.userId, userId),
-        inArray(jobReworks.status, [...ACTIVE_REWORK_STATUSES]),
-      ),
-    )
-    .orderBy(desc(jobReworks.assignedAt), desc(jobReworks.createdAt), desc(jobReworks.cycleNumber))
-    .limit(1);
+    .where(and(eq(jobReworks.jobId, jobId), inArray(jobReworks.status, [...ACTIVE_REWORK_STATUSES])))
+    .orderBy(desc(jobReworks.assignedAt), desc(jobReworks.createdAt), desc(jobReworks.cycleNumber));
 
-  return rows[0]?.cycleNumber ?? null;
+  return pickReworkCycleForTimeLog(rows, userId);
 }
 
 export function publicTimeLog(row: {

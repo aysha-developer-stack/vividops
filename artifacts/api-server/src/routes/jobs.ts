@@ -68,7 +68,7 @@ import {
   stopAllActiveTimersOnJob,
   shouldAutoStopWorkerTimersForJobStatus,
 } from "../lib/persist-timer-session";
-import { healDuplicateReworkCyclesForJob, updateRework, cancelRework } from "../lib/reworks";
+import { healDuplicateReworkCyclesForJob, healReworkAssignedWorkersForJob, updateRework, cancelRework } from "../lib/reworks";
 import { applyBuilderSpecsToJob, builderKeyFromName } from "../lib/builder-specs";
 import { isReworkOrigin, type ReworkOrigin } from "../lib/rework-origin";
 import { finalizeReviewCheckForJob } from "../lib/persist-review-check-session";
@@ -80,6 +80,7 @@ const assigneeAlias = alias(users, "assignee");
 const supervisorAlias = alias(users, "supervisor");
 const coordinatorAlias = alias(users, "coordinator");
 const reworkUserAlias = alias(users, "rework_user");
+const reworkAssignedAlias = alias(users, "rework_assigned");
 const reworkCreatorAlias = alias(users, "rework_creator");
 
 const ensureJobMembersSchema = ensureJobWriteSchema;
@@ -2627,40 +2628,48 @@ router.get("/jobs/:id/reworks", requireAuth, async (req, res) => {
     }
 
     await healDuplicateReworkCyclesForJob(id);
+    await healReworkAssignedWorkersForJob(id);
 
     const rows = await db
       .select({
         rework: jobReworks,
         user: { id: reworkUserAlias.id, name: reworkUserAlias.name, role: reworkUserAlias.role },
+        assignedWorker: { id: reworkAssignedAlias.id, name: reworkAssignedAlias.name, role: reworkAssignedAlias.role },
         createdBy: { id: reworkCreatorAlias.id, name: reworkCreatorAlias.name, role: reworkCreatorAlias.role },
       })
       .from(jobReworks)
       .leftJoin(reworkUserAlias, eq(reworkUserAlias.id, jobReworks.userId))
+      .leftJoin(reworkAssignedAlias, eq(reworkAssignedAlias.id, jobReworks.assignedWorkerId))
       .leftJoin(reworkCreatorAlias, eq(reworkCreatorAlias.id, jobReworks.createdById))
       .where(eq(jobReworks.jobId, id))
       .orderBy(desc(jobReworks.assignedAt));
 
     return res.json(
-      rows.map((row) => ({
-        id: row.rework.id,
-        jobId: row.rework.jobId,
-        userId: row.rework.userId,
-        createdById: row.rework.createdById,
-        checklistItemId: row.rework.checklistItemId,
-        cycleNumber: row.rework.cycleNumber,
-        reason: row.rework.reason,
-        category: row.rework.category,
-        comments: row.rework.comments,
-        severity: row.rework.severity,
-        status: row.rework.status,
-        reworkOrigin: row.rework.reworkOrigin,
-        dueAt: row.rework.dueAt,
-        assignedAt: row.rework.assignedAt,
-        completedAt: row.rework.completedAt,
-        approvedAt: row.rework.approvedAt,
-        user: row.user?.id ? row.user : null,
-        createdBy: row.createdBy?.id ? row.createdBy : null,
-      })),
+      rows.map((row) => {
+        const assigned = row.assignedWorker?.id ? row.assignedWorker : row.user?.id ? row.user : null;
+        return {
+          id: row.rework.id,
+          jobId: row.rework.jobId,
+          userId: row.rework.userId,
+          assignedWorkerId: row.rework.assignedWorkerId ?? row.rework.userId,
+          createdById: row.rework.createdById,
+          checklistItemId: row.rework.checklistItemId,
+          cycleNumber: row.rework.cycleNumber,
+          reason: row.rework.reason,
+          category: row.rework.category,
+          comments: row.rework.comments,
+          severity: row.rework.severity,
+          status: row.rework.status,
+          reworkOrigin: row.rework.reworkOrigin,
+          dueAt: row.rework.dueAt,
+          assignedAt: row.rework.assignedAt,
+          completedAt: row.rework.completedAt,
+          approvedAt: row.rework.approvedAt,
+          user: assigned,
+          assignedWorker: assigned,
+          createdBy: row.createdBy?.id ? row.createdBy : null,
+        };
+      }),
     );
   } catch (err) {
     logger.error({ err }, "Failed to load job reworks");
@@ -2673,6 +2682,7 @@ function serializeJobReworkRow(row: typeof jobReworks.$inferSelect) {
     id: row.id,
     jobId: row.jobId,
     userId: row.userId,
+    assignedWorkerId: row.assignedWorkerId ?? row.userId,
     createdById: row.createdById,
     checklistItemId: row.checklistItemId,
     cycleNumber: row.cycleNumber,

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db, jobMembers, jobs, type JobRow, type UserRow } from "@workspace/db";
 
 export function actorIsAdmin(actor: UserRow): boolean {
@@ -17,6 +17,18 @@ export async function listJobAssignedWorkerIds(
     .where(eq(jobMembers.jobId, job.id));
   for (const row of rows) ids.add(row.userId);
   return Array.from(ids);
+}
+
+/** Extra workers on `job_members`, newest first (excludes the primary assignee). */
+export async function listExtraAssigneeIdsNewestFirst(
+  job: Pick<JobRow, "id" | "assigneeId">,
+): Promise<string[]> {
+  const rows = await db
+    .select({ userId: jobMembers.userId })
+    .from(jobMembers)
+    .where(eq(jobMembers.jobId, job.id))
+    .orderBy(desc(jobMembers.createdAt));
+  return rows.map((row) => row.userId).filter((id) => id !== job.assigneeId);
 }
 
 /**

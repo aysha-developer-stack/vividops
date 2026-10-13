@@ -10,6 +10,7 @@ import { createNotification, notifyJobManagers } from "../lib/notifications";
 import { canMutateCompletedJob } from "../lib/job-edit-permissions";
 import { unassignWorkerFromJob } from "../lib/job-access";
 import { stopActiveTimerForUserOnJob } from "../lib/persist-timer-session";
+import { assignOpenReworksToWorker } from "../lib/reworks";
 
 const router: IRouter = Router();
 
@@ -154,6 +155,7 @@ router.post("/jobs/:jobId/members", requireAuth, async (req, res) => {
       .returning({ id: jobMembers.id });
 
     if (inserted.length > 0 && userId !== job.assigneeId) {
+      await assignOpenReworksToWorker(jobId, userId);
       await createNotification({
         userId,
         jobId,

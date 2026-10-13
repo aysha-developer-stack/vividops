@@ -23,7 +23,12 @@ export type ReworkHistoryRecord = {
   approvedAt?: string | null;
   createdBy?: { id: string; name: string } | null;
   user?: { id: string; name: string } | null;
+  assignedWorker?: { id: string; name: string } | null;
 };
+
+export function reworkAssignedToName(rework: Pick<ReworkHistoryRecord, "assignedWorker" | "user">): string | null {
+  return rework.assignedWorker?.name || rework.user?.name || null;
+}
 
 function statusClass(status: string): string {
   if (status === "cancelled") return "bg-rose-50 text-rose-700 border-rose-100";
@@ -42,6 +47,7 @@ export function ReworkCycleCard({
   compact?: boolean;
 }) {
   const label = reworkSequenceLabel(rework.reworkOrigin, sequence);
+  const assignedTo = reworkAssignedToName(rework);
   return (
     <div className={`rounded-xl border bg-white ${compact ? "border-gray-100 p-3" : "border-gray-200 p-4"}`}>
       <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -66,7 +72,7 @@ export function ReworkCycleCard({
       </div>
       <div className="mt-2 text-[11px] text-gray-500">
         {rework.createdBy?.name ? `Logged by ${rework.createdBy.name}` : null}
-        {rework.user?.name ? ` · Assigned to ${rework.user.name}` : null}
+        {assignedTo ? ` · Assigned to ${assignedTo}` : null}
         {` · ${new Date(rework.assignedAt).toLocaleString()}`}
         {rework.completedAt ? ` · Finished ${new Date(rework.completedAt).toLocaleString()}` : ""}
         {rework.approvedAt ? ` · Closed ${new Date(rework.approvedAt).toLocaleString()}` : ""}

@@ -199,6 +199,7 @@ type JobCliqChannelApi = {
 type JobReworkApi = {
   id: string;
   userId?: string | null;
+  assignedWorkerId?: string | null;
   checklistItemId: number | null;
   cycleNumber: number;
   reason: string;
@@ -212,6 +213,7 @@ type JobReworkApi = {
   completedAt: string | null;
   approvedAt: string | null;
   user: { id: string; name: string; role: Role } | null;
+  assignedWorker?: { id: string; name: string; role: Role } | null;
   createdBy: { id: string; name: string; role: Role } | null;
 };
 

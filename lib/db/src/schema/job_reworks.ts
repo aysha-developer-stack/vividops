@@ -8,6 +8,8 @@ export const jobReworks = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     jobId: uuid("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    /** Worker who actually received/did this cycle. Extra assignees still share `userId` (first assignee) for checklist. */
+    assignedWorkerId: uuid("assigned_worker_id").references(() => users.id, { onDelete: "set null" }),
     createdById: uuid("created_by_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     checklistItemId: integer("checklist_item_id"),
     cycleNumber: integer("cycle_number").notNull().default(1),
