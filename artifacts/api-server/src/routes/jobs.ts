@@ -69,6 +69,7 @@ import {
   shouldAutoStopWorkerTimersForJobStatus,
 } from "../lib/persist-timer-session";
 import { healDuplicateReworkCyclesForJob, healReworkAssignedWorkersForJob, updateRework, cancelRework } from "../lib/reworks";
+import { healUntaggedTimeLogsForJob } from "../lib/time-log-cycles";
 import { applyBuilderSpecsToJob, builderKeyFromName } from "../lib/builder-specs";
 import { isReworkOrigin, type ReworkOrigin } from "../lib/rework-origin";
 import { finalizeReviewCheckForJob } from "../lib/persist-review-check-session";
@@ -2629,6 +2630,7 @@ router.get("/jobs/:id/reworks", requireAuth, async (req, res) => {
 
     await healDuplicateReworkCyclesForJob(id);
     await healReworkAssignedWorkersForJob(id);
+    await healUntaggedTimeLogsForJob(id);
 
     const rows = await db
       .select({

@@ -18,6 +18,45 @@ const reworks = [
 ];
 
 describe("matchReworkForTimeLog", () => {
+  it("puts extra-assignee time on the external rework instead of Original work", () => {
+    const extra = "ahmar";
+    const first = "zain";
+    const jobReworks = [
+      {
+        id: "internal-4",
+        userId: first,
+        assignedWorkerId: extra,
+        reworkOrigin: "internal",
+        assignedAt: "2026-10-13T09:00:00.000Z",
+        cycleNumber: 4,
+      },
+      {
+        id: "external-4",
+        userId: first,
+        assignedWorkerId: extra,
+        reworkOrigin: "external",
+        assignedAt: "2026-10-13T10:00:00.000Z",
+        cycleNumber: 5,
+      },
+    ];
+    const ahmarLog = {
+      userId: extra,
+      reworkCycleNumber: null,
+      createdAt: "2026-10-13T11:00:00.000Z",
+      duration: 1800,
+    };
+    const originalLog = {
+      userId: extra,
+      reworkCycleNumber: null,
+      createdAt: "2026-10-12T11:00:00.000Z",
+      duration: 600,
+    };
+    assert.equal(matchReworkForTimeLog(ahmarLog, jobReworks)?.id, "external-4");
+    assert.equal(timeLogReworkLabel(ahmarLog, jobReworks), "External #1");
+    assert.equal(matchReworkForTimeLog(originalLog, jobReworks), null);
+    assert.equal(timeLogReworkLabel(originalLog, jobReworks), "Original work");
+  });
+
   it("keeps old cycle-3 time on the completed rework, not the new open duplicate", () => {
     const oldLog = {
       userId: worker,
@@ -56,6 +95,29 @@ describe("buildTimeLogCycleBreakdown", () => {
     assert.equal(oldCycle?.seconds, 1922);
     assert.equal(openCycle?.label, "External #5");
     assert.equal(openCycle?.seconds, 1988);
+  });
+
+  it("groups extra-assignee untagged time under the external rework, not Original work", () => {
+    const rows = buildTimeLogCycleBreakdown(
+      [
+        { duration: 600, reworkCycleNumber: null, createdAt: "2026-10-12T11:00:00.000Z", userId: "ahmar" },
+        { duration: 1800, reworkCycleNumber: null, createdAt: "2026-10-13T11:00:00.000Z", userId: "ahmar" },
+      ],
+      [
+        {
+          id: "external-4",
+          userId: "zain",
+          assignedWorkerId: "ahmar",
+          reworkOrigin: "external",
+          assignedAt: "2026-10-13T10:00:00.000Z",
+          cycleNumber: 5,
+        },
+      ],
+    );
+    assert.equal(rows[0]?.label, "Original work");
+    assert.equal(rows[0]?.seconds, 600);
+    assert.equal(rows[1]?.label, "External #1");
+    assert.equal(rows[1]?.seconds, 1800);
   });
 
   it("still groups by stored cycle when no rework rows are provided", () => {

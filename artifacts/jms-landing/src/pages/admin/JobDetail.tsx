@@ -1732,10 +1732,12 @@ export default function JobDetail({ role = "user", id }: Props) {
     () =>
       reworks.map((r) => ({
         id: r.id,
-        userId: r.userId ?? r.user?.id ?? null,
+        userId: r.userId ?? null,
+        assignedWorkerId: r.assignedWorkerId ?? r.assignedWorker?.id ?? null,
         cycleNumber: r.cycleNumber,
         reworkOrigin: r.reworkOrigin ?? null,
         assignedAt: r.assignedAt,
+        status: r.status,
       })),
     [reworks],
   );

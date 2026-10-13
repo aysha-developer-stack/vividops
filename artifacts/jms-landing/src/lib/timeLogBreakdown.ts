@@ -17,10 +17,12 @@ export type TimeLogLike = {
 export type ReworkLike = {
   id: string;
   userId?: string | null;
+  assignedWorkerId?: string | null;
   cycleNumber?: number | null;
   reworkOrigin?: string | null;
   assignedAt?: string | null;
   createdAt?: string | null;
+  status?: string | null;
 };
 
 export function reworkCycleKey(cycle: number | null | undefined): ReworkCycleKey {
@@ -45,20 +47,50 @@ function logTimeMs(log: TimeLogLike): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function reworkMatchesWorker(row: ReworkLike, userId: string): boolean {
+  return row.assignedWorkerId === userId || row.userId === userId;
+}
+
+function usableReworks(reworks: ReworkLike[]): ReworkLike[] {
+  return reworks.filter((row) => row.status !== "cancelled");
+}
+
+/** Current rework at this time: extra's assigned cycle if any, else the latest cycle that had already started. */
+export function pickCurrentReworkAt(
+  logMs: number,
+  reworks: ReworkLike[],
+  userId?: string | null,
+): ReworkLike | null {
+  if (!logMs) return null;
+  const started = usableReworks(reworks)
+    .filter((row) => reworkRowTimeMs(row) <= logMs)
+    .sort((a, b) => reworkRowTimeMs(b) - reworkRowTimeMs(a));
+  if (started.length === 0) return null;
+  if (userId) {
+    const assignedToUser = started.filter((row) => row.assignedWorkerId === userId);
+    if (assignedToUser[0]) return assignedToUser[0];
+    const ownedByUser = started.filter((row) => row.userId === userId);
+    if (ownedByUser[0]) return ownedByUser[0];
+  }
+  return started[0];
+}
+
 /** Attach a time log to the rework it actually belongs to, even if cycle numbers collide. */
 export function matchReworkForTimeLog(log: TimeLogLike, reworks: ReworkLike[]): ReworkLike | null {
+  const logMs = logTimeMs(log);
   const cycle = log.reworkCycleNumber;
-  if (cycle == null) return null;
+  if (cycle == null) {
+    return pickCurrentReworkAt(logMs, reworks, log.userId);
+  }
 
-  const byCycle = reworks.filter((row) => row.cycleNumber === cycle);
+  const byCycle = usableReworks(reworks).filter((row) => row.cycleNumber === cycle);
   const forUser =
-    log.userId && byCycle.some((row) => row.userId === log.userId)
-      ? byCycle.filter((row) => row.userId === log.userId)
+    log.userId && byCycle.some((row) => reworkMatchesWorker(row, log.userId as string))
+      ? byCycle.filter((row) => reworkMatchesWorker(row, log.userId as string))
       : byCycle;
   if (forUser.length === 0) return null;
   if (forUser.length === 1) return forUser[0];
 
-  const logMs = logTimeMs(log);
   const started = forUser
     .filter((row) => reworkRowTimeMs(row) <= logMs)
     .sort((a, b) => reworkRowTimeMs(b) - reworkRowTimeMs(a));
