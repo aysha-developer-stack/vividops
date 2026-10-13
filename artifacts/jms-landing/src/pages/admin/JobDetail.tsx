@@ -1598,10 +1598,9 @@ export default function JobDetail({ role = "user", id }: Props) {
     blockingWorkerProgress.length === 0 ||
     blockingWorkerProgress.every((row) => row.totalItems > 0 && row.completedItems >= row.totalItems);
   const hasOwnCompletedDeliverables = useMemo(() => {
+    if (hasJobLevelCompletedFiles) return true;
     const uid = currentUser?.id;
-    if (!uid || (role !== "user" && !canUseJobTimer)) {
-      return hasJobLevelCompletedFiles;
-    }
+    if (!uid || (role !== "user" && !canUseJobTimer)) return false;
     return attachments.some(
       (a) =>
         a.checklistItemId == null &&

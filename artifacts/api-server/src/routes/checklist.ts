@@ -337,7 +337,10 @@ router.patch("/jobs/:jobId/checklist-state", requireAuth, async (req, res) => {
             "Completed checklist not uploaded. Upload your completed Word/PDF checklist before marking this item complete.",
         });
       }
-      const hasJobCompletedFiles = await jobHasCompletedDeliverables(jobId, targetUserId);
+      const hasJobCompletedFiles = await jobHasCompletedDeliverables(jobId, [
+        targetUserId,
+        actor.id,
+      ]);
       if (!hasJobCompletedFiles) {
         return res.status(400).json({
           error:

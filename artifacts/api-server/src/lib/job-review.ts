@@ -27,7 +27,7 @@ import {
   stopAllActiveTimersOnJob,
   clearAllActiveTimersOnJob,
 } from "./persist-timer-session";
-import { resolveReworkUserId } from "./working-supervisor";
+import { resolveReworkUserId, sharedChecklistOwnerId } from "./working-supervisor";
 import { actorIsAssignedJobWorker, listJobAssignedWorkerIds } from "./job-access";
 
 const COMPLETION_NOTE_LABELS: Record<JobReviewAction, string | null> = {
@@ -274,14 +274,20 @@ function parseJobChecklist(job: JobRow): ChecklistTemplateItem[] {
 /** Job-level completed deliverables (Files tab, not checklist-linked). */
 export async function jobHasCompletedDeliverables(
   jobId: string,
-  uploadedById?: string | null,
+  uploadedById?: string | string[] | null,
 ): Promise<boolean> {
   const conditions = [
     eq(jobAttachments.jobId, jobId),
     isNull(jobChecklistAttachments.attachmentId),
     isNull(jobAttachments.deletedAt),
   ];
-  if (uploadedById) conditions.push(eq(jobAttachments.uploadedById, uploadedById));
+  const uploaderIds = Array.isArray(uploadedById)
+    ? uploadedById.filter(Boolean)
+    : uploadedById
+      ? [uploadedById]
+      : [];
+  if (uploaderIds.length === 1) conditions.push(eq(jobAttachments.uploadedById, uploaderIds[0]));
+  else if (uploaderIds.length > 1) conditions.push(inArray(jobAttachments.uploadedById, uploaderIds));
 
   const rows = await db
     .select({
@@ -311,10 +317,14 @@ export async function assertWorkerChecklistReady(
     return "Checklist items are required before submitting this job.";
   }
 
+  const checklistOwnerId = sharedChecklistOwnerId(job, workerUserId) ?? workerUserId;
+  const assignedIds = await listJobAssignedWorkerIds(job);
+  const fileUserIds = [...new Set([checklistOwnerId, workerUserId, ...assignedIds].filter(Boolean))];
+
   const rows = await db
     .select({ itemId: jobChecklistState.itemId, status: jobChecklistState.status })
     .from(jobChecklistState)
-    .where(and(eq(jobChecklistState.jobId, job.id), eq(jobChecklistState.userId, workerUserId)));
+    .where(and(eq(jobChecklistState.jobId, job.id), eq(jobChecklistState.userId, checklistOwnerId)));
 
   const byItem = new Map(rows.map((r) => [r.itemId, r.status]));
   const incomplete: number[] = [];
@@ -333,7 +343,7 @@ export async function assertWorkerChecklistReady(
   const requiredIds = list.map((_item, idx) => idx + 1);
   const missingChecklist: number[] = [];
   const missingCompletedChecklist: number[] = [];
-  const completedLinkUserIds = [workerUserId];
+  const completedLinkUserIds = fileUserIds;
 
   if (requiredIds.length > 0) {
     const linked = await db
@@ -399,14 +409,14 @@ export async function assertWorkerChecklistReady(
 
   const reworkSubmitError = await validateReworkUploadsBeforeJobSubmit(
     job.id,
-    workerUserId,
+    checklistOwnerId,
     requiredIds,
   );
   if (reworkSubmitError) {
     return reworkSubmitError;
   }
 
-  const hasJobCompletedFiles = await jobHasCompletedDeliverables(job.id, workerUserId);
+  const hasJobCompletedFiles = await jobHasCompletedDeliverables(job.id, fileUserIds);
   if (!hasJobCompletedFiles) {
     return "Completed files not uploaded. Upload completed deliverables on the Files tab before submitting.";
   }
@@ -475,10 +485,14 @@ export async function loadAssignedWorkerChecklistProgress(job: JobRow): Promise<
     completedByUser.set(row.userId, set);
   }
 
+  const ownerCompleted = job.assigneeId ? completedByUser.get(job.assigneeId)?.size ?? 0 : 0;
   return ids.map((id) => ({
     userId: id,
     name: nameById.get(id) ?? "Worker",
-    completedItems: completedByUser.get(id)?.size ?? 0,
+    completedItems:
+      job.assigneeId && id !== job.assigneeId
+        ? ownerCompleted
+        : completedByUser.get(id)?.size ?? 0,
     totalItems,
     blocksSubmit: blockingIds.has(id),
   }));
@@ -509,12 +523,13 @@ export async function assertAllAssignedWorkersChecklistReady(
   }
 
   const requested = pickWorkerIdsRequiredForSubmit(allIds, actorId);
-  const toCheck =
+  const rawIds =
     requested.length > 0
       ? requested
       : job.assigneeId && allIds.includes(job.assigneeId)
         ? [job.assigneeId]
         : [];
+  const toCheck = [...new Set(rawIds.map((id) => sharedChecklistOwnerId(job, id) ?? id))];
   if (toCheck.length === 0) return null;
 
   const nameRows =

@@ -17,9 +17,9 @@ const workerB = { id: "worker-b", role: "user" } as UserRow;
 const admin = { id: "admin-1", role: "admin" } as UserRow;
 
 describe("resolveChecklistTargetUserId", () => {
-  it("keeps each assigned worker on their own checklist", () => {
+  it("lets extra assignees share the first assignee's checklist", () => {
     assert.equal(resolveChecklistTargetUserId(workerA, job, null), "worker-a");
-    assert.equal(resolveChecklistTargetUserId(workerB, job, null), "worker-b");
+    assert.equal(resolveChecklistTargetUserId(workerB, job, null), "worker-a");
   });
 
   it("lets admins inspect a specific worker checklist", () => {
@@ -29,9 +29,9 @@ describe("resolveChecklistTargetUserId", () => {
 });
 
 describe("isOwnChecklistWork", () => {
-  it("does not treat another assignee's checklist as shared work", () => {
+  it("lets an extra assignee complete the shared first-assignee checklist", () => {
     assert.equal(isOwnChecklistWork(workerA, job, "worker-a"), true);
+    assert.equal(isOwnChecklistWork(workerB, job, "worker-a"), true);
     assert.equal(isOwnChecklistWork(workerB, job, "worker-b"), true);
-    assert.equal(isOwnChecklistWork(workerB, job, "worker-a"), false);
   });
 });
