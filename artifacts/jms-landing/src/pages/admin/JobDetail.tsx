@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, MapPin, Calendar, User, Briefcase, CheckCircle2, Circle,
   Play, Pause, Square, Upload, FileText, Download, MessageCircle, Send,
-  RefreshCw, AlertTriangle, Clock, Users, X, Edit2, Loader2,
+  RefreshCw, AlertTriangle, Award, Clock, Users, X, Edit2, Loader2,
   Inbox, FolderOpen, MessageSquare, History, ChevronDown, Lock, ListChecks, Eye, Trash2, StickyNote, RotateCcw
 } from "lucide-react";
 import FileExtensionIcon from "@/components/FileExtensionIcon";
@@ -108,6 +108,7 @@ import ReviewCompletionForm from "@/components/ReviewCompletionForm";
 import JobFormModal from "@/components/JobFormModal";
 import PutJobOnHoldDialog from "@/components/PutJobOnHoldDialog";
 import JobMistakesTab from "@/components/JobMistakesTab";
+import JobAppreciationTab from "@/components/JobAppreciationTab";
 import JobJuniorsPanel from "@/components/JobJuniorsPanel";
 import { fetchJobJuniors, liveJuniorElapsedSeconds, type JobJunior } from "@/lib/jobJuniorsApi";
 import { submitJobReviewWithPhotos } from "@/lib/reviewPhotoUpload";
@@ -364,6 +365,7 @@ const TABS = [
   { id: "logs", label: "Timer Logs", icon: Clock },
   { id: "completion", label: "Comments", icon: MessageSquare },
   { id: "mistakes", label: "Mistakes", icon: AlertTriangle },
+  { id: "appreciation", label: "Appreciation", icon: Award },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
@@ -395,7 +397,8 @@ function normalizeJobDetailTab(value: string | null): TabId | null {
     value === "communication" ||
     value === "logs" ||
     value === "completion" ||
-    value === "mistakes"
+    value === "mistakes" ||
+    value === "appreciation"
   ) {
     return value;
   }
@@ -701,6 +704,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [reassignSaving, setReassignSaving] = useState(false);
   const [reworks, setReworks] = useState<JobReworkApi[]>([]);
   const [mistakesLogToken, setMistakesLogToken] = useState(0);
+  const [appreciationLogToken, setAppreciationLogToken] = useState(0);
   const [remarksDraft, setRemarksDraft] = useState("");
   const [commentsDraft, setCommentsDraft] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
@@ -2494,6 +2498,7 @@ export default function JobDetail({ role = "user", id }: Props) {
             {showActiveJobReviewActions && (role === "supervisor" || role === "admin" || role === "super-admin") && (
               <>
                 {(role === "admin" || role === "super-admin") && (
+                <>
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
@@ -2505,6 +2510,18 @@ export default function JobDetail({ role = "user", id }: Props) {
                 >
                   <AlertTriangle size={12} /> Log Mistake
                 </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => {
+                    setTab("appreciation");
+                    setAppreciationLogToken((t) => t + 1);
+                  }}
+                  className="flex items-center gap-2 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-semibold"
+                >
+                  <Award size={12} /> Log Appreciation
+                </motion.button>
+                </>
                 )}
                 {role === "supervisor" && (job?.status === "awaiting_supervisor" || job?.status === "in_progress") && (
                   <motion.button
@@ -4333,6 +4350,17 @@ export default function JobDetail({ role = "user", id }: Props) {
             workers={jobWorkers}
             defaultUserId={job.assignee?.id}
             logRequestToken={mistakesLogToken}
+          />
+        )}
+
+        {tab === "appreciation" && job?.id && (
+          <JobAppreciationTab
+            jobId={job.id}
+            role={role}
+            currentUserId={currentUser?.id}
+            workers={jobWorkers}
+            defaultUserId={job.assignee?.id}
+            logRequestToken={appreciationLogToken}
           />
         )}
 

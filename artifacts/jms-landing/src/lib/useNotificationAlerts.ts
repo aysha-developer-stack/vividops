@@ -83,11 +83,7 @@ export function useNotificationAlerts(user: User | null | undefined) {
   roleRef.current = role;
 
   const openNotificationTarget = useCallback((jobId?: string | null, type?: string) => {
-    if (jobId) {
-      setLocation(getNotificationPath(roleRef.current, { type: type ?? "updated", jobId }));
-      return;
-    }
-    setLocation(getNotificationPath(roleRef.current, { type: "updated" }));
+    setLocation(getNotificationPath(roleRef.current, { type: type ?? "updated", jobId }));
   }, [setLocation]);
 
   const showNotificationToast = useCallback((item: AlertNotification) => {

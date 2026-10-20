@@ -14,6 +14,7 @@ const JOB_TABS: Record<string, string> = {
   timer: "logs",
   rework: "mistakes",
   error: "mistakes",
+  appreciation: "appreciation",
   assigned: "overview",
   admin_ops: "overview",
   updated: "overview",
@@ -35,11 +36,18 @@ export function getNotificationPath(role: Role, notification: NotificationLinkIn
   if (notification.type === "progress") {
     return `${base}/reports`;
   }
+  if (notification.type === "appreciation") {
+    return `${base}/appreciation`;
+  }
 
   return `${base}/notifications`;
 }
 
 export function notificationIsNavigable(notification: NotificationLinkInput): boolean {
   if (notification.jobId) return true;
-  return notification.type === "training" || notification.type === "progress";
+  return (
+    notification.type === "training" ||
+    notification.type === "progress" ||
+    notification.type === "appreciation"
+  );
 }

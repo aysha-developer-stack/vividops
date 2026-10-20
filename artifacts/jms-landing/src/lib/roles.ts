@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Briefcase, Users, BarChart3, MessageCircle,
   Timer, GraduationCap, Settings, Crown, Shield, HardHat, User as UserIcon,
-  Activity, ClipboardList, Eye, FileText, AlertTriangle, Folder, CheckSquare, Bell, ListChecks, UserCog,
+  Activity, ClipboardList, Eye, FileText, AlertTriangle, Award, Folder, CheckSquare, Bell, ListChecks, UserCog,
 } from "lucide-react";
 
 export type Role = "super-admin" | "admin" | "supervisor" | "coordinator" | "user";
@@ -33,6 +33,7 @@ export const ROLES: Record<Role, RoleConfig> = {
       { label: "Builder Specs", icon: ClipboardList, path: "/super-admin/builder-specs" },
       { label: "Reports", icon: BarChart3, path: "/super-admin/reports" },
       { label: "Mistakes", icon: AlertTriangle, path: "/super-admin/mistakes" },
+      { label: "Appreciation", icon: Award, path: "/super-admin/appreciation" },
       { label: "System Monitoring", icon: Activity, path: "/super-admin/monitoring" },
       { label: "Supervisors", icon: HardHat, path: "/super-admin/supervisors" },
       { label: "Training", icon: GraduationCap, path: "/super-admin/training" },
@@ -56,6 +57,7 @@ export const ROLES: Record<Role, RoleConfig> = {
       { label: "Supervisors", icon: HardHat, path: "/admin/supervisors" },
       { label: "Reports", icon: BarChart3, path: "/admin/reports" },
       { label: "Mistakes", icon: AlertTriangle, path: "/admin/mistakes" },
+      { label: "Appreciation", icon: Award, path: "/admin/appreciation" },
       { label: "Training", icon: GraduationCap, path: "/admin/training" },
       { label: "Communication", icon: MessageCircle, path: "/admin/communication" },
       { label: "Files", icon: Folder, path: "/admin/files" },
@@ -76,6 +78,7 @@ export const ROLES: Record<Role, RoleConfig> = {
       { label: "Communication", icon: MessageCircle, path: "/supervisor/communication" },
       { label: "Reports", icon: BarChart3, path: "/supervisor/reports" },
       { label: "Mistakes", icon: AlertTriangle, path: "/supervisor/mistakes" },
+      { label: "Appreciation", icon: Award, path: "/supervisor/appreciation" },
       { label: "Training", icon: GraduationCap, path: "/supervisor/training" },
       { label: "Notifications", icon: Bell, path: "/supervisor/notifications" },
       { label: "Settings", icon: Settings, path: "/supervisor/settings" },
@@ -92,6 +95,7 @@ export const ROLES: Record<Role, RoleConfig> = {
       { label: "Communication", icon: MessageCircle, path: "/coordinator/communication" },
       { label: "Reports", icon: BarChart3, path: "/coordinator/reports" },
       { label: "Mistakes", icon: AlertTriangle, path: "/coordinator/mistakes" },
+      { label: "Appreciation", icon: Award, path: "/coordinator/appreciation" },
       { label: "Training", icon: GraduationCap, path: "/coordinator/training" },
       { label: "Notifications", icon: Bell, path: "/coordinator/notifications" },
       { label: "Settings", icon: Settings, path: "/coordinator/settings" },
@@ -110,6 +114,7 @@ export const ROLES: Record<Role, RoleConfig> = {
       { label: "Files & Checklists", icon: Folder, path: "/user/files" },
       { label: "My Reports", icon: BarChart3, path: "/user/reports" },
       { label: "My Mistakes", icon: AlertTriangle, path: "/user/mistakes" },
+      { label: "My Appreciation", icon: Award, path: "/user/appreciation" },
       { label: "Training", icon: GraduationCap, path: "/user/training" },
       { label: "Notifications", icon: Bell, path: "/user/notifications" },
       { label: "Settings", icon: Settings, path: "/user/settings" },

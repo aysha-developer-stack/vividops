@@ -34,6 +34,7 @@ import Notifications from "@/pages/admin/Notifications";
 import NotificationTemplates from "@/pages/admin/NotificationTemplates";
 import SystemMonitoring from "@/pages/admin/SystemMonitoring";
 import Mistakes from "@/pages/admin/Mistakes";
+import Appreciations from "@/pages/admin/Appreciations";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -168,6 +169,7 @@ function AppRouter() {
         <Route path="/super-admin/monitoring"><RequireSignedIn><SystemMonitoring role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/reports"><RequireSignedIn><Reports role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/mistakes"><RequireSignedIn><Mistakes role="super-admin" /></RequireSignedIn></Route>
+        <Route path="/super-admin/appreciation"><RequireSignedIn><Appreciations role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/settings"><RequireSignedIn><Settings role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/notification-templates"><RequireSignedIn><NotificationTemplates /></RequireSignedIn></Route>
         <Route path="/super-admin/roles-permissions"><RequireSignedIn><SuperAdminRolesPermissions /></RequireSignedIn></Route>
@@ -185,6 +187,7 @@ function AppRouter() {
         <Route path="/admin/monitoring"><RequireSignedIn><UserMonitoring role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/reports"><RequireSignedIn><Reports role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/mistakes"><RequireSignedIn><Mistakes role="admin" /></RequireSignedIn></Route>
+        <Route path="/admin/appreciation"><RequireSignedIn><Appreciations role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/communication"><RequireSignedIn><Communication role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/files"><RequireSignedIn><SuperAdminFiles role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/settings"><RequireSignedIn><Settings role="admin" /></RequireSignedIn></Route>
@@ -199,6 +202,7 @@ function AppRouter() {
         <Route path="/supervisor/monitoring"><RequireSignedIn><SupervisorMonitoring role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/reports"><RequireSignedIn><Reports role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/mistakes"><RequireSignedIn><Mistakes role="supervisor" /></RequireSignedIn></Route>
+        <Route path="/supervisor/appreciation"><RequireSignedIn><Appreciations role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/communication"><RequireSignedIn><Communication role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/settings"><RequireSignedIn><Settings role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/training"><RequireSignedIn><Training role="supervisor" /></RequireSignedIn></Route>
@@ -211,6 +215,7 @@ function AppRouter() {
         <Route path="/coordinator/jobs"><RequireSignedIn><JobManagement role="coordinator" /></RequireSignedIn></Route>
         <Route path="/coordinator/reports"><RequireSignedIn><Reports role="coordinator" /></RequireSignedIn></Route>
         <Route path="/coordinator/mistakes"><RequireSignedIn><Mistakes role="coordinator" /></RequireSignedIn></Route>
+        <Route path="/coordinator/appreciation"><RequireSignedIn><Appreciations role="coordinator" /></RequireSignedIn></Route>
         <Route path="/coordinator/communication"><RequireSignedIn><Communication role="coordinator" /></RequireSignedIn></Route>
         <Route path="/coordinator/settings"><RequireSignedIn><Settings role="coordinator" /></RequireSignedIn></Route>
         <Route path="/coordinator/training"><RequireSignedIn><Training role="coordinator" /></RequireSignedIn></Route>
@@ -227,6 +232,7 @@ function AppRouter() {
         <Route path="/user/communication"><RequireSignedIn><Communication role="user" /></RequireSignedIn></Route>
         <Route path="/user/reports"><RequireSignedIn><Reports role="user" /></RequireSignedIn></Route>
         <Route path="/user/mistakes"><RequireSignedIn><Mistakes role="user" /></RequireSignedIn></Route>
+        <Route path="/user/appreciation"><RequireSignedIn><Appreciations role="user" /></RequireSignedIn></Route>
         <Route path="/user/settings"><RequireSignedIn><Settings role="user" /></RequireSignedIn></Route>
         <Route path="/user/files"><RequireSignedIn><FilesChecklists /></RequireSignedIn></Route>
         <Route path="/user"><RequireSignedIn><UserDashboard /></RequireSignedIn></Route>

@@ -89,6 +89,31 @@ export async function ensureLegacySupervisorAssignments() {
 
 let jobWriteSchemaEnsured = false;
 let twoFactorSchemaEnsured = false;
+let appreciationSchemaEnsured = false;
+
+export async function ensureAppreciationSchema() {
+  if (appreciationSchemaEnsured) return;
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS appreciations (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      job_id uuid REFERENCES jobs(id) ON DELETE SET NULL,
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_by_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title text NOT NULL,
+      description text NOT NULL,
+      category text NOT NULL DEFAULT 'other',
+      level text NOT NULL DEFAULT 'good',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS appreciations_job_idx ON appreciations (job_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS appreciations_user_idx ON appreciations (user_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS appreciations_created_by_idx ON appreciations (created_by_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS appreciations_category_idx ON appreciations (category)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS appreciations_level_idx ON appreciations (level)`);
+  appreciationSchemaEnsured = true;
+}
 
 export async function ensureTwoFactorSchema() {
   if (twoFactorSchemaEnsured) return;
@@ -627,6 +652,24 @@ export async function ensureAllSchemas() {
       CREATE INDEX IF NOT EXISTS error_reports_status_idx ON error_reports(status);
       CREATE INDEX IF NOT EXISTS error_reports_category_idx ON error_reports(category);
       CREATE INDEX IF NOT EXISTS error_reports_rework_idx ON error_reports(rework_id);
+
+      CREATE TABLE IF NOT EXISTS appreciations (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        job_id uuid REFERENCES jobs(id) ON DELETE SET NULL,
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_by_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title text NOT NULL,
+        description text NOT NULL,
+        category text NOT NULL DEFAULT 'other',
+        level text NOT NULL DEFAULT 'good',
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS appreciations_job_idx ON appreciations(job_id);
+      CREATE INDEX IF NOT EXISTS appreciations_user_idx ON appreciations(user_id);
+      CREATE INDEX IF NOT EXISTS appreciations_created_by_idx ON appreciations(created_by_id);
+      CREATE INDEX IF NOT EXISTS appreciations_category_idx ON appreciations(category);
+      CREATE INDEX IF NOT EXISTS appreciations_level_idx ON appreciations(level);
 
       CREATE TABLE IF NOT EXISTS checklist_templates (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

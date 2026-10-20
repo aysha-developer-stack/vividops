@@ -38,6 +38,7 @@ const FILTERS: Array<{ id: "all" | "unread" | NotifType; label: string }> = [
   { id: "file", label: "Files" },
   { id: "training", label: "Training" },
   { id: "error", label: "Errors" },
+  { id: "appreciation", label: "Appreciation" },
   { id: "progress", label: "Reports" },
   { id: "updated", label: "Updates" },
 ];

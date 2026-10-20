@@ -17,6 +17,7 @@ const ROLE_BASES: Record<string, string> = {
   "super-admin": "/super-admin",
   admin: "/admin",
   supervisor: "/supervisor",
+  coordinator: "/coordinator",
   user: "/user",
 };
 
@@ -27,6 +28,7 @@ const JOB_TABS: Record<string, string> = {
   timer: "logs",
   rework: "mistakes",
   error: "mistakes",
+  appreciation: "appreciation",
   assigned: "overview",
   updated: "overview",
   overdue: "overview",
@@ -43,6 +45,7 @@ function notificationDeepLink(role: string, type: string, jobId?: string | null)
 
   if (type === "training") return `${base}/training`;
   if (type === "progress") return `${base}/reports`;
+  if (type === "appreciation") return `${base}/appreciation`;
   return `${base}/notifications`;
 }
 
