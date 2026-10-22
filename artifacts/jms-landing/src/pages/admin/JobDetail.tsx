@@ -999,15 +999,15 @@ export default function JobDetail({ role = "user", id }: Props) {
     setSavingNotes(true);
     setNotesSaveError(null);
     try {
-      await updateJobMutation.mutateAsync({
+      const updated = await updateJobMutation.mutateAsync({
         id: job.id,
         data: {
           remarks: remarksDraft.trim() || null,
           comments: commentsDraft.trim() || null,
         },
       });
-      await qc.invalidateQueries({ queryKey: getGetJobQueryKey(job.id) });
-      await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      qc.setQueryData(getGetJobQueryKey(job.id), updated);
+      void qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Failed to save notes";
       setNotesSaveError(msg);

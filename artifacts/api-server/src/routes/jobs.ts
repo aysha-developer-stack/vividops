@@ -369,6 +369,11 @@ function datesEqual(a: Date | null | undefined, b: Date | null | undefined): boo
   return a.getTime() === b.getTime();
 }
 
+function isRemarksCommentsOnlyUpdate(body: Record<string, unknown>): boolean {
+  const keys = Object.keys(body);
+  return keys.length > 0 && keys.every((key) => key === "remarks" || key === "comments");
+}
+
 async function notifyJobContentUpdated(
   actor: UserRow,
   before: JobRow,
@@ -2544,15 +2549,21 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
       }
     }
 
-    await notifyJobContentUpdated(actor, full.job, after.job, body as Record<string, unknown>);
-
-    void getOrCreateJobCliqChannel(after.job).catch((err) => {
-      logger.warn({ err, jobId: after.job.id }, "Failed to refresh job Cliq channel metadata");
-    });
-    void provisionCliqChannelForJob(after.job).catch((err) => {
-      void markJobCliqStatus(after.job.id, "failed", err instanceof Error ? err.message : String(err)).catch(() => {});
-      logger.warn({ err, jobId: after.job.id }, "Failed to provision Cliq channel");
-    });
+    const notesOnly = isRemarksCommentsOnlyUpdate(body as Record<string, unknown>);
+    if (notesOnly) {
+      void notifyJobContentUpdated(actor, full.job, after.job, body as Record<string, unknown>).catch((err) => {
+        logger.warn({ err, jobId: after.job.id }, "Failed to notify remarks/comments update");
+      });
+    } else {
+      await notifyJobContentUpdated(actor, full.job, after.job, body as Record<string, unknown>);
+      void getOrCreateJobCliqChannel(after.job).catch((err) => {
+        logger.warn({ err, jobId: after.job.id }, "Failed to refresh job Cliq channel metadata");
+      });
+      void provisionCliqChannelForJob(after.job).catch((err) => {
+        void markJobCliqStatus(after.job.id, "failed", err instanceof Error ? err.message : String(err)).catch(() => {});
+        logger.warn({ err, jobId: after.job.id }, "Failed to provision Cliq channel");
+      });
+    }
   }
   return res.json(await toPublicWithAssignees(after!));
 });
