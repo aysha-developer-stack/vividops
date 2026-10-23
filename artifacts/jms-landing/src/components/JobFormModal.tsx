@@ -20,6 +20,8 @@ import { downloadNamedFile, jobAttachmentDownloadUrl } from "@/lib/downloadFile"
 import { hideJobFileConfirm } from "@/lib/hideJobFileConfirm";
 import FileExtensionIcon from "@/components/FileExtensionIcon";
 import FileDropzone from "@/components/FileDropzone";
+import JobCreateInstructionsField from "@/components/JobCreateInstructionsField";
+import { postJobCreateInstructions } from "@/lib/postJobCreateInstructions";
 import DescriptionInput, { AddressUrlHint } from "@/components/DescriptionInput";
 import {
   CHECKLIST_FILE_ACCEPT,
@@ -90,6 +92,8 @@ export default function JobFormModal({
   const [form, setForm] = useState<JobFormState>(EMPTY_JOB_FORM);
   const [assigneeMenuOpen, setAssigneeMenuOpen] = useState(false);
   const [jobFiles, setJobFiles] = useState<File[]>([]);
+  const [instructionText, setInstructionText] = useState("");
+  const [instructionFiles, setInstructionFiles] = useState<File[]>([]);
   const [existingAttachments, setExistingAttachments] = useState<ExistingJobAttachment[]>([]);
   const [loading, setLoading] = useState(false);
   const [memberIds, setMemberIds] = useState<string[]>([]);
@@ -137,6 +141,8 @@ export default function JobFormModal({
   const resetModal = useCallback(() => {
     setForm(EMPTY_JOB_FORM);
     setJobFiles([]);
+    setInstructionText("");
+    setInstructionFiles([]);
     setExistingAttachments([]);
     setMemberIds([]);
     setChecklistTemplate([]);
@@ -616,6 +622,15 @@ export default function JobFormModal({
         savedId = created.id;
         await uploadAllFiles(created.id, finalChecklistFiles);
         await syncMembers(created.id);
+        try {
+          await postJobCreateInstructions(created.id, instructionText, instructionFiles);
+        } catch (noteErr) {
+          window.alert(
+            noteErr instanceof Error
+              ? `Job created. Instructions did not save: ${noteErr.message}. Open the job Notes tab and add them.`
+              : "Job created. Instructions did not save. Open the job Notes tab and add them.",
+          );
+        }
         await invalidateJobs(created.id);
       }
       if (savedId) onSaved?.(savedId);
@@ -877,6 +892,18 @@ export default function JobFormModal({
                     />
                   </div>
                 </div>
+                {!isEdit && (
+                  <JobCreateInstructionsField
+                    text={instructionText}
+                    onTextChange={setInstructionText}
+                    files={instructionFiles}
+                    onAddFiles={(next) => setInstructionFiles((prev) => [...prev, ...next])}
+                    onRemoveFile={(index) =>
+                      setInstructionFiles((prev) => prev.filter((_, i) => i !== index))
+                    }
+                    disabled={isSaving}
+                  />
+                )}
                 {isEdit && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="min-w-0">

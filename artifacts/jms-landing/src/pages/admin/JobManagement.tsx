@@ -35,6 +35,8 @@ import {
 import { downloadNamedFile, jobAttachmentDownloadUrl } from "@/lib/downloadFile";
 import { hideJobFileConfirm } from "@/lib/hideJobFileConfirm";
 import FileDropzone from "@/components/FileDropzone";
+import JobCreateInstructionsField from "@/components/JobCreateInstructionsField";
+import { postJobCreateInstructions } from "@/lib/postJobCreateInstructions";
 import DescriptionInput, { AddressUrlHint } from "@/components/DescriptionInput";
 import { CHECKLIST_FILE_ACCEPT, isChecklistDocFile, filterJobFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
 import { formatStoredFileSize, parseExistingJobAttachment, todayJobDateInput, type ExistingJobAttachment } from "@/lib/jobForm";
@@ -478,6 +480,8 @@ export default function JobManagement(
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [assigneeMenuOpen, setAssigneeMenuOpen] = useState(false);
   const [jobFiles, setJobFiles] = useState<File[]>([]);
+  const [instructionText, setInstructionText] = useState("");
+  const [instructionFiles, setInstructionFiles] = useState<File[]>([]);
   const [existingAttachments, setExistingAttachments] = useState<ExistingAttachment[]>([]);
   const [editLoading, setEditLoading] = useState(false);
   const [memberIds, setMemberIds] = useState<string[]>([]);
@@ -583,6 +587,8 @@ export default function JobManagement(
   const startEdit = async (j: UiJob) => {
     setEditingId(j.id);
     setJobFiles([]);
+    setInstructionText("");
+    setInstructionFiles([]);
     setExistingAttachments([]);
     setCheckPendingFile(null);
     setUploadingFiles(false);
@@ -1071,6 +1077,15 @@ export default function JobManagement(
         const created = await createMutation.mutateAsync({ data: payload });
         await uploadAllFiles(created.id, finalChecklistFiles);
         await syncMembers(created.id);
+        try {
+          await postJobCreateInstructions(created.id, instructionText, instructionFiles);
+        } catch (noteErr) {
+          window.alert(
+            noteErr instanceof Error
+              ? `Job created. Instructions did not save: ${noteErr.message}. Open the job Notes tab and add them.`
+              : "Job created. Instructions did not save. Open the job Notes tab and add them.",
+          );
+        }
         await invalidateJobs(created.id);
         setFilter("All");
         setAssignmentFilter("all");
@@ -1080,6 +1095,8 @@ export default function JobManagement(
       }
       setForm(EMPTY_FORM);
       setJobFiles([]);
+      setInstructionText("");
+      setInstructionFiles([]);
       setExistingAttachments([]);
       setMemberIds([]);
       setChecklistTemplate([]);
@@ -1107,6 +1124,8 @@ export default function JobManagement(
     setLinkingChecklistItemId(null);
     setCheckPendingFile(null);
     setJobFiles([]);
+    setInstructionText("");
+    setInstructionFiles([]);
     setExistingAttachments([]);
     setMemberIds([]);
     setEditLoading(false);
@@ -1121,6 +1140,8 @@ export default function JobManagement(
     setChecklistTemplate([]);
     setCheckPendingFile(null);
     setJobFiles([]);
+    setInstructionText("");
+    setInstructionFiles([]);
     setExistingAttachments([]);
     setMemberIds([]);
     setUploadingFiles(false);
@@ -1860,6 +1881,18 @@ export default function JobManagement(
                       <input type="date" value={form.due} onChange={(e) => setForm({ ...form, due: e.target.value })} className="w-full min-w-0 max-w-xs px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors" />
                     </div>
                   </div>
+                  {editingId === null && (
+                    <JobCreateInstructionsField
+                      text={instructionText}
+                      onTextChange={setInstructionText}
+                      files={instructionFiles}
+                      onAddFiles={(next) => setInstructionFiles((prev) => [...prev, ...next])}
+                      onRemoveFile={(index) =>
+                        setInstructionFiles((prev) => prev.filter((_, i) => i !== index))
+                      }
+                      disabled={createMutation.isPending || updateMutation.isPending || uploadingFiles}
+                    />
+                  )}
                   {editingId !== null && (
                     <div className="grid grid-cols-1 gap-3">
                       <div className="min-w-0">

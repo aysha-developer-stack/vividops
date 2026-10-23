@@ -566,6 +566,34 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   useEffect(() => {
     if (!job?.id) {
+      setHasWorkerNotes(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/jobs/${job.id}/notes`, { credentials: "include" });
+        if (!res.ok) {
+          if (!cancelled) setHasWorkerNotes(false);
+          return;
+        }
+        const data = (await res.json()) as Array<{ noteType?: string }>;
+        if (cancelled) return;
+        setHasWorkerNotes(
+          Array.isArray(data) &&
+            data.some((note) => note.noteType !== "completion" && note.noteType !== "internal"),
+        );
+      } catch {
+        if (!cancelled) setHasWorkerNotes(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [job?.id, notesRefreshKey]);
+
+  useEffect(() => {
+    if (!job?.id) {
       setJobMembers([]);
       return;
     }
@@ -723,6 +751,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [submitReviewProgress, setSubmitReviewProgress] = useState<string | null>(null);
   const [submitReviewDone, setSubmitReviewDone] = useState(false);
   const [notesRefreshKey, setNotesRefreshKey] = useState(0);
+  const [hasWorkerNotes, setHasWorkerNotes] = useState(false);
   const [showActivityPing, setShowActivityPing] = useState(false);
   const [showStartTimerReminder, setShowStartTimerReminder] = useState(false);
   const [autoStopCountdown, setAutoStopCountdown] = useState(300);
@@ -3024,6 +3053,21 @@ export default function JobDetail({ role = "user", id }: Props) {
       <AnimatePresence mode="wait">
         {tab === "overview" && (
           <motion.div key="ov" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-5">
+            {hasWorkerNotes && (
+              <button
+                type="button"
+                onClick={() => setTab("notes")}
+                className="w-full text-left bg-sky-50 border border-sky-100 rounded-2xl px-4 py-3 flex items-start gap-3 hover:bg-sky-100/70 transition-colors"
+              >
+                <StickyNote size={16} className="text-sky-700 shrink-0 mt-0.5" />
+                <div>
+                  <div className="text-sm font-semibold text-sky-900">Instructions in Notes</div>
+                  <p className="text-xs text-sky-800 mt-0.5">
+                    Open the Notes tab to see comments, screenshots, and files added for this job.
+                  </p>
+                </div>
+              </button>
+            )}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-6">
               <h3 className="font-bold text-gray-900 mb-2">Description</h3>
