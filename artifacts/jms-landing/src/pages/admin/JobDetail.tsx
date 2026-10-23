@@ -566,34 +566,6 @@ export default function JobDetail({ role = "user", id }: Props) {
 
   useEffect(() => {
     if (!job?.id) {
-      setHasWorkerNotes(false);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`/api/jobs/${job.id}/notes`, { credentials: "include" });
-        if (!res.ok) {
-          if (!cancelled) setHasWorkerNotes(false);
-          return;
-        }
-        const data = (await res.json()) as Array<{ noteType?: string }>;
-        if (cancelled) return;
-        setHasWorkerNotes(
-          Array.isArray(data) &&
-            data.some((note) => note.noteType !== "completion" && note.noteType !== "internal"),
-        );
-      } catch {
-        if (!cancelled) setHasWorkerNotes(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [job?.id, notesRefreshKey]);
-
-  useEffect(() => {
-    if (!job?.id) {
       setJobMembers([]);
       return;
     }
@@ -752,6 +724,33 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [submitReviewDone, setSubmitReviewDone] = useState(false);
   const [notesRefreshKey, setNotesRefreshKey] = useState(0);
   const [hasWorkerNotes, setHasWorkerNotes] = useState(false);
+  useEffect(() => {
+    if (!job?.id) {
+      setHasWorkerNotes(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/jobs/${job.id}/notes`, { credentials: "include" });
+        if (!res.ok) {
+          if (!cancelled) setHasWorkerNotes(false);
+          return;
+        }
+        const data = (await res.json()) as Array<{ noteType?: string }>;
+        if (cancelled) return;
+        setHasWorkerNotes(
+          Array.isArray(data) &&
+            data.some((note) => note.noteType !== "completion" && note.noteType !== "internal"),
+        );
+      } catch {
+        if (!cancelled) setHasWorkerNotes(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [job?.id, notesRefreshKey]);
   const [showActivityPing, setShowActivityPing] = useState(false);
   const [showStartTimerReminder, setShowStartTimerReminder] = useState(false);
   const [autoStopCountdown, setAutoStopCountdown] = useState(300);
