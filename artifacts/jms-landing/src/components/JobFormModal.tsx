@@ -38,6 +38,7 @@ import {
   JOB_TITLE_OPTIONS,
   parseExistingJobAttachment,
   PRIORITY_BUTTON_CONFIG,
+  resolveOptionalCoordinatorId,
   todayJobDateInput,
   WIND_OPTIONS,
   type ExistingJobAttachment,
@@ -128,6 +129,15 @@ export default function JobFormModal({
     () => assignables.filter((u) => u.role === "coordinator"),
     [assignables],
   );
+
+  useEffect(() => {
+    if (coordinators.length === 0) return;
+    setForm((prev) => {
+      if (!prev.coordinatorId) return prev;
+      if (coordinators.some((c) => c.id === prev.coordinatorId)) return prev;
+      return { ...prev, coordinatorId: "" };
+    });
+  }, [coordinators]);
 
   const selectedWorkerIds = useMemo(
     () => Array.from(new Set([form.assigneeId, ...memberIds].filter((id): id is string => Boolean(id)))),
@@ -547,7 +557,7 @@ export default function JobFormModal({
       description: descriptionPayload,
       priority: PRIORITY_UI_TO_API[form.priority],
       supervisorId: effectiveSupervisorId || null,
-      coordinatorId: form.coordinatorId || null,
+      coordinatorId: resolveOptionalCoordinatorId(form.coordinatorId, coordinators),
       assigneeId: primaryAssigneeId || null,
       dueDate: form.due ? new Date(form.due).toISOString() : null,
       estimatedTime: form.estimatedTime.trim() || null,
@@ -755,7 +765,7 @@ export default function JobFormModal({
                       Coordinator <span className="font-normal text-gray-400">(optional)</span>
                     </label>
                     <select
-                      value={form.coordinatorId}
+                      value={resolveOptionalCoordinatorId(form.coordinatorId, coordinators) ?? ""}
                       onChange={(e) => setForm({ ...form, coordinatorId: e.target.value })}
                       className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors"
                     >

@@ -2213,7 +2213,7 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
   const actor = req.session!.user;
   const full = await loadJob(id);
   if (!full) return res.status(404).json({ error: "Job not found" });
-  const body = parsed.data;
+  const body = { ...parsed.data };
   const jobNumber = body.jobNumber !== undefined ? normalizeJobNumber(body.jobNumber) : undefined;
 
   const isManager = canManageJob(actor, full.job);
@@ -2271,7 +2271,13 @@ router.patch("/jobs/:id", requireAuth, async (req, res) => {
       body.coordinatorId &&
       found.some((u) => u.id === body.coordinatorId && u.role !== "coordinator")
     ) {
-      return res.status(400).json({ error: "Coordinator must have coordinator role" });
+      // Stale stored coordinator (role changed, or never a coordinator) used to
+      // block every edit even when the form showed "None". Clear it instead.
+      if (body.coordinatorId === full.job.coordinatorId) {
+        body.coordinatorId = null;
+      } else {
+        return res.status(400).json({ error: "Coordinator must have coordinator role" });
+      }
     }
   }
 

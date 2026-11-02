@@ -153,7 +153,7 @@ export function applyJobToForm(
       supervisorId:
         job.supervisor?.id ??
         (role === "supervisor" ? (currentUserId ?? "") : ""),
-      coordinatorId: job.coordinator?.id ?? "",
+      coordinatorId: job.coordinator?.role === "coordinator" ? job.coordinator.id : "",
       assigneeId,
       priority: priorityToUi(job.priority),
       estimatedTime: job.estimatedTime ?? "",
@@ -168,6 +168,21 @@ export function applyJobToForm(
     checklist,
     memberIds: memberIdsFromApi,
   };
+}
+
+/**
+ * Coordinator is optional. A stored UUID that is not in the coordinator list
+ * (role changed, or never a coordinator) makes a <select> look like "None"
+ * while still submitting the stale id — which the API rejects with 400.
+ */
+export function resolveOptionalCoordinatorId(
+  coordinatorId: string | null | undefined,
+  coordinators: ReadonlyArray<{ id: string }>,
+): string | null {
+  const id = typeof coordinatorId === "string" ? coordinatorId.trim() : "";
+  if (!id) return null;
+  if (coordinators.length === 0) return id;
+  return coordinators.some((c) => c.id === id) ? id : null;
 }
 
 export type ExistingJobAttachment = {

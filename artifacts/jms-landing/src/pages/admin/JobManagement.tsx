@@ -39,7 +39,7 @@ import JobCreateInstructionsField from "@/components/JobCreateInstructionsField"
 import { postJobCreateInstructions } from "@/lib/postJobCreateInstructions";
 import DescriptionInput, { AddressUrlHint } from "@/components/DescriptionInput";
 import { CHECKLIST_FILE_ACCEPT, isChecklistDocFile, filterJobFiles, JOB_FILE_ACCEPT, JOB_FILE_REJECTED_MESSAGE } from "@/lib/collectDroppedFiles";
-import { formatStoredFileSize, parseExistingJobAttachment, todayJobDateInput, type ExistingJobAttachment } from "@/lib/jobForm";
+import { formatStoredFileSize, parseExistingJobAttachment, resolveOptionalCoordinatorId, todayJobDateInput, type ExistingJobAttachment } from "@/lib/jobForm";
 import { buildJobSaveUploadSpecs, uploadJobAttachmentsBatch } from "@/lib/uploadJobAttachmentsBatch";
 import {
   appendChecklistFileToMap,
@@ -338,7 +338,7 @@ function applyJobToForm(
       supervisorId:
         job.supervisor?.id ??
         (role === "supervisor" ? (currentUserId ?? "") : ""),
-      coordinatorId: (job as JobWithChecklist & { coordinator?: { id?: string } }).coordinator?.id ?? "",
+      coordinatorId: job.coordinator?.role === "coordinator" ? job.coordinator.id : "",
       assigneeId,
       priority: priorityToUi(job.priority),
       estimatedTime: job.estimatedTime ?? "",
@@ -478,6 +478,14 @@ export default function JobManagement(
   const [holdSubmitting, setHoldSubmitting] = useState(false);
   const [reassignTo, setReassignTo] = useState<string>("");
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  useEffect(() => {
+    if (coordinators.length === 0) return;
+    setForm((prev) => {
+      if (!prev.coordinatorId) return prev;
+      if (coordinators.some((c) => c.id === prev.coordinatorId)) return prev;
+      return { ...prev, coordinatorId: "" };
+    });
+  }, [coordinators]);
   const [assigneeMenuOpen, setAssigneeMenuOpen] = useState(false);
   const [jobFiles, setJobFiles] = useState<File[]>([]);
   const [instructionText, setInstructionText] = useState("");
@@ -1003,7 +1011,7 @@ export default function JobManagement(
       description: descriptionPayload,
       priority: PRIORITY_UI_TO_API[form.priority],
       supervisorId: effectiveSupervisorId || null,
-      coordinatorId: form.coordinatorId || null,
+      coordinatorId: resolveOptionalCoordinatorId(form.coordinatorId, coordinators),
       assigneeId: primaryAssigneeId || null,
       dueDate: form.due ? new Date(form.due).toISOString() : null,
       estimatedTime: form.estimatedTime.trim() || null,
@@ -1760,7 +1768,7 @@ export default function JobManagement(
                         Coordinator <span className="font-normal text-gray-400">(optional)</span>
                       </label>
                       <select
-                        value={form.coordinatorId}
+                        value={resolveOptionalCoordinatorId(form.coordinatorId, coordinators) ?? ""}
                         onChange={(e) => setForm({ ...form, coordinatorId: e.target.value })}
                         className="w-full min-w-0 px-3 py-2.5 bg-gray-50 border-2 border-gray-200 rounded-xl text-sm !text-gray-900 focus:outline-none focus:border-primary focus:bg-white transition-colors"
                       >
