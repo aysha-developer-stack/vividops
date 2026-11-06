@@ -102,13 +102,43 @@ interface DailyTimeReport {
   }>;
 }
 
+interface TimeTrackingRow {
+  id: string;
+  userId: string;
+  userName: string;
+  userRole: string;
+  jobId: string | null;
+  project: string;
+  task: string;
+  seconds: number;
+  date: string;
+}
+
+interface TimeTrackingReport {
+  timezone: string;
+  from: string;
+  to: string;
+  totalSeconds: number;
+  sessionCount: number;
+  uniqueWorkers: number;
+  rows: TimeTrackingRow[];
+}
+
+interface TimeTableRow {
+  id: string;
+  user: string;
+  project: string;
+  seconds: number;
+  date: string;
+}
+
 const REPORT_TZ = "Asia/Karachi";
 
 const formatDatePkt = (ms: number) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: REPORT_TZ }).format(new Date(ms));
 
 const formatDisplayDate = (dateStr: string) => {
-  const parsed = new Date(`${dateStr}T12:00:00`);
+  const parsed = new Date(`${dateStr}T12:00:00Z`);
   if (!Number.isFinite(parsed.getTime())) return dateStr;
   return parsed.toLocaleDateString(undefined, {
     weekday: "short",
@@ -134,7 +164,8 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     : role === "supervisor" ? "/supervisor/jobs"
     : "/user/jobs";
 
-  const canViewDailyReport = role === "admin" || role === "super-admin";
+  const canViewDailyReport =
+    currentUser?.role === "admin" || currentUser?.role === "super-admin";
 
   const USER_TABS = [
     { id: "progress", label: "Progress Report", icon: TrendingUp },
@@ -209,6 +240,8 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   const [dailyUserFilter, setDailyUserFilter] = useState("all");
   const [dailyReport, setDailyReport] = useState<DailyTimeReport | null>(null);
   const [dailyLoading, setDailyLoading] = useState(false);
+  const [timeTrackingReport, setTimeTrackingReport] = useState<TimeTrackingReport | null>(null);
+  const [timeTrackingLoading, setTimeTrackingLoading] = useState(false);
   const [dailyDateFrom, setDailyDateFrom] = useState("");
   const [dailyDateTo, setDailyDateTo] = useState("");
   const [userReportPreview, setUserReportPreview] = useState<{ user: UserPerf; html: string } | null>(null);
@@ -284,6 +317,31 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   }, [activeTab, canViewDailyReport, effectiveDailyRange.from, effectiveDailyRange.to, dailyUserFilter]);
 
   useEffect(() => {
+    if (activeTab !== "time" || !canViewDailyReport) return;
+    let cancelled = false;
+    (async () => {
+      setTimeTrackingLoading(true);
+      try {
+        const params = new URLSearchParams({
+          from: dailyRange.from,
+          to: dailyRange.to,
+        });
+        const res = await fetch(`/api/reports/time-tracking?${params.toString()}`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to load time tracking report");
+        const data = (await res.json()) as TimeTrackingReport;
+        if (!cancelled) setTimeTrackingReport(data);
+      } catch {
+        if (!cancelled) setTimeTrackingReport(null);
+      } finally {
+        if (!cancelled) setTimeTrackingLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, canViewDailyReport, dailyRange.from, dailyRange.to]);
+
+  useEffect(() => {
     if (isUser) return;
     let cancelled = false;
     (async () => {
@@ -349,10 +407,12 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
       const userJobs = userJobsAll.filter((j) => j.status !== "cancelled").filter(isJobInPeriod);
       const userLogs = (apiTimeLogs ?? [])
         .filter(l => l.userId === u.id)
+        .filter(l => (l.duration ?? 0) > 0)
         .filter(l => {
-          if (!periodStartMs) return true;
           const createdMs = parseMs(l.createdAt);
-          return createdMs != null && createdMs >= periodStartMs;
+          if (createdMs == null) return false;
+          const day = formatDatePkt(createdMs);
+          return day >= dailyRange.from && day <= dailyRange.to;
         });
       const totalSeconds = userLogs.reduce((acc, log) => acc + (log.duration ?? 0), 0);
 
@@ -426,7 +486,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
         overdue,
       };
     });
-  }, [apiUsers, apiJobs, apiTimeLogs, periodStartMs, jobMemberships, reworkByUserId]);
+  }, [apiUsers, apiJobs, apiTimeLogs, dailyRange.from, dailyRange.to, jobMemberships, reworkByUserId]);
 
   const userNameById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -450,25 +510,30 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     return map;
   }, [apiJobs]);
 
-  const timeLogs = useMemo(() => {
+  const timeLogs = useMemo((): TimeTableRow[] => {
     return (apiTimeLogs ?? [])
+      .filter((l) => (l.duration ?? 0) > 0)
       .filter((l) => {
-        if (!periodStartMs) return true;
         const createdMs = parseMs(l.createdAt);
-        return createdMs != null && createdMs >= periodStartMs;
+        if (createdMs == null) return false;
+        const day = formatDatePkt(createdMs);
+        return day >= dailyRange.from && day <= dailyRange.to;
       })
       .map((l) => {
+        const createdMs = parseMs(l.createdAt) ?? 0;
         const logUserName =
           typeof (l as { userName?: string }).userName === "string"
             ? (l as { userName: string }).userName
             : undefined;
         return {
+          id: l.id,
           user: logUserName ?? userNameById[l.userId] ?? "Unknown user",
           project: l.jobId ? (jobLabelById[l.jobId] ?? "Job") : "General",
           seconds: l.duration ?? 0,
+          date: formatDatePkt(createdMs),
         };
       });
-  }, [apiTimeLogs, userNameById, jobLabelById, periodStartMs]);
+  }, [apiTimeLogs, userNameById, jobLabelById, dailyRange.from, dailyRange.to]);
 
   const pctChange = (current: number, previous: number) => {
     if (!Number.isFinite(current) || !Number.isFinite(previous)) return 0;
@@ -615,9 +680,28 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     u.score >= minScore
   );
   
-  const filteredTime = timeLogs.filter((t) =>
+  const timeTableRows = useMemo((): TimeTableRow[] => {
+    if (canViewDailyReport && timeTrackingReport) {
+      return timeTrackingReport.rows.map((row) => ({
+        id: row.id,
+        user: row.userName,
+        project: row.project,
+        seconds: row.seconds,
+        date: row.date,
+      }));
+    }
+    return timeLogs;
+  }, [canViewDailyReport, timeTrackingReport, timeLogs]);
+
+  const filteredTime = timeTableRows.filter((t) =>
     search === "" || t.user.toLowerCase().includes(search.toLowerCase()) || t.project.toLowerCase().includes(search.toLowerCase())
   );
+
+  const timeTrackingSummary = useMemo(() => {
+    const totalSeconds = filteredTime.reduce((sum, row) => sum + row.seconds, 0);
+    const uniqueWorkers = new Set(filteredTime.map((row) => row.user)).size;
+    return { totalSeconds, uniqueWorkers, sessions: filteredTime.length };
+  }, [filteredTime]);
 
   const dailyWorkers = useMemo(
     () => (apiUsers ?? []).filter((u) => u.role === "user" || u.role === "supervisor"),
@@ -656,7 +740,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
   );
 
   const usersP = usePagination(filteredUsers, 50);
-  const timeP = usePagination(filteredTime, 8);
+  const timeP = usePagination(filteredTime, 50);
   const dailyP = usePagination(filteredDailyRows, 100);
   const dailyTotalsP = usePagination(filteredDailyTotals, 30);
   const dailyChartP = usePagination(dailyChartRows, 30);
@@ -673,10 +757,12 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
     const reworkExternal = reworkCounts?.totals.external ?? 0;
     const reworkSupervisor = reworkCounts?.totals.supervisor ?? 0;
     const totalLoggedSeconds = (apiTimeLogs ?? [])
+      .filter((l) => (l.duration ?? 0) > 0)
       .filter((l) => {
-        if (!periodStartMs) return true;
         const createdMs = parseMs(l.createdAt);
-        return createdMs != null && createdMs >= periodStartMs;
+        if (createdMs == null) return false;
+        const day = formatDatePkt(createdMs);
+        return day >= dailyRange.from && day <= dailyRange.to;
       })
       .reduce((sum, log) => sum + (log.duration ?? 0), 0);
     return {
@@ -688,7 +774,7 @@ export default function Reports({ role = "super-admin" as Role }: { role?: Role 
       reworkSupervisor,
       rework: reworkInternal + reworkExternal + reworkSupervisor,
     };
-  }, [apiJobs, apiTimeLogs, periodStartMs, reworkCounts]);
+  }, [apiJobs, apiTimeLogs, periodStartMs, dailyRange.from, dailyRange.to, reworkCounts]);
 
   const totalJobs = platformJobStats.total;
   const totalCompleted = platformJobStats.completed;
@@ -909,7 +995,7 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
     if (!w) return;
     const logoUrl = await resolveLogoDataUrl();
     const rows = filteredTime
-      .map((t) => `<tr><td>${t.user}</td><td>${t.project}</td><td style="text-align:right">${formatDurationSeconds(t.seconds)}</td></tr>`)
+      .map((t) => `<tr><td>${formatDisplayDate(t.date)}</td><td>${t.user}</td><td>${t.project}</td><td style="text-align:right">${formatDurationSeconds(t.seconds)}</td></tr>`)
       .join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Time Tracking</title>
 <style>
@@ -930,11 +1016,11 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
 </style></head><body>
 <button class="btn no-print" onclick="window.print()">Save as PDF</button>
 <div class="brand"><img src="${logoUrl}" alt="Vivid OPS"><div class="meta"><strong>Time Tracking</strong>Generated ${new Date().toLocaleString()}<br>Period: ${periodLabel}</div></div>
-<h2>Entries: ${filteredTime.length}</h2>
-<p class="sub">${search ? `Search: "${search.replaceAll('"', "&quot;")}"` : "All entries"}</p>
+<h2>Entries: ${filteredTime.length} · Total: ${formatDurationSeconds(timeTrackingSummary.totalSeconds)}</h2>
+<p class="sub">Range: ${dailyRange.from} to ${dailyRange.to} · Timezone: ${REPORT_TZ}${search ? ` · Search: "${search.replaceAll('"', "&quot;")}"` : ""}</p>
 <table>
-<thead><tr><th>User</th><th>Project</th><th style="text-align:right">Hours</th></tr></thead>
-<tbody>${rows || `<tr><td colspan="3" style="padding:14px;color:#64748b">No time logs found.</td></tr>`}</tbody>
+<thead><tr><th>Date</th><th>User</th><th>Project</th><th style="text-align:right">Hours</th></tr></thead>
+<tbody>${rows || `<tr><td colspan="4" style="padding:14px;color:#64748b">No time logs found.</td></tr>`}</tbody>
 </table>
 <script>
   (async () => {
@@ -1476,27 +1562,53 @@ td{padding:10px;border-bottom:1px solid #f1f5f9}
               )}
 
               {activeTab === "time" && !isUser && (
-                <div className="rounded-xl border border-gray-100 overflow-hidden">
+                <div className="space-y-5">
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                    {[
+                      { label: "Total hours", value: formatDurationSeconds(timeTrackingSummary.totalSeconds), icon: Clock },
+                      { label: "Workers", value: timeTrackingSummary.uniqueWorkers, icon: Users },
+                      { label: "Sessions", value: timeTrackingSummary.sessions, icon: TrendingUp },
+                    ].map((k, i) => {
+                      const Icon = k.icon;
+                      return (
+                        <motion.div key={k.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="p-4 rounded-xl border border-gray-100 bg-gray-50/50">
+                          <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center mb-2"><Icon size={14} /></div>
+                          <div className="text-xl font-bold text-gray-900">{k.value}</div>
+                          <div className="text-[11px] text-gray-500">{k.label}</div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                  <div className="rounded-xl border border-gray-100 overflow-hidden">
                 <table className="w-full">
-                  <thead><tr>{["User", "Project", "Hours"].map((h) => <th key={h} className="text-left px-4 pt-3 pb-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider bg-gray-50/80">{h}</th>)}</tr></thead>
+                  <thead><tr>{["Date", "User", "Project", "Hours"].map((h) => <th key={h} className="text-left px-4 pt-3 pb-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider bg-gray-50/80">{h}</th>)}</tr></thead>
                   <tbody>
-                    {!logsLoading && filteredTime.length === 0 && (
+                    {(canViewDailyReport ? timeTrackingLoading : logsLoading) && (
                       <tr>
-                        <td colSpan={3} className="py-10 text-center text-sm text-gray-400">
-                          No time logs yet. Start a timer and press Stop to save a log.
+                        <td colSpan={4} className="py-10 text-center text-sm text-gray-400">
+                          Loading time tracking…
                         </td>
                       </tr>
                     )}
-                    {timeP.pageItems.map((t, i) => (
-                      <motion.tr key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} className="border-t border-gray-50 hover:bg-gray-50">
+                    {!(canViewDailyReport ? timeTrackingLoading : logsLoading) && filteredTime.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-10 text-center text-sm text-gray-400">
+                          No time logs for this period. Start a timer and press Stop to save a log.
+                        </td>
+                      </tr>
+                    )}
+                    {!(canViewDailyReport ? timeTrackingLoading : logsLoading) && timeP.pageItems.map((t, i) => (
+                      <motion.tr key={t.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} className="border-t border-gray-50 hover:bg-gray-50">
+                        <td className="px-4 py-3.5 text-sm text-gray-700 whitespace-nowrap">{formatDisplayDate(t.date)}</td>
                         <td className="px-4 py-3.5 text-sm font-medium text-gray-900">{t.user}</td>
                         <td className="px-4 py-3.5 text-sm text-gray-700">{t.project}</td>
-                        <td className="px-4 py-3.5 text-sm font-semibold text-gray-900">{formatDurationSeconds(t.seconds)}</td>
+                        <td className="px-4 py-3.5 text-sm font-semibold text-gray-900 tabular-nums">{formatDurationSeconds(t.seconds)}</td>
                       </motion.tr>
                     ))}
                   </tbody>
                 </table>
                 <Pagination page={timeP.page} totalPages={timeP.totalPages} total={timeP.total} pageSize={timeP.pageSize} onChange={timeP.setPage} label="entries" />
+                </div>
                 </div>
               )}
 
