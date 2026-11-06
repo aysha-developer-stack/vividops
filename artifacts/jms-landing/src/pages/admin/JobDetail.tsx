@@ -107,6 +107,7 @@ import JobReworkHistory from "@/components/JobReworkHistory";
 import ReviewCompletionForm from "@/components/ReviewCompletionForm";
 import JobFormModal from "@/components/JobFormModal";
 import PutJobOnHoldDialog from "@/components/PutJobOnHoldDialog";
+import AddMissingTimeDialog from "@/components/AddMissingTimeDialog";
 import JobMistakesTab from "@/components/JobMistakesTab";
 import JobAppreciationTab from "@/components/JobAppreciationTab";
 import JobJuniorsPanel from "@/components/JobJuniorsPanel";
@@ -710,6 +711,8 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesSaveError, setNotesSaveError] = useState<string | null>(null);
   const [approveOpen, setApproveOpen] = useState(false);
+  const [missingTimeOpen, setMissingTimeOpen] = useState(false);
+  const [missingTimeSaving, setMissingTimeSaving] = useState(false);
   const [approveMode, setApproveMode] = useState<"escalate" | "finalize">("escalate");
   const [approveComment, setApproveComment] = useState("");
   const [approvePhotos, setApprovePhotos] = useState<File[]>([]);
@@ -1018,6 +1021,8 @@ export default function JobDetail({ role = "user", id }: Props) {
     return job?.assignee?.name ?? "Unassigned";
   }, [jobWorkers, job?.assignee?.name]);
   const assignedUserHeading = jobWorkers.length > 1 ? "Assigned Users" : "Assigned User";
+  const canAddMissingTime =
+    currentUser?.role === "admin" || currentUser?.role === "super-admin";
   const jobNotesDirty =
     remarksDraft !== (((job as any)?.remarks as string | null | undefined) ?? "") ||
     commentsDraft !== (((job as any)?.comments as string | null | undefined) ?? "");
@@ -1814,6 +1819,23 @@ export default function JobDetail({ role = "user", id }: Props) {
     add(currentUser?.id, currentUser?.name);
     return map;
   }, [job?.assignee, job?.supervisor, job?.coordinator, job?.assignees, assignablesQuery.data, currentUser?.id, currentUser?.name]);
+
+  const missingTimePeople = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    const add = (id?: string | null, name?: string | null) => {
+      if (!id) return;
+      map.set(id, { id, name: name?.trim() || "User" });
+    };
+    for (const worker of jobWorkers) add(worker.id, worker.name);
+    add(job?.supervisor?.id, job?.supervisor?.name);
+    for (const user of assignablesQuery.data ?? []) {
+      if (user.role === "user" || user.role === "supervisor") add(user.id, user.name);
+    }
+    for (const log of jobTimeLogs) {
+      add(log.userId, timeLogUserNameById.get(log.userId) ?? null);
+    }
+    return Array.from(map.values());
+  }, [jobWorkers, job?.supervisor, assignablesQuery.data, jobTimeLogs, timeLogUserNameById]);
 
   const jobLogRows = useMemo(() => {
     return jobTimeLogs.map((l) => {
@@ -2646,6 +2668,15 @@ export default function JobDetail({ role = "user", id }: Props) {
           <div>
             <div className="text-[10px] text-gray-500 uppercase font-semibold">Actual Time</div>
             <div className="text-sm text-gray-900 font-medium">{displaySeconds > 0 ? formatTime(displaySeconds) : "—"}</div>
+            {canAddMissingTime && (
+              <button
+                type="button"
+                onClick={() => setMissingTimeOpen(true)}
+                className="mt-1 text-[11px] font-semibold text-primary hover:underline"
+              >
+                Add missing time
+              </button>
+            )}
             {(running || anyJuniorRunning) && displaySeconds > totalLoggedSeconds && (
               <div className="text-[10px] text-sky-600 font-medium mt-0.5">Includes active timer</div>
             )}
@@ -4414,9 +4445,20 @@ export default function JobDetail({ role = "user", id }: Props) {
                 <h3 className="font-bold text-gray-900">Timer Logs</h3>
                 <p className="text-xs text-gray-500 mt-0.5">All time tracked on this job, grouped by rework cycle</p>
               </div>
-              <div className="text-right">
-                <div className="text-2xl font-bold text-gray-900 font-mono">{formatHoursMinutes(totalLoggedSeconds + juniorTotalSeconds)}</div>
-                <div className="text-[10px] text-gray-500 uppercase tracking-wide">Total</div>
+              <div className="flex items-center gap-3">
+                {canAddMissingTime && (
+                  <button
+                    type="button"
+                    onClick={() => setMissingTimeOpen(true)}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold bg-primary text-white hover:bg-primary/90"
+                  >
+                    Add missing time
+                  </button>
+                )}
+                <div className="text-right">
+                  <div className="text-2xl font-bold text-gray-900 font-mono">{formatHoursMinutes(totalLoggedSeconds + juniorTotalSeconds)}</div>
+                  <div className="text-[10px] text-gray-500 uppercase tracking-wide">Total</div>
+                </div>
               </div>
             </div>
             {(timeBreakdown.length > 0 || juniorTotalSeconds > 0) && (
@@ -5251,6 +5293,38 @@ export default function JobDetail({ role = "user", id }: Props) {
         submitting={holdSubmitting}
         onConfirm={putJobOnHold}
       />
+      {canAddMissingTime ? (
+      <AddMissingTimeDialog
+        open={missingTimeOpen}
+        onOpenChange={setMissingTimeOpen}
+        jobLabel={job?.number ? `${job.number} · ${job.title}` : job?.title}
+        people={missingTimePeople}
+        defaultUserId={job?.assignee?.id}
+        submitting={missingTimeSaving}
+        onConfirm={async ({ userId, hours, minutes, task }) => {
+          if (!job?.id) return;
+          setMissingTimeSaving(true);
+          try {
+            const res = await fetch(`/api/jobs/${job.id}/missing-time`, {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userId, hours, minutes, task }),
+            });
+            const data = (await res.json().catch(() => null)) as { error?: string } | null;
+            if (!res.ok) {
+              throw new Error(data?.error || "Failed to add missing time");
+            }
+            await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+            setMissingTimeOpen(false);
+          } catch (err) {
+            window.alert(err instanceof Error ? err.message : "Failed to add missing time");
+          } finally {
+            setMissingTimeSaving(false);
+          }
+        }}
+      />
+      ) : null}
     </DashboardLayout>
   );
 }

@@ -8,6 +8,7 @@ import { logger } from "../lib/logger";
 import { ensureJobWriteSchema } from "../lib/schema-init";
 import { publicTimeLog, resolveReworkCycleForTimeLog } from "../lib/time-log-cycles";
 import { workerMayStartTimerOnJobStatus } from "../lib/persist-timer-session";
+import { parseMissingTimeDuration } from "../lib/missing-time";
 
 const MAX_MANUAL_LOG_SECONDS = 12 * 3600;
 
@@ -120,6 +121,93 @@ router.post("/time-logs", requireAuth, async (req, res) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 });
+
+/**
+ * Admin / Super Admin: add missing hours on one job under a named person.
+ * Does not start a timer or change job status.
+ */
+router.post(
+  "/jobs/:id/missing-time",
+  requireAuth,
+  requireRole("super-admin", "admin"),
+  async (req, res) => {
+    try {
+      await ensureSchema();
+      const jobId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const userId = typeof req.body?.userId === "string" ? req.body.userId.trim() : "";
+      const taskRaw = typeof req.body?.task === "string" ? req.body.task.trim() : "";
+      const parsedDuration = parseMissingTimeDuration(req.body?.hours, req.body?.minutes);
+      if (!parsedDuration.ok) {
+        return res.status(400).json({ error: parsedDuration.error });
+      }
+      if (!userId) {
+        return res.status(400).json({ error: "Select a person" });
+      }
+
+      const [job] = await db
+        .select({ id: jobs.id, status: jobs.status, title: jobs.title, jobNumber: jobs.jobNumber })
+        .from(jobs)
+        .where(eq(jobs.id, jobId))
+        .limit(1);
+      if (!job) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+      if (job.status === "cancelled") {
+        return res.status(400).json({ error: "Cannot add time to a cancelled job" });
+      }
+
+      const [person] = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          role: users.role,
+          status: users.status,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      if (!person) {
+        return res.status(404).json({ error: "Person not found" });
+      }
+      if (person.status !== "active") {
+        return res.status(400).json({ error: "Cannot add time for an inactive user" });
+      }
+      if (person.role !== "user" && person.role !== "supervisor") {
+        return res.status(400).json({ error: "Missing time can only be added for a worker or supervisor" });
+      }
+
+      const reworkCycleNumber = await resolveReworkCycleForTimeLog(job.id, person.id);
+      const [newLog] = await db
+        .insert(timeLogs)
+        .values({
+          id: randomUUID(),
+          task: taskRaw || "Missing time",
+          duration: parsedDuration.seconds,
+          jobId: job.id,
+          userId: person.id,
+          reworkCycleNumber,
+        })
+        .returning();
+
+      logger.info(
+        {
+          jobId: job.id,
+          jobNumber: job.jobNumber,
+          userId: person.id,
+          userName: person.name,
+          duration: parsedDuration.seconds,
+          actorId: req.session!.user.id,
+        },
+        "Admin added missing time",
+      );
+
+      return res.json(publicTimeLog({ ...newLog, userName: person.name }));
+    } catch (err) {
+      logger.error({ err }, "Failed to add missing time");
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
 
 /** Super-admin: delete all time logs (and active timers) for one user. */
 router.delete(
