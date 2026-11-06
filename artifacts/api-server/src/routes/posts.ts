@@ -116,6 +116,14 @@ async function deletePostInternal(postId: string, actor: { id: string; role: str
   const [postRow] = await db.select().from(posts).where(eq(posts.id, postId)).limit(1);
   if (!postRow) return { status: 404 as const, body: { error: "Post not found" } as const };
 
+  const [author] = await db
+    .select({ role: users.role })
+    .from(users)
+    .where(eq(users.id, postRow.authorId))
+    .limit(1);
+  if (author?.role === "super-admin" && actor.role !== "super-admin") {
+    return { status: 403 as const, body: { error: "Only super-admin can delete this training" } as const };
+  }
   if (actor.role === "supervisor" && postRow.authorId !== actor.id) {
     return { status: 403 as const, body: { error: "Forbidden" } as const };
   }

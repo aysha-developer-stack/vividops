@@ -20,6 +20,7 @@ import {
   trainingAttachmentPreviewUrl,
 } from "@/lib/postAttachmentUrls";
 import type { Role } from "@/lib/roles";
+import { useAuth } from "@/lib/auth";
 import { useGetPosts, useCreatePost, getGetPostsQueryKey, type Post } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -59,6 +60,19 @@ function roleLabel(role: string | undefined) {
   if (role === "admin") return "Admin";
   if (role === "supervisor") return "Supervisor";
   return "User";
+}
+
+/** Super Admin uploads: Super Admin only. Supervisors may delete only their own posts. */
+function canDeleteTrainingPost(
+  actorRole: Role,
+  actorId: string | undefined,
+  authorId: string | undefined,
+  authorRole: string | undefined,
+) {
+  if (authorRole === "super-admin") return actorRole === "super-admin";
+  if (actorRole === "super-admin" || actorRole === "admin") return true;
+  if (actorRole === "supervisor") return Boolean(actorId && authorId && actorId === authorId);
+  return false;
 }
 
 function parsePostAttachments(post: Post): Attachment[] {
@@ -172,7 +186,7 @@ export default function Training({ role = "super-admin" as Role }: { role?: Role
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.2 }}
         >
-          {tab === "updates" && <DailyUpdates canPost={canPost} search={search} />}
+          {tab === "updates" && <DailyUpdates role={role} canPost={canPost} search={search} />}
           {tab === "photos" && <PhotoGallery canPost={canPost} search={search} />}
           {tab === "videos" && <VideoLibrary canPost={canPost} search={search} />}
           {tab === "courses" && <CoursesView search={search} />}
@@ -184,7 +198,8 @@ export default function Training({ role = "super-admin" as Role }: { role?: Role
 
 /* -------------------------- Daily Updates -------------------------- */
 
-function DailyUpdates({ canPost, search }: { canPost: boolean; search: string }) {
+function DailyUpdates({ role, canPost, search }: { role: Role; canPost: boolean; search: string }) {
+  const { user: currentUser } = useAuth();
   const { data: apiPosts, isLoading } = useGetPosts();
   const createPostMutation = useCreatePost();
   const qc = useQueryClient();
@@ -428,7 +443,7 @@ function DailyUpdates({ canPost, search }: { canPost: boolean; search: string })
               onOpenLikes={() => openLikes(post.id, post.title || "Post")}
               onOpenComments={() => openComments(post.id, post.title || "Post")}
               onOpenAttachment={(a) => setPreviewAttachment({ postId: post.id, attachment: a })}
-              canDelete={canPost}
+              canDelete={canDeleteTrainingPost(role, currentUser?.id, author?.id, author?.role)}
               onDelete={() => void handleDelete(post.id)}
             />
           );
