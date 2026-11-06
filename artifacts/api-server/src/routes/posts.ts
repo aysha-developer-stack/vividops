@@ -183,7 +183,7 @@ router.get("/posts", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/posts", requireRole("super-admin", "admin", "supervisor"), async (req, res) => {
+router.post("/posts", requireRole("super-admin", "admin"), async (req, res) => {
   try {
     const user = req.session!.user;
     await ensureSchema();
@@ -218,7 +218,7 @@ router.post("/posts", requireRole("super-admin", "admin", "supervisor"), async (
 
 router.post(
   "/posts/:id/attachments",
-  requireRole("super-admin", "admin", "supervisor"),
+  requireRole("super-admin", "admin"),
   upload.single("file"),
   async (req, res) => {
     try {

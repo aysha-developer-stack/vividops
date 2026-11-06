@@ -129,8 +129,10 @@ function TrainingAttachmentPreviewDialog({
 }
 
 export default function Training({ role = "super-admin" as Role }: { role?: Role } = {}) {
+  const { user: currentUser } = useAuth();
   const [tab, setTab] = useState<"updates" | "photos" | "videos" | "courses">("updates");
-  const canPost = role !== "user";
+  const canPost =
+    currentUser?.role === "admin" || currentUser?.role === "super-admin";
   const { search, setSearch, setPlaceholder, headerSearch } = useDashboardSearch(
     "Search posts by author or text…",
   );
