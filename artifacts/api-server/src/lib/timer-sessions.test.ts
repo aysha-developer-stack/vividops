@@ -4,8 +4,10 @@ import {
   timerSessionBillableSeconds,
   timerSessionElapsedSeconds,
   isTimerSessionStale,
+  isInflatedPausedTimer,
   resolveTimerSaveDuration,
   TIMER_HEARTBEAT_GAP_PAUSE_MS,
+  MAX_TIMER_SEGMENT_SECONDS,
 } from "./timer-sessions.ts";
 
 function session(overrides: {
@@ -80,5 +82,30 @@ describe("timer session duration math", () => {
       lastHeartbeatAt: new Date(nowMs - 3 * 60 * 1000),
     });
     assert.equal(isTimerSessionStale(row, nowMs), false);
+  });
+
+  it("treats paused leftovers beyond 24h as inflated, not work time", () => {
+    assert.equal(
+      isInflatedPausedTimer({
+        accumulatedSeconds: 366 * 3600 + 43 * 60 + 20,
+        segmentStartedAt: null,
+      }),
+      true,
+    );
+    assert.equal(
+      isInflatedPausedTimer({
+        accumulatedSeconds: 4 * 3600,
+        segmentStartedAt: null,
+      }),
+      false,
+    );
+    assert.equal(
+      isInflatedPausedTimer({
+        accumulatedSeconds: MAX_TIMER_SEGMENT_SECONDS + 1,
+        segmentStartedAt: new Date(),
+      }),
+      false,
+      "a still-running segment is not discarded as an inflated pause",
+    );
   });
 });

@@ -14,12 +14,13 @@ import {
   timerSessionElapsedSeconds,
   resolveTimerSaveDuration,
   isTimerSessionStale,
+  isInflatedPausedTimer,
   TIMER_HEARTBEAT_GAP_PAUSE_MS,
+  MAX_TIMER_SEGMENT_SECONDS,
 } from "./timer-sessions";
 import { logger } from "./logger";
 
-/** Safety cap — prevents runaway sessions if auto-stop is missed (24h). */
-const MAX_TIMER_SEGMENT_SECONDS = 24 * 3600;
+export { MAX_TIMER_SEGMENT_SECONDS };
 
 export function shouldAutoStopWorkerTimersForJobStatus(status: string): boolean {
   return (
@@ -128,6 +129,20 @@ export async function stopTimerSessionAndSaveLog(
   workerUserId: string,
   opts?: StopTimerSessionOptions,
 ): Promise<number> {
+  if (isInflatedPausedTimer(session)) {
+    logger.warn(
+      {
+        sessionId: session.id,
+        jobId: session.jobId,
+        userId: workerUserId,
+        accumulatedSeconds: session.accumulatedSeconds,
+      },
+      "Discarding inflated paused timer without writing a time log",
+    );
+    await db.delete(activeTimerSessions).where(eq(activeTimerSessions.id, session.id));
+    return 0;
+  }
+
   const nowMs = Date.now();
   let rawDuration = resolveTimerSaveDuration(session, nowMs, opts);
   const elapsed = timerSessionElapsedSeconds(session, nowMs);

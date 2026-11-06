@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { isActiveTimerSessionRunning, liveSessionElapsedSeconds } from "./timerSessionApi.ts";
+import { displayTimerSeconds, isActiveTimerSessionRunning, liveSessionElapsedSeconds } from "./timerSessionApi.ts";
 
 describe("isActiveTimerSessionRunning", () => {
   it("requires live running segment, not stale paused state", () => {
@@ -59,5 +59,13 @@ describe("liveSessionElapsedSeconds", () => {
       nowMs,
     );
     assert.equal(seconds, 73);
+  });
+});
+
+describe("displayTimerSeconds", () => {
+  it("hides inflated paused leftovers instead of showing 366h", () => {
+    assert.equal(displayTimerSeconds(366 * 3600 + 43 * 60 + 20, false), 0);
+    assert.equal(displayTimerSeconds(2 * 3600, false), 2 * 3600);
+    assert.equal(displayTimerSeconds(2 * 3600, true), 2 * 3600);
   });
 });

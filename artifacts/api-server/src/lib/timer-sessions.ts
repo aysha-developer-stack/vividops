@@ -3,6 +3,16 @@ import type { JobRow, UserRow, ActiveTimerSessionRow } from "@workspace/db";
 export const TIMER_HEARTBEAT_LIVE_MS = 5 * 60 * 1000;
 /** Pause only after a real sleep/offline gap — not a background CAD tab (Chrome can freeze JS for minutes). */
 export const TIMER_HEARTBEAT_GAP_PAUSE_MS = 2 * 60 * 60 * 1000;
+/** Safety cap — a single session cannot be real work beyond one day. */
+export const MAX_TIMER_SEGMENT_SECONDS = 24 * 3600;
+
+/** Paused leftover larger than one day is display junk, not billable work. */
+export function isInflatedPausedTimer(session: {
+  accumulatedSeconds?: number | null;
+  segmentStartedAt?: Date | string | null;
+}): boolean {
+  return !session.segmentStartedAt && (session.accumulatedSeconds ?? 0) > MAX_TIMER_SEGMENT_SECONDS;
+}
 
 export function timerSessionElapsedSeconds(
   session: Pick<ActiveTimerSessionRow, "accumulatedSeconds" | "segmentStartedAt">,
@@ -101,6 +111,9 @@ export function publicTimerSession(
 ): PublicTimerSession {
   const stale = isTimerSessionStale(session, nowMs);
   const trackingPaused = !session.segmentStartedAt;
+  const inflatedPause = isInflatedPausedTimer(session);
+  const elapsed = inflatedPause ? 0 : timerSessionElapsedSeconds(session, nowMs);
+  const billable = inflatedPause ? 0 : timerSessionBillableSeconds(session, nowMs);
   return {
     id: session.id,
     userId: session.userId,
@@ -108,11 +121,11 @@ export function publicTimerSession(
     jobNumber: job?.jobNumber ?? null,
     jobTitle: job?.title ?? null,
     task: session.task,
-    accumulatedSeconds: session.accumulatedSeconds,
+    accumulatedSeconds: inflatedPause ? 0 : session.accumulatedSeconds,
     segmentStartedAt: session.segmentStartedAt?.toISOString() ?? null,
     lastHeartbeatAt: session.lastHeartbeatAt.toISOString(),
-    elapsedSeconds: timerSessionElapsedSeconds(session, nowMs),
-    billableSeconds: timerSessionBillableSeconds(session, nowMs),
+    elapsedSeconds: elapsed,
+    billableSeconds: billable,
     isLive: isTimerSessionLive(session, nowMs) && !stale,
     trackingPaused,
   };

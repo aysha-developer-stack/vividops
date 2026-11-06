@@ -1,4 +1,5 @@
 import {
+  displayTimerSeconds,
   fetchMyActiveTimerSession,
   isActiveTimerSessionRunning,
   liveSessionElapsedSeconds,
@@ -109,13 +110,19 @@ export function applyServerTimerToJob(
     return { running: false, seconds: 0, paused: false };
   }
   const synced = jobTimerStateFromServerSession(session);
-  writeJobTimerState(jobId, synced);
-  const seconds = synced.running
-    ? liveSessionElapsedSeconds(session)
-    : Math.max(0, synced.accumulated ?? 0);
+  const seconds = displayTimerSeconds(
+    synced.running ? liveSessionElapsedSeconds(session) : Math.max(0, synced.accumulated ?? 0),
+    synced.running,
+  );
+  writeJobTimerState(jobId, {
+    ...synced,
+    accumulated: seconds,
+    running: synced.running,
+    startedAt: synced.running ? synced.startedAt : null,
+  });
   return {
     running: synced.running,
     seconds,
-    paused: !synced.running && (synced.accumulated ?? 0) > 0,
+    paused: !synced.running && seconds > 0,
   };
 }

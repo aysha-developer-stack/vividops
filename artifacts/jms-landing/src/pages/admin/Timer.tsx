@@ -30,10 +30,12 @@ import {
   fetchMyActiveTimerSession,
   isActiveTimerSessionRunning,
   liveSessionElapsedSeconds,
+  displayTimerSeconds,
   TIMER_HEARTBEAT_INTERVAL_MS,
 } from "@/lib/timerSessionApi";
 import { handleTimerHeartbeatSideEffects, useTimerHeartbeatOnVisible } from "@/lib/timerHeartbeatEffects";
 import { clearOtherJobTimerLocalStates, clearJobTimerState, writeJobTimerState, jobTimerStateFromServerSession } from "@/lib/jobTimerLocalState";
+import { sumDurationsInLocalWeek, sumDurationsOnLocalDay } from "@/lib/timerTotals";
 
 interface Entry {
   id: string;
@@ -41,6 +43,7 @@ interface Entry {
   project: string;
   duration: number;
   date: string;
+  createdAt: string;
 }
 
 function formatTime(s: number) {
@@ -102,9 +105,17 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
   const computeElapsed = (state: { running: boolean; startedAt: number | null; accumulated: number } | null) => {
     if (!state) return 0;
     const base = Math.max(0, Math.floor(state.accumulated));
-    if (!state.running || !state.startedAt) return base;
-    const extra = Math.max(0, Math.floor((Date.now() - state.startedAt) / 1000));
-    return base + extra;
+    const raw =
+      !state.running || !state.startedAt
+        ? base
+        : base + Math.max(0, Math.floor((Date.now() - state.startedAt) / 1000));
+    return displayTimerSeconds(raw, !!state.running);
+  };
+
+  const resetIdleClock = (keepJobId = "") => {
+    setRunning(false);
+    setSeconds(0);
+    writeTimerState({ running: false, startedAt: null, accumulated: 0, task: "", jobId: keepJobId });
   };
 
   const stopOtherRunningTimersAndSave = async () => {
@@ -127,13 +138,13 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
   const syncPausedFromServer = (session: { task: string; jobId: string | null; accumulatedSeconds: number; segmentStartedAt: string | null } | null) => {
     setRunning(false);
     if (!session) return;
-    const elapsed = liveSessionElapsedSeconds(session);
+    const elapsed = displayTimerSeconds(liveSessionElapsedSeconds(session), false);
     setSeconds(elapsed);
     writeTimerState({
       running: false,
       startedAt: null,
       accumulated: elapsed,
-      task: session.task,
+      task: elapsed > 0 ? session.task : "",
       jobId: session.jobId ?? "",
     });
     if (session.jobId) {
@@ -141,7 +152,7 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
         running: false,
         startedAt: null,
         accumulated: elapsed,
-        task: session.task,
+        task: elapsed > 0 ? session.task : "",
       });
     }
   };
@@ -176,7 +187,7 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
 
     const serverMine = await fetchMyActiveTimerSession();
     if (serverMine?.jobId === jobId && isActiveTimerSessionRunning(serverMine)) {
-      const elapsed = liveSessionElapsedSeconds(serverMine);
+      const elapsed = displayTimerSeconds(liveSessionElapsedSeconds(serverMine), true);
       writeTimerState({
         running: true,
         startedAt: serverMine.segmentStartedAt ? Date.parse(serverMine.segmentStartedAt) : null,
@@ -204,23 +215,19 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     }
 
     setStartError(null);
-    const elapsed = liveSessionElapsedSeconds(session);
+    const liveRunning = isActiveTimerSessionRunning(session);
+    const elapsed = displayTimerSeconds(liveSessionElapsedSeconds(session), liveRunning);
     writeTimerState({
-      running: !!session.segmentStartedAt,
-      startedAt: session.segmentStartedAt ? Date.parse(session.segmentStartedAt) : null,
-      accumulated: session.accumulatedSeconds,
+      running: liveRunning,
+      startedAt: liveRunning && session.segmentStartedAt ? Date.parse(session.segmentStartedAt) : null,
+      accumulated: elapsed,
       task: session.task,
       jobId: session.jobId ?? jobId,
     });
     if (session.jobId) {
-      writeJobTimerState(session.jobId, {
-        running: !!session.segmentStartedAt,
-        startedAt: session.segmentStartedAt ? Date.parse(session.segmentStartedAt) : null,
-        accumulated: session.accumulatedSeconds,
-        task: session.task,
-      });
+      writeJobTimerState(session.jobId, jobTimerStateFromServerSession(session));
     }
-    setRunning(!!session.segmentStartedAt);
+    setRunning(liveRunning);
     setSeconds(elapsed);
     await qc.invalidateQueries({ queryKey: getGetJobQueryKey(jobId) });
     await qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
@@ -228,18 +235,13 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
   };
 
   const pauseTimer = async () => {
-    const prev = readTimerState() ?? { running: false, startedAt: null, accumulated: 0, task: "", jobId: "" };
-    const elapsed = computeElapsed(prev);
-    writeTimerState({
-      running: false,
-      startedAt: null,
-      accumulated: elapsed,
-      task: task.trim(),
-      jobId: jobId || "",
-    });
+    const paused = await pauseTimerSession().catch(() => null);
+    if (paused) {
+      syncPausedFromServer(paused);
+      return;
+    }
     setRunning(false);
-    setSeconds(elapsed);
-    await pauseTimerSession().catch(() => {});
+    setSeconds(displayTimerSeconds(computeElapsed(readTimerState()), false));
   };
 
   const projects = useMemo(() => {
@@ -257,33 +259,51 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     void (async () => {
       const mine = await fetchMyActiveTimerSession();
       if (cancelled) return;
-      if (mine?.jobId) {
+      const liveRunning = isActiveTimerSessionRunning(mine);
+      if (mine?.jobId && liveRunning) {
+        const elapsed = displayTimerSeconds(liveSessionElapsedSeconds(mine), true);
         writeTimerState({
-          running: !!mine.segmentStartedAt,
+          running: true,
           startedAt: mine.segmentStartedAt ? Date.parse(mine.segmentStartedAt) : null,
           accumulated: mine.accumulatedSeconds,
           task: mine.task,
           jobId: mine.jobId,
         });
-        writeJobTimerState(mine.jobId, {
-          running: !!mine.segmentStartedAt,
-          startedAt: mine.segmentStartedAt ? Date.parse(mine.segmentStartedAt) : null,
-          accumulated: mine.accumulatedSeconds,
-          task: mine.task,
-        });
-        setRunning(!!mine.segmentStartedAt);
-        setSeconds(liveSessionElapsedSeconds(mine));
+        writeJobTimerState(mine.jobId, jobTimerStateFromServerSession(mine));
+        setRunning(true);
+        setSeconds(elapsed);
         setTask(mine.task);
         setJobId(mine.jobId);
         return;
       }
+      if (mine?.jobId && !liveRunning) {
+        const elapsed = displayTimerSeconds(liveSessionElapsedSeconds(mine), false);
+        if (elapsed > 0) {
+          writeTimerState({
+            running: false,
+            startedAt: null,
+            accumulated: elapsed,
+            task: mine.task,
+            jobId: mine.jobId,
+          });
+          writeJobTimerState(mine.jobId, {
+            running: false,
+            startedAt: null,
+            accumulated: elapsed,
+            task: mine.task,
+          });
+          setRunning(false);
+          setSeconds(elapsed);
+          setTask(mine.task);
+          setJobId(mine.jobId);
+          return;
+        }
+      }
 
       const state = readTimerState();
-      if (!state) return;
-      setRunning(state.running);
-      setSeconds(computeElapsed(state));
-      setTask(state.task ?? "");
-      setJobId(state.jobId ?? "");
+      if (state?.jobId) clearJobTimerState(state.jobId);
+      resetIdleClock(state?.jobId ?? "");
+      if (state?.jobId) setJobId(state.jobId);
     })();
     return () => {
       cancelled = true;
@@ -302,7 +322,8 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
         task: l.task,
         project: job ? formatJobPickerLabel(job) : "General",
         duration: l.duration,
-        date: new Date(l.createdAt).toLocaleDateString()
+        date: new Date(l.createdAt).toLocaleDateString(),
+        createdAt: typeof l.createdAt === "string" ? l.createdAt : new Date(l.createdAt).toISOString(),
       };
     });
   }, [apiLogs, apiJobs, role, currentUser?.id]);
@@ -311,8 +332,6 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     if (!running) {
       if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = null;
-      const state = readTimerState();
-      if (state) setSeconds(computeElapsed(state));
       return;
     }
     intervalRef.current = setInterval(() => {
@@ -443,8 +462,8 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     }
   };
 
-  const todayTotal = entries.filter((e) => e.date === new Date().toLocaleDateString()).reduce((acc, e) => acc + e.duration, 0);
-  const weekTotal = entries.reduce((acc, e) => acc + e.duration, 0);
+  const todayTotal = sumDurationsOnLocalDay(entries);
+  const weekTotal = sumDurationsInLocalWeek(entries);
   const entriesP = usePagination(entries, 6);
 
   if (logsLoading) {
@@ -518,7 +537,7 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
             </div>
 
             <div className="font-mono text-6xl md:text-7xl font-bold text-white tabular-nums mb-8">
-              {formatTime(seconds)}
+              {formatTime(displayTimerSeconds(seconds, running))}
             </div>
 
             <div className="grid sm:grid-cols-2 gap-3 mb-6">

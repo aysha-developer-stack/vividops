@@ -19,6 +19,8 @@ import {
   timerSessionBillableSeconds,
   isTimerSessionLive,
   isTimerSessionStale,
+  isInflatedPausedTimer,
+  MAX_TIMER_SEGMENT_SECONDS,
 } from "../lib/timer-sessions";
 import {
   stopTimerSessionAndSaveLog,
@@ -232,10 +234,14 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
         }
 
         if (existing.jobId === jobId && !existing.segmentStartedAt && (existing.accumulatedSeconds ?? 0) > 0) {
+          const resumeAccumulated = isInflatedPausedTimer(existing)
+            ? 0
+            : existing.accumulatedSeconds;
           const [updated] = await db
             .update(activeTimerSessions)
             .set({
               task,
+              accumulatedSeconds: resumeAccumulated,
               segmentStartedAt: now,
               lastHeartbeatAt: now,
               updatedAt: now,
@@ -249,7 +255,10 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
 
         let resumeFromSeconds = 0;
         if (existing.segmentStartedAt && !isLiveRunningTimerSession(existing, nowMs)) {
-          resumeFromSeconds = timerSessionBillableSeconds(existing, nowMs);
+          resumeFromSeconds = Math.min(
+            timerSessionBillableSeconds(existing, nowMs),
+            MAX_TIMER_SEGMENT_SECONDS,
+          );
         }
 
         const [updated] = await db
@@ -314,7 +323,10 @@ router.post("/timer-sessions/pause", requireAuth, async (req, res) => {
     if (!session) return res.status(404).json({ error: "No active timer session" });
 
     const now = new Date();
-    const pausedSeconds = timerSessionBillableSeconds(session, now.getTime());
+    const pausedSeconds = Math.min(
+      timerSessionBillableSeconds(session, now.getTime()),
+      MAX_TIMER_SEGMENT_SECONDS,
+    );
 
     const [updated] = await db
       .update(activeTimerSessions)

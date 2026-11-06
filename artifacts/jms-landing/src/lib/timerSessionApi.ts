@@ -100,3 +100,19 @@ export async function heartbeatTimerSession(): Promise<
 }
 
 export const TIMER_HEARTBEAT_INTERVAL_MS = 30_000;
+/** Match server MAX_TIMER_SEGMENT_SECONDS — leftover clocks above this are not work time. */
+export const MAX_TIMER_SEGMENT_SECONDS = 24 * 3600;
+
+export function isInflatedPausedTimerSeconds(
+  accumulatedSeconds: number | null | undefined,
+  running: boolean,
+): boolean {
+  return !running && (accumulatedSeconds ?? 0) > MAX_TIMER_SEGMENT_SECONDS;
+}
+
+/** Clock shown on Timer / job pages. Inflated paused leftovers display as 0, never as 366h. */
+export function displayTimerSeconds(seconds: number, running: boolean): number {
+  const n = Math.max(0, Math.floor(seconds));
+  if (isInflatedPausedTimerSeconds(n, running)) return 0;
+  return Math.min(n, MAX_TIMER_SEGMENT_SECONDS);
+}
