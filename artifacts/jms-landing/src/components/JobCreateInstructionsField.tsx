@@ -22,7 +22,7 @@ export default function JobCreateInstructionsField({
   disabled = false,
 }: Props) {
   return (
-    <div className="min-w-0 rounded-xl border border-sky-100 bg-sky-50/50 p-3 space-y-2">
+    <div className="min-w-0 rounded-xl border border-red-500 bg-sky-50/50 p-3 space-y-2">
       <div>
         <label className="block text-xs font-semibold text-gray-700 mb-1">Instructions for the worker</label>
         <p className="text-[11px] text-gray-500 mb-1.5">
