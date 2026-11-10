@@ -32,7 +32,7 @@ export function formatTimerPingIntervalLabel(): string {
 }
 
 export function timerStillWorkingDescription(jobLabel: string): string {
-  return `Your timer on ${jobLabel} has been running for ${formatTimerPingIntervalLabel()}. Continue or stop within 5 minutes.`;
+  return `Your timer on ${jobLabel} has been running for ${formatTimerPingIntervalLabel()}. Continue, or it will pause until you tap Resume.`;
 }
 
 export function timerStartReminderDescription(jobLabel: string): string {

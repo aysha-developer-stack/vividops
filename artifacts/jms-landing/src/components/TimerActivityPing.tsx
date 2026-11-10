@@ -33,12 +33,12 @@ export default function TimerActivityPing({
               <div className="flex items-center justify-between mb-1">
                 <div className="font-bold text-gray-900 text-sm">Still working?</div>
                 <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-                  Auto-stop in {countdown}s
+                  Auto-pause in {countdown}s
                 </span>
               </div>
               <p className="text-xs text-gray-500 mt-1">
                 {timerStillWorkingPopupText(jobLabel)}{" "}
-                We&apos;ll auto-stop and save the log if you don&apos;t respond.
+                If this tab is open and you don&apos;t answer, the timer pauses so you can Resume. It will not stop while you are working in another window.
               </p>
               <div className="h-1 bg-gray-100 rounded-full overflow-hidden mt-2">
                 <motion.div

@@ -31,6 +31,7 @@ import {
   isActiveTimerSessionRunning,
   startTimerSession,
   stopTimerSession,
+  pauseTimerSession,
   liveSessionElapsedSeconds,
   type ActiveTimerSession,
 } from "@/lib/timerSessionApi";
@@ -392,9 +393,19 @@ export default function UserDashboard() {
 
   stopActiveTimerRef.current = stopActiveTimerAndSave;
 
-  const handleTimerAutoStop = useCallback(async () => {
+  const handleTimerIdle = useCallback(async () => {
+    const paused = await pauseTimerSession().catch(() => null);
+    if (paused) {
+      setServerSession(paused);
+      if (paused.jobId) {
+        writeJobTimerState(paused.jobId, jobTimerStateFromServerSession(paused));
+      }
+      setTick((v) => v + 1);
+      await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
+      return;
+    }
     await stopActiveTimerRef.current();
-  }, []);
+  }, [qc]);
 
   const {
     showActivityPing,
@@ -402,10 +413,9 @@ export default function UserDashboard() {
     dismissPing,
   } = useTimerActivityPing({
     running: !!activeTimer?.running,
-    elapsedSeconds: activeTimer?.elapsed ?? 0,
     jobLabel: activeTimerLabel,
     jobId: activeTimer?.jobId ?? null,
-    onAutoStop: handleTimerAutoStop,
+    onIdle: handleTimerIdle,
   });
 
   return (

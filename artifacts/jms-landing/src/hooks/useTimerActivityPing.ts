@@ -5,38 +5,54 @@ import {
   TIMER_PING_INTERVAL_S,
   timerStillWorkingDescription,
 } from "@/lib/timerNotifications";
+import { isDocumentVisible, remainingDeadlineSeconds } from "@/lib/timerActivityPing";
 
+/**
+ * Remind after a stretch of running time. Auto-pause only if the popup is
+ * visible and ignored — a background CAD tab must not stop the timer.
+ */
 export function useTimerActivityPing({
   running,
-  elapsedSeconds,
   jobLabel,
   jobId,
+  onIdle,
   onAutoStop,
 }: {
   running: boolean;
-  elapsedSeconds: number;
+  elapsedSeconds?: number;
   jobLabel: string;
   jobId?: string | null;
-  onAutoStop: () => void | Promise<void>;
+  onAutoStop?: () => void | Promise<void>;
+  onIdle?: () => void | Promise<void>;
 }) {
+  const idleHandler = onIdle ?? onAutoStop;
   const [showActivityPing, setShowActivityPing] = useState(false);
   const [autoStopCountdown, setAutoStopCountdown] = useState(TIMER_AUTO_STOP_S);
   const pingTimerRef = useRef<number | null>(null);
-  const autoStopRef = useRef<number | null>(null);
+  const countdownRef = useRef<number | null>(null);
+  const deadlineMsRef = useRef<number | null>(null);
+  const idleFiredRef = useRef(false);
+  const onIdleRef = useRef(idleHandler);
+  onIdleRef.current = idleHandler;
 
-  useEffect(() => {
-    if (!running) {
-      if (pingTimerRef.current) clearTimeout(pingTimerRef.current);
-      return;
+  const clearPingTimer = () => {
+    if (pingTimerRef.current) {
+      window.clearTimeout(pingTimerRef.current);
+      pingTimerRef.current = null;
     }
+  };
 
-    const segment = Math.floor(elapsedSeconds / TIMER_PING_INTERVAL_S);
-    const msUntilNextPing = Math.max(
-      1000,
-      (segment + 1) * TIMER_PING_INTERVAL_S * 1000 - elapsedSeconds * 1000,
-    );
+  const clearCountdown = () => {
+    if (countdownRef.current) {
+      window.clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+  };
 
+  const schedulePing = useCallback(() => {
+    clearPingTimer();
     pingTimerRef.current = window.setTimeout(() => {
+      idleFiredRef.current = false;
       setShowActivityPing(true);
       setAutoStopCountdown(TIMER_AUTO_STOP_S);
       void postTimerNotification(
@@ -44,44 +60,87 @@ export function useTimerActivityPing({
         timerStillWorkingDescription(jobLabel),
         jobId ?? undefined,
       );
-    }, msUntilNextPing);
-
-    return () => {
-      if (pingTimerRef.current) clearTimeout(pingTimerRef.current);
-    };
-  }, [running, Math.floor(elapsedSeconds / TIMER_PING_INTERVAL_S), jobLabel, jobId]);
+    }, TIMER_PING_INTERVAL_S * 1000);
+  }, [jobLabel, jobId]);
 
   useEffect(() => {
-    if (!showActivityPing) {
-      if (autoStopRef.current) clearInterval(autoStopRef.current);
+    if (!running) {
+      clearPingTimer();
+      clearCountdown();
+      deadlineMsRef.current = null;
+      idleFiredRef.current = false;
+      setShowActivityPing(false);
+      setAutoStopCountdown(TIMER_AUTO_STOP_S);
+      return;
+    }
+    if (!showActivityPing) schedulePing();
+    return () => clearPingTimer();
+  }, [running, showActivityPing, schedulePing]);
+
+  const fireIdleOnce = useCallback(() => {
+    if (idleFiredRef.current) return;
+    idleFiredRef.current = true;
+    setShowActivityPing(false);
+    deadlineMsRef.current = null;
+    void Promise.resolve(onIdleRef.current?.()).then(() => {
+      void postTimerNotification(
+        "Timer paused",
+        `Your timer was paused for ${jobLabel} because the check-in was not answered. Tap Resume to keep tracking.`,
+        jobId ?? undefined,
+      );
+    });
+  }, [jobLabel, jobId]);
+
+  useEffect(() => {
+    if (!showActivityPing || !running) {
+      clearCountdown();
+      deadlineMsRef.current = null;
       return;
     }
 
-    autoStopRef.current = window.setInterval(() => {
-      setAutoStopCountdown((current) => {
-        if (current <= 1) {
-          setShowActivityPing(false);
-          void Promise.resolve(onAutoStop()).then(() => {
-            void postTimerNotification(
-              "Timer auto-stopped",
-              `Your timer was stopped automatically for ${jobLabel} (no response).`,
-              jobId ?? undefined,
-            );
-          });
-          return 0;
-        }
-        return current - 1;
-      });
+    const armDeadlineIfVisible = () => {
+      if (!isDocumentVisible()) {
+        deadlineMsRef.current = null;
+        setAutoStopCountdown(TIMER_AUTO_STOP_S);
+        return;
+      }
+      deadlineMsRef.current = Date.now() + TIMER_AUTO_STOP_S * 1000;
+      setAutoStopCountdown(TIMER_AUTO_STOP_S);
+    };
+
+    armDeadlineIfVisible();
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        armDeadlineIfVisible();
+        return;
+      }
+      deadlineMsRef.current = null;
+      setAutoStopCountdown(TIMER_AUTO_STOP_S);
+    };
+
+    countdownRef.current = window.setInterval(() => {
+      if (!isDocumentVisible() || deadlineMsRef.current == null) {
+        setAutoStopCountdown(TIMER_AUTO_STOP_S);
+        return;
+      }
+      const left = remainingDeadlineSeconds(deadlineMsRef.current);
+      setAutoStopCountdown(left);
+      if (left <= 0) fireIdleOnce();
     }, 1000);
 
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      if (autoStopRef.current) clearInterval(autoStopRef.current);
+      clearCountdown();
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [showActivityPing, jobLabel, jobId, onAutoStop]);
+  }, [showActivityPing, running, fireIdleOnce]);
 
   const dismissPing = useCallback(() => {
     setShowActivityPing(false);
     setAutoStopCountdown(TIMER_AUTO_STOP_S);
+    deadlineMsRef.current = null;
+    idleFiredRef.current = false;
   }, []);
 
   return {

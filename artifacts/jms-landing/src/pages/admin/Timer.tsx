@@ -1,16 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useTimerActivityPing } from "@/hooks/useTimerActivityPing";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, Square, Plus, Clock, Trash2, Briefcase } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import Pagination, { usePagination } from "@/components/Pagination";
 import type { Role } from "@/lib/roles";
 import { useAuth } from "@/lib/auth";
-import {
-  postTimerNotification,
-  TIMER_AUTO_STOP_S,
-  TIMER_PING_INTERVAL_S,
-  timerStillWorkingDescription,
-} from "@/lib/timerNotifications";
 import {
   useGetTimeLogs,
   useDeleteTimeLog,
@@ -71,12 +66,6 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
   const [jobId, setJobId] = useState<string>("");
   const [startError, setStartError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [showActivityPing, setShowActivityPing] = useState(false);
-  const [autoStopCountdown, setAutoStopCountdown] = useState(300);
-  const pingTimerRef = useRef<number | null>(null);
-  const autoStopRef = useRef<number | null>(null);
-  const PING_INTERVAL_S = TIMER_PING_INTERVAL_S;
-  const AUTO_STOP_S = TIMER_AUTO_STOP_S;
 
   const timerStorageKey = "global_timer_v1";
   const readTimerState = () => {
@@ -248,6 +237,19 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     return (apiJobs ?? []).map((j: Job) => ({ id: j.id, label: formatJobPickerLabel(j) }));
   }, [apiJobs]);
 
+  const {
+    showActivityPing,
+    autoStopCountdown,
+    dismissPing,
+  } = useTimerActivityPing({
+    running,
+    jobLabel: projects.find((p) => p.id === jobId)?.label ?? "your task",
+    jobId: jobId || null,
+    onIdle: () => {
+      void pauseTimer();
+    },
+  });
+
   useEffect(() => {
     if (projects.length > 0 && !jobId) {
       setJobId(projects[0].id);
@@ -383,50 +385,6 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
     return () => window.clearInterval(id);
   }, [running, qc]);
 
-  useEffect(() => {
-    if (!running) {
-      if (pingTimerRef.current) clearTimeout(pingTimerRef.current);
-      return;
-    }
-    pingTimerRef.current = window.setTimeout(() => {
-      setShowActivityPing(true);
-      setAutoStopCountdown(AUTO_STOP_S);
-      const label = projects.find((p) => p.id === jobId)?.label ?? "your task";
-      void postTimerNotification(
-        "Still working?",
-        timerStillWorkingDescription(label),
-        jobId || undefined,
-      );
-    }, PING_INTERVAL_S * 1000);
-    return () => { if (pingTimerRef.current) clearTimeout(pingTimerRef.current); };
-  }, [running, Math.floor(seconds / PING_INTERVAL_S)]);
-
-  useEffect(() => {
-    if (!showActivityPing) {
-      if (autoStopRef.current) clearInterval(autoStopRef.current);
-      return;
-    }
-    autoStopRef.current = window.setInterval(() => {
-      setAutoStopCountdown((c) => {
-        if (c <= 1) {
-          void stop().then(() => {
-            setShowActivityPing(false);
-            const jid = jobId || undefined;
-            const label = projects.find((p) => p.id === jid)?.label ?? "your task";
-            void postTimerNotification(
-              "Timer auto-stopped",
-              `Your timer was stopped automatically for ${label} (no response)`,
-              jid,
-            );
-          });
-          return 0;
-        }
-        return c - 1;
-      });
-    }, 1000);
-    return () => { if (autoStopRef.current) clearInterval(autoStopRef.current); };
-  }, [showActivityPing, seconds, task, jobId, role]);
-
   const stop = async () => {
     const jid = (readTimerState()?.jobId ?? jobId) || null;
 
@@ -495,17 +453,17 @@ export default function Timer({ role = "super-admin" as Role }: { role?: Role } 
               <div className="p-5 border-b border-gray-100">
                 <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Activity check-in</div>
                 <div className="text-lg font-bold text-gray-900 mt-1">Are you still working?</div>
-                <div className="text-xs text-gray-500 mt-1">Timer will auto-stop in {autoStopCountdown}s if there’s no response.</div>
+                <div className="text-xs text-gray-500 mt-1">Timer will pause in {autoStopCountdown}s if this tab is open and there’s no response. It will not stop while you work in another window.</div>
               </div>
               <div className="p-5 flex gap-2">
                 <button
-                  onClick={() => { setShowActivityPing(false); setAutoStopCountdown(AUTO_STOP_S); }}
+                  onClick={() => dismissPing()}
                   className="flex-1 py-2.5 bg-primary text-white text-sm font-bold rounded-xl"
                 >
                   Yes, keep tracking
                 </button>
                 <button
-                  onClick={async () => { setShowActivityPing(false); await stop(); }}
+                  onClick={async () => { dismissPing(); await stop(); }}
                   className="flex-1 py-2.5 bg-gray-100 text-gray-800 text-sm font-bold rounded-xl"
                 >
                   Stop timer

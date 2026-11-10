@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Link, useRoute, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -44,10 +44,8 @@ import { renderMessageBody } from "@/lib/jobMessageRender";
 import {
   postTimerNotification,
   TIMER_AUTO_STOP_S,
-  TIMER_PING_INTERVAL_S,
   TIMER_START_REMINDER_INTERVAL_S,
   timerStartReminderDescription,
-  timerStillWorkingDescription,
 } from "@/lib/timerNotifications";
 import {
   startTimerSession,
@@ -61,6 +59,7 @@ import {
 } from "@/lib/timerSessionApi";
 import { handleTimerHeartbeatSideEffects, useTimerHeartbeatOnVisible } from "@/lib/timerHeartbeatEffects";
 import { useServerAuthoritativeTimer } from "@/lib/useServerAuthoritativeTimer";
+import { useTimerActivityPing } from "@/hooks/useTimerActivityPing";
 import {
   readJobTimerState,
   writeJobTimerState,
@@ -754,9 +753,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       cancelled = true;
     };
   }, [job?.id, notesRefreshKey]);
-  const [showActivityPing, setShowActivityPing] = useState(false);
   const [showStartTimerReminder, setShowStartTimerReminder] = useState(false);
-  const [autoStopCountdown, setAutoStopCountdown] = useState(300);
   const [fileSubTab, setFileSubTab] = useState<"input" | "output" | "notes">("input");
   const { search: fileSearch, setSearch: setFileSearch, headerSearch: filesHeaderSearch } = useDashboardSearch("Search files…");
   const [selectedJobFileIds, setSelectedJobFileIds] = useState<string[]>([]);
@@ -775,10 +772,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const [reviewCheckTotalLoggedSeconds, setReviewCheckTotalLoggedSeconds] = useState(0);
   const [reviewCheckTick, setReviewCheckTick] = useState(0);
   const taskDialogResolverRef = useRef<((task: string | null) => void) | null>(null);
-  const pingTimerRef = useRef<number | null>(null);
-  const autoStopRef = useRef<number | null>(null);
   const uploadChecklistIdRef = useRef<number | null>(null);
-  const PING_INTERVAL_S = TIMER_PING_INTERVAL_S;
   const AUTO_STOP_S = TIMER_AUTO_STOP_S;
 
   useEffect(() => {
@@ -1232,7 +1226,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     r?.(value);
   };
 
-  const pauseTimer = () => {
+  const pauseTimer = useCallback(() => {
     if (!job?.id) return;
     void pauseTimerSession()
       .then((session) => {
@@ -1240,7 +1234,18 @@ export default function JobDetail({ role = "user", id }: Props) {
         return refreshServerTimer();
       })
       .catch(() => {});
-  };
+  }, [job?.id, refreshServerTimer]);
+
+  const {
+    showActivityPing,
+    autoStopCountdown,
+    dismissPing,
+  } = useTimerActivityPing({
+    running,
+    jobLabel: job?.number ?? "this job",
+    jobId: job?.id,
+    onIdle: pauseTimer,
+  });
 
   const startTimer = async () => {
     if (!job?.id) return;
@@ -1282,8 +1287,10 @@ export default function JobDetail({ role = "user", id }: Props) {
       job.status === "awaiting_super_admin";
     if (!autoStop) return;
 
-    setShowActivityPing(false);
+    dismissPing();
     void (async () => {
+      const session = await fetchMyActiveTimerSession();
+      if (!session?.jobId || session.jobId !== job.id) return;
       try {
         await stopTimerSession();
       } catch {
@@ -1293,16 +1300,16 @@ export default function JobDetail({ role = "user", id }: Props) {
       await refreshServerTimer();
       await qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
     })();
-  }, [job?.id, job?.status, qc, refreshServerTimer]);
+  }, [job?.id, job?.status, qc, refreshServerTimer, dismissPing]);
 
   // When admin/supervisor assigns rework, server clears active timers — resync from server.
   useEffect(() => {
     if (!canUseJobTimer || !job?.id || job.status !== "rework") return;
     void refreshServerTimer().then(() => {
-      setShowActivityPing(false);
+      dismissPing();
       void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
     });
-  }, [canUseJobTimer, job?.id, job?.status, qc, refreshServerTimer]);
+  }, [canUseJobTimer, job?.id, job?.status, qc, refreshServerTimer, dismissPing]);
 
   const timerWasRunningRef = useRef(false);
   useEffect(() => {
@@ -1313,7 +1320,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     if (!running || !canUseJobTimer || !job?.id) return;
     const syncPaused = (session: ActiveTimerSession | null) => {
       const wasRunning = timerWasRunningRef.current;
-      setShowActivityPing(false);
+      dismissPing();
       void refreshServerTimer();
       if (wasRunning && job?.id) {
         void postTimerNotification(
@@ -1336,7 +1343,7 @@ export default function JobDetail({ role = "user", id }: Props) {
               void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
             },
             onAutoStopped: () => {
-              setShowActivityPing(false);
+              dismissPing();
               if (job?.id) clearJobTimerState(job.id);
               void refreshServerTimer();
               void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
@@ -1354,7 +1361,7 @@ export default function JobDetail({ role = "user", id }: Props) {
     void handleTimerHeartbeatSideEffects(payload, {
       onAutoPaused: () => {
         const wasRunning = timerWasRunningRef.current;
-        setShowActivityPing(false);
+        dismissPing();
         void refreshServerTimer();
         void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
         if (wasRunning && job?.id) {
@@ -1367,7 +1374,7 @@ export default function JobDetail({ role = "user", id }: Props) {
       },
       onAutoStopped: () => {
         if (!job?.id) return;
-        setShowActivityPing(false);
+        dismissPing();
         clearJobTimerState(job.id);
         void refreshServerTimer();
         void qc.invalidateQueries({ queryKey: getGetTimeLogsQueryKey() });
@@ -1496,24 +1503,6 @@ export default function JobDetail({ role = "user", id }: Props) {
     return () => { cancelled = true; };
   }, [job?.id, job?.description, checklistTemplateKey, role, job?.assignee?.id, job?.progress, job?.status, attachments, checklistWorkerUserId]);
 
-  // Trigger check-in every TIMER_PING_INTERVAL_S of running time, show popup
-  useEffect(() => {
-    if (!running) {
-      if (pingTimerRef.current) clearTimeout(pingTimerRef.current);
-      return;
-    }
-    pingTimerRef.current = window.setTimeout(() => {
-      setShowActivityPing(true);
-      setAutoStopCountdown(AUTO_STOP_S);
-      void postTimerNotification(
-        "Still working?",
-        timerStillWorkingDescription(job?.number ?? "this job"),
-        job?.id,
-      );
-    }, PING_INTERVAL_S * 1000);
-    return () => { if (pingTimerRef.current) clearTimeout(pingTimerRef.current); };
-  }, [running, Math.floor(seconds / PING_INTERVAL_S)]);
-
   // Remind to start timer every 30 minutes while on this job with no timer running yet.
   useEffect(() => {
     if (!canUseJobTimer || !job?.id || running || seconds > 0) {
@@ -1538,32 +1527,6 @@ export default function JobDetail({ role = "user", id }: Props) {
     const intervalId = window.setInterval(tick, TIMER_START_REMINDER_INTERVAL_S * 1000);
     return () => window.clearInterval(intervalId);
   }, [canUseJobTimer, job?.id, job?.number, job?.assignee?.id, currentUser?.id, running, seconds]);
-
-  // Auto-stop countdown when popup is open
-  useEffect(() => {
-    if (!showActivityPing) {
-      if (autoStopRef.current) clearInterval(autoStopRef.current);
-      return;
-    }
-    autoStopRef.current = window.setInterval(() => {
-      setAutoStopCountdown((c) => {
-        if (c <= 1) {
-          void stopAndSaveTimeLog("Auto-stopped (no response)").then(() => {
-            if (job?.id) {
-              void postTimerNotification(
-                "Timer auto-stopped",
-                `Your timer was stopped automatically for ${job.number} (no response)`,
-                job.id,
-              );
-            }
-          });
-          return 0;
-        }
-        return c - 1;
-      });
-    }, 1000);
-    return () => { if (autoStopRef.current) clearInterval(autoStopRef.current); };
-  }, [showActivityPing, seconds]);
 
   const completedCount = checklist.filter((c) => c.status === "completed").length;
   const checklistProgress = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
@@ -2402,7 +2365,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   const stopAndSaveTimeLog = async (_task: string) => {
     if (!job?.id) return;
 
-    setShowActivityPing(false);
+    dismissPing();
 
     try {
       await stopTimerSession();
@@ -4568,9 +4531,9 @@ export default function JobDetail({ role = "user", id }: Props) {
               <div className="flex-1">
                 <div className="flex items-center justify-between mb-1">
                   <div className="font-bold text-gray-900 text-sm">Still working?</div>
-                  <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Auto-stop in {autoStopCountdown}s</span>
+                  <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Auto-pause in {autoStopCountdown}s</span>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">We'll auto-stop your timer and save the log if you don't respond.</p>
+                <p className="text-xs text-gray-500 mt-1">If this tab is open and you don't answer, the timer pauses so you can Resume. It will not stop while you are working in another window.</p>
                 <div className="h-1 bg-gray-100 rounded-full overflow-hidden mt-2">
                   <motion.div
                     key={autoStopCountdown}
@@ -4582,7 +4545,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 </div>
                 <div className="flex gap-2 mt-3">
                   <button
-                    onClick={() => setShowActivityPing(false)}
+                    onClick={() => dismissPing()}
                     className="flex-1 py-1.5 bg-primary text-white rounded-lg text-xs font-bold hover:bg-primary/90"
                   >
                     Yes, continue
