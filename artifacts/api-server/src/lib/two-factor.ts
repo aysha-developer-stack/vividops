@@ -12,7 +12,7 @@ import {
   CHALLENGE_MAX_ATTEMPTS,
   CHALLENGE_TTL_MS,
   TRUSTED_DEVICE_TTL_DAYS,
-  decryptSecret,
+  decryptSecretWithMeta,
   encryptSecret,
   generateBackupCodes,
   hashBackupCode,
@@ -146,13 +146,30 @@ export async function clearTrustedDevicesForUser(userId: string): Promise<void> 
   await db.delete(twoFactorTrustedDevices).where(eq(twoFactorTrustedDevices.userId, userId));
 }
 
-export function verifyUserTotp(user: UserRow, code: string): boolean {
-  if (!user.totpSecret) return false;
+export type TotpVerifyResult = { ok: true } | { ok: false; reason: "missing" | "decrypt" | "mismatch" };
+
+export async function verifyUserTotp(user: UserRow, code: string): Promise<TotpVerifyResult> {
+  if (!user.totpSecret) return { ok: false, reason: "missing" };
+  let secretPlain: string;
+  let usedFallback = false;
   try {
-    return verifyTotpCode(decryptSecret(user.totpSecret), code);
+    const decrypted = decryptSecretWithMeta(user.totpSecret);
+    secretPlain = decrypted.plain;
+    usedFallback = decrypted.usedFallback;
   } catch {
-    return false;
+    return { ok: false, reason: "decrypt" };
   }
+  if (usedFallback) {
+    try {
+      await db
+        .update(users)
+        .set({ totpSecret: encryptSecret(secretPlain), updatedAt: new Date() })
+        .where(eq(users.id, user.id));
+    } catch {
+      // Login can still succeed; rewrite can retry on the next valid code.
+    }
+  }
+  return verifyTotpCode(secretPlain, code) ? { ok: true } : { ok: false, reason: "mismatch" };
 }
 
 export async function consumeUserBackupCode(user: UserRow, code: string): Promise<boolean> {

@@ -3,36 +3,69 @@ import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, 
 export const TOTP_ISSUER = "VividOps";
 export const TOTP_PERIOD_SECONDS = 30;
 export const TOTP_DIGITS = 6;
-export const TOTP_WINDOW = 1;
+/** Accept current ± 2 steps (about 90s) so phone/server clock drift does not reject a valid app code. */
+export const TOTP_WINDOW = 2;
 export const BACKUP_CODE_COUNT = 10;
 export const TRUSTED_DEVICE_TTL_DAYS = 30;
 export const CHALLENGE_TTL_MS = 10 * 60 * 1000;
 export const CHALLENGE_MAX_ATTEMPTS = 8;
+const DEV_ENCRYPTION_FALLBACK = "vividops-2fa-dev-key";
 
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
-function encryptionKey(): Buffer {
-  const secret = process.env.SESSION_SECRET || process.env.DATABASE_URL || "vividops-2fa-dev-key";
-  return createHash("sha256").update(`vops-totp:${secret}`).digest();
+function candidateEncryptionMaterials(): string[] {
+  const materials: string[] = [];
+  const add = (value: string | undefined) => {
+    if (value && !materials.includes(value)) materials.push(value);
+  };
+  add(process.env.SESSION_SECRET);
+  add(process.env.DATABASE_URL);
+  add(DEV_ENCRYPTION_FALLBACK);
+  return materials;
 }
 
-export function encryptSecret(plain: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
-  const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([iv, tag, enc]).toString("base64");
+function encryptionKeyFrom(material: string): Buffer {
+  return createHash("sha256").update(`vops-totp:${material}`).digest();
 }
 
-export function decryptSecret(payload: string): string {
+function currentEncryptionKey(): Buffer {
+  return encryptionKeyFrom(candidateEncryptionMaterials()[0]);
+}
+
+function decryptWithKey(payload: string, key: Buffer): string {
   const buf = Buffer.from(payload, "base64");
   if (buf.length < 29) throw new Error("Invalid encrypted secret");
   const iv = buf.subarray(0, 12);
   const tag = buf.subarray(12, 28);
   const enc = buf.subarray(28);
-  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), iv);
+  const decipher = createDecipheriv("aes-256-gcm", key, iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
+}
+
+export function encryptSecret(plain: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", currentEncryptionKey(), iv);
+  const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([iv, tag, enc]).toString("base64");
+}
+
+export function decryptSecretWithMeta(payload: string): { plain: string; usedFallback: boolean } {
+  const materials = candidateEncryptionMaterials();
+  let lastError: unknown;
+  for (let i = 0; i < materials.length; i += 1) {
+    try {
+      return { plain: decryptWithKey(payload, encryptionKeyFrom(materials[i])), usedFallback: i > 0 };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Invalid encrypted secret");
+}
+
+export function decryptSecret(payload: string): string {
+  return decryptSecretWithMeta(payload).plain;
 }
 
 export function encodeBase32(bytes: Buffer): string {
@@ -132,6 +165,12 @@ export function generateBackupCodes(): string[] {
 
 export function normalizeBackupCode(code: string): string {
   return (code ?? "").toUpperCase().replace(/[^A-Z2-7]/g, "");
+}
+
+export function looksLikeBackupCode(code: string): boolean {
+  const digitsOnly = (code ?? "").replace(/\s+/g, "");
+  if (/^\d{6}$/.test(digitsOnly)) return false;
+  return normalizeBackupCode(code).length >= 8;
 }
 
 export function hashToken(value: string): string {

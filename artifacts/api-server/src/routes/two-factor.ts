@@ -10,6 +10,7 @@ import {
   decryptSecret,
   encryptSecret,
   generateTotpSecret,
+  looksLikeBackupCode,
   totpOtpauthUrl,
   verifyTotpCode,
 } from "../lib/totp";
@@ -56,11 +57,21 @@ router.post("/auth/2fa/enroll-start", async (req, res) => {
       return res.status(400).json({ error: "Two-factor authentication is already set up." });
     }
 
-    const secret = generateTotpSecret();
-    await db
-      .update(twoFactorChallenges)
-      .set({ pendingTotpSecret: encryptSecret(secret) })
-      .where(eq(twoFactorChallenges.id, challenge.id));
+    let secret: string | null = null;
+    if (challenge.pendingTotpSecret) {
+      try {
+        secret = decryptSecret(challenge.pendingTotpSecret);
+      } catch {
+        secret = null;
+      }
+    }
+    if (!secret) {
+      secret = generateTotpSecret();
+      await db
+        .update(twoFactorChallenges)
+        .set({ pendingTotpSecret: encryptSecret(secret) })
+        .where(eq(twoFactorChallenges.id, challenge.id));
+    }
 
     return res.json({
       secret,
@@ -127,7 +138,25 @@ router.post("/auth/2fa/verify", async (req, res) => {
 
     const code = readCode(req.body);
     const useBackup = (req.body as { useBackupCode?: unknown })?.useBackupCode === true;
-    const ok = useBackup ? await consumeUserBackupCode(user, code) : verifyUserTotp(user, code);
+    let usedBackupCode = useBackup;
+    let ok = false;
+    if (useBackup || looksLikeBackupCode(code)) {
+      ok = await consumeUserBackupCode(user, code);
+      usedBackupCode = ok;
+    }
+    if (!ok && !useBackup) {
+      const totp = await verifyUserTotp(user, code);
+      if (totp.ok) {
+        ok = true;
+      } else if (totp.reason === "decrypt") {
+        logger.error({ userId: user.id }, "2FA authenticator secret could not be decrypted");
+        await bumpChallengeAttempts(challenge.id, challenge.attempts ?? 0);
+        return res.status(401).json({
+          error:
+            "Authenticator is out of date. Use a backup/copy code, then ask a Super Admin to reset 2FA and scan the QR again.",
+        });
+      }
+    }
     if (!ok) {
       await bumpChallengeAttempts(challenge.id, challenge.attempts ?? 0);
       return res.status(401).json({
@@ -140,7 +169,7 @@ router.post("/auth/2fa/verify", async (req, res) => {
     if (rememberRequested(req.body)) {
       await rememberTrustedDevice(user.id, req, res);
     }
-    return res.json({ user: publicUser(loggedIn), usedBackupCode: useBackup });
+    return res.json({ user: publicUser(loggedIn), usedBackupCode });
   } catch (err) {
     logger.error({ err }, "Failed to verify 2FA");
     return res.status(500).json({ error: "Could not verify authentication code" });
@@ -172,8 +201,14 @@ router.post("/auth/2fa/backup-codes", requireAuth, async (req, res) => {
     if (!isTwoFactorEnrolled(user)) {
       return res.status(400).json({ error: "Two-factor authentication is not set up." });
     }
-    if (!verifyUserTotp(user, readCode(req.body))) {
-      return res.status(401).json({ error: "Invalid authentication code" });
+    const totp = await verifyUserTotp(user, readCode(req.body));
+    if (!totp.ok) {
+      return res.status(401).json({
+        error:
+          totp.reason === "decrypt"
+            ? "Authenticator is out of date. Use a backup/copy code, then ask a Super Admin to reset 2FA and scan the QR again."
+            : "Invalid authentication code",
+      });
     }
     const backupCodes = await replaceBackupCodes(user.id);
     return res.json({ backupCodes });
