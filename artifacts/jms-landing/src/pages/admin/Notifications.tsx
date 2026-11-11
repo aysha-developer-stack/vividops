@@ -147,7 +147,12 @@ export default function Notifications({ role = "super-admin" }: { role?: Role })
     if (notification.unread) {
       await toggleOne(notification.id);
     }
-    setLocation(getNotificationPath(role, { type: notification.type, jobId: notification.jobId }));
+    setLocation(getNotificationPath(role, {
+      type: notification.type,
+      jobId: notification.jobId,
+      title: notification.title,
+      description: notification.desc,
+    }));
   };
 
   if (isLoading) {

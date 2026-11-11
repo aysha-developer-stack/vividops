@@ -23,13 +23,16 @@ const ROLE_BASES: Record<string, string> = {
 
 const JOB_TABS: Record<string, string> = {
   job_message: "communication",
-  checklist: "checklist",
+  cliq_channel: "communication",
+  checklist: "files",
   file: "files",
   timer: "logs",
   rework: "mistakes",
   error: "mistakes",
   appreciation: "appreciation",
+  note: "notes",
   assigned: "overview",
+  admin_ops: "overview",
   updated: "overview",
   overdue: "overview",
   completed: "overview",

@@ -1,6 +1,6 @@
 import { 
   Briefcase, Edit3, AlertTriangle, Award, Clock, RefreshCw, Bell, 
-  ListChecks, Folder, GraduationCap, BarChart3, CheckCircle2, MessageCircle,
+  ListChecks, Folder, GraduationCap, BarChart3, CheckCircle2, MessageCircle, StickyNote,
   type LucideIcon 
 } from "lucide-react";
 import type { Role } from "./roles";
@@ -20,7 +20,8 @@ export type NotifType =
   | "progress"
   | "completed"
   | "admin_ops"
-  | "appreciation";
+  | "appreciation"
+  | "note";
 
 /** Client-spec priority: urgent job alerts first, then assignments, timer, rework, messages, reports. */
 export const NOTIFICATION_PRIORITY: Record<string, number> = {
@@ -37,6 +38,7 @@ export const NOTIFICATION_PRIORITY: Record<string, number> = {
   completed: 8,
   appreciation: 8,
   file: 9,
+  note: 9,
   training: 10,
   progress: 11,
 };
@@ -94,6 +96,7 @@ export const NOTIF_STYLE: Record<string, { icon: LucideIcon; color: string; labe
   training: { icon: GraduationCap, color: "bg-rose-50 text-rose-600", label: "Training" },
   error: { icon: AlertTriangle, color: "bg-red-100 text-red-700", label: "Error" },
   appreciation: { icon: Award, color: "bg-emerald-50 text-emerald-700", label: "Appreciation" },
+  note: { icon: StickyNote, color: "bg-sky-50 text-sky-700", label: "Note" },
   progress: { icon: BarChart3, color: "bg-blue-50 text-blue-600", label: "Progress" },
 };
 

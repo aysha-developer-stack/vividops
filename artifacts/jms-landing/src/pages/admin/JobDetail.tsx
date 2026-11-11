@@ -116,6 +116,7 @@ import { useUploadProgress } from "@/hooks/useUploadProgress";
 import { uploadJobAttachmentWithProgress } from "@/lib/uploadJobAttachmentWithProgress";
 import AttachmentPreviewDialog, { canOpenAttachmentPreview } from "@/components/AttachmentPreviewDialog";
 import { attachmentExtension, prefetchImagePreview } from "@/lib/attachmentPreview";
+import { useJobTabUnread } from "@/lib/useJobTabUnread";
 
 interface Props { role?: Role; id?: string }
 
@@ -647,6 +648,7 @@ export default function JobDetail({ role = "user", id }: Props) {
   })();
   const defaultTab: TabId = tabFromQuery ?? (role === "supervisor" || role === "coordinator" ? "overview" : "files");
   const [tab, setTab] = useState<TabId>(defaultTab);
+  const unreadTabs = useJobTabUnread(jobId || job?.id, tab);
   const completedFilesSectionRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -3029,6 +3031,7 @@ export default function JobDetail({ role = "user", id }: Props) {
         {TABS.map((t) => {
           const Icon = t.icon;
           const active = tab === t.id;
+          const hasAlert = unreadTabs.has(t.id);
           return (
             <motion.button
               key={t.id}
@@ -3038,6 +3041,9 @@ export default function JobDetail({ role = "user", id }: Props) {
             >
               {active && <motion.div layoutId="jobTab" className="absolute inset-0 bg-primary rounded-lg pointer-events-none" transition={{ type: "spring", stiffness: 300, damping: 25 }} />}
               <span className="relative flex items-center gap-2"><Icon size={14} /> {t.label}</span>
+              {hasAlert && (
+                <span className="absolute top-1 right-1 z-10 h-2 w-2 rounded-full bg-red-500" />
+              )}
             </motion.button>
           );
         })}

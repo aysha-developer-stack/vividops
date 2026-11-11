@@ -246,7 +246,12 @@ export default function DashboardLayout({
       void markOneRead(notification.id);
     }
     setNotifOpen(false);
-    setLocation(getNotificationPath(role, { type: notification.type, jobId: notification.jobId }));
+    setLocation(getNotificationPath(role, {
+      type: notification.type,
+      jobId: notification.jobId,
+      title: notification.title,
+      description: notification.desc,
+    }));
   };
 
   const prefetchDataForPath = (path: string) => {

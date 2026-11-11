@@ -143,6 +143,29 @@ router.post("/notifications", requireAuth, async (req, res) => {
   }
 });
 
+router.post("/notifications/read", requireAuth, async (req, res) => {
+  try {
+    await ensureSchema();
+    const user = req.session!.user;
+    const rawIds = (req.body as { ids?: unknown })?.ids;
+    const ids = Array.isArray(rawIds)
+      ? rawIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0).map((id) => id.trim())
+      : [];
+    if (ids.length === 0) return res.json({ success: true, count: 0 });
+
+    const updated = await db
+      .update(notifications)
+      .set({ isRead: true, readAt: new Date() })
+      .where(and(eq(notifications.userId, user.id), inArray(notifications.id, ids)))
+      .returning({ id: notifications.id });
+
+    return res.json({ success: true, count: updated.length });
+  } catch (err) {
+    logger.error({ err }, "Failed to mark notifications as read");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.patch("/notifications/:id/read", requireAuth, async (req, res) => {
   try {
     await ensureSchema();

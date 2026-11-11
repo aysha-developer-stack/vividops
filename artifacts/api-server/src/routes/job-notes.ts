@@ -203,7 +203,7 @@ router.post("/jobs/:jobId/notes", requireAuth, async (req, res) => {
       actorId: actor.id,
       title: `New note on ${jobRow.title}`,
       description: `${actor.name} added a ${noteType} note: ${previewText(text)}`,
-      type: "updated",
+      type: "note",
     });
 
     if (jobRow.assigneeId && jobRow.assigneeId !== actor.id && noteType !== "internal") {
@@ -212,7 +212,7 @@ router.post("/jobs/:jobId/notes", requireAuth, async (req, res) => {
         jobId,
         title: `New note on ${jobRow.title}`,
         description: `${actor.name} added a note: ${previewText(text)}`,
-        type: "updated",
+        type: "note",
       });
     }
 
@@ -312,7 +312,7 @@ router.patch("/jobs/:jobId/notes/:noteId", requireAuth, async (req, res) => {
         actorId: actor.id,
         title: `Note updated on ${jobRow.title}`,
         description: `${actor.name} edited a note: ${previewText(updates.text)}`,
-        type: "updated",
+        type: "note",
       });
     }
 
@@ -381,7 +381,7 @@ router.delete("/jobs/:jobId/notes/:noteId", requireAuth, async (req, res) => {
       actorId: actor.id,
       title: `Note removed on ${jobRow.title}`,
       description: `${actor.name} deleted a note: ${previewText(existing.text)}`,
-      type: "updated",
+      type: "note",
     });
 
     res.json({ ok: true });

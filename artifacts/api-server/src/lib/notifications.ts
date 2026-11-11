@@ -3,7 +3,7 @@ import { logger } from "./logger";
 import { pushNotificationRealtime } from "./socket";
 import { sendWebPushNotification } from "./web-push";
 
-export type NotificationType = "assigned" | "updated" | "overdue" | "timer" | "rework" | "job_message" | "cliq_channel" | "checklist" | "file" | "training" | "progress" | "error" | "completed" | "admin_ops" | "appreciation";
+export type NotificationType = "assigned" | "updated" | "overdue" | "timer" | "rework" | "job_message" | "cliq_channel" | "checklist" | "file" | "training" | "progress" | "error" | "completed" | "admin_ops" | "appreciation" | "note";
 
 /** Notification types that refer to a job — hide/delete when the job no longer exists. */
 export const JOB_LINKED_NOTIFICATION_TYPES: NotificationType[] = [
@@ -18,6 +18,8 @@ export const JOB_LINKED_NOTIFICATION_TYPES: NotificationType[] = [
   "file",
   "error",
   "completed",
+  "appreciation",
+  "note",
 ];
 
 export async function deleteNotificationsForJob(jobId: string): Promise<number> {
