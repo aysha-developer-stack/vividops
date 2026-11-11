@@ -120,31 +120,34 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
     return () => { cancelled = true; };
   }, [period, userFilter]);
 
-  const allWorkers = useMemo(() => {
-    return (apiUsers ?? []).filter((u) => u.role === "user");
+  const allPeople = useMemo(() => {
+    return (apiUsers ?? []).filter((u) => u.role === "user" || u.role === "supervisor");
   }, [apiUsers]);
 
-  const workerOptions = useMemo(() => {
-    if (!draft.jobId) return allWorkers;
+  const personOptions = useMemo(() => {
+    if (!draft.jobId) return allPeople;
     const job = (apiJobs ?? []).find((j) => j.id === draft.jobId);
     const assignedIds = new Set(
-      [...(job?.assignees ?? []).map((a) => a.id), job?.assignee?.id].filter(
-        (id): id is string => Boolean(id),
-      ),
+      [
+        ...(job?.assignees ?? []).map((a) => a.id),
+        job?.assignee?.id,
+        job?.supervisor?.id,
+        job?.supervisorId,
+      ].filter((id): id is string => Boolean(id)),
     );
     if (assignedIds.size === 0) return [];
-    return allWorkers.filter((u) => assignedIds.has(u.id));
-  }, [allWorkers, apiJobs, draft.jobId]);
+    return allPeople.filter((u) => assignedIds.has(u.id));
+  }, [allPeople, apiJobs, draft.jobId]);
 
   const selectedUserName = useMemo(() => {
     if (!userFilter) return null;
     return (
       analytics?.userProfile?.name ??
       analytics?.byUser.find((u) => u.userId === userFilter)?.name ??
-      allWorkers.find((u) => u.id === userFilter)?.name ??
-      "Selected user"
+      allPeople.find((u) => u.id === userFilter)?.name ??
+      "Selected person"
     );
-  }, [userFilter, analytics, allWorkers]);
+  }, [userFilter, analytics, allPeople]);
 
   const jobOptions = useMemo(() => {
     return [...(apiJobs ?? [])].sort((a, b) => {
@@ -617,15 +620,17 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
               {logError ? <p className="text-sm text-red-600 mb-3">{logError}</p> : null}
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase">User *</label>
+                  <label className="text-xs font-bold text-gray-500 uppercase">Person *</label>
                   <select
                     value={draft.userId}
                     onChange={(e) => setDraft((d) => ({ ...d, userId: e.target.value }))}
                     className={FORM_SELECT}
                   >
-                    <option value="" className="text-gray-500">Select user…</option>
-                    {workerOptions.map((u) => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
+                    <option value="" className="text-gray-500">Select person…</option>
+                    {personOptions.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.role === "supervisor" ? `${u.name} (Supervisor)` : u.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -638,9 +643,12 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                       setDraft((d) => {
                         const job = (apiJobs ?? []).find((j) => j.id === jobId);
                         const assignedIds = new Set(
-                          [...(job?.assignees ?? []).map((a) => a.id), job?.assignee?.id].filter(
-                            (id): id is string => Boolean(id),
-                          ),
+                          [
+                            ...(job?.assignees ?? []).map((a) => a.id),
+                            job?.assignee?.id,
+                            job?.supervisor?.id,
+                            job?.supervisorId,
+                          ].filter((id): id is string => Boolean(id)),
                         );
                         const userId = jobId && assignedIds.size > 0 && !assignedIds.has(d.userId) ? "" : d.userId;
                         return { ...d, jobId, userId };
@@ -659,8 +667,8 @@ export default function Mistakes({ role = "super-admin" as Role }: { role?: Role
                       );
                     })}
                   </select>
-                  {draft.jobId && workerOptions.length === 0 ? (
-                    <p className="text-xs text-amber-700 mt-1">This job has no assigned workers. Pick a different job or leave job unlinked.</p>
+                  {draft.jobId && personOptions.length === 0 ? (
+                    <p className="text-xs text-amber-700 mt-1">This job has no assigned workers or supervisor. Pick a different job or leave job unlinked.</p>
                   ) : null}
                 </div>
                 <div>

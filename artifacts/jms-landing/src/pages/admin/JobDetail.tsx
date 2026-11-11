@@ -1012,6 +1012,24 @@ export default function JobDetail({ role = "user", id }: Props) {
     }
     return out;
   }, [job?.assignee, job?.assignees, jobMembers]);
+  const mistakePeople = useMemo(() => {
+    const out: Array<{ id: string; name: string; role?: string }> = jobWorkers.map((w) => ({
+      ...w,
+      role: "user",
+    }));
+    const addSupervisor = (id?: string | null, name?: string | null) => {
+      if (!id || out.some((p) => p.id === id)) return;
+      out.push({ id, name: name ?? "Supervisor", role: "supervisor" });
+    };
+    addSupervisor(job?.supervisor?.id, job?.supervisor?.name);
+    for (const member of job?.assignees ?? []) {
+      if (member?.role === "supervisor") addSupervisor(member.id, member.name);
+    }
+    for (const member of jobMembers) {
+      if (member.role === "supervisor") addSupervisor(member.id, member.name);
+    }
+    return out;
+  }, [jobWorkers, job?.supervisor, job?.assignees, jobMembers]);
   const assignedUserNames = useMemo(() => {
     if (jobWorkers.length > 0) return jobWorkers.map((w) => w.name).join(", ");
     return job?.assignee?.name ?? "Unassigned";
@@ -4390,7 +4408,7 @@ export default function JobDetail({ role = "user", id }: Props) {
             jobId={job.id}
             role={role}
             currentUserId={currentUser?.id}
-            workers={jobWorkers}
+            workers={mistakePeople}
             defaultUserId={job.assignee?.id}
             logRequestToken={mistakesLogToken}
           />

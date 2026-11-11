@@ -475,13 +475,14 @@ router.post("/mistakes", requireAuth, async (req, res) => {
 
     const assignedIds = new Set<string>();
     if (j.assigneeId) assignedIds.add(j.assigneeId);
+    if (j.supervisorId) assignedIds.add(j.supervisorId);
     const members = await db
       .select({ userId: jobMembers.userId })
       .from(jobMembers)
       .where(eq(jobMembers.jobId, j.id));
     for (const member of members) assignedIds.add(member.userId);
     if (!assignedIds.has(body.userId)) {
-      res.status(400).json({ error: "userId must belong to the selected job" });
+      res.status(400).json({ error: "Person must be a worker or supervisor on the selected job" });
       return;
     }
   }

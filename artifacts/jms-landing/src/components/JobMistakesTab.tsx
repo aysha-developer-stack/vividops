@@ -33,7 +33,11 @@ export type JobMistakeRecord = {
   createdBy: { id: string; name: string } | null;
 };
 
-type WorkerOption = { id: string; name: string };
+type WorkerOption = { id: string; name: string; role?: string };
+
+function personOptionLabel(person: WorkerOption): string {
+  return person.role === "supervisor" ? `${person.name} (Supervisor)` : person.name;
+}
 
 type Props = {
   jobId: string;
@@ -259,7 +263,7 @@ export default function JobMistakesTab({
               </div>
               <p className="text-sm text-gray-700 mb-4 whitespace-pre-wrap">{selected.description}</p>
               <div className="text-xs text-gray-600 space-y-1 mb-4">
-                <div>User: <span className="font-semibold text-gray-900">{selected.user?.name ?? "—"}</span></div>
+                <div>Person: <span className="font-semibold text-gray-900">{selected.user?.name ?? "—"}</span></div>
                 <div>Type: <span className="font-semibold text-gray-900">{formatMistakeCategory(selected.category)}</span></div>
                 <div>Severity: <span className="font-semibold text-gray-900 capitalize">{selected.severity}</span></div>
                 <div>Status: <span className="font-semibold text-gray-900 capitalize">{selected.status}</span></div>
@@ -321,15 +325,15 @@ export default function JobMistakesTab({
               <h3 className="font-bold text-gray-900 mb-4">Log Mistake</h3>
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-bold text-gray-600 uppercase">User *</label>
+                  <label className="text-xs font-bold text-gray-600 uppercase">Person *</label>
                   <select
                     value={draft.userId}
                     onChange={(e) => setDraft((d) => ({ ...d, userId: e.target.value }))}
                     className={FORM_SELECT}
                   >
-                    <option value="" className="text-gray-500">Select user…</option>
+                    <option value="" className="text-gray-500">Select person…</option>
                     {workers.map((w) => (
-                      <option key={w.id} value={w.id}>{w.name}</option>
+                      <option key={w.id} value={w.id}>{personOptionLabel(w)}</option>
                     ))}
                   </select>
                 </div>
