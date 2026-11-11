@@ -27,7 +27,7 @@ import {
 export const TWO_FACTOR_TRUST_COOKIE = "vops_2fa_trust";
 
 /** Set to true only for a temporary super-admin login bypass. */
-export const SKIP_TWO_FACTOR_FOR_SUPER_ADMIN = true;
+export const SKIP_TWO_FACTOR_FOR_SUPER_ADMIN = false;
 
 export function shouldSkipTwoFactor(user: Pick<UserRow, "role">): boolean {
   return SKIP_TWO_FACTOR_FOR_SUPER_ADMIN && user.role === "super-admin";
