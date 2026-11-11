@@ -4419,7 +4419,7 @@ export default function JobDetail({ role = "user", id }: Props) {
             jobId={job.id}
             role={role}
             currentUserId={currentUser?.id}
-            workers={jobWorkers}
+            workers={mistakePeople}
             defaultUserId={job.assignee?.id}
             logRequestToken={appreciationLogToken}
           />
