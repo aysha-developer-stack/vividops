@@ -90,6 +90,7 @@ export async function ensureLegacySupervisorAssignments() {
 let jobWriteSchemaEnsured = false;
 let twoFactorSchemaEnsured = false;
 let appreciationSchemaEnsured = false;
+let freeTimeSchemaEnsured = false;
 
 export async function ensureAppreciationSchema() {
   if (appreciationSchemaEnsured) return;
@@ -113,6 +114,54 @@ export async function ensureAppreciationSchema() {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS appreciations_category_idx ON appreciations (category)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS appreciations_level_idx ON appreciations (level)`);
   appreciationSchemaEnsured = true;
+}
+
+export async function ensureFreeTimeSchema() {
+  if (freeTimeSchemaEnsured) return;
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS free_time_reports (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_by_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      report_date date NOT NULL,
+      started_at timestamptz NOT NULL DEFAULT now(),
+      ended_at timestamptz,
+      duration_seconds integer NOT NULL DEFAULT 0,
+      worker_notes text NOT NULL DEFAULT '',
+      supervisor_notes text,
+      reviewed_by_id uuid REFERENCES users(id) ON DELETE SET NULL,
+      reviewed_at timestamptz,
+      source text NOT NULL DEFAULT 'auto',
+      status text NOT NULL DEFAULT 'open',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`ALTER TABLE free_time_reports ADD COLUMN IF NOT EXISTS started_at timestamptz`);
+  await db.execute(sql`ALTER TABLE free_time_reports ADD COLUMN IF NOT EXISTS ended_at timestamptz`);
+  await db.execute(sql`ALTER TABLE free_time_reports ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'auto'`);
+  await db.execute(sql`ALTER TABLE free_time_reports ALTER COLUMN worker_notes SET DEFAULT ''`);
+  await db.execute(sql`ALTER TABLE free_time_reports ALTER COLUMN duration_seconds SET DEFAULT 0`);
+  await db.execute(sql`ALTER TABLE free_time_reports ALTER COLUMN status SET DEFAULT 'open'`);
+  await db.execute(sql`
+    UPDATE free_time_reports
+    SET started_at = COALESCE(started_at, created_at)
+    WHERE started_at IS NULL
+  `);
+  await db.execute(sql`
+    UPDATE free_time_reports
+    SET ended_at = COALESCE(ended_at, updated_at, created_at)
+    WHERE ended_at IS NULL AND status IS DISTINCT FROM 'open'
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS free_time_reports_user_idx ON free_time_reports (user_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS free_time_reports_date_idx ON free_time_reports (report_date)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS free_time_reports_status_idx ON free_time_reports (status)`);
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS free_time_reports_open_user_idx
+    ON free_time_reports (user_id)
+    WHERE ended_at IS NULL
+  `);
+  freeTimeSchemaEnsured = true;
 }
 
 export async function ensureTwoFactorSchema() {
@@ -671,6 +720,28 @@ export async function ensureAllSchemas() {
       CREATE INDEX IF NOT EXISTS appreciations_category_idx ON appreciations(category);
       CREATE INDEX IF NOT EXISTS appreciations_level_idx ON appreciations(level);
 
+      CREATE TABLE IF NOT EXISTS free_time_reports (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_by_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        report_date date NOT NULL,
+        started_at timestamptz NOT NULL DEFAULT now(),
+        ended_at timestamptz,
+        duration_seconds integer NOT NULL DEFAULT 0,
+        worker_notes text NOT NULL DEFAULT '',
+        supervisor_notes text,
+        reviewed_by_id uuid REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_at timestamptz,
+        source text NOT NULL DEFAULT 'auto',
+        status text NOT NULL DEFAULT 'open',
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS free_time_reports_user_idx ON free_time_reports (user_id);
+      CREATE INDEX IF NOT EXISTS free_time_reports_date_idx ON free_time_reports (report_date);
+      CREATE INDEX IF NOT EXISTS free_time_reports_status_idx ON free_time_reports (status);
+      CREATE UNIQUE INDEX IF NOT EXISTS free_time_reports_open_user_idx ON free_time_reports (user_id) WHERE ended_at IS NULL;
+
       CREATE TABLE IF NOT EXISTS checklist_templates (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         name text NOT NULL,
@@ -789,6 +860,7 @@ export async function ensureAllSchemas() {
     await ensureJobMessageSyncSchema();
     await ensureLegacySupervisorAssignments();
     await ensurePushSubscriptionsSchema();
+    await ensureFreeTimeSchema();
     twoFactorSchemaEnsured = true;
     builderSpecsSchemaEnsured = true;
     

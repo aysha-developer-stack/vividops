@@ -41,6 +41,7 @@ const FILTERS: Array<{ id: "all" | "unread" | NotifType; label: string }> = [
   { id: "appreciation", label: "Appreciation" },
   { id: "progress", label: "Reports" },
   { id: "updated", label: "Updates" },
+  { id: "free_time", label: "Free Time" },
 ];
 
 export default function Notifications({ role = "super-admin" }: { role?: Role }) {

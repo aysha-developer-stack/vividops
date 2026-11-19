@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { jobTabForNotification, jobTabsForNotification } from "./notificationNavigation.ts";
+import { getNotificationPath, jobTabForNotification, jobTabsForNotification } from "./notificationNavigation.ts";
 
 describe("jobTabForNotification", () => {
   it("maps each notification type onto the matching job tab", () => {
@@ -42,5 +42,16 @@ describe("jobTabForNotification", () => {
   it("does not map training alerts onto a job tab", () => {
     assert.equal(jobTabForNotification({ type: "training" }), null);
     assert.deepEqual(jobTabsForNotification({ type: "training" }), []);
+  });
+
+  it("does not map free time alerts onto a job tab", () => {
+    assert.equal(jobTabForNotification({ type: "free_time" }), null);
+  });
+});
+
+describe("getNotificationPath", () => {
+  it("opens Free Time from free_time alerts", () => {
+    assert.equal(getNotificationPath("user", { type: "free_time" }), "/user/free-time");
+    assert.equal(getNotificationPath("supervisor", { type: "free_time" }), "/supervisor/free-time");
   });
 });

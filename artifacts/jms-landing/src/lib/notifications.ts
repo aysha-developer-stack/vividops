@@ -1,6 +1,6 @@
 import { 
   Briefcase, Edit3, AlertTriangle, Award, Clock, RefreshCw, Bell, 
-  ListChecks, Folder, GraduationCap, BarChart3, CheckCircle2, MessageCircle, StickyNote,
+  ListChecks, Folder, GraduationCap, BarChart3, CheckCircle2, MessageCircle, StickyNote, Coffee,
   type LucideIcon 
 } from "lucide-react";
 import type { Role } from "./roles";
@@ -21,7 +21,8 @@ export type NotifType =
   | "completed"
   | "admin_ops"
   | "appreciation"
-  | "note";
+  | "note"
+  | "free_time";
 
 /** Client-spec priority: urgent job alerts first, then assignments, timer, rework, messages, reports. */
 export const NOTIFICATION_PRIORITY: Record<string, number> = {
@@ -41,6 +42,7 @@ export const NOTIFICATION_PRIORITY: Record<string, number> = {
   note: 9,
   training: 10,
   progress: 11,
+  free_time: 12,
 };
 
 export const sortNotificationsByPriority = <T extends { type: string; unread?: boolean; isRead?: boolean }>(
@@ -98,6 +100,7 @@ export const NOTIF_STYLE: Record<string, { icon: LucideIcon; color: string; labe
   appreciation: { icon: Award, color: "bg-emerald-50 text-emerald-700", label: "Appreciation" },
   note: { icon: StickyNote, color: "bg-sky-50 text-sky-700", label: "Note" },
   progress: { icon: BarChart3, color: "bg-blue-50 text-blue-600", label: "Progress" },
+  free_time: { icon: Coffee, color: "bg-amber-50 text-amber-700", label: "Free Time" },
 };
 
 export const getNotifStyle = (type: string) => NOTIF_STYLE[type] || defaultNotifStyle;

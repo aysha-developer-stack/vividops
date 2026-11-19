@@ -395,6 +395,14 @@ async function start(): Promise<void> {
       setInterval(() => void purgeExpiredDeletedAttachments(), 60 * 60 * 1000);
     });
 
+    void import("./lib/free-time-tracking").then(({ reconcileFreeTime }) => {
+      setTimeout(() => void reconcileFreeTime().catch((err) => logger.error({ err }, "Free time reconcile failed")), 12_000);
+      setInterval(
+        () => void reconcileFreeTime().catch((err) => logger.error({ err }, "Free time reconcile failed")),
+        60 * 1000,
+      );
+    });
+
     // Run daily summary at 11:55 PM
     const scheduleDaily = () => {
       const now = new Date();

@@ -197,9 +197,14 @@ export default function SupervisorDashboard() {
             transition={{ delay: 0.4 }}
             className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
           >
-            <div className="p-5 border-b border-gray-100">
-              <h3 className="font-bold text-gray-900 flex items-center gap-2"><TrendingUp size={16} className="text-primary" /> My Team Today</h3>
-              <p className="text-xs text-gray-500 mt-1">Average productivity: {avgProductivity}% across supervised workers.</p>
+            <div className="p-5 border-b border-gray-100 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-gray-900 flex items-center gap-2"><TrendingUp size={16} className="text-primary" /> My Team Today</h3>
+                <p className="text-xs text-gray-500 mt-1">Average productivity: {avgProductivity}% across supervised workers.</p>
+              </div>
+              <Link href="/supervisor/free-time" className="text-[10px] font-bold text-primary hover:underline shrink-0">
+                Free Time
+              </Link>
             </div>
             <div className="p-3">
               {teamP.pageItems.map((t: any, i: number) => (

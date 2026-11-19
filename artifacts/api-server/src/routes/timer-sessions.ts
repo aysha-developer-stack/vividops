@@ -33,6 +33,7 @@ import {
   stampJobStartDateIfEmpty,
   markJobInProgressIfPending,
 } from "../lib/job-review";
+import { onJobTimerStarted, onJobTimerStopped } from "../lib/free-time-tracking";
 
 const router: IRouter = Router();
 
@@ -194,6 +195,7 @@ router.post("/timer-sessions/start", requireAuth, async (req, res) => {
 
     await markJobInProgressIfPending(jobId, actor);
     await stampJobStartDateIfEmpty(jobId);
+    await onJobTimerStarted(actor.id);
 
     const [reviewSession] = await db
       .select()
@@ -349,6 +351,7 @@ router.post("/timer-sessions/pause", requireAuth, async (req, res) => {
       job = j ?? null;
     }
 
+    await onJobTimerStopped(actor.id);
     return res.json(publicTimerSession(updated, job));
   } catch (err) {
     logger.error({ err }, "Failed to pause timer session");
@@ -364,6 +367,7 @@ router.post("/timer-sessions/stop", requireAuth, async (req, res) => {
     if (!session) return res.json({ duration: 0, timeLog: null });
 
     const duration = await stopSessionAndSaveLog(session, actor);
+    await onJobTimerStopped(actor.id);
     return res.json({ duration, timeLog: duration > 0 ? { duration } : null });
   } catch (err) {
     logger.error({ err }, "Failed to stop timer session");

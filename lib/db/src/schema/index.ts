@@ -7,6 +7,7 @@ export * from "./job_notes";
 export * from "./job_reworks";
 export * from "./error_reports";
 export * from "./appreciations";
+export * from "./free_time_reports";
 export * from "./job_members";
 export * from "./job_juniors";
 export * from "./checklist_state";

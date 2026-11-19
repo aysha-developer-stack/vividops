@@ -55,7 +55,7 @@ function looksLikeCompletionComment(notification: NotificationLinkInput): boolea
 }
 
 export function jobTabForNotification(notification: NotificationLinkInput): JobDetailTabId | null {
-  if (notification.type === "training" || notification.type === "progress") return null;
+  if (notification.type === "training" || notification.type === "progress" || notification.type === "free_time") return null;
   if (notification.type === "note" || looksLikeJobNote(notification)) return "notes";
   if (TYPE_TO_TAB[notification.type]) return TYPE_TO_TAB[notification.type];
   if (notification.jobId) return "overview";
@@ -89,6 +89,9 @@ export function getNotificationPath(role: Role, notification: NotificationLinkIn
   if (notification.type === "appreciation") {
     return `${base}/appreciation`;
   }
+  if (notification.type === "free_time") {
+    return `${base}/free-time`;
+  }
 
   return `${base}/notifications`;
 }
@@ -98,6 +101,7 @@ export function notificationIsNavigable(notification: NotificationLinkInput): bo
   return (
     notification.type === "training" ||
     notification.type === "progress" ||
-    notification.type === "appreciation"
+    notification.type === "appreciation" ||
+    notification.type === "free_time"
   );
 }

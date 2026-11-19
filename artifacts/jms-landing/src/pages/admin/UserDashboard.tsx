@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import {
   Briefcase, Clock, Bell, GraduationCap, Play, ArrowRight,
   CheckCircle2, Calendar, ListChecks,
-  AlertTriangle, TrendingUp, Square,
+  AlertTriangle, TrendingUp, Square, Coffee,
 } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import TimerActivityPing from "@/components/TimerActivityPing";
@@ -592,6 +592,22 @@ export default function UserDashboard() {
               </div>
             </div>
           </motion.div>
+
+          {!activeTimer?.running && (
+            <Link href="/user/free-time">
+              <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5 hover:border-amber-200 transition-colors">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-bold text-amber-900 flex items-center gap-2">
+                    <Coffee size={16} /> Free time
+                  </h4>
+                  <ArrowRight size={14} className="text-amber-700" />
+                </div>
+                <p className="text-xs text-amber-800">
+                  The system already tracks this idle time. Add what you did or learned so your supervisor can fill working notes.
+                </p>
+              </div>
+            </Link>
+          )}
 
           {/* Notifications */}
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">

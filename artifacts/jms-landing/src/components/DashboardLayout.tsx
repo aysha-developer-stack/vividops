@@ -318,6 +318,7 @@ export default function DashboardLayout({
     if (path.includes("/reports")) void import("@/pages/admin/Reports");
     if (path.includes("/communication")) void import("@/pages/admin/Communication");
     if (path.includes("/training")) void import("@/pages/admin/Training");
+    if (path.includes("/free-time")) void import("@/pages/admin/FreeTime");
     if (path.includes("/settings")) void import("@/pages/admin/Settings");
     if (path.includes("/builder-specs")) void import("@/pages/admin/BuilderSpecs");
     if (path.startsWith("/user/files")) void import("@/pages/admin/FilesChecklists");

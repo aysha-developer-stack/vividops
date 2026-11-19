@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Briefcase, Users, BarChart3, MessageCircle,
   Timer, GraduationCap, Settings, Crown, Shield, HardHat, User as UserIcon,
-  Activity, ClipboardList, Eye, FileText, AlertTriangle, Award, Folder, CheckSquare, Bell, ListChecks, UserCog,
+  Activity, ClipboardList, Eye, FileText, AlertTriangle, Award, Folder, CheckSquare, Bell, ListChecks, UserCog, Coffee,
 } from "lucide-react";
 
 export type Role = "super-admin" | "admin" | "supervisor" | "coordinator" | "user";
@@ -35,6 +35,7 @@ export const ROLES: Record<Role, RoleConfig> = {
       { label: "Mistakes", icon: AlertTriangle, path: "/super-admin/mistakes" },
       { label: "Appreciation", icon: Award, path: "/super-admin/appreciation" },
       { label: "System Monitoring", icon: Activity, path: "/super-admin/monitoring" },
+      { label: "Free Time", icon: Coffee, path: "/super-admin/free-time" },
       { label: "Supervisors", icon: HardHat, path: "/super-admin/supervisors" },
       { label: "Training", icon: GraduationCap, path: "/super-admin/training" },
       { label: "Communication", icon: MessageCircle, path: "/super-admin/communication" },
@@ -54,6 +55,7 @@ export const ROLES: Record<Role, RoleConfig> = {
       { label: "Jobs", icon: Briefcase, path: "/admin/jobs" },
       { label: "Builder Specs", icon: ClipboardList, path: "/admin/builder-specs" },
       { label: "Monitoring", icon: Eye, path: "/admin/monitoring" },
+      { label: "Free Time", icon: Coffee, path: "/admin/free-time" },
       { label: "Supervisors", icon: HardHat, path: "/admin/supervisors" },
       { label: "Reports", icon: BarChart3, path: "/admin/reports" },
       { label: "Mistakes", icon: AlertTriangle, path: "/admin/mistakes" },
@@ -75,6 +77,7 @@ export const ROLES: Record<Role, RoleConfig> = {
       { label: "Timer", icon: Timer, path: "/supervisor/timer" },
       { label: "Users", icon: Users, path: "/supervisor/users" },
       { label: "Monitoring", icon: Eye, path: "/supervisor/monitoring" },
+      { label: "Free Time", icon: Coffee, path: "/supervisor/free-time" },
       { label: "Communication", icon: MessageCircle, path: "/supervisor/communication" },
       { label: "Reports", icon: BarChart3, path: "/supervisor/reports" },
       { label: "Mistakes", icon: AlertTriangle, path: "/supervisor/mistakes" },
@@ -110,6 +113,7 @@ export const ROLES: Record<Role, RoleConfig> = {
       { label: "Dashboard", icon: LayoutDashboard, path: "/user" },
       { label: "My Jobs", icon: ClipboardList, path: "/user/jobs" },
       { label: "Timer", icon: Timer, path: "/user/timer" },
+      { label: "My Free Time", icon: Coffee, path: "/user/free-time" },
       { label: "Communication", icon: MessageCircle, path: "/user/communication" },
       { label: "Files & Checklists", icon: Folder, path: "/user/files" },
       { label: "My Reports", icon: BarChart3, path: "/user/reports" },

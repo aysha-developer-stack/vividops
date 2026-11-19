@@ -35,6 +35,7 @@ import NotificationTemplates from "@/pages/admin/NotificationTemplates";
 import SystemMonitoring from "@/pages/admin/SystemMonitoring";
 import Mistakes from "@/pages/admin/Mistakes";
 import Appreciations from "@/pages/admin/Appreciations";
+import FreeTime from "@/pages/admin/FreeTime";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -167,6 +168,7 @@ function AppRouter() {
         <Route path="/super-admin/jobs"><RequireSignedIn><JobManagement role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/builder-specs"><RequireSignedIn><BuilderSpecs role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/monitoring"><RequireSignedIn><SystemMonitoring role="super-admin" /></RequireSignedIn></Route>
+        <Route path="/super-admin/free-time"><RequireSignedIn><FreeTime role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/reports"><RequireSignedIn><Reports role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/mistakes"><RequireSignedIn><Mistakes role="super-admin" /></RequireSignedIn></Route>
         <Route path="/super-admin/appreciation"><RequireSignedIn><Appreciations role="super-admin" /></RequireSignedIn></Route>
@@ -185,6 +187,7 @@ function AppRouter() {
         <Route path="/admin/builder-specs"><RequireSignedIn><BuilderSpecs role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/supervisors"><RequireSignedIn><SupervisorMonitoring role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/monitoring"><RequireSignedIn><UserMonitoring role="admin" /></RequireSignedIn></Route>
+        <Route path="/admin/free-time"><RequireSignedIn><FreeTime role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/reports"><RequireSignedIn><Reports role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/mistakes"><RequireSignedIn><Mistakes role="admin" /></RequireSignedIn></Route>
         <Route path="/admin/appreciation"><RequireSignedIn><Appreciations role="admin" /></RequireSignedIn></Route>
@@ -200,6 +203,7 @@ function AppRouter() {
         <Route path="/supervisor/jobs/:id">{(params) => <RequireSignedIn><JobDetail id={params.id} role="supervisor" /></RequireSignedIn>}</Route>
         <Route path="/supervisor/jobs"><RequireSignedIn><JobManagement role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/monitoring"><RequireSignedIn><SupervisorMonitoring role="supervisor" /></RequireSignedIn></Route>
+        <Route path="/supervisor/free-time"><RequireSignedIn><FreeTime role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/reports"><RequireSignedIn><Reports role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/mistakes"><RequireSignedIn><Mistakes role="supervisor" /></RequireSignedIn></Route>
         <Route path="/supervisor/appreciation"><RequireSignedIn><Appreciations role="supervisor" /></RequireSignedIn></Route>
@@ -227,6 +231,7 @@ function AppRouter() {
         <Route path="/user/jobs"><RequireSignedIn><MyJobs /></RequireSignedIn></Route>
         <Route path="/user/my-jobs"><RequireSignedIn><MyJobs /></RequireSignedIn></Route>
         <Route path="/user/timer"><RequireSignedIn><Timer role="user" /></RequireSignedIn></Route>
+        <Route path="/user/free-time"><RequireSignedIn><FreeTime role="user" /></RequireSignedIn></Route>
         <Route path="/user/training"><RequireSignedIn><Training role="user" /></RequireSignedIn></Route>
         <Route path="/user/notifications"><RequireSignedIn><Notifications role="user" /></RequireSignedIn></Route>
         <Route path="/user/communication"><RequireSignedIn><Communication role="user" /></RequireSignedIn></Route>

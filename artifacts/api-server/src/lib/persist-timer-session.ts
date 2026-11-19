@@ -19,6 +19,7 @@ import {
   MAX_TIMER_SEGMENT_SECONDS,
 } from "./timer-sessions";
 import { logger } from "./logger";
+import { onJobTimerStopped } from "./free-time-tracking";
 
 export { MAX_TIMER_SEGMENT_SECONDS };
 
@@ -209,6 +210,7 @@ export async function stopAllActiveTimersOnJob(jobId: string): Promise<number> {
   let saved = 0;
   for (const session of sessions) {
     saved += await stopTimerSessionAndSaveLog(session, session.userId);
+    await onJobTimerStopped(session.userId);
   }
   return saved;
 }
@@ -278,6 +280,7 @@ export async function pauseTimerSessionAfterGap(
     },
     "Auto-paused timer after heartbeat gap (sleep/offline)",
   );
+  await onJobTimerStopped(session.userId);
   return updated;
 }
 
@@ -297,5 +300,7 @@ export async function stopActiveTimerForUserOnJob(
     .where(and(eq(activeTimerSessions.userId, userId), eq(activeTimerSessions.jobId, jobId)))
     .limit(1);
   if (!session) return 0;
-  return stopTimerSessionAndSaveLog(session, userId);
+  const duration = await stopTimerSessionAndSaveLog(session, userId);
+  await onJobTimerStopped(userId);
+  return duration;
 }

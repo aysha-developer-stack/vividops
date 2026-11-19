@@ -289,6 +289,10 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
     role === "super-admin" ? "/super-admin/jobs"
     : role === "admin" ? "/admin/jobs"
     : "/supervisor/jobs";
+  const freeTimePath =
+    role === "super-admin" ? "/super-admin/free-time"
+    : role === "admin" ? "/admin/free-time"
+    : "/supervisor/free-time";
 
   return (
     <DashboardLayout title="User Monitoring" role={role} headerSearch={headerSearch}>
@@ -298,14 +302,22 @@ export default function UserMonitoring({ role = "super-admin" }: { role?: Role }
           <Activity size={16} className="text-primary" />
           Team performance
         </div>
-        {(role === "admin" || role === "super-admin") && (
+        <div className="flex items-center gap-2 flex-wrap">
           <Link
-            href={role === "super-admin" ? "/super-admin/supervisors" : "/admin/supervisors"}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border border-gray-200 bg-white text-gray-700 hover:border-primary hover:text-primary transition-colors"
+            href={freeTimePath}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-300 transition-colors"
           >
-            Supervisor oversight
+            Free Time reports
           </Link>
-        )}
+          {(role === "admin" || role === "super-admin") && (
+            <Link
+              href={role === "super-admin" ? "/super-admin/supervisors" : "/admin/supervisors"}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border border-gray-200 bg-white text-gray-700 hover:border-primary hover:text-primary transition-colors"
+            >
+              Supervisor oversight
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
