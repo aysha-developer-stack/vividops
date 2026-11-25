@@ -14,9 +14,16 @@ import { requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { createNotification, previewText } from "../lib/notifications";
 import { ensureFreeTimeSchema } from "../lib/schema-init";
-import { liveFreeDurationSeconds } from "../lib/detect-free-time";
+import { isBreakKind, liveFreeDurationSeconds } from "../lib/detect-free-time";
 import { REPORT_TIMEZONE, shiftDateString, todayInTimezone } from "../lib/report-dates";
-import { reconcileFreeTime, startOutsideWork, stopOutsideWork } from "../lib/free-time-tracking";
+import {
+  getBreakStatus,
+  reconcileFreeTime,
+  startBreak,
+  startOutsideWork,
+  stopBreak,
+  stopOutsideWork,
+} from "../lib/free-time-tracking";
 
 const router: IRouter = Router();
 
@@ -125,7 +132,10 @@ function publicReport(
     reviewedById: row.reviewedById,
     reviewedAt: row.reviewedAt?.toISOString() ?? null,
     source: row.source ?? "auto",
-    kind: row.kind === "outside_work" ? "outside_work" : "free",
+    kind:
+      row.kind === "outside_work" || isBreakKind(row.kind)
+        ? row.kind
+        : "free",
     status: row.endedAt ? row.status : "open",
     isOpen: !row.endedAt,
     createdAt: row.createdAt.toISOString(),
@@ -209,6 +219,97 @@ router.post("/free-time", requireAuth, async (_req, res) => {
   return res.status(400).json({
     error: "Free time is detected automatically when a worker is online with no job timer. Add notes on the detected period instead.",
   });
+});
+
+router.get("/free-time/break-status", requireAuth, async (req, res) => {
+  try {
+    await ensureFreeTimeSchema();
+    const actor = req.session!.user;
+    const userIdFilter =
+      typeof req.query.userId === "string" && req.query.userId.trim() ? req.query.userId.trim() : actor.id;
+    if (actor.role === "user" && userIdFilter !== actor.id) {
+      return res.status(403).json({ error: "You can only view your own breaks" });
+    }
+    if (actor.role === "supervisor" && userIdFilter !== actor.id) {
+      const allowed = await canReviewUser(actor, userIdFilter);
+      if (!allowed) return res.status(403).json({ error: "That person is not on your team" });
+    }
+    if (actor.role === "coordinator") {
+      return res.status(403).json({ error: "Coordinators cannot view breaks" });
+    }
+    try {
+      await reconcileFreeTime();
+    } catch (err) {
+      logger.warn({ err }, "Free time reconcile on break status failed");
+    }
+    return res.json(await getBreakStatus(userIdFilter));
+  } catch (err) {
+    logger.error({ err }, "Failed to load break status");
+    return res.status(500).json({ error: "Could not load break status" });
+  }
+});
+
+router.post("/free-time/break", requireAuth, async (req, res) => {
+  try {
+    await ensureFreeTimeSchema();
+    const actor = req.session!.user;
+    const body = req.body as { userId?: unknown; type?: unknown; active?: unknown };
+    const targetUserId =
+      typeof body.userId === "string" && body.userId.trim() ? body.userId.trim() : actor.id;
+    const type = body.type === "hour" || body.type === "break_hour"
+      ? "break_hour"
+      : body.type === "short" || body.type === "break_short"
+        ? "break_short"
+        : null;
+    const active = body.active !== false;
+
+    if (actor.role === "coordinator") {
+      return res.status(403).json({ error: "Coordinators cannot log breaks" });
+    }
+    if (actor.role === "user" && targetUserId !== actor.id) {
+      return res.status(403).json({ error: "You can only start your own break" });
+    }
+    if (actor.role === "supervisor" && targetUserId !== actor.id) {
+      const allowed = await canReviewUser(actor, targetUserId);
+      if (!allowed) return res.status(403).json({ error: "That person is not on your team" });
+    }
+
+    if (!active) {
+      const stopped = await stopBreak(targetUserId);
+      const [target] = await db
+        .select({ id: users.id, name: users.name })
+        .from(users)
+        .where(eq(users.id, targetUserId))
+        .limit(1);
+      return res.json({
+        active: false,
+        report: stopped
+          ? publicReport(stopped, target ?? null, { id: actor.id, name: actor.name }, null)
+          : null,
+        breaks: await getBreakStatus(targetUserId),
+      });
+    }
+
+    if (!type) {
+      return res.status(400).json({ error: "Choose the 1 hour break or a 15 minute break" });
+    }
+
+    const result = await startBreak(targetUserId, type);
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    const [target] = await db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(eq(users.id, targetUserId))
+      .limit(1);
+    return res.json({
+      active: true,
+      report: publicReport(result.report, target ?? null, { id: actor.id, name: actor.name }, null),
+      breaks: await getBreakStatus(targetUserId),
+    });
+  } catch (err) {
+    logger.error({ err }, "Failed to update break");
+    return res.status(500).json({ error: "Could not update break" });
+  }
 });
 
 router.post("/free-time/outside-work", requireAuth, async (req, res) => {

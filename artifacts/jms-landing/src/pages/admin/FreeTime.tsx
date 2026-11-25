@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Briefcase, CheckCircle2, ChevronRight, MapPin, X } from "lucide-react";
+import { ArrowLeft, Briefcase, CheckCircle2, ChevronRight, Coffee, MapPin, X } from "lucide-react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useDashboardSearch } from "@/lib/pageSearch";
 import Pagination, { usePagination } from "@/components/Pagination";
@@ -18,8 +18,8 @@ type FreeTimeRecord = {
   durationSeconds: number;
   workerNotes: string;
   supervisorNotes: string | null;
-  kind?: "free" | "outside_work" | string;
-  status: "open" | "detected" | "submitted" | "reviewed" | "outside" | string;
+  kind?: "free" | "outside_work" | "break_hour" | "break_short" | string;
+  status: "open" | "detected" | "submitted" | "reviewed" | "outside" | "break" | string;
   isOpen?: boolean;
   createdAt: string;
   user: { id: string; name: string } | null;
@@ -30,11 +30,25 @@ type FreeTimeRecord = {
 type PersonCard = {
   id: string;
   name: string;
-  status: "free" | "outside" | "on_job" | "none";
+  status: "free" | "outside" | "on_job" | "break" | "none";
   openDuration: number;
   freeSeconds: number;
   pending: number;
   lastDate: string | null;
+};
+
+type BreakSlot = {
+  used: number;
+  limit: number;
+  remaining: number;
+  open: boolean;
+  remainingSeconds: number | null;
+};
+
+type BreakStatus = {
+  date: string;
+  hour: BreakSlot;
+  short: BreakSlot;
 };
 
 const FORM_INPUT =
@@ -83,7 +97,30 @@ function isOutside(r: FreeTimeRecord): boolean {
   return r.kind === "outside_work" || r.status === "outside";
 }
 
+function isBreak(r: FreeTimeRecord): boolean {
+  return r.kind === "break_hour" || r.kind === "break_short" || r.status === "break";
+}
+
+function breakTitle(r: FreeTimeRecord): string {
+  return r.kind === "break_hour" ? "1 hour break" : "15 min break";
+}
+
+function remainingBreakSeconds(r: FreeTimeRecord, nowMs: number): number {
+  const limit = r.kind === "break_hour" ? 3600 : 900;
+  const start = new Date(r.startedAt ?? r.createdAt).getTime();
+  if (!Number.isFinite(start)) return 0;
+  return Math.max(0, Math.floor((start + limit * 1000 - nowMs) / 1000));
+}
+
+function formatRemaining(seconds: number): string {
+  if (seconds < 60) return `${seconds}s left`;
+  return `${formatFreeDuration(seconds)} left`;
+}
+
 function entryBadge(r: FreeTimeRecord): { text: string; className: string } {
+  if (isBreak(r)) {
+    return { text: r.isOpen ? `${breakTitle(r)} now` : breakTitle(r), className: "bg-teal-50 text-teal-800" };
+  }
   if (isOutside(r)) {
     return { text: r.isOpen ? "Outside OPS now" : "Outside OPS", className: "bg-indigo-50 text-indigo-800" };
   }
@@ -96,6 +133,7 @@ function entryBadge(r: FreeTimeRecord): { text: string; className: string } {
 function statusChip(status: PersonCard["status"]): { text: string; className: string } {
   if (status === "free") return { text: "Free now", className: "bg-amber-50 text-amber-800" };
   if (status === "outside") return { text: "Outside OPS", className: "bg-indigo-50 text-indigo-800" };
+  if (status === "break") return { text: "On break", className: "bg-teal-50 text-teal-800" };
   if (status === "on_job") return { text: "On OPS job", className: "bg-emerald-50 text-emerald-700" };
   return { text: "No idle now", className: "bg-gray-100 text-gray-600" };
 }
@@ -118,6 +156,9 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
   const [saving, setSaving] = useState(false);
   const [filling, setFilling] = useState(false);
   const [outsideBusy, setOutsideBusy] = useState(false);
+  const [breakBusy, setBreakBusy] = useState(false);
+  const [breakStatus, setBreakStatus] = useState<BreakStatus | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [noteError, setNoteError] = useState<string | null>(null);
   const [fillError, setFillError] = useState<string | null>(null);
   const [outsideNote, setOutsideNote] = useState("");
@@ -137,11 +178,28 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
     }
   }, [period]);
 
+  const loadBreaks = useCallback(async () => {
+    try {
+      const statusQuery =
+        !isWorker && selectedPersonId ? `?userId=${encodeURIComponent(selectedPersonId)}` : "";
+      const res = await fetch(`/api/free-time/break-status${statusQuery}`, { credentials: "include" });
+      if (res.ok) setBreakStatus((await res.json()) as BreakStatus);
+    } catch {
+      /* keep last known */
+    }
+  }, [isWorker, selectedPersonId]);
+
   useEffect(() => {
     void loadRecords(false);
     const id = window.setInterval(() => void loadRecords(true), 30_000);
     return () => window.clearInterval(id);
   }, [loadRecords]);
+
+  useEffect(() => {
+    void loadBreaks();
+    const id = window.setInterval(() => void loadBreaks(), 30_000);
+    return () => window.clearInterval(id);
+  }, [loadBreaks]);
 
   useEffect(() => {
     if (isWorker) return;
@@ -168,6 +226,13 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
     if (isWorker && currentUser?.id) setSelectedPersonId(currentUser.id);
   }, [isWorker, currentUser?.id]);
 
+  const onBreak = !!(breakStatus?.hour.open || breakStatus?.short.open);
+  useEffect(() => {
+    if (!onBreak) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [onBreak]);
+
   const people = useMemo((): PersonCard[] => {
     const byUser = new Map<string, PersonCard>();
     const addPerson = (id: string, name: string) => {
@@ -192,7 +257,12 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
       addPerson(id, name);
       const row = byUser.get(id)!;
       if (!row.lastDate || r.reportDate > row.lastDate) row.lastDate = r.reportDate;
-      if (isOutside(r)) {
+      if (isBreak(r)) {
+        if (r.isOpen || r.status === "open") {
+          row.status = "break";
+          row.openDuration = r.durationSeconds;
+        }
+      } else if (isOutside(r)) {
         if (r.isOpen || r.status === "open") {
           row.status = "outside";
           row.openDuration = r.durationSeconds;
@@ -211,7 +281,7 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
       if (workingIds.has(id)) row.status = "on_job";
     }
     return [...byUser.values()].sort((a, b) => {
-      const rank = { free: 0, outside: 1, on_job: 2, none: 3 };
+      const rank = { free: 0, break: 1, outside: 2, on_job: 3, none: 4 };
       const d = rank[a.status] - rank[b.status];
       if (d !== 0) return d;
       return a.name.localeCompare(b.name);
@@ -253,9 +323,23 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
 
   const freeNowCount = people.filter((p) => p.status === "free").length;
   const outsideNowCount = people.filter((p) => p.status === "outside").length;
+  const onBreakCount = people.filter((p) => p.status === "break").length;
   const awaitingFill = people.reduce((sum, p) => sum + p.pending, 0);
   const myOpen = records.find((r) => r.userId === currentUser?.id && (r.isOpen || r.status === "open"));
   const myOutside = myOpen && isOutside(myOpen);
+  const myBreak = myOpen && isBreak(myOpen) ? myOpen : null;
+  const myBreakLeft = myBreak ? remainingBreakSeconds(myBreak, nowTick) : 0;
+  const expiredReload = useRef(false);
+  useEffect(() => {
+    if (!myBreak) {
+      expiredReload.current = false;
+      return;
+    }
+    if (myBreakLeft > 0 || expiredReload.current) return;
+    expiredReload.current = true;
+    void loadRecords(true);
+    void loadBreaks();
+  }, [myBreak, myBreakLeft, loadRecords, loadBreaks]);
   const canEditWorkerNotes =
     !!selected && (isWorker ? selected.userId === currentUser?.id : canFillWorking);
 
@@ -344,14 +428,36 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
     }
   };
 
+  const toggleBreak = async (type: "hour" | "short", active: boolean) => {
+    setBreakBusy(true);
+    setNoteError(null);
+    try {
+      const res = await fetch("/api/free-time/break", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, active }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; breaks?: BreakStatus };
+      if (!res.ok) throw new Error(data.error || "Failed to update break");
+      if (data.breaks) setBreakStatus(data.breaks);
+      await loadRecords(true);
+      await loadBreaks();
+    } catch (err) {
+      setNoteError(err instanceof Error ? err.message : "Failed to update break");
+    } finally {
+      setBreakBusy(false);
+    }
+  };
+
   const showPeople = !isWorker && !selectedPersonId;
 
   return (
     <DashboardLayout title={isWorker ? "My Free Time" : "Free Time"} role={role} headerSearch={headerSearch}>
       <p className="text-sm text-gray-600 mb-5">
         {isWorker
-          ? "Idle time is detected when you are in Vivid OPS with no job timer. If you are working on a job that is not in OPS, tap Working outside OPS so it is not counted as free."
-          : "Each person has their own record. Open a name to see every free day, with the weekday. If they were on a job that is not in Vivid OPS, mark it as outside OPS so it is not treated as idle."}
+          ? "Idle time is detected when you are in Vivid OPS with no job timer. Use your 1 hour break or a 15 min break so that time is not counted as free. If you are on a job that is not in OPS, tap Working outside OPS."
+          : "Each person has their own record. Open a name to see every free day, with the weekday. Paid breaks and outside-OPS work are not treated as idle."}
       </p>
 
       <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-4 mb-6">
@@ -371,6 +477,57 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
       </div>
 
       {isWorker && (
+        <div className={`rounded-2xl border p-4 mb-4 ${myBreak ? "bg-teal-50 border-teal-100" : "bg-white border-gray-100"}`}>
+          {myBreak ? (
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <div className="text-sm font-bold text-teal-950">{breakTitle(myBreak)} in progress</div>
+                <p className="text-xs text-teal-800 mt-0.5">
+                  This time is not counted as free. {formatRemaining(myBreakLeft)}.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={breakBusy}
+                onClick={() => void toggleBreak(myBreak.kind === "break_hour" ? "hour" : "short", false)}
+                className="px-4 py-2 rounded-xl bg-teal-700 text-white text-xs font-bold disabled:opacity-50"
+              >
+                {breakBusy ? "Saving…" : "End break"}
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div className="text-sm font-bold text-gray-900 mb-1 flex items-center gap-2">
+                <Coffee size={16} className="text-teal-700" /> Paid breaks today
+              </div>
+              <p className="text-xs text-gray-600 mb-3">
+                1 hour once a day, plus two 15 minute breaks. These do not count as free time.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  disabled={breakBusy || myOutside || (breakStatus?.hour.remaining ?? 0) <= 0}
+                  onClick={() => void toggleBreak("hour", true)}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-teal-700 text-white text-xs font-bold disabled:opacity-50"
+                >
+                  {breakBusy ? "Saving…" : `Start 1 hour break · ${breakStatus?.hour.used ?? 0}/${breakStatus?.hour.limit ?? 1} used`}
+                </button>
+                <button
+                  type="button"
+                  disabled={breakBusy || myOutside || (breakStatus?.short.remaining ?? 0) <= 0}
+                  onClick={() => void toggleBreak("short", true)}
+                  className="flex-1 px-4 py-2.5 rounded-xl border-2 border-teal-700 text-teal-800 text-xs font-bold disabled:opacity-50 bg-white"
+                >
+                  {breakBusy ? "Saving…" : `Start 15 min break · ${breakStatus?.short.used ?? 0}/${breakStatus?.short.limit ?? 2} used`}
+                </button>
+              </div>
+              {noteError && !myOutside ? <p className="text-xs text-red-600 mt-2">{noteError}</p> : null}
+            </div>
+          )}
+        </div>
+      )}
+
+      {isWorker && !myBreak && (
         <div className={`rounded-2xl border p-4 mb-6 ${myOutside ? "bg-indigo-50 border-indigo-100" : "bg-amber-50 border-amber-100"}`}>
           {myOutside ? (
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -404,7 +561,7 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
                 />
                 <button
                   type="button"
-                  disabled={outsideBusy}
+                  disabled={outsideBusy || !!myBreak}
                   onClick={() => void toggleOutsideWork(true)}
                   className="shrink-0 px-4 py-2.5 rounded-xl bg-indigo-700 text-white text-xs font-bold disabled:opacity-50"
                 >
@@ -418,11 +575,16 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
       )}
 
       {!isWorker && showPeople && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
             <p className="text-[10px] uppercase font-bold text-gray-500">Free now</p>
             <p className="text-2xl font-bold text-amber-700">{freeNowCount}</p>
             <p className="text-xs text-gray-500">Online, no job timer</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <p className="text-[10px] uppercase font-bold text-gray-500">On break now</p>
+            <p className="text-2xl font-bold text-teal-700">{onBreakCount}</p>
+            <p className="text-xs text-gray-500">1 hour or 15 min break</p>
           </div>
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
             <p className="text-[10px] uppercase font-bold text-gray-500">Outside OPS now</p>
@@ -460,7 +622,7 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-bold text-gray-900 truncate">{p.name}</div>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        {p.status === "free" || p.status === "outside"
+                        {p.status === "free" || p.status === "outside" || p.status === "break"
                           ? `${formatFreeDuration(p.openDuration)} and counting`
                           : p.lastDate
                             ? `Last record ${formatDateWithWeekday(p.lastDate)}`
@@ -507,13 +669,16 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
               <h2 className="text-lg font-bold text-gray-900">{selectedPerson?.name ?? currentUser?.name ?? "History"}</h2>
               <p className="text-xs text-gray-500 mt-0.5">
                 Chronological free-time history · date and weekday on every day
+                {breakStatus
+                  ? ` · today: 1 hour ${breakStatus.hour.used}/${breakStatus.hour.limit}, 15 min ${breakStatus.short.used}/${breakStatus.short.limit}`
+                  : ""}
               </p>
             </div>
             {loading ? (
               <div className="p-10 text-center text-sm text-gray-400">Loading…</div>
             ) : historyByDay.length === 0 ? (
               <div className="p-10 text-center text-sm text-gray-400">
-                No free-time or outside-OPS records in this period.
+                No free-time, break, or outside-OPS records in this period.
               </div>
             ) : (
               <div className="divide-y divide-gray-100">
@@ -545,9 +710,11 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
                                   {r.isOpen ? " and counting" : ""}
                                 </p>
                                 <p className="text-sm text-gray-800 mt-1 line-clamp-2">
-                                  {isOutside(r)
-                                    ? r.workerNotes?.trim() || "Working outside Vivid OPS"
-                                    : r.workerNotes?.trim() || "No notes yet — system detected this idle time."}
+                                  {isBreak(r)
+                                    ? r.workerNotes?.trim() || breakTitle(r)
+                                    : isOutside(r)
+                                      ? r.workerNotes?.trim() || "Working outside Vivid OPS"
+                                      : r.workerNotes?.trim() || "No notes yet — system detected this idle time."}
                                 </p>
                               </div>
                               <span className={`shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-lg ${badge.className}`}>
@@ -597,7 +764,7 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
                 </button>
               </div>
 
-              {canFillWorking && (
+              {canFillWorking && !isBreak(selected) && (
                 <div className="mb-4 flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -625,14 +792,24 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
               {canEditWorkerNotes ? (
                 <div className="mb-4">
                   <label className="text-xs font-bold text-gray-600 uppercase">
-                    {isOutside(selected) ? "Outside job / what I was doing" : "What I did / learned"}
+                    {isBreak(selected)
+                      ? "Break notes"
+                      : isOutside(selected)
+                        ? "Outside job / what I was doing"
+                        : "What I did / learned"}
                   </label>
                   <textarea
                     value={workerNotes}
                     onChange={(e) => setWorkerNotes(e.target.value)}
                     rows={4}
                     className={`${FORM_INPUT} resize-none`}
-                    placeholder={isOutside(selected) ? "Which site or builder job…" : "Practice, training, waiting on files…"}
+                    placeholder={
+                      isBreak(selected)
+                        ? "Optional note…"
+                        : isOutside(selected)
+                          ? "Which site or builder job…"
+                          : "Practice, training, waiting on files…"
+                    }
                   />
                   {noteError ? <p className="text-xs text-red-600 mt-1">{noteError}</p> : null}
                   <button
@@ -647,7 +824,7 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
               ) : (
                 <div className="mb-4">
                   <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-1">
-                    {isOutside(selected) ? "Outside job" : "What they did / learned"}
+                    {isBreak(selected) ? "Break" : isOutside(selected) ? "Outside job" : "What they did / learned"}
                   </div>
                   <p className="text-sm text-gray-800 whitespace-pre-wrap">
                     {selected.workerNotes?.trim() || "No notes yet."}
@@ -663,7 +840,7 @@ export default function FreeTime({ role = "super-admin" }: { role?: Role } = {})
                   <p className="text-sm text-sky-950 whitespace-pre-wrap">{selected.supervisorNotes}</p>
                 </div>
               )}
-              {canFillWorking && !isOutside(selected) && (
+              {canFillWorking && !isOutside(selected) && !isBreak(selected) && (
                 <div>
                   <label className="text-xs font-bold text-gray-600 uppercase">What they did during this time</label>
                   <textarea

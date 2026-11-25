@@ -8,6 +8,11 @@ import {
   shouldKeepClosedPeriod,
   MIN_FREE_TIME_SECONDS,
   MAX_FREE_TIME_SECONDS,
+  BREAK_HOUR_SECONDS,
+  BREAK_SHORT_SECONDS,
+  countBreaksUsed,
+  secondsUntilBreakExpiry,
+  breakLimitPerDay,
 } from "./detect-free-time.ts";
 
 describe("liveFreeDurationSeconds", () => {
@@ -54,6 +59,35 @@ describe("isOnJobTimer", () => {
       }),
       false,
     );
+  });
+});
+
+describe("paid breaks", () => {
+  it("allows one 1-hour and two 15-minute breaks per day", () => {
+    assert.equal(breakLimitPerDay("break_hour"), 1);
+    assert.equal(breakLimitPerDay("break_short"), 2);
+    assert.equal(BREAK_HOUR_SECONDS, 3600);
+    assert.equal(BREAK_SHORT_SECONDS, 900);
+  });
+
+  it("counts each started break against that day's allowance", () => {
+    const rows = [
+      { kind: "break_hour", reportDate: "2026-11-25" },
+      { kind: "break_short", reportDate: "2026-11-25" },
+      { kind: "break_short", reportDate: "2026-11-25" },
+      { kind: "break_short", reportDate: "2026-11-24" },
+      { kind: "free", reportDate: "2026-11-25" },
+    ];
+    assert.equal(countBreaksUsed(rows, "break_hour", "2026-11-25"), 1);
+    assert.equal(countBreaksUsed(rows, "break_short", "2026-11-25"), 2);
+    assert.equal(countBreaksUsed(rows, "break_short", "2026-11-24"), 1);
+  });
+
+  it("expires a 15 minute break on time", () => {
+    const started = new Date("2026-11-25T05:00:00.000Z");
+    const now = new Date("2026-11-25T05:12:00.000Z");
+    assert.equal(secondsUntilBreakExpiry(started, "break_short", now), 3 * 60);
+    assert.equal(secondsUntilBreakExpiry(started, "break_short", new Date("2026-11-25T05:20:00.000Z")), 0);
   });
 });
 

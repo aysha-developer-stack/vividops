@@ -2,9 +2,9 @@ import { pgTable, uuid, text, timestamp, index, uniqueIndex, integer, date } fro
 import { sql } from "drizzle-orm";
 import { users } from "./users";
 
-export const FREE_TIME_STATUSES = ["open", "detected", "submitted", "reviewed", "outside"] as const;
+export const FREE_TIME_STATUSES = ["open", "detected", "submitted", "reviewed", "outside", "break"] as const;
 export type FreeTimeStatus = (typeof FREE_TIME_STATUSES)[number];
-export const FREE_TIME_KINDS = ["free", "outside_work"] as const;
+export const FREE_TIME_KINDS = ["free", "outside_work", "break_hour", "break_short"] as const;
 export type FreeTimeKind = (typeof FREE_TIME_KINDS)[number];
 
 export const freeTimeReports = pgTable(
