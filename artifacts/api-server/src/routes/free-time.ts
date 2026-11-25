@@ -16,7 +16,7 @@ import { createNotification, previewText } from "../lib/notifications";
 import { ensureFreeTimeSchema } from "../lib/schema-init";
 import { liveFreeDurationSeconds } from "../lib/detect-free-time";
 import { REPORT_TIMEZONE, shiftDateString, todayInTimezone } from "../lib/report-dates";
-import { reconcileFreeTime } from "../lib/free-time-tracking";
+import { reconcileFreeTime, startOutsideWork, stopOutsideWork } from "../lib/free-time-tracking";
 
 const router: IRouter = Router();
 
@@ -125,6 +125,7 @@ function publicReport(
     reviewedById: row.reviewedById,
     reviewedAt: row.reviewedAt?.toISOString() ?? null,
     source: row.source ?? "auto",
+    kind: row.kind === "outside_work" ? "outside_work" : "free",
     status: row.endedAt ? row.status : "open",
     isOpen: !row.endedAt,
     createdAt: row.createdAt.toISOString(),
@@ -149,7 +150,20 @@ router.get("/free-time", requireAuth, async (req, res) => {
     if (from) conditions.push(gte(freeTimeReports.reportDate, from));
     if (to) conditions.push(lte(freeTimeReports.reportDate, to));
 
-    if (actor.role === "user") {
+    const userIdFilter =
+      typeof req.query.userId === "string" && req.query.userId.trim() ? req.query.userId.trim() : null;
+    if (userIdFilter) {
+      if (actor.role === "user" && userIdFilter !== actor.id) {
+        return res.status(403).json({ error: "You can only view your own free time" });
+      }
+      if (actor.role === "supervisor") {
+        const allowed = await canReviewUser(actor, userIdFilter);
+        if (!allowed && userIdFilter !== actor.id) {
+          return res.status(403).json({ error: "That person is not on your team" });
+        }
+      }
+      conditions.push(eq(freeTimeReports.userId, userIdFilter));
+    } else if (actor.role === "user") {
       conditions.push(eq(freeTimeReports.userId, actor.id));
     } else if (actor.role === "supervisor") {
       const team = await supervisorTeamUserIds(actor.id);
@@ -197,6 +211,59 @@ router.post("/free-time", requireAuth, async (_req, res) => {
   });
 });
 
+router.post("/free-time/outside-work", requireAuth, async (req, res) => {
+  try {
+    await ensureFreeTimeSchema();
+    const actor = req.session!.user;
+    const body = req.body as { userId?: unknown; note?: unknown; active?: unknown };
+    const targetUserId =
+      typeof body.userId === "string" && body.userId.trim() ? body.userId.trim() : actor.id;
+    const note = typeof body.note === "string" ? body.note.trim() : "";
+    const active = body.active !== false;
+
+    if (actor.role === "coordinator") {
+      return res.status(403).json({ error: "Coordinators cannot log outside work" });
+    }
+    if (actor.role === "user" && targetUserId !== actor.id) {
+      return res.status(403).json({ error: "You can only mark your own outside work" });
+    }
+    if (actor.role === "supervisor" && targetUserId !== actor.id) {
+      const allowed = await canReviewUser(actor, targetUserId);
+      if (!allowed) return res.status(403).json({ error: "That person is not on your team" });
+    }
+
+    if (!active) {
+      const stopped = await stopOutsideWork(targetUserId);
+      const [target] = await db
+        .select({ id: users.id, name: users.name })
+        .from(users)
+        .where(eq(users.id, targetUserId))
+        .limit(1);
+      return res.json({
+        active: false,
+        report: stopped
+          ? publicReport(stopped, target ?? null, { id: actor.id, name: actor.name }, null)
+          : null,
+      });
+    }
+
+    const result = await startOutsideWork(targetUserId, note);
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    const [target] = await db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(eq(users.id, targetUserId))
+      .limit(1);
+    return res.json({
+      active: true,
+      report: publicReport(result.report, target ?? null, { id: actor.id, name: actor.name }, null),
+    });
+  } catch (err) {
+    logger.error({ err }, "Failed to update outside work");
+    return res.status(500).json({ error: "Could not update outside work" });
+  }
+});
+
 router.patch("/free-time/:id", requireAuth, async (req, res) => {
   try {
     await ensureFreeTimeSchema();
@@ -205,13 +272,15 @@ router.patch("/free-time/:id", requireAuth, async (req, res) => {
     const [existing] = await db.select().from(freeTimeReports).where(eq(freeTimeReports.id, id)).limit(1);
     if (!existing) return res.status(404).json({ error: "Report not found" });
 
-    const body = req.body as { workerNotes?: unknown; supervisorNotes?: unknown };
+    const body = req.body as { workerNotes?: unknown; supervisorNotes?: unknown; kind?: unknown };
     const workerNotes =
       typeof body.workerNotes === "string" ? body.workerNotes.trim() : undefined;
     const supervisorNotes =
       typeof body.supervisorNotes === "string" ? body.supervisorNotes.trim() : undefined;
+    const kind =
+      body.kind === "outside_work" || body.kind === "free" ? (body.kind as "outside_work" | "free") : undefined;
 
-    if (workerNotes === undefined && supervisorNotes === undefined) {
+    if (workerNotes === undefined && supervisorNotes === undefined && kind === undefined) {
       return res.status(400).json({ error: "Nothing to update" });
     }
 
@@ -245,6 +314,34 @@ router.patch("/free-time/:id", requireAuth, async (req, res) => {
           description: previewText(workerNotes),
         });
       }
+    }
+
+    if (kind !== undefined) {
+      const canReview = await canReviewUser(actor, existing.userId);
+      if (!canReview && existing.userId !== actor.id) {
+        return res.status(403).json({ error: "You cannot change this type" });
+      }
+      const now = new Date();
+      const nextStatus =
+        kind === "outside_work"
+          ? existing.endedAt
+            ? "outside"
+            : "open"
+          : existing.endedAt
+            ? existing.status === "outside"
+              ? "detected"
+              : existing.status
+            : "open";
+      const [updated] = await db
+        .update(freeTimeReports)
+        .set({
+          kind,
+          status: nextStatus,
+          updatedAt: now,
+        })
+        .where(eq(freeTimeReports.id, id))
+        .returning();
+      next = updated ?? next;
     }
 
     if (supervisorNotes !== undefined) {

@@ -132,6 +132,7 @@ export async function ensureFreeTimeSchema() {
       reviewed_by_id uuid REFERENCES users(id) ON DELETE SET NULL,
       reviewed_at timestamptz,
       source text NOT NULL DEFAULT 'auto',
+      kind text NOT NULL DEFAULT 'free',
       status text NOT NULL DEFAULT 'open',
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
@@ -140,6 +141,7 @@ export async function ensureFreeTimeSchema() {
   await db.execute(sql`ALTER TABLE free_time_reports ADD COLUMN IF NOT EXISTS started_at timestamptz`);
   await db.execute(sql`ALTER TABLE free_time_reports ADD COLUMN IF NOT EXISTS ended_at timestamptz`);
   await db.execute(sql`ALTER TABLE free_time_reports ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'auto'`);
+  await db.execute(sql`ALTER TABLE free_time_reports ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'free'`);
   await db.execute(sql`ALTER TABLE free_time_reports ALTER COLUMN worker_notes SET DEFAULT ''`);
   await db.execute(sql`ALTER TABLE free_time_reports ALTER COLUMN duration_seconds SET DEFAULT 0`);
   await db.execute(sql`ALTER TABLE free_time_reports ALTER COLUMN status SET DEFAULT 'open'`);
@@ -156,6 +158,7 @@ export async function ensureFreeTimeSchema() {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS free_time_reports_user_idx ON free_time_reports (user_id)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS free_time_reports_date_idx ON free_time_reports (report_date)`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS free_time_reports_status_idx ON free_time_reports (status)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS free_time_reports_kind_idx ON free_time_reports (kind)`);
   await db.execute(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS free_time_reports_open_user_idx
     ON free_time_reports (user_id)
@@ -733,6 +736,7 @@ export async function ensureAllSchemas() {
         reviewed_by_id uuid REFERENCES users(id) ON DELETE SET NULL,
         reviewed_at timestamptz,
         source text NOT NULL DEFAULT 'auto',
+        kind text NOT NULL DEFAULT 'free',
         status text NOT NULL DEFAULT 'open',
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
@@ -740,6 +744,7 @@ export async function ensureAllSchemas() {
       CREATE INDEX IF NOT EXISTS free_time_reports_user_idx ON free_time_reports (user_id);
       CREATE INDEX IF NOT EXISTS free_time_reports_date_idx ON free_time_reports (report_date);
       CREATE INDEX IF NOT EXISTS free_time_reports_status_idx ON free_time_reports (status);
+      CREATE INDEX IF NOT EXISTS free_time_reports_kind_idx ON free_time_reports (kind);
       CREATE UNIQUE INDEX IF NOT EXISTS free_time_reports_open_user_idx ON free_time_reports (user_id) WHERE ended_at IS NULL;
 
       CREATE TABLE IF NOT EXISTS checklist_templates (

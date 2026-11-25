@@ -2,8 +2,10 @@ import { pgTable, uuid, text, timestamp, index, uniqueIndex, integer, date } fro
 import { sql } from "drizzle-orm";
 import { users } from "./users";
 
-export const FREE_TIME_STATUSES = ["open", "detected", "submitted", "reviewed"] as const;
+export const FREE_TIME_STATUSES = ["open", "detected", "submitted", "reviewed", "outside"] as const;
 export type FreeTimeStatus = (typeof FREE_TIME_STATUSES)[number];
+export const FREE_TIME_KINDS = ["free", "outside_work"] as const;
+export type FreeTimeKind = (typeof FREE_TIME_KINDS)[number];
 
 export const freeTimeReports = pgTable(
   "free_time_reports",
@@ -20,6 +22,7 @@ export const freeTimeReports = pgTable(
     reviewedById: uuid("reviewed_by_id").references(() => users.id, { onDelete: "set null" }),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     source: text("source").notNull().default("auto"),
+    kind: text("kind").notNull().default("free"),
     status: text("status").notNull().default("open"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -28,6 +31,7 @@ export const freeTimeReports = pgTable(
     index("free_time_reports_user_idx").on(t.userId),
     index("free_time_reports_date_idx").on(t.reportDate),
     index("free_time_reports_status_idx").on(t.status),
+    index("free_time_reports_kind_idx").on(t.kind),
     uniqueIndex("free_time_reports_open_user_idx").on(t.userId).where(sql`ended_at is null`),
   ],
 );

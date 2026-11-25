@@ -63,20 +63,28 @@ async function notifyPersonSupervisors(opts: {
   }
 }
 
+function isOutsideKind(row: Pick<FreeTimeReportRow, "kind">): boolean {
+  return row.kind === "outside_work";
+}
+
+function closedStatusFor(row: Pick<FreeTimeReportRow, "kind" | "workerNotes">): string {
+  if (isOutsideKind(row)) return "outside";
+  return (row.workerNotes ?? "").trim() ? "submitted" : "detected";
+}
+
 async function closeOpenFreeTimeAt(open: FreeTimeReportRow, endedAt: Date): Promise<void> {
   const startedAt = open.startedAt ?? open.createdAt;
   const duration = liveFreeDurationSeconds(startedAt, endedAt, endedAt);
-  if (!shouldKeepClosedPeriod(duration)) {
+  if (!isOutsideKind(open) && !shouldKeepClosedPeriod(duration)) {
     await db.delete(freeTimeReports).where(eq(freeTimeReports.id, open.id));
     return;
   }
-  const notes = (open.workerNotes ?? "").trim();
   await db
     .update(freeTimeReports)
     .set({
       endedAt,
       durationSeconds: duration,
-      status: notes ? "submitted" : "detected",
+      status: closedStatusFor(open),
       updatedAt: endedAt,
     })
     .where(and(eq(freeTimeReports.id, open.id), isNull(freeTimeReports.endedAt)));
@@ -92,7 +100,8 @@ export async function closeOpenFreeTime(
 
   const startedAt = open.startedAt ?? open.createdAt;
   const duration = liveFreeDurationSeconds(startedAt, now, now);
-  if (!shouldKeepClosedPeriod(duration)) {
+  const outside = isOutsideKind(open);
+  if (!outside && !shouldKeepClosedPeriod(duration)) {
     await db.delete(freeTimeReports).where(eq(freeTimeReports.id, open.id));
     return null;
   }
@@ -103,12 +112,14 @@ export async function closeOpenFreeTime(
     .set({
       endedAt: now,
       durationSeconds: duration,
-      status: notes ? "submitted" : "detected",
+      status: closedStatusFor(open),
       updatedAt: now,
     })
     .where(and(eq(freeTimeReports.id, open.id), isNull(freeTimeReports.endedAt)))
     .returning();
   if (!updated) return null;
+
+  if (outside) return updated;
 
   const [person] = await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
   const label = person?.name ?? "Worker";
@@ -132,6 +143,55 @@ export async function closeOpenFreeTime(
     logger.warn({ err, userId }, "Failed to notify free time close");
   }
   return updated;
+}
+
+async function continueOpenReport(
+  open: FreeTimeReportRow,
+  today: string,
+  now: Date,
+): Promise<FreeTimeReportRow | null> {
+  const openDate =
+    typeof open.reportDate === "string"
+      ? open.reportDate.slice(0, 10)
+      : pktDateString(open.startedAt ?? open.createdAt);
+  if (openDate !== today) {
+    const splitAt = pktDayStart(today);
+    const endAt = splitAt.getTime() < now.getTime() ? splitAt : now;
+    await closeOpenFreeTimeAt(open, endAt);
+    if (!isOutsideKind(open)) return null;
+    try {
+      const [created] = await db
+        .insert(freeTimeReports)
+        .values({
+          userId: open.userId,
+          createdById: open.createdById,
+          reportDate: today,
+          startedAt: now,
+          durationSeconds: 0,
+          workerNotes: open.workerNotes ?? "",
+          source: "auto",
+          kind: "outside_work",
+          status: "open",
+          updatedAt: now,
+        })
+        .returning();
+      return created ?? null;
+    } catch (err) {
+      const code = typeof err === "object" && err && "code" in err ? String((err as { code: unknown }).code) : "";
+      if (code !== "23505") {
+        logger.error({ err, userId: open.userId }, "Failed to roll outside work to a new day");
+        return null;
+      }
+      return loadOpenReport(open.userId);
+    }
+  }
+  const duration = liveFreeDurationSeconds(open.startedAt ?? open.createdAt, null, now);
+  const [updated] = await db
+    .update(freeTimeReports)
+    .set({ durationSeconds: duration, updatedAt: now })
+    .where(eq(freeTimeReports.id, open.id))
+    .returning();
+  return updated ?? open;
 }
 
 export async function ensureOpenFreeTime(
@@ -173,23 +233,9 @@ export async function ensureOpenFreeTime(
   const today = pktDateString(now);
   const open = await loadOpenReport(userId);
   if (open) {
-    const openDate =
-      typeof open.reportDate === "string"
-        ? open.reportDate.slice(0, 10)
-        : pktDateString(open.startedAt ?? open.createdAt);
-    if (openDate !== today) {
-      const splitAt = pktDayStart(today);
-      const endAt = splitAt.getTime() < now.getTime() ? splitAt : now;
-      await closeOpenFreeTimeAt(open, endAt);
-    } else {
-      const duration = liveFreeDurationSeconds(open.startedAt ?? open.createdAt, null, now);
-      const [updated] = await db
-        .update(freeTimeReports)
-        .set({ durationSeconds: duration, updatedAt: now })
-        .where(eq(freeTimeReports.id, open.id))
-        .returning();
-      return updated ?? open;
-    }
+    if (isOutsideKind(open)) return continueOpenReport(open, today, now);
+    const continued = await continueOpenReport(open, today, now);
+    if (continued) return continued;
   }
 
   try {
@@ -203,6 +249,7 @@ export async function ensureOpenFreeTime(
         durationSeconds: 0,
         workerNotes: "",
         source: "auto",
+        kind: "free",
         status: "open",
         updatedAt: now,
       })
@@ -236,6 +283,97 @@ export async function onJobTimerStopped(userId: string): Promise<void> {
   }
 }
 
+export type OutsideWorkResult =
+  | { ok: true; report: FreeTimeReportRow }
+  | { ok: false; status: number; error: string };
+
+/** Worker is on a job that is not in Vivid OPS — do not count as idle. */
+export async function startOutsideWork(
+  userId: string,
+  note: string,
+  now = new Date(),
+): Promise<OutsideWorkResult> {
+  await ensureFreeTimeSchema();
+  const [person] = await db
+    .select({ id: users.id, role: users.role, status: users.status })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!person || person.status !== "active") return { ok: false, status: 404, error: "Person not found" };
+
+  const [session] = await db
+    .select()
+    .from(activeTimerSessions)
+    .where(eq(activeTimerSessions.userId, userId))
+    .limit(1);
+  if (isOnJobTimer(session, now.getTime())) {
+    return { ok: false, status: 400, error: "Stop the Vivid OPS job timer first" };
+  }
+
+  const today = pktDateString(now);
+  const open = await loadOpenReport(userId);
+  if (open && isOutsideKind(open)) {
+    const [updated] = await db
+      .update(freeTimeReports)
+      .set({
+        workerNotes: note || open.workerNotes,
+        updatedAt: now,
+      })
+      .where(eq(freeTimeReports.id, open.id))
+      .returning();
+    return { ok: true, report: updated ?? open };
+  }
+
+  if (open) {
+    const [updated] = await db
+      .update(freeTimeReports)
+      .set({
+        kind: "outside_work",
+        workerNotes: note || open.workerNotes,
+        status: "open",
+        updatedAt: now,
+      })
+      .where(eq(freeTimeReports.id, open.id))
+      .returning();
+    if (updated) return { ok: true, report: updated };
+  }
+
+  try {
+    const [created] = await db
+      .insert(freeTimeReports)
+      .values({
+        userId,
+        createdById: userId,
+        reportDate: today,
+        startedAt: now,
+        durationSeconds: 0,
+        workerNotes: note,
+        source: "auto",
+        kind: "outside_work",
+        status: "open",
+        updatedAt: now,
+      })
+      .returning();
+    if (!created) return { ok: false, status: 500, error: "Could not start outside work" };
+    return { ok: true, report: created };
+  } catch (err) {
+    const code = typeof err === "object" && err && "code" in err ? String((err as { code: unknown }).code) : "";
+    if (code !== "23505") {
+      logger.error({ err, userId }, "Failed to start outside work");
+      return { ok: false, status: 500, error: "Could not start outside work" };
+    }
+    const raced = await loadOpenReport(userId);
+    if (raced) return { ok: true, report: raced };
+    return { ok: false, status: 500, error: "Could not start outside work" };
+  }
+}
+
+export async function stopOutsideWork(userId: string, now = new Date()): Promise<FreeTimeReportRow | null> {
+  const open = await loadOpenReport(userId);
+  if (!open || !isOutsideKind(open)) return null;
+  return closeOpenFreeTime(userId, now);
+}
+
 export async function reconcileFreeTime(now = new Date()): Promise<void> {
   await ensureFreeTimeSchema();
   const workers = await db
@@ -250,16 +388,26 @@ export async function reconcileFreeTime(now = new Date()): Promise<void> {
   const sessions = await db.select().from(activeTimerSessions);
   const sessionByUser = new Map(sessions.map((s) => [s.userId, s]));
   const nowMs = now.getTime();
+  const today = pktDateString(now);
 
   for (const worker of workers) {
     const working = isOnJobTimer(sessionByUser.get(worker.id), nowMs);
+    if (working) {
+      await closeOpenFreeTime(worker.id, now);
+      continue;
+    }
+    const open = await loadOpenReport(worker.id);
+    if (open && isOutsideKind(open)) {
+      await continueOpenReport(open, today, now);
+      continue;
+    }
     const presence = getPresenceStatus({
       accountStatus: worker.status,
       lastSeenAt: worker.lastSeenAt,
       lastSignInAt: worker.lastSignInAt,
       now: nowMs,
     });
-    if (working || presence !== "online") {
+    if (presence !== "online") {
       await closeOpenFreeTime(worker.id, now);
     } else {
       await ensureOpenFreeTime(worker.id, { now, requireOnline: false });

@@ -603,7 +603,7 @@ export default function UserDashboard() {
                   <ArrowRight size={14} className="text-amber-700" />
                 </div>
                 <p className="text-xs text-amber-800">
-                  The system already tracks this idle time. Add what you did or learned so your supervisor can fill working notes.
+                  Idle time is tracked automatically. If you are on a job that is not in Vivid OPS, open Free Time and tap Working outside OPS.
                 </p>
               </div>
             </Link>
