@@ -437,6 +437,11 @@ function initialsOf(name: string): string {
   return `${first}${second}`.toUpperCase();
 }
 
+function juniorDisplayName(name: string | null | undefined): string {
+  const trimmed = name?.trim();
+  return trimmed || "Junior trainee";
+}
+
 export default function JobDetail({ role = "user", id }: Props) {
   const routePath = role === "supervisor" ? "/supervisor/jobs/:id"
     : role === "coordinator" ? "/coordinator/jobs/:id"
@@ -638,6 +643,13 @@ export default function JobDetail({ role = "user", id }: Props) {
     (sum, j) => sum + liveJuniorElapsedSeconds(j, juniorNowMs),
     0,
   );
+  const namedJuniorTimes = jobJuniors.map((junior) => ({
+    id: junior.id,
+    name: juniorDisplayName(junior.name),
+    seconds: liveJuniorElapsedSeconds(junior, juniorNowMs),
+    running: junior.running,
+    updatedAt: junior.updatedAt,
+  }));
 
   const tabFromQuery = (() => {
     try {
@@ -2663,10 +2675,20 @@ export default function JobDetail({ role = "user", id }: Props) {
             {(running || anyJuniorRunning) && displaySeconds > totalLoggedSeconds && (
               <div className="text-[10px] text-sky-600 font-medium mt-0.5">Includes active timer</div>
             )}
-            {juniorTotalSeconds > 0 && (
-              <div className="text-[11px] text-gray-500 mt-0.5">
-                Junior trainees:{" "}
-                <span className="font-medium text-gray-700 tabular-nums">{formatTime(juniorTotalSeconds)}</span>
+            {namedJuniorTimes.length > 0 && (
+              <div className="mt-1.5 space-y-0.5">
+                {namedJuniorTimes.length > 1 && (
+                  <div className="text-[11px] text-gray-500">
+                    Junior trainees:{" "}
+                    <span className="font-medium text-gray-700 tabular-nums">{formatTime(juniorTotalSeconds)}</span>
+                  </div>
+                )}
+                {namedJuniorTimes.map((junior) => (
+                  <div key={junior.id} className="text-[11px] text-gray-500">
+                    {junior.name}:{" "}
+                    <span className="font-medium text-gray-700 tabular-nums">{formatTime(junior.seconds)}</span>
+                  </div>
+                ))}
               </div>
             )}
             {timeBreakdown.length > 1 && !showFieldWorkTimer && !canShowReviewCheck && (
@@ -3030,7 +3052,7 @@ export default function JobDetail({ role = "user", id }: Props) {
         </motion.div>
       )}
 
-      {job?.id && (role === "user" || canUseJobTimer) && (
+      {job?.id && (role === "user" || canUseJobTimer || role === "admin" || role === "super-admin" || role === "supervisor") && (
         <div className="mb-5">
           <JobJuniorsPanel
             jobId={job.id}
@@ -3128,7 +3150,7 @@ export default function JobDetail({ role = "user", id }: Props) {
               )}
             </div>
             </div>
-            {job?.id && !(role === "user" || canUseJobTimer) && (
+            {job?.id && role === "coordinator" && (
               <JobJuniorsPanel
                 jobId={job.id}
                 canEdit={canEditJuniors}
@@ -4448,7 +4470,7 @@ export default function JobDetail({ role = "user", id }: Props) {
                 </div>
               </div>
             </div>
-            {(timeBreakdown.length > 0 || juniorTotalSeconds > 0) && (
+            {(timeBreakdown.length > 0 || namedJuniorTimes.length > 0) && (
               <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/80 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {timeBreakdown.map((row) => (
                   <div key={String(row.key)} className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
@@ -4456,14 +4478,42 @@ export default function JobDetail({ role = "user", id }: Props) {
                     <div className="text-lg font-bold text-gray-900 font-mono tabular-nums mt-0.5">{formatHoursMinutes(row.seconds)}</div>
                   </div>
                 ))}
-                {juniorTotalSeconds > 0 && (
-                  <div className="rounded-xl border border-amber-200 bg-white px-3 py-2.5">
-                    <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Junior trainees</div>
-                    <div className="text-lg font-bold text-gray-900 font-mono tabular-nums mt-0.5">{formatHoursMinutes(juniorTotalSeconds)}</div>
+                {namedJuniorTimes.map((junior) => (
+                  <div key={junior.id} className="rounded-xl border border-amber-200 bg-white px-3 py-2.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700 truncate" title={junior.name}>
+                      Junior · {junior.name}
+                    </div>
+                    <div className="text-lg font-bold text-gray-900 font-mono tabular-nums mt-0.5">{formatHoursMinutes(junior.seconds)}</div>
                   </div>
-                )}
+                ))}
               </div>
             )}
+            {namedJuniorTimes.map((junior, i) => (
+              <motion.div
+                key={junior.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className="flex items-center gap-4 px-5 py-3.5 border-b border-gray-50"
+              >
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-white text-xs font-bold flex items-center justify-center">
+                  {initialsOf(junior.name)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="text-sm font-semibold text-gray-900">{junior.name}</div>
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-100">
+                      Junior trainee
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500">{junior.running ? "Timer running" : "Junior trainee time"}</div>
+                </div>
+                <div className="text-xs text-gray-500 hidden sm:block">
+                  {junior.updatedAt ? new Date(junior.updatedAt).toLocaleString() : "—"}
+                </div>
+                <div className="font-mono text-sm font-bold text-gray-900 tabular-nums w-20 text-right">{formatTime(junior.seconds)}</div>
+              </motion.div>
+            ))}
             {jobLogsP.pageItems.map((l, i) => (
               <motion.div
                 key={l.id}
