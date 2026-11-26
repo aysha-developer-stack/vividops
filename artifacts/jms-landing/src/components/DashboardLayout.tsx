@@ -7,6 +7,7 @@ import {
 import logoImg from "@assets/vv_1778503190047.png";
 import { useAuth, useLogout, purgeAuthState } from "@/lib/auth";
 import { useGlobalTimerHeartbeat } from "@/lib/useGlobalTimerHeartbeat";
+import { useOpsActivityPing } from "@/lib/useOpsActivityPing";
 import ActiveTimerBanner from "@/components/ActiveTimerBanner";
 import { getNotifStyle, sortNotificationsByPriority } from "@/lib/notifications";
 import { getNotificationPath } from "@/lib/notificationNavigation";
@@ -71,6 +72,7 @@ export default function DashboardLayout({
   const searchEnabled = Boolean(headerSearch);
   const { user } = useAuth();
   useGlobalTimerHeartbeat(!!user);
+  useOpsActivityPing(!!user);
   const userRole = (user?.role as Role) || "user";
   const role = roleProp || userRole;
   const config = ROLES[role];

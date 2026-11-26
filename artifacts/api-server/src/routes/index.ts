@@ -25,6 +25,7 @@ import freeTimeRouter from "./free-time";
 import pushRouter from "./push";
 import reportsRouter from "./reports";
 import sidebarBadgesRouter from "./sidebar-badges";
+import presenceRouter from "./presence";
 import builderSpecsRouter from "./builder-specs";
 
 const router: IRouter = Router();
@@ -55,6 +56,7 @@ router.use(freeTimeRouter);
 router.use(pushRouter);
 router.use(reportsRouter);
 router.use(sidebarBadgesRouter);
+router.use(presenceRouter);
 router.use(builderSpecsRouter);
 
 export default router;

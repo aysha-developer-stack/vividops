@@ -10,6 +10,8 @@ export const BREAK_HOUR_SECONDS = 60 * 60;
 export const BREAK_SHORT_SECONDS = 15 * 60;
 export const BREAK_HOUR_LIMIT_PER_DAY = 1;
 export const BREAK_SHORT_LIMIT_PER_DAY = 2;
+/** Close idle free time when the worker has not clicked or typed in OPS. */
+export const FREE_TIME_INTERACTION_MAX_MS = 60 * 60 * 1000;
 
 export type BreakKind = "break_hour" | "break_short";
 
@@ -50,6 +52,20 @@ export function countBreaksUsed(
 
 export function pktDateString(now = new Date()): string {
   return todayInTimezone(REPORT_TIMEZONE, now);
+}
+
+/** Idle auto-start requires a real OPS click/type today, not a leftover open tab. */
+export function isInteractiveForFreeTime(opts: {
+  lastInteractiveAt?: Date | string | null;
+  now?: Date;
+}): boolean {
+  const now = opts.now ?? new Date();
+  const raw = opts.lastInteractiveAt;
+  if (!raw) return false;
+  const at = raw instanceof Date ? raw : new Date(raw);
+  if (!Number.isFinite(at.getTime())) return false;
+  if (now.getTime() - at.getTime() > FREE_TIME_INTERACTION_MAX_MS) return false;
+  return at.getTime() >= pktDayStart(pktDateString(now)).getTime();
 }
 
 /** Pakistan has no DST — midnight PKT is UTC+5. */

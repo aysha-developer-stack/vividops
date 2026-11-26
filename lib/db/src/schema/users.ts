@@ -34,6 +34,7 @@ export const users = pgTable("users", {
   totpBackupCodes: text("totp_backup_codes"),
   lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  lastInteractiveAt: timestamp("last_interactive_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

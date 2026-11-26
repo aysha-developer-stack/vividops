@@ -142,6 +142,7 @@ export async function ensureFreeTimeSchema() {
   await db.execute(sql`ALTER TABLE free_time_reports ADD COLUMN IF NOT EXISTS ended_at timestamptz`);
   await db.execute(sql`ALTER TABLE free_time_reports ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'auto'`);
   await db.execute(sql`ALTER TABLE free_time_reports ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'free'`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_interactive_at timestamptz`);
   await db.execute(sql`ALTER TABLE free_time_reports ALTER COLUMN worker_notes SET DEFAULT ''`);
   await db.execute(sql`ALTER TABLE free_time_reports ALTER COLUMN duration_seconds SET DEFAULT 0`);
   await db.execute(sql`ALTER TABLE free_time_reports ALTER COLUMN status SET DEFAULT 'open'`);
@@ -494,6 +495,7 @@ export async function ensureAllSchemas() {
         ADD COLUMN IF NOT EXISTS bio text,
         ADD COLUMN IF NOT EXISTS avatar_url text,
         ADD COLUMN IF NOT EXISTS last_seen_at timestamptz,
+        ADD COLUMN IF NOT EXISTS last_interactive_at timestamptz,
         ADD COLUMN IF NOT EXISTS cliq_channel_admin boolean NOT NULL DEFAULT false,
         ADD COLUMN IF NOT EXISTS totp_secret text,
         ADD COLUMN IF NOT EXISTS totp_enrolled_at timestamptz,

@@ -6,6 +6,7 @@ const AWAY_MS = 24 * 60 * 60 * 1000;
 const TOUCH_INTERVAL_MS = 60_000;
 
 const lastTouchByUser = new Map<string, number>();
+const lastInteractiveTouchByUser = new Map<string, number>();
 
 export type PresenceStatus = "online" | "away" | "offline";
 
@@ -44,4 +45,24 @@ export function touchUserLastSeen(userId: string): void {
     .catch(() => {
       lastTouchByUser.delete(userId);
     });
+}
+
+/** Click / type in OPS — not polling. Used to start and keep idle free time. */
+export function touchUserLastInteractive(userId: string): void {
+  const now = Date.now();
+  const prev = lastInteractiveTouchByUser.get(userId) ?? 0;
+  if (now - prev < TOUCH_INTERVAL_MS) return;
+  lastInteractiveTouchByUser.set(userId, now);
+  void markOpsInteraction(userId).catch(() => {
+    lastInteractiveTouchByUser.delete(userId);
+  });
+}
+
+/** Immediate click — timer stop, outside OPS, login. */
+export async function markOpsInteraction(userId: string, at = new Date()): Promise<void> {
+  lastInteractiveTouchByUser.set(userId, at.getTime());
+  await db
+    .update(users)
+    .set({ lastInteractiveAt: at, updatedAt: at })
+    .where(eq(users.id, userId));
 }

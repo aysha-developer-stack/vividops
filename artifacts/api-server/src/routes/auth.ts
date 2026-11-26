@@ -38,6 +38,7 @@ async function ensureUserColumns() {
       ADD COLUMN IF NOT EXISTS bio text,
       ADD COLUMN IF NOT EXISTS avatar_url text,
       ADD COLUMN IF NOT EXISTS last_seen_at timestamptz,
+      ADD COLUMN IF NOT EXISTS last_interactive_at timestamptz,
       ADD COLUMN IF NOT EXISTS cliq_channel_admin boolean NOT NULL DEFAULT false;
   `);
 }
@@ -72,7 +73,7 @@ export async function completeLoginSession(
     .returning();
   const [updated] = await db
     .update(users)
-    .set({ lastSignInAt: now, lastSeenAt: now, updatedAt: now })
+    .set({ lastSignInAt: now, lastSeenAt: now, lastInteractiveAt: now, updatedAt: now })
     .where(eq(users.id, user.id))
     .returning();
   res.cookie(SESSION_COOKIE, session.id, cookieOpts(req));

@@ -8,13 +8,14 @@ import {
   users,
   type FreeTimeReportRow,
 } from "@workspace/db";
-import { getPresenceStatus } from "./presence";
+import { getPresenceStatus, markOpsInteraction } from "./presence";
 import {
   breakAllowanceSeconds,
   breakLabel,
   breakLimitPerDay,
   formatFreeDuration,
   isBreakKind,
+  isInteractiveForFreeTime,
   isOnJobTimer,
   liveFreeDurationSeconds,
   pktDateString,
@@ -173,32 +174,7 @@ async function continueOpenReport(
     const splitAt = pktDayStart(today);
     const endAt = splitAt.getTime() < now.getTime() ? splitAt : now;
     await closeOpenFreeTimeAt(open, endAt);
-    if (!isOutsideKind(open)) return null;
-    try {
-      const [created] = await db
-        .insert(freeTimeReports)
-        .values({
-          userId: open.userId,
-          createdById: open.createdById,
-          reportDate: today,
-          startedAt: now,
-          durationSeconds: 0,
-          workerNotes: open.workerNotes ?? "",
-          source: "auto",
-          kind: "outside_work",
-          status: "open",
-          updatedAt: now,
-        })
-        .returning();
-      return created ?? null;
-    } catch (err) {
-      const code = typeof err === "object" && err && "code" in err ? String((err as { code: unknown }).code) : "";
-      if (code !== "23505") {
-        logger.error({ err, userId: open.userId }, "Failed to roll outside work to a new day");
-        return null;
-      }
-      return loadOpenReport(open.userId);
-    }
+    return null;
   }
   const duration = liveFreeDurationSeconds(open.startedAt ?? open.createdAt, null, now);
   const [updated] = await db
@@ -238,12 +214,14 @@ export async function ensureOpenFreeTime(
       status: users.status,
       lastSeenAt: users.lastSeenAt,
       lastSignInAt: users.lastSignInAt,
+      lastInteractiveAt: users.lastInteractiveAt,
     })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
   if (!person || person.role !== "user" || person.status !== "active") return null;
 
+  const interactive = isInteractiveForFreeTime({ lastInteractiveAt: person.lastInteractiveAt, now });
   if (opts?.requireOnline !== false) {
     const presence = getPresenceStatus({
       accountStatus: person.status,
@@ -269,11 +247,16 @@ export async function ensureOpenFreeTime(
       if (still) return still;
     } else if (isOutsideKind(open)) {
       return continueOpenReport(open, today, now);
+    } else if (!interactive) {
+      await closeOpenFreeTime(userId, now);
+      return null;
     } else {
       const continued = await continueOpenReport(open, today, now);
       if (continued) return continued;
     }
   }
+
+  if (!interactive) return null;
 
   try {
     const [created] = await db
@@ -314,6 +297,7 @@ export async function onJobTimerStarted(userId: string): Promise<void> {
 /** Open free time because the job timer stopped or paused. */
 export async function onJobTimerStopped(userId: string): Promise<void> {
   try {
+    await markOpsInteraction(userId);
     await ensureOpenFreeTime(userId, { requireOnline: false });
   } catch (err) {
     logger.warn({ err, userId }, "Failed to open free time on timer stop");
@@ -352,6 +336,8 @@ export async function startOutsideWork(
   if (open && isPaidBreak(open)) {
     return { ok: false, status: 400, error: "End the break first" };
   }
+  await markOpsInteraction(userId, now);
+
   if (open && isOutsideKind(open)) {
     const [updated] = await db
       .update(freeTimeReports)
@@ -365,17 +351,7 @@ export async function startOutsideWork(
   }
 
   if (open) {
-    const [updated] = await db
-      .update(freeTimeReports)
-      .set({
-        kind: "outside_work",
-        workerNotes: note || open.workerNotes,
-        status: "open",
-        updatedAt: now,
-      })
-      .where(eq(freeTimeReports.id, open.id))
-      .returning();
-    if (updated) return { ok: true, report: updated };
+    await closeOpenFreeTime(userId, now);
   }
 
   try {
@@ -411,7 +387,10 @@ export async function startOutsideWork(
 export async function stopOutsideWork(userId: string, now = new Date()): Promise<FreeTimeReportRow | null> {
   const open = await loadOpenReport(userId);
   if (!open || !isOutsideKind(open)) return null;
-  return closeOpenFreeTime(userId, now);
+  await markOpsInteraction(userId, now);
+  const closed = await closeOpenFreeTime(userId, now);
+  await ensureOpenFreeTime(userId, { now, requireOnline: false });
+  return closed;
 }
 
 export type BreakSlotStatus = {
@@ -498,6 +477,7 @@ export async function startBreak(
   if (open && isOutsideKind(open)) {
     return { ok: false, status: 400, error: "Finish outside work first" };
   }
+  await markOpsInteraction(userId, now);
 
   const status = await getBreakStatus(userId, now);
   const slot = type === "break_hour" ? status.hour : status.short;
@@ -560,6 +540,7 @@ export async function reconcileFreeTime(now = new Date()): Promise<void> {
       status: users.status,
       lastSeenAt: users.lastSeenAt,
       lastSignInAt: users.lastSignInAt,
+      lastInteractiveAt: users.lastInteractiveAt,
     })
     .from(users)
     .where(and(eq(users.role, "user"), eq(users.status, "active")));
@@ -580,6 +561,11 @@ export async function reconcileFreeTime(now = new Date()): Promise<void> {
       if (still) continue;
     } else if (open && isOutsideKind(open)) {
       await continueOpenReport(open, today, now);
+      continue;
+    }
+    const interactive = isInteractiveForFreeTime({ lastInteractiveAt: worker.lastInteractiveAt, now });
+    if (!interactive) {
+      await closeOpenFreeTime(worker.id, now);
       continue;
     }
     const presence = getPresenceStatus({
