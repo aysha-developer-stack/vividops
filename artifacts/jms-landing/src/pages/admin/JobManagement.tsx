@@ -76,6 +76,7 @@ import {
   fetchActiveTimerSessions,
   type ActiveTimerSession,
 } from "@/lib/timerSessionApi";
+import { fetchRunningJuniorTimers } from "@/lib/jobJuniorsApi";
 
 import {
   DropdownMenu,
@@ -146,9 +147,11 @@ const WORK_ACTIVITY_STATUSES = new Set<UiStatus>(["In Progress", "Rework", "Over
 function JobWorkActivityBadge({
   job,
   session,
+  juniorName,
 }: {
   job: UiJob;
   session: ActiveTimerSession | undefined;
+  juniorName?: string;
 }) {
   if (!WORK_ACTIVITY_STATUSES.has(job.status)) return null;
 
@@ -157,6 +160,18 @@ function JobWorkActivityBadge({
       <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 animate-pulse" />
         Working
+      </span>
+    );
+  }
+
+  if (juniorName) {
+    return (
+      <span
+        title={`${juniorName} junior timer is running`}
+        className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5"
+      >
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500 animate-pulse" />
+        Junior working
       </span>
     );
   }
@@ -382,6 +397,7 @@ export default function JobManagement(
 
   const [liveReviewSessions, setLiveReviewSessions] = useState<ReviewCheckSession[]>([]);
   const [activeWorkSessions, setActiveWorkSessions] = useState<ActiveTimerSession[]>([]);
+  const [runningJuniorByJobId, setRunningJuniorByJobId] = useState<Map<string, string>>(new Map());
 
   const jobs: UiJob[] = useMemo(
     () => (jobsQuery.data ?? []).map(mapJob),
@@ -441,6 +457,29 @@ export default function JobManagement(
         if (!cancelled) setActiveWorkSessions(rows);
       } catch {
         if (!cancelled) setActiveWorkSessions([]);
+      }
+    };
+    void load();
+    const id = window.setInterval(load, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const rows = await fetchRunningJuniorTimers();
+        if (cancelled) return;
+        const map = new Map<string, string>();
+        for (const row of rows) {
+          if (!map.has(row.jobId)) map.set(row.jobId, row.name);
+        }
+        setRunningJuniorByJobId(map);
+      } catch {
+        if (!cancelled) setRunningJuniorByJobId(new Map());
       }
     };
     void load();
@@ -1366,7 +1405,11 @@ export default function JobManagement(
                           {(() => {
                             const workSession = workTimerByJobId.get(j.id);
                             return (
-                              <JobWorkActivityBadge job={j} session={workSession} />
+                              <JobWorkActivityBadge
+                                job={j}
+                                session={workSession}
+                                juniorName={runningJuniorByJobId.get(j.id)}
+                              />
                             );
                           })()}
                         </div>
@@ -1552,7 +1595,11 @@ export default function JobManagement(
                           {(() => {
                             const workSession = workTimerByJobId.get(j.id);
                             return (
-                              <JobWorkActivityBadge job={j} session={workSession} />
+                              <JobWorkActivityBadge
+                                job={j}
+                                session={workSession}
+                                juniorName={runningJuniorByJobId.get(j.id)}
+                              />
                             );
                           })()}
                         </div>

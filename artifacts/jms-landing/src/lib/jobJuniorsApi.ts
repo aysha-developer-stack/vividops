@@ -48,6 +48,26 @@ export async function fetchJobJuniors(jobId: string): Promise<JobJunior[]> {
   return Array.isArray(data) ? (data as JobJunior[]) : [];
 }
 
+export type RunningJuniorTimer = {
+  jobId: string;
+  name: string;
+};
+
+export async function fetchRunningJuniorTimers(): Promise<RunningJuniorTimer[]> {
+  const res = await fetch("/api/job-juniors/running", { credentials: "include" });
+  if (res.status === 403) return [];
+  const data = await parseJson<unknown>(res);
+  if (!Array.isArray(data)) return [];
+  return data
+    .map((row: unknown) => {
+      const rec = row && typeof row === "object" ? (row as { jobId?: unknown; name?: unknown }) : {};
+      const jobId = typeof rec.jobId === "string" ? rec.jobId : "";
+      const name = typeof rec.name === "string" ? rec.name.trim() : "";
+      return jobId ? { jobId, name: name || "Junior trainee" } : null;
+    })
+    .filter((row): row is RunningJuniorTimer => row != null);
+}
+
 export async function addJobJunior(
   jobId: string,
   opts: { name: string; status?: JobJuniorStatus },

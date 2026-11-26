@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import { db, jobs, jobJuniors, jobMembers, users, type JobRow, type UserRow } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -74,6 +74,48 @@ async function enrich(rows: (typeof jobJuniors.$inferSelect)[]) {
   }
   return rows.map((r) => publicJunior(r, r.addedById ? names.get(r.addedById) ?? null : null, nowMs));
 }
+
+router.get("/job-juniors/running", requireAuth, async (req, res) => {
+  try {
+    await ensureJobWriteSchema();
+    const actor = req.session!.user;
+    const rows = await db
+      .select({
+        jobId: jobJuniors.jobId,
+        name: jobJuniors.name,
+        supervisorId: jobs.supervisorId,
+        coordinatorId: jobs.coordinatorId,
+        assigneeId: jobs.assigneeId,
+      })
+      .from(jobJuniors)
+      .innerJoin(jobs, eq(jobs.id, jobJuniors.jobId))
+      .where(isNotNull(jobJuniors.segmentStartedAt));
+
+    let visible = rows;
+    if (actor.role === "supervisor") {
+      visible = rows.filter((row) => row.supervisorId === actor.id);
+    } else if (actor.role === "coordinator") {
+      visible = rows.filter((row) => row.coordinatorId === actor.id);
+    } else if (actor.role !== "super-admin" && actor.role !== "admin") {
+      const memberRows = await db
+        .select({ jobId: jobMembers.jobId })
+        .from(jobMembers)
+        .where(eq(jobMembers.userId, actor.id));
+      const memberJobIds = new Set(memberRows.map((row) => row.jobId));
+      visible = rows.filter((row) => row.assigneeId === actor.id || memberJobIds.has(row.jobId));
+    }
+
+    return res.json(
+      visible.map((row) => ({
+        jobId: row.jobId,
+        name: row.name,
+      })),
+    );
+  } catch (err) {
+    logger.error({ err }, "Failed to list running junior timers");
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 router.get("/jobs/:jobId/juniors", requireAuth, async (req, res) => {
   try {
